@@ -6,19 +6,31 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
+#include "Core/Text/SharedFileReader.h"
 
-#include <array>
 #include <cstdint>
-#include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace Core {
 
 	namespace {
-		constexpr std::size_t kReadChunkBytes = 64 * 1024;
+		constexpr std::size_t kReadChunkBytes = 1024 * 1024;
+		constexpr std::size_t kBytesBetweenCancellationChecks = 1024 * 1024;
+		constexpr std::size_t kUtf8SliceBytes = 4 * 1024 * 1024;
+		constexpr std::size_t kLongestRunOfContinuationBytes = 3;
+		constexpr unsigned char kContinuationByteMask = 0xC0;
+		constexpr unsigned char kContinuationBytePattern = 0x80;
+		constexpr std::size_t kCrlfLength = 2;
+
+		Error ReadGivenUp(const std::filesystem::path& path)
+		{
+			return Error{.Code = ErrorCode::Cancelled, .Message = "Reading was given up: " + ToUtf8(path)};
+		}
 
 		std::string NotTextMessage(Encoding encoding, bool hasByteOrderMark, std::string_view content,
 								   const std::filesystem::path& path)
@@ -63,29 +75,44 @@ namespace Core {
 			return LooksLikeText(content);
 		}
 
-		// Reads until the stream runs dry rather than for `reportedSize` bytes: a file another process
-		// is still appending to grows between the stat and this read, and stopping at the earlier
-		// size would truncate the document silently.
-		Result<std::string> ReadWholeStream(std::ifstream& stream, std::uintmax_t reportedSize,
-											const std::filesystem::path& path)
+		// WARNING: Reads until the file runs dry, not for `reportedSize` bytes: a file still being appended to grows
+		// between the stat and this read, and stopping at the earlier size would truncate the document silently.
+		Result<std::string> ReadWholeFile(const std::filesystem::path& path, std::uintmax_t reportedSize,
+										  const CancellationToken& cancellation)
 		{
+			Result<SharedFileReader> reader = SharedFileReader::Open(path);
+
+			if (!reader)
+			{
+				return reader.GetError();
+			}
+
 			std::string fileBytes;
 			fileBytes.reserve(static_cast<std::size_t>(reportedSize));
 
-			std::array<char, kReadChunkBytes> chunk{};
+			std::vector<char> chunk(kReadChunkBytes);
 
 			while (true)
 			{
-				stream.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-				const std::streamsize bytesRead = stream.gcount();
+				if (cancellation.IsCancelled())
+				{
+					return ReadGivenUp(path);
+				}
 
-				const bool nothingLeftToRead = stream.fail() && bytesRead == 0;
+				const Result<std::size_t> bytesRead = reader.GetValue().ReadInto(chunk);
+
+				if (!bytesRead)
+				{
+					return bytesRead.GetError();
+				}
+
+				const bool nothingLeftToRead = bytesRead.GetValue() == 0;
 				if (nothingLeftToRead)
 				{
 					break;
 				}
 
-				fileBytes.append(chunk.data(), static_cast<std::size_t>(bytesRead));
+				fileBytes.append(chunk.data(), bytesRead.GetValue());
 
 				const bool grewPastMaximumWhileBeingRead = fileBytes.size() > MaximumFileSize;
 				if (grewPastMaximumWhileBeingRead)
@@ -95,16 +122,117 @@ namespace Core {
 				}
 			}
 
-			if (stream.bad())
+			return fileBytes;
+		}
+
+		bool IsContinuationByte(char byte)
+		{
+			return (static_cast<unsigned char>(byte) & kContinuationByteMask) == kContinuationBytePattern;
+		}
+
+		std::size_t SliceEndAtCharacterStart(std::string_view content, std::size_t wantedEnd)
+		{
+			if (wantedEnd >= content.size())
 			{
-				return Error{.Code = ErrorCode::IoFailure, .Message = "Cannot read file: " + ToUtf8(path)};
+				return content.size();
 			}
 
-			return fileBytes;
+			std::size_t sliceEnd = wantedEnd;
+
+			for (std::size_t steppedBack = 0; steppedBack < kLongestRunOfContinuationBytes && IsContinuationByte(content[sliceEnd]); ++steppedBack)
+			{
+				--sliceEnd;
+			}
+
+			return sliceEnd;
+		}
+
+		// WARNING: Slices end where a character starts, so a character is never split and the answer is the whole text's.
+		std::optional<bool> IsValidUtf8UnlessCancelled(std::string_view content, const CancellationToken& cancellation)
+		{
+			std::size_t sliceStart = 0;
+
+			while (sliceStart < content.size())
+			{
+				if (cancellation.IsCancelled())
+				{
+					return std::nullopt;
+				}
+
+				const std::size_t sliceEnd = SliceEndAtCharacterStart(content, sliceStart + kUtf8SliceBytes);
+
+				if (!IsValidUtf8(content.substr(sliceStart, sliceEnd - sliceStart)))
+				{
+					return false;
+				}
+
+				sliceStart = sliceEnd;
+			}
+
+			return true;
+		}
+
+		// A lone '\r' stays: taken for a classic Mac line end, it would split a line at a stray byte.
+		bool NormaliseUnlessCancelled(std::string_view text, NormalisedLineEndings& normalised, const CancellationToken& cancellation)
+		{
+			normalised.Content.reserve(text.size());
+
+			std::size_t crlfCount = 0;
+			std::size_t lfCount = 0;
+			std::size_t nextCancellationCheck = 0;
+			std::size_t byteIndex = 0;
+
+			while (byteIndex < text.size())
+			{
+				if (byteIndex >= nextCancellationCheck)
+				{
+					if (cancellation.IsCancelled())
+					{
+						return false;
+					}
+
+					nextCancellationCheck = byteIndex + kBytesBetweenCancellationChecks;
+				}
+
+				const bool startsCrlf =
+					text[byteIndex] == '\r' && byteIndex + 1 < text.size() && text[byteIndex + 1] == '\n';
+
+				if (startsCrlf)
+				{
+					++crlfCount;
+					normalised.Content.push_back('\n');
+					normalised.ContentLineStarts.push_back(normalised.Content.size());
+					byteIndex += kCrlfLength;
+					continue;
+				}
+
+				normalised.Content.push_back(text[byteIndex]);
+
+				if (text[byteIndex] == '\n')
+				{
+					++lfCount;
+					normalised.ContentLineStarts.push_back(normalised.Content.size());
+				}
+
+				++byteIndex;
+			}
+
+			normalised.Mixed = crlfCount > 0 && lfCount > 0;
+			normalised.Ending = crlfCount > lfCount ? LineEnding::Crlf : LineEnding::Lf;
+
+			return true;
 		}
 	}
 
 	Result<TextDocument> TextDocument::FromContent(std::string bytes, std::filesystem::path path)
+	{
+		const CancellationToken neverCancelled;
+
+		return FromContent(std::move(bytes), std::move(path), neverCancelled);
+	}
+
+	Result<TextDocument> TextDocument::FromContent(std::string bytes, std::filesystem::path path,
+												   const CancellationToken& cancellation)
 	{
 		const std::string_view sampleProbeFileReads = std::string_view{bytes}.substr(0, ProbeSampleSize);
 		const Encoding sniffedEncoding = SniffEncoding(sampleProbeFileReads);
@@ -120,6 +248,11 @@ namespace Core {
 			return decoded.GetError();
 		}
 
+		if (cancellation.IsCancelled())
+		{
+			return ReadGivenUp(path);
+		}
+
 		const std::string content = std::move(decoded).GetValue();
 		const bool contentWasDecoded = TransformsContent(sniffedEncoding);
 
@@ -129,29 +262,55 @@ namespace Core {
 						 .Message = NotTextMessage(sniffedEncoding, hasByteOrderMark, content, path)};
 		}
 
+		const bool decodedContentIsValid = true;
+		const std::optional<bool> contentIsValidUtf8 =
+			contentWasDecoded ? decodedContentIsValid : IsValidUtf8UnlessCancelled(content, cancellation);
+
+		if (!contentIsValidUtf8)
+		{
+			return ReadGivenUp(path);
+		}
+
+		NormalisedLineEndings normalised;
+
+		if (!NormaliseUnlessCancelled(content, normalised, cancellation))
+		{
+			return ReadGivenUp(path);
+		}
+
 		TextDocument document;
 		document.m_Path = std::move(path);
 		document.m_Encoding = sniffedEncoding;
 		document.m_HadByteOrderMark = hasByteOrderMark;
 		document.m_ByteOrderMarkEncoding = sniffedEncoding;
 
-		const bool undecodedContentIsInvalidUtf8 = !contentWasDecoded && !IsValidUtf8(content);
-		if (undecodedContentIsInvalidUtf8)
+		if (!*contentIsValidUtf8)
 		{
 			document.m_Encoding = Encoding::Unknown;
 			document.m_ReadOnly = true;
 		}
 
-		NormalisedLineEndings normalised = NormaliseLineEndings(content);
 		document.m_LineEnding = normalised.Ending;
 		document.m_WasMixed = normalised.Mixed;
-		document.m_Buffer = TextBuffer{std::move(normalised.Content)};
+		document.m_Buffer = TextBuffer::FromIndexedText(std::move(normalised.Content), std::move(normalised.ContentLineStarts));
 
 		return document;
 	}
 
 	Result<TextDocument> TextDocument::Load(const std::filesystem::path& path)
 	{
+		const CancellationToken neverCancelled;
+
+		return Load(path, neverCancelled);
+	}
+
+	Result<TextDocument> TextDocument::Load(const std::filesystem::path& path, const CancellationToken& cancellation)
+	{
+		if (cancellation.IsCancelled())
+		{
+			return ReadGivenUp(path);
+		}
+
 		std::error_code statusError;
 		const std::filesystem::file_status status = std::filesystem::status(path, statusError);
 
@@ -183,21 +342,14 @@ namespace Core {
 		std::error_code writeTimeError;
 		const std::filesystem::file_time_type writeTimeBeforeRead = std::filesystem::last_write_time(path, writeTimeError);
 
-		std::ifstream stream{path, std::ios::binary};
-
-		if (!stream.is_open())
-		{
-			return Error{.Code = ErrorCode::AccessDenied, .Message = "Cannot open file: " + ToUtf8(path)};
-		}
-
-		Result<std::string> fileBytes = ReadWholeStream(stream, fileSize, path);
+		Result<std::string> fileBytes = ReadWholeFile(path, fileSize, cancellation);
 
 		if (!fileBytes)
 		{
 			return fileBytes.GetError();
 		}
 
-		Result<TextDocument> document = FromContent(std::move(fileBytes).GetValue(), path);
+		Result<TextDocument> document = FromContent(std::move(fileBytes).GetValue(), path, cancellation);
 
 		// A write time that cannot be read costs the document its stamp, not the load; no test can make last_write_time fail here.
 		const bool writeTimeWasRead = !writeTimeError;
@@ -209,38 +361,12 @@ namespace Core {
 		return document;
 	}
 
-	// A lone '\r' stays: taken for a classic Mac line end, it would split a line at a stray byte.
 	NormalisedLineEndings NormaliseLineEndings(std::string_view text)
 	{
+		const CancellationToken neverCancelled;
 		NormalisedLineEndings normalised;
-		normalised.Content.reserve(text.size());
 
-		std::size_t crlfCount = 0;
-		std::size_t lfCount = 0;
-
-		for (std::size_t byteIndex = 0; byteIndex < text.size(); ++byteIndex)
-		{
-			const bool startsCrlf =
-				text[byteIndex] == '\r' && byteIndex + 1 < text.size() && text[byteIndex + 1] == '\n';
-
-			if (startsCrlf)
-			{
-				++crlfCount;
-				normalised.Content.push_back('\n');
-				++byteIndex;
-				continue;
-			}
-
-			if (text[byteIndex] == '\n')
-			{
-				++lfCount;
-			}
-
-			normalised.Content.push_back(text[byteIndex]);
-		}
-
-		normalised.Mixed = crlfCount > 0 && lfCount > 0;
-		normalised.Ending = crlfCount > lfCount ? LineEnding::Crlf : LineEnding::Lf;
+		NormaliseUnlessCancelled(text, normalised, neverCancelled);
 
 		return normalised;
 	}

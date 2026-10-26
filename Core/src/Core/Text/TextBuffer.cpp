@@ -24,6 +24,22 @@ namespace Core {
 		m_LineStarts = BuildLineIndex();
 	}
 
+	TextBuffer TextBuffer::FromIndexedText(std::string original, std::vector<std::size_t> lineStarts)
+	{
+		TextBuffer buffer;
+		buffer.m_OriginalBuffer = std::move(original);
+		buffer.m_Length = buffer.m_OriginalBuffer.size();
+
+		if (buffer.m_Length > 0)
+		{
+			buffer.m_Pieces.push_back(Piece{.Origin = Source::Original, .SourceOffset = 0, .Length = buffer.m_Length, .DocumentStart = 0});
+		}
+
+		buffer.m_LineStarts = std::move(lineStarts);
+
+		return buffer;
+	}
+
 	const std::string& TextBuffer::SourceBuffer(Source source) const
 	{
 		return source == Source::Original ? m_OriginalBuffer : m_AppendBuffer;

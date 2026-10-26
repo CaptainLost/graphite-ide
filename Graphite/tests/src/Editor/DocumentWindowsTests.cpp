@@ -13,18 +13,30 @@
 #include "Language/Analysis/FileTextSource.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
 #include "Language/Diagnostics/DiagnosticsModel.h"
+#include "Editor/Navigation/SelectInDocument.h"
 #include "Persistence/CaretRestore.h"
 #include "Persistence/PersistedState.h"
+#include "Search/ReferencesPanel.h"
+#include "Theme/ActiveScheme.h"
+#include "Theme/BuiltInSchemes.h"
 #include "UI/Dialogs/ModalGate.h"
+#include "Workspace/Workspace.h"
 
 #include "DeferredJobs.h"
 #include "FileFixtures.h"
+#include "ImGuiFrames.h"
+#include "TempAppSettings.h"
 #include "TempDirectory.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/TabCloseRequests.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Core/Text/RowMap.h"
+
+#include <imgui.h>
 
 #include <cstddef>
 #include <filesystem>
@@ -94,8 +106,12 @@ namespace {
 
 	constexpr std::size_t kAnalysisBudgetBytes = 1024 * 1024;
 
+	constexpr float kEditorFontSize = 16.0f;
+	const ImVec2 kDocumentWindowSize{900.0f, 600.0f};
+
 	struct DocumentWindowsWithHeldReads
 	{
+		ImGuiFrames Frames;
 		DeferredJobs Jobs;
 		Core::DocumentSet Documents;
 		Graphite::ModalGate Modals;
@@ -115,6 +131,14 @@ namespace {
 		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, PreviewSemantics,
 										  Analysis, AnalysisStore, WorkspaceAnalysis, Events, ActiveEditor};
 
+		TempAppSettings Settings;
+		Graphite::Workspace Workspace{Events, Settings.Get()};
+		Graphite::ActiveScheme Scheme;
+		Graphite::EditorSettings Editor{Settings.Get()};
+		Graphite::ReferencesPanel References{Workspace, Documents, Scheme, Editor, PreviewSemantics};
+		Core::TabCloseRequests CloseRequests;
+		std::filesystem::path NoRoot;
+
 		DocumentWindowsWithHeldReads()
 		{
 			Documents.LoadLargeFilesWith(Jobs.Submitter());
@@ -125,7 +149,45 @@ namespace {
 			Jobs.RunAll();
 			Windows.LandFinishedLoads();
 		}
+
+		void DrawFrame(bool wordWrap)
+		{
+			Frames.Next([this, wordWrap] {
+				for (std::size_t index = 0; index < Documents.GetCount(); ++index)
+				{
+					const std::string windowName = Graphite::DocumentWindowName(Documents, index);
+
+					if (ImGui::FindWindowByName(windowName.c_str()) != nullptr)
+					{
+						ImGui::SetWindowSize(windowName.c_str(), kDocumentWindowSize);
+					}
+				}
+
+				const Graphite::CommandContext noCommands;
+				Windows.Render(noCommands,
+							   Graphite::EditorFrame{.FontSize = kEditorFontSize,
+													 .Indent = Core::IndentStyle{},
+													 .FallbackDockNode = 0,
+													 .WordWrap = wordWrap,
+													 .ChangeMarkers = Graphite::ChangeMarkerDisplay{},
+													 .HighlightOccurrences = false,
+													 .Hover = Graphite::HoverSettings{},
+													 .Scheme = Graphite::DarkScheme(),
+													 .CloseRequests = CloseRequests,
+													 .WorkspaceRoot = NoRoot},
+							   References);
+			});
+		}
 	};
+
+	// WARNING: A finished read reaches the set through its mailbox, which asks for a frame; nothing else in a read does.
+	bool RunningThemPostsAResult(DeferredJobs& jobs)
+	{
+		Core::Redraw::TakeRequest();
+		jobs.RunAll();
+
+		return Core::Redraw::IsRequested();
+	}
 
 	std::string NumberedLinesPastBackgroundThreshold()
 	{
@@ -273,7 +335,7 @@ TEST_CASE("A tab whose large file comes back reads it on a worker rather than wh
 	CHECK(fixture.Documents.At(0).Document != nullptr);
 }
 
-TEST_CASE("Closing works on a tab whose file is still being read")
+TEST_CASE("Closing a tab whose file is still being read closes it and gives up the read")
 {
 	TempDirectory folder;
 	const std::filesystem::path path = folder.MakeFile("big.log", NumberedLinesPastBackgroundThreshold());
@@ -282,6 +344,77 @@ TEST_CASE("Closing works on a tab whose file is still being read")
 	fixture.Windows.RequestOpen(path, true);
 	REQUIRE(Core::IsLoading(fixture.Documents.At(0)));
 
-	CHECK(fixture.Windows.CanClose());
+	const bool wordWrap = false;
+	fixture.DrawFrame(wordWrap);
+
 	CHECK_FALSE(fixture.Windows.CanSave());
+	REQUIRE(fixture.Windows.CanClose());
+	fixture.Windows.Close();
+	fixture.DrawFrame(wordWrap);
+
+	CHECK(fixture.Documents.GetCount() == 0);
+	CHECK_FALSE(RunningThemPostsAResult(fixture.Jobs));
+}
+
+TEST_CASE("A file changed on disk while it was read is reloaded once the read lands")
+{
+	TempDirectory folder;
+	const std::filesystem::path path = folder.MakeFile("big.log", NumberedLinesPastBackgroundThreshold());
+
+	DocumentWindowsWithHeldReads fixture;
+	fixture.Windows.RequestOpen(path, true);
+	fixture.Jobs.RunAll();
+
+	const std::string changedText = NumberedLinesPastBackgroundThreshold() + "one line more\n";
+	WriteFileBytes(path, changedText);
+	fixture.Windows.LandFinishedLoads();
+
+	const Core::OpenItem& item = fixture.Documents.At(0);
+	REQUIRE(item.Document != nullptr);
+	CHECK(item.Document->GetBuffer().GetLength() == changedText.size());
+	CHECK_FALSE(item.Document->CheckChangedOnDisk());
+}
+
+TEST_CASE("A tab whose file is still being read saves the selection asked for while it loads")
+{
+	TempDirectory folder;
+	const std::filesystem::path path = folder.MakeFile("big.log", NumberedLinesPastBackgroundThreshold());
+
+	DocumentWindowsWithHeldReads fixture;
+	const Graphite::OpenDocument openPermanently = [&fixture](const std::filesystem::path& file) { fixture.Windows.RequestOpen(file, true); };
+
+	REQUIRE(Graphite::SelectInDocument(fixture.Documents, path, 3, 2, 5, openPermanently));
+	REQUIRE(Core::IsLoading(fixture.Documents.At(0)));
+
+	const Graphite::WorkspaceState state = fixture.Windows.CaptureState();
+
+	const Graphite::TabState* tab = TabFor(state, path);
+	REQUIRE(tab != nullptr);
+	CHECK(tab->Line == 3);
+	CHECK(tab->Column == 5);
+}
+
+TEST_CASE("A large file opened with word wrap on is wrapped on the worker as its pane draws it")
+{
+	TempDirectory folder;
+	const std::filesystem::path path = folder.MakeFile("big.log", NumberedLinesPastBackgroundThreshold());
+
+	DocumentWindowsWithHeldReads fixture;
+	const bool wordWrap = true;
+
+	fixture.Windows.RequestOpen(path, true);
+	fixture.DrawFrame(wordWrap);
+	fixture.DrawFrame(wordWrap);
+	fixture.FinishReads();
+
+	const Core::OpenItem& item = fixture.Documents.At(0);
+	REQUIRE(item.Document != nullptr);
+	const std::size_t columnsBuiltOnTheWorker = item.ColumnsPerWrappedRow;
+	REQUIRE(columnsBuiltOnTheWorker != Core::RowMap::kNoWrap);
+
+	fixture.DrawFrame(wordWrap);
+	CHECK(item.ColumnsPerWrappedRow == columnsBuiltOnTheWorker);
+
+	fixture.DrawFrame(wordWrap);
+	CHECK(item.ColumnsPerWrappedRow == columnsBuiltOnTheWorker);
 }

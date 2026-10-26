@@ -10,6 +10,7 @@
 #include "Core/Text/FileProbe.h"
 
 #include <algorithm>
+#include <mutex>
 #include <utility>
 
 namespace Core {
@@ -39,17 +40,15 @@ namespace Core {
 
 			const FileProbe& probe = probeResult.GetValue();
 
-			// The probe's encoding is not kept: the document sniffs its own, and two fields both meaning
-			// the file's encoding are two answers waiting to differ.
-			item.FileSize = probe.Size;
-
 			if (probe.Kind == FileKind::LargeText && largeFileConfirmation == LargeFileConfirmation::Unconfirmed)
 			{
-				// Failure and FailureDetail are cleared only past this return, so a question answered
-				// with no leaves the tab saying what it said before.
+				// WARNING: Nothing is recorded before this return: answering no leaves the tab as it was, and a recorded size above the question was accepted.
 				return ProbeVerdict::NeedsConfirmation;
 			}
 
+			// The probe's encoding is not kept: the document sniffs its own, and two fields both meaning
+			// the file's encoding are two answers waiting to differ.
+			item.FileSize = probe.Size;
 			item.Failure = OpenFailure::None;
 			item.FailureDetail.clear();
 
@@ -100,25 +99,10 @@ namespace Core {
 			LineCaches Caches;
 		};
 
-		// WARNING: Everything opening does that needs only the file belongs here, so the UI thread only hands it to the item.
-		Result<LoadedDocument> ReadWithLineCaches(const std::filesystem::path& path, std::size_t tabWidth)
-		{
-			Result<TextDocument> loaded = TextDocument::Load(path);
-
-			if (!loaded)
-			{
-				return loaded.GetError();
-			}
-
-			std::shared_ptr<TextDocument> document = std::make_shared<TextDocument>(std::move(loaded).GetValue());
-			LineCaches caches = ComputeLineCaches(document->GetBuffer(), tabWidth, RowMap::kNoWrap);
-
-			return LoadedDocument{.Document = std::move(document), .Caches = std::move(caches)};
-		}
-
 		struct FinishedLoad
 		{
 			std::uint64_t Ticket = 0;
+			std::filesystem::path ReadPath;
 			Result<LoadedDocument> Loaded;
 		};
 
@@ -130,22 +114,74 @@ namespace Core {
 			CancellationToken Cancellation;
 		};
 
-		// WARNING: The second check is not redundant: what is read for a tab closed meanwhile is let go of here, on the worker, rather than on the UI thread.
-		void ReadInBackground(const BackgroundRead& read, Mailbox<FinishedLoad>& finished)
+		Error ReadGivenUp(const std::filesystem::path& path)
+		{
+			return Error{.Code = ErrorCode::Cancelled, .Message = "Reading was given up: " + ToUtf8(path)};
+		}
+	}
+
+	struct DocumentReadsShared
+	{
+		Mailbox<FinishedLoad> Finished;
+
+		std::mutex WrapMutex;
+		WrapColumnsForLineCount WrapColumns;
+
+		std::size_t WrapColumnsFor(std::size_t lineCount)
+		{
+			WrapColumnsForLineCount wrapColumns;
+
+			{
+				const std::lock_guard<std::mutex> lock(WrapMutex);
+				wrapColumns = WrapColumns;
+			}
+
+			return wrapColumns ? wrapColumns(lineCount) : RowMap::kNoWrap;
+		}
+	};
+
+	namespace {
+
+		// WARNING: Everything opening does that needs only the file belongs here, so the UI thread only hands it to the item.
+		Result<LoadedDocument> ReadWithLineCaches(const BackgroundRead& read, DocumentReadsShared& shared)
+		{
+			Result<TextDocument> loaded = TextDocument::Load(read.Path, read.Cancellation);
+
+			if (!loaded)
+			{
+				return loaded.GetError();
+			}
+
+			std::shared_ptr<TextDocument> document = std::make_shared<TextDocument>(std::move(loaded).GetValue());
+			const TextBuffer& buffer = document->GetBuffer();
+			const std::size_t columnsPerRow = shared.WrapColumnsFor(buffer.GetLineCount());
+
+			std::optional<LineCaches> caches = ComputeLineCachesUnlessCancelled(buffer, read.TabWidth, columnsPerRow, read.Cancellation);
+
+			if (!caches)
+			{
+				return ReadGivenUp(read.Path);
+			}
+
+			return LoadedDocument{.Document = std::move(document), .Caches = std::move(*caches)};
+		}
+
+		// WARNING: The second check is not redundant: what is read for a tab closed meanwhile is let go of here, on the worker.
+		void ReadInBackground(const BackgroundRead& read, DocumentReadsShared& shared)
 		{
 			if (read.Cancellation.IsCancelled())
 			{
 				return;
 			}
 
-			Result<LoadedDocument> loaded = ReadWithLineCaches(read.Path, read.TabWidth);
+			Result<LoadedDocument> loaded = ReadWithLineCaches(read, shared);
 
 			if (read.Cancellation.IsCancelled())
 			{
 				return;
 			}
 
-			finished.Post(FinishedLoad{.Ticket = read.Ticket, .Loaded = std::move(loaded)});
+			shared.Finished.Post(FinishedLoad{.Ticket = read.Ticket, .ReadPath = read.Path, .Loaded = std::move(loaded)});
 		}
 
 		void LandDocument(OpenItem& item, LoadedDocument loaded, DocumentStore& store)
@@ -175,19 +211,23 @@ namespace Core {
 				item.FailureDetail.clear();
 			}
 
-			if (item.PlaceCaretOnLoad)
+			if (item.CaretOnLoad)
 			{
-				const std::function<void(OpenItem&)> placeCaret = std::move(item.PlaceCaretOnLoad);
-				item.PlaceCaretOnLoad = nullptr;
-				placeCaret(item);
+				const CaretWhenLoaded pending = std::move(*item.CaretOnLoad);
+				item.CaretOnLoad.reset();
+				pending.Place(item);
 			}
 		}
 	}
 
-	struct DocumentSet::FinishedLoads
+	DocumentSet::DocumentSet() : m_Shared(std::make_shared<DocumentReadsShared>())
 	{
-		Mailbox<FinishedLoad> Box;
-	};
+	}
+
+	DocumentSet::~DocumentSet()
+	{
+		CancelAllReads();
+	}
 
 	bool IsLoading(const OpenItem& item)
 	{
@@ -294,11 +334,22 @@ namespace Core {
 	void DocumentSet::LoadLargeFilesWith(JobSubmitter submit)
 	{
 		m_SubmitLoad = std::move(submit);
+	}
 
-		if (!m_FinishedLoads)
+	void DocumentSet::SetWrapForLoads(WrapColumnsForLineCount wrapColumns)
+	{
+		const std::lock_guard<std::mutex> lock(m_Shared->WrapMutex);
+		m_Shared->WrapColumns = std::move(wrapColumns);
+	}
+
+	void DocumentSet::CancelAllReads()
+	{
+		for (const BackgroundLoad& load : m_BackgroundLoads)
 		{
-			m_FinishedLoads = std::make_shared<FinishedLoads>();
+			load.Cancellation.Cancel();
 		}
+
+		m_BackgroundLoads.clear();
 	}
 
 	ItemLoad DocumentSet::LoadInto(OpenItem& item, LargeFileConfirmation largeFileConfirmation)
@@ -341,9 +392,9 @@ namespace Core {
 		item.LoadTicket = ticket;
 
 		const BackgroundRead read{.Path = item.Path, .TabWidth = item.TabWidth, .Ticket = ticket, .Cancellation = load.Cancellation};
-		const std::shared_ptr<FinishedLoads> finished = m_FinishedLoads;
+		const std::shared_ptr<DocumentReadsShared> shared = m_Shared;
 
-		m_SubmitLoad([read, finished] { ReadInBackground(read, finished->Box); });
+		m_SubmitLoad([read, shared] { ReadInBackground(read, *shared); });
 	}
 
 	void DocumentSet::StopBackgroundLoad(const OpenItem& item)
@@ -399,16 +450,25 @@ namespace Core {
 		return LoadInto(item, largeFileConfirmation);
 	}
 
+	ItemLoad DocumentSet::RetryLoad(std::size_t index)
+	{
+		if (index >= m_Items.size())
+		{
+			return ItemLoad::Failed;
+		}
+
+		const bool sizeAboveTheQuestionWasAccepted = m_Items[index].FileSize > LargeFileThreshold;
+		const LargeFileConfirmation confirmation =
+			sizeAboveTheQuestionWasAccepted ? LargeFileConfirmation::Confirmed : LargeFileConfirmation::Unconfirmed;
+
+		return LoadAgain(index, confirmation);
+	}
+
 	std::vector<std::size_t> DocumentSet::TakeFinishedLoads()
 	{
 		std::vector<std::size_t> landedIndices;
 
-		if (!m_FinishedLoads)
-		{
-			return landedIndices;
-		}
-
-		for (FinishedLoad& finished : m_FinishedLoads->Box.TakeAll())
+		for (FinishedLoad& finished : m_Shared->Finished.TakeAll())
 		{
 			const std::optional<std::size_t> index = FindLoading(finished.Ticket);
 
@@ -421,14 +481,26 @@ namespace Core {
 			StopBackgroundLoad(item);
 			item.LoadTicket.reset();
 
-			if (!finished.Loaded)
+			if (finished.Loaded)
+			{
+				LandDocument(item, std::move(finished.Loaded).GetValue(), m_Store);
+				landedIndices.push_back(*index);
+				continue;
+			}
+
+			// WARNING: A folder renamed before the worker opened the file fails the read at the old path; the tab has the new one.
+			const bool tabMovedWhileRead = finished.ReadPath != item.Path;
+
+			if (!tabMovedWhileRead)
 			{
 				RecordReadFailure(item, finished.Loaded.GetError());
 				continue;
 			}
 
-			LandDocument(item, std::move(finished.Loaded).GetValue(), m_Store);
-			landedIndices.push_back(*index);
+			if (LoadInto(item, LargeFileConfirmation::Confirmed) == ItemLoad::Loaded)
+			{
+				landedIndices.push_back(*index);
+			}
 		}
 
 		return landedIndices;
@@ -535,12 +607,7 @@ namespace Core {
 
 	void DocumentSet::CloseAll()
 	{
-		for (const BackgroundLoad& load : m_BackgroundLoads)
-		{
-			load.Cancellation.Cancel();
-		}
-
-		m_BackgroundLoads.clear();
+		CancelAllReads();
 		m_Items.clear();
 		m_ActiveIndex.reset();
 	}

@@ -3,6 +3,7 @@
 #include "Core/Text/Indent.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 
@@ -13,6 +14,7 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kDepthOfMissingNeighbour = 0;
+		constexpr std::size_t kLinesBetweenCancellationChecks = 16384;
 
 		bool IsIndentWhitespace(char character)
 		{
@@ -124,6 +126,25 @@ namespace Core {
 	std::vector<std::size_t> IndentDepths(const TextBuffer& buffer, std::size_t tabWidth,
 										  std::size_t firstLine, std::size_t lastLine)
 	{
+		const CancellationToken neverCancelled;
+
+		return *IndentDepthsUnlessCancelled(buffer, tabWidth, firstLine, lastLine, neverCancelled);
+	}
+
+	std::optional<std::vector<std::size_t>> IndentDepthsUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
+																		const CancellationToken& cancellation)
+	{
+		const std::size_t lineCount = buffer.GetLineCount();
+		const std::size_t firstLine = 0;
+		const std::size_t lastLine = lineCount - 1;
+
+		return IndentDepthsUnlessCancelled(buffer, tabWidth, firstLine, lastLine, cancellation);
+	}
+
+	std::optional<std::vector<std::size_t>> IndentDepthsUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
+																		std::size_t firstLine, std::size_t lastLine,
+																		const CancellationToken& cancellation)
+	{
 		const std::size_t lineCount = buffer.GetLineCount();
 		firstLine = std::min(firstLine, lineCount - 1);
 		lastLine = std::min(lastLine, lineCount - 1);
@@ -134,6 +155,13 @@ namespace Core {
 
 		for (std::size_t lineIndex = firstLine; lineIndex <= lastLine; ++lineIndex)
 		{
+			const bool reachedCancellationCheck = (lineIndex - firstLine) % kLinesBetweenCancellationChecks == 0;
+
+			if (reachedCancellationCheck && cancellation.IsCancelled())
+			{
+				return std::nullopt;
+			}
+
 			const std::string text = buffer.LineText(lineIndex);
 			const std::size_t rangeIndex = lineIndex - firstLine;
 			isBlankLine[rangeIndex] = ContainsOnlySpacesAndTabs(text);

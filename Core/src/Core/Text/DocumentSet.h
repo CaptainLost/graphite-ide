@@ -56,6 +56,18 @@ namespace Core {
 		std::size_t MatchesRevision = 0;
 	};
 
+	struct OpenItem;
+
+	// WARNING: A later placement replaces an earlier one; Line and Column are what is saved until the text lands.
+	struct CaretWhenLoaded
+	{
+		std::size_t Line = 0;
+		std::size_t Column = 0;
+		std::function<void(OpenItem&)> Place;
+	};
+
+	using WrapColumnsForLineCount = std::function<std::size_t(std::size_t lineCount)>;
+
 	struct OpenItem
 	{
 		std::filesystem::path Path;
@@ -105,19 +117,15 @@ namespace Core {
 
 		std::string FailureDetail;
 
-		// Set while a worker reads the document; until it lands the item holds none.
 		std::optional<std::uint64_t> LoadTicket;
 
-		// Run once a document read on a worker lands, so a caret placed while it was read lands in its text. A later
-		// placement replaces an earlier one.
-		std::function<void(OpenItem&)> PlaceCaretOnLoad;
+		std::optional<CaretWhenLoaded> CaretOnLoad;
 	};
 
 	bool IsLoading(const OpenItem& item);
 
 	std::string LoadingMessage(const OpenItem& item);
 
-	// A read that failed may succeed when asked again; a file refused for what it is will not.
 	bool CanRetryLoad(const OpenItem& item);
 
 	enum class ItemLoad
@@ -153,9 +161,19 @@ namespace Core {
 		Permanent
 	};
 
+	struct DocumentReadsShared;
+
 	class DocumentSet
 	{
 	public:
+		DocumentSet();
+		~DocumentSet();
+
+		DocumentSet(const DocumentSet&) = delete;
+		DocumentSet& operator=(const DocumentSet&) = delete;
+		DocumentSet(DocumentSet&&) = delete;
+		DocumentSet& operator=(DocumentSet&&) = delete;
+
 		DocumentStore& GetStore() { return m_Store; }
 		const DocumentStore& GetStore() const { return m_Store; }
 
@@ -163,20 +181,22 @@ namespace Core {
 
 		OpenOutcome OpenConfirmed(const std::filesystem::path& path, TabKind tabKind);
 
-		// Files above BackgroundLoadThreshold are then read through `submit` while their tab waits. Without it every
-		// file is read where it is opened.
 		void LoadLargeFilesWith(JobSubmitter submit);
 
-		// WARNING: An item measured at a width other than the editor's is measured again, on the UI thread, when it is
-		// first drawn; this is the editor's width, so a load measures once.
+		// WARNING: A load measured at a width other than the editor's is measured again on the UI thread.
 		void SetTabWidthForLoads(std::size_t tabWidth) { m_TabWidthForLoads = tabWidth; }
 
-		// For an item that holds no document and is not being read: after a failure, or when its file came back.
+		// WARNING: Called on a worker once the file is read; rows built at another width are wrapped again on the UI thread.
+		void SetWrapForLoads(WrapColumnsForLineCount wrapColumns);
+
 		ItemLoad LoadAgain(std::size_t index, LargeFileConfirmation largeFileConfirmation);
 
-		// Gives each item a worker finished reading its document or its failure; what was read for an item closed since
-		// is dropped. Answers the indices of the items that got a document.
+		ItemLoad RetryLoad(std::size_t index);
+
 		std::vector<std::size_t> TakeFinishedLoads();
+
+		// WARNING: Tabs being read keep waiting for good, so this is for shutting down.
+		void CancelAllReads();
 
 		void Close(std::size_t index);
 		void CloseAll();
@@ -212,8 +232,6 @@ namespace Core {
 			CancellationToken Cancellation;
 		};
 
-		struct FinishedLoads;
-
 		OpenOutcome Add(const std::filesystem::path& path, TabKind tabKind, LargeFileConfirmation largeFileConfirmation);
 
 		ItemLoad LoadInto(OpenItem& item, LargeFileConfirmation largeFileConfirmation);
@@ -241,7 +259,7 @@ namespace Core {
 		std::vector<BackgroundLoad> m_BackgroundLoads;
 
 		// WARNING: Shared with the workers, so a read that finishes after the set is gone still has somewhere to post.
-		std::shared_ptr<FinishedLoads> m_FinishedLoads;
+		std::shared_ptr<DocumentReadsShared> m_Shared;
 	};
 
 	// The path is matched exactly, as Find matches it, not through PathKey. The pointer is valid

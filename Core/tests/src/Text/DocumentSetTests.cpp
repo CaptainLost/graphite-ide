@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/App/Redraw.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
 
@@ -32,7 +33,6 @@ namespace {
 	constexpr DWORD kShareWithNoOne = 0;
 #endif
 
-	// Whole lines, each led by a tab, until the text is past the size above which a file is read on a worker.
 	std::string TextOfLinesPast(std::uint64_t size, std::string_view line)
 	{
 		std::string text;
@@ -49,6 +49,15 @@ namespace {
 	std::string TextReadOnAWorker()
 	{
 		return TextOfLinesPast(BackgroundLoadThreshold, "\tlog line\n");
+	}
+
+	// WARNING: A finished read reaches the set through its mailbox, which asks for a frame; nothing else in a read does.
+	bool RunningThemPostsAResult(DeferredJobs& jobs)
+	{
+		Redraw::TakeRequest();
+		jobs.RunAll();
+
+		return Redraw::IsRequested();
 	}
 }
 
@@ -921,10 +930,7 @@ TEST_CASE("A large file asks before a worker starts to read it")
 	TempDirectory directory;
 	const std::filesystem::path path = directory.GetPath() / "huge.log";
 
-	if (!TryWriteLargeTextFile(path, LargeFileThreshold + 1))
-	{
-		return;
-	}
+	REQUIRE(TryWriteLargeTextFile(path, LargeFileThreshold + 1));
 
 	DeferredJobs jobs;
 	DocumentSet documents;
@@ -951,8 +957,8 @@ TEST_CASE("Closing a tab while its file is read drops what the read brings back"
 	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
 
 	documents.Close(0);
-	jobs.RunAll();
 
+	CHECK_FALSE(RunningThemPostsAResult(jobs));
 	CHECK(documents.TakeFinishedLoads().empty());
 	CHECK(documents.GetCount() == 0);
 	CHECK(documents.GetStore().GetDocuments().empty());
@@ -1064,14 +1070,16 @@ TEST_CASE("A caret placed while the file is read is placed in its text once it l
 
 	constexpr std::size_t kFirstPlacement = 5;
 	constexpr std::size_t kLastPlacement = 7;
-	documents.At(0).PlaceCaretOnLoad = [](OpenItem& loaded) { loaded.Caret = Caret{.Offset = kFirstPlacement, .Anchor = kFirstPlacement}; };
-	documents.At(0).PlaceCaretOnLoad = [](OpenItem& loaded) { loaded.Caret = Caret{.Offset = kLastPlacement, .Anchor = kLastPlacement}; };
+	documents.At(0).CaretOnLoad = CaretWhenLoaded{
+		.Place = [](OpenItem& loaded) { loaded.Caret = Caret{.Offset = kFirstPlacement, .Anchor = kFirstPlacement}; }};
+	documents.At(0).CaretOnLoad = CaretWhenLoaded{
+		.Place = [](OpenItem& loaded) { loaded.Caret = Caret{.Offset = kLastPlacement, .Anchor = kLastPlacement}; }};
 
 	jobs.RunAll();
 	REQUIRE(documents.TakeFinishedLoads().size() == 1);
 
 	CHECK(documents.At(0).Caret.Offset == kLastPlacement);
-	CHECK_FALSE(documents.At(0).PlaceCaretOnLoad);
+	CHECK_FALSE(documents.At(0).CaretOnLoad.has_value());
 }
 
 TEST_CASE("A read on a worker measures the text with the tab width set for loads")
@@ -1095,7 +1103,7 @@ TEST_CASE("A read on a worker measures the text with the tab width set for loads
 	CHECK(documents.At(0).WidestColumn == kColumnsOfTabThenX);
 }
 
-TEST_CASE("A read that lands after its tab moved with a renamed folder takes the tab's new path")
+TEST_CASE("A read that fails because its folder was renamed before it began reads the file again at the tab's new path")
 {
 	TempDirectory directory;
 	const std::filesystem::path folder = directory.GetPath() / "logs";
@@ -1109,7 +1117,14 @@ TEST_CASE("A read that lands after its tab moved with a renamed folder takes the
 	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
 
 	const std::filesystem::path movedFolder = directory.GetPath() / "moved";
+	std::filesystem::rename(folder, movedFolder);
 	documents.RewritePaths(folder, movedFolder);
+
+	jobs.RunAll();
+	CHECK(documents.TakeFinishedLoads().empty());
+	REQUIRE(IsLoading(documents.At(0)));
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+
 	jobs.RunAll();
 	REQUIRE(documents.TakeFinishedLoads().size() == 1);
 
@@ -1153,8 +1168,8 @@ TEST_CASE("Closing every tab stops every read")
 	REQUIRE(documents.Open(second, TabKind::Permanent) == OpenOutcome::Loading);
 
 	documents.CloseAll();
-	jobs.RunAll();
 
+	CHECK_FALSE(RunningThemPostsAResult(jobs));
 	CHECK(documents.TakeFinishedLoads().empty());
 	CHECK(documents.GetStore().GetDocuments().empty());
 }
@@ -1175,4 +1190,130 @@ TEST_CASE("A tab opened before its large file existed reads it on a worker once 
 	jobs.RunAll();
 	CHECK(documents.TakeFinishedLoads() == std::vector<std::size_t>{0});
 	CHECK(documents.At(0).Document != nullptr);
+}
+
+TEST_CASE("Destroying the set stops every read it started")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+	WriteFileBytes(path, TextReadOnAWorker());
+
+	DeferredJobs jobs;
+
+	{
+		DocumentSet documents;
+		documents.LoadLargeFilesWith(jobs.Submitter());
+		REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+	}
+
+	CHECK(jobs.Count() == 1);
+	CHECK_FALSE(RunningThemPostsAResult(jobs));
+}
+
+TEST_CASE("Cancelling every read keeps the tabs but lets no read finish")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+	WriteFileBytes(path, TextReadOnAWorker());
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	documents.CancelAllReads();
+
+	CHECK_FALSE(RunningThemPostsAResult(jobs));
+	CHECK(documents.GetCount() == 1);
+}
+
+TEST_CASE("A read on a worker wraps its rows as the wrap set for loads asks for the document's line count")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+	const std::string text = TextReadOnAWorker();
+	WriteFileBytes(path, text);
+
+	constexpr std::size_t kWrapColumns = 7;
+	std::size_t lineCountAskedAbout = 0;
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	documents.SetWrapForLoads([&lineCountAskedAbout](std::size_t lineCount) {
+		lineCountAskedAbout = lineCount;
+		return kWrapColumns;
+	});
+
+	jobs.RunAll();
+	REQUIRE(documents.TakeFinishedLoads().size() == 1);
+
+	const OpenItem& item = documents.At(0);
+	CHECK(lineCountAskedAbout == item.Document->GetBuffer().GetLineCount());
+	CHECK(item.Rows.GetColumnsPerRow() == kWrapColumns);
+	CHECK(item.ColumnsPerWrappedRow == kWrapColumns);
+	CHECK(item.Rows.GetTotalRows() > item.Rows.GetLineCount());
+}
+
+TEST_CASE("Retry asks about the size of a file that grew past the question since it was opened")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+	WriteFileBytes(path, TextReadOnAWorker());
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	std::filesystem::remove(path);
+	std::filesystem::create_directory(path);
+	jobs.RunAll();
+	REQUIRE(documents.TakeFinishedLoads().empty());
+	REQUIRE(CanRetryLoad(documents.At(0)));
+
+	std::filesystem::remove(path);
+	REQUIRE(TryWriteLargeTextFile(path, LargeFileThreshold + 1));
+
+	CHECK(documents.RetryLoad(0) == ItemLoad::NeedsConfirmation);
+	CHECK_FALSE(IsLoading(documents.At(0)));
+	CHECK(jobs.Count() == 0);
+}
+
+TEST_CASE("Retry does not ask again about a size above the question that was accepted")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "huge.log";
+	REQUIRE(TryWriteLargeTextFile(path, LargeFileThreshold + 1));
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.OpenConfirmed(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	std::filesystem::remove(path);
+	std::filesystem::create_directory(path);
+	jobs.RunAll();
+	REQUIRE(documents.TakeFinishedLoads().empty());
+	REQUIRE(CanRetryLoad(documents.At(0)));
+
+	std::filesystem::remove(path);
+	REQUIRE(TryWriteLargeTextFile(path, LargeFileThreshold + 1));
+
+	CHECK(documents.RetryLoad(0) == ItemLoad::Loading);
+}
+
+TEST_CASE("A size question answered with no leaves the tab's size as it was")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "appears.log";
+
+	DocumentSet documents;
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
+	REQUIRE(TryWriteLargeTextFile(path, LargeFileThreshold + 1));
+
+	REQUIRE(documents.LoadAgain(0, LargeFileConfirmation::Unconfirmed) == ItemLoad::NeedsConfirmation);
+	CHECK(documents.At(0).FileSize == 0);
 }

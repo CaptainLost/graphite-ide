@@ -14,7 +14,6 @@ namespace Graphite {
 
 	namespace {
 
-		// An item whose file is still being read is returned too: its selection waits for the text.
 		Core::OpenItem* OpenForSelection(Core::DocumentSet& documents,
 										 const std::filesystem::path& path,
 										 const OpenDocument& open)
@@ -90,7 +89,10 @@ namespace Graphite {
 
 		if (Core::IsLoading(*item))
 		{
-			item->PlaceCaretOnLoad = [line, from, to](Core::OpenItem& loaded) { SelectBytesOfLine(loaded, line, from, to); };
+			item->CaretOnLoad = Core::CaretWhenLoaded{
+				.Line = line,
+				.Column = to,
+				.Place = [line, from, to](Core::OpenItem& loaded) { SelectBytesOfLine(loaded, line, from, to); }};
 			return true;
 		}
 
@@ -111,9 +113,14 @@ namespace Graphite {
 
 		if (Core::IsLoading(*item))
 		{
-			item->PlaceCaretOnLoad = [line, column, endLine, endColumn](Core::OpenItem& loaded) {
-				SelectUtf16ColumnsOfLine(loaded, line, column, endLine, endColumn);
-			};
+			const std::size_t columnAsFarAsKnownBeforeTheText = SpansOneLine(line, column, endLine, endColumn) ? endColumn.Value : column.Value;
+
+			item->CaretOnLoad = Core::CaretWhenLoaded{
+				.Line = line,
+				.Column = columnAsFarAsKnownBeforeTheText,
+				.Place = [line, column, endLine, endColumn](Core::OpenItem& loaded) {
+					SelectUtf16ColumnsOfLine(loaded, line, column, endLine, endColumn);
+				}};
 			return true;
 		}
 

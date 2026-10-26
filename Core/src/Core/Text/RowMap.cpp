@@ -2,6 +2,7 @@
 
 #include "Core/Text/RowMap.h"
 
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/WrapLayout.h"
 
@@ -11,6 +12,8 @@ namespace Core {
 
 	namespace {
 		const std::vector<std::size_t> kNoBreaks;
+
+		constexpr std::size_t kLinesBetweenCancellationChecks = 16384;
 
 		constexpr std::size_t LowestSetBit(std::size_t value)
 		{
@@ -41,6 +44,14 @@ namespace Core {
 	void RowMap::Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow,
 						 std::size_t tabWidth)
 	{
+		const CancellationToken neverCancelled;
+
+		RebuildUnlessCancelled(buffer, columnsPerRow, tabWidth, neverCancelled);
+	}
+
+	bool RowMap::RebuildUnlessCancelled(const TextBuffer& buffer, std::size_t columnsPerRow, std::size_t tabWidth,
+										const CancellationToken& cancellation)
+	{
 		m_ColumnsPerRow = columnsPerRow;
 		m_TabWidth = tabWidth;
 
@@ -53,6 +64,13 @@ namespace Core {
 		// would be a logarithmic update each time into a tree about to be thrown away.
 		for (std::size_t line = 0; line < lineCount; ++line)
 		{
+			const bool reachedCancellationCheck = line % kLinesBetweenCancellationChecks == 0;
+
+			if (reachedCancellationCheck && cancellation.IsCancelled())
+			{
+				return false;
+			}
+
 			if (columnsPerRow != kNoWrap)
 			{
 				m_Breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
@@ -62,6 +80,8 @@ namespace Core {
 		}
 
 		RebuildTree();
+
+		return true;
 	}
 
 	void RowMap::UpdateLine(const TextBuffer& buffer, std::size_t line)

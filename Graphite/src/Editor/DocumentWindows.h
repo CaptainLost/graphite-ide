@@ -298,6 +298,12 @@ namespace Graphite {
 
 		void KeepRestoredTopLine(const Core::OpenItem& item, std::size_t savedTopLine);
 
+		void KeepTopLineAskedForByRestore(std::size_t index);
+
+		void HandWrapToLoads(bool wordWrap);
+
+		void RetryLoad(std::size_t index);
+
 		bool SaveOne(std::size_t index);
 
 		void ReportSaveFailure(const std::filesystem::path& path, const Core::Error& error);
@@ -462,8 +468,7 @@ namespace Graphite {
 
 			std::optional<PendingTopLine> PendingTop;
 
-			// A restored tab whose file is still being read is saved as this, and takes its top line once the text lands.
-			std::optional<TabState> Restoring;
+			std::optional<std::size_t> TopLineOnLoad;
 
 			bool CarriedOver = false;
 
@@ -491,6 +496,9 @@ namespace Graphite {
 		FindBar m_FindBar;
 
 		ExpectedWrites m_ExpectedWrites;
+
+		std::optional<WrapGeometry> m_WrapOfLastDrawnEditor;
+		std::optional<WrapGeometry> m_WrapHandedToLoads;
 	};
 
 	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error);

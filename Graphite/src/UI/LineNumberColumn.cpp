@@ -35,9 +35,14 @@ namespace Graphite {
 		return columnLeft + Width() - Gap - static_cast<float>(DigitCountOf(number)) * CellWidth;
 	}
 
+	int LineNumberDigits(std::size_t lastLineNumber)
+	{
+		return std::max(kFewestDigits, DigitCountOf(lastLineNumber));
+	}
+
 	LineNumberColumn MeasureLineNumberColumn(std::size_t lastLineNumber, float cellWidth)
 	{
-		return LineNumberColumn{.Digits = std::max(kFewestDigits, DigitCountOf(lastLineNumber)),
+		return LineNumberColumn{.Digits = LineNumberDigits(lastLineNumber),
 								.CellWidth = cellWidth,
 								.Gap = Core::Scaled(kGap)};
 	}

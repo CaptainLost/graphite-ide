@@ -5,6 +5,7 @@
 
 namespace Core {
 
+	class CancellationToken;
 	class TextBuffer;
 
 	struct RowRef
@@ -20,6 +21,10 @@ namespace Core {
 		static constexpr std::size_t kNoRows = 0;
 
 		void Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow, std::size_t tabWidth);
+
+		// WARNING: A rebuild given up leaves the map half built; only a map that answered true may be read.
+		bool RebuildUnlessCancelled(const TextBuffer& buffer, std::size_t columnsPerRow, std::size_t tabWidth,
+									const CancellationToken& cancellation);
 
 		void UpdateLine(const TextBuffer& buffer, std::size_t line);
 

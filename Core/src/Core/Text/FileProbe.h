@@ -21,8 +21,6 @@ namespace Core {
 
 	inline constexpr std::uint64_t LargeFileThreshold = 16ull * 1024 * 1024;
 
-	// A file this size or smaller reads within a frame, so it opens where it is asked for; a larger one is read on a
-	// worker while its tab waits.
 	inline constexpr std::uint64_t BackgroundLoadThreshold = 4ull * 1024 * 1024;
 
 	inline bool LoadsInBackground(std::uint64_t fileSize)

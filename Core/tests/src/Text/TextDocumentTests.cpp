@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/FileProbe.h"
 #include "Core/Text/TextDocument.h"
 
@@ -693,4 +694,60 @@ TEST_CASE("NormaliseLineEndings turns CR LF into LF and leaves a lone CR alone")
 	CHECK(mixed.Ending == LineEnding::Lf);
 
 	CHECK(NormaliseLineEndings("").Content.empty());
+}
+
+TEST_CASE("A load already given up answers so before it looks for the file")
+{
+	TempDirectory directory;
+	const std::filesystem::path missing = directory.GetPath() / "not-there.log";
+
+	CancellationToken cancellation;
+	cancellation.Cancel();
+
+	const Result<TextDocument> loaded = TextDocument::Load(missing, cancellation);
+
+	REQUIRE_FALSE(loaded.HasValue());
+	CHECK(loaded.GetError().Code == ErrorCode::Cancelled);
+}
+
+TEST_CASE("A load that is not given up reads the file as an ordinary load does")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.txt";
+	WriteFileBytes(path, "one\r\ntwo\r\n");
+
+	const CancellationToken keptGoing;
+	const Result<TextDocument> loaded = TextDocument::Load(path, keptGoing);
+
+	REQUIRE(loaded.HasValue());
+	CHECK(loaded.GetValue().GetBuffer().Materialize() == "one\ntwo\n");
+	CHECK(loaded.GetValue().GetBuffer().GetLineCount() == 3);
+	CHECK(loaded.GetValue().GetBuffer().LineIndexMatchesRebuild());
+	CHECK(loaded.GetValue().GetDocumentLineEnding() == LineEnding::Crlf);
+}
+
+TEST_CASE("Text checked for UTF-8 in slices is judged as the whole text is wherever a slice ends")
+{
+	constexpr std::size_t kSliceBytesOfTheLoader = 4 * 1024 * 1024;
+	const std::string fourByteCharacter = "\xf0\x9f\x98\x80";
+	const std::string tail(16, 'b');
+
+	for (std::size_t bytesBeforeSliceEnd = 0; bytesBeforeSliceEnd <= fourByteCharacter.size(); ++bytesBeforeSliceEnd)
+	{
+		const std::size_t characterStart = kSliceBytesOfTheLoader - bytesBeforeSliceEnd;
+		std::string text = std::string(characterStart, 'a') + fourByteCharacter + tail;
+		CHECK_FALSE(DocumentFromBytes(text).IsReadOnly());
+
+		const std::size_t lastContinuationByte = characterStart + fourByteCharacter.size() - 1;
+		text[lastContinuationByte] = 'z';
+		CHECK(DocumentFromBytes(text).IsReadOnly());
+	}
+}
+
+TEST_CASE("Normalised text comes with the index of its lines")
+{
+	const NormalisedLineEndings normalised = NormaliseLineEndings("a\r\nbc\nd\r");
+
+	CHECK(normalised.Content == "a\nbc\nd\r");
+	CHECK(normalised.ContentLineStarts == std::vector<std::size_t>{0, 2, 5});
 }

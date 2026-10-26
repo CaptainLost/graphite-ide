@@ -52,6 +52,26 @@ namespace Graphite {
 		bool Scrollbar = true;
 	};
 
+	// WARNING: Everything but the line count that decides a wrapped row's columns, so a worker wraps as the editor will.
+	struct WrapGeometry
+	{
+		float WidthBesideScrollbar = 0.0f;
+		float ScrollbarWidth = 0.0f;
+		float FixedGutterWidth = 0.0f;
+		float CellWidth = 0.0f;
+		float LineNumberGap = 0.0f;
+
+		bool operator==(const WrapGeometry&) const = default;
+	};
+
+	enum class VerticalScrollbar
+	{
+		Shown,
+		Hidden
+	};
+
+	std::size_t WrappedColumns(const WrapGeometry& geometry, std::size_t lineCount, VerticalScrollbar scrollbar);
+
 	struct EditorFrameResult
 	{
 		bool Edited = false;
@@ -84,8 +104,9 @@ namespace Graphite {
 		std::optional<HoverQuestion> AskPreview;
 		bool CancelHover = false;
 
-		// Retry pressed on a tab whose file could not be read.
-		bool RetryLoad = false;
+		bool RetryPressed = false;
+
+		std::optional<WrapGeometry> Wrap;
 	};
 
 	struct EditorView

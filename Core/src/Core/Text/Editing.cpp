@@ -3,6 +3,7 @@
 #include "Core/Text/Editing.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -19,6 +20,7 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kPlaceholderIndentDepth = 0;
+		constexpr std::size_t kLinesBetweenCancellationChecks = 16384;
 
 		struct LineBlock
 		{
@@ -177,12 +179,34 @@ namespace Core {
 
 	LineCaches ComputeLineCaches(const TextBuffer& buffer, std::size_t tabWidth, std::size_t columnsPerRow)
 	{
+		const CancellationToken neverCancelled;
+
+		return *ComputeLineCachesUnlessCancelled(buffer, tabWidth, columnsPerRow, neverCancelled);
+	}
+
+	std::optional<LineCaches> ComputeLineCachesUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
+															   std::size_t columnsPerRow, const CancellationToken& cancellation)
+	{
+		std::optional<std::vector<std::size_t>> depths = IndentDepthsUnlessCancelled(buffer, tabWidth, cancellation);
+
+		if (!depths)
+		{
+			return std::nullopt;
+		}
+
 		LineCaches caches;
 		caches.TabWidth = tabWidth;
-		caches.IndentDepths = IndentDepths(buffer, tabWidth);
+		caches.IndentDepths = std::move(*depths);
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
+			const bool reachedCancellationCheck = line % kLinesBetweenCancellationChecks == 0;
+
+			if (reachedCancellationCheck && cancellation.IsCancelled())
+			{
+				return std::nullopt;
+			}
+
 			const std::size_t width = ColumnCount(buffer.LineText(line), tabWidth);
 
 			if (width > caches.WidestColumn)
@@ -192,7 +216,11 @@ namespace Core {
 			}
 		}
 
-		caches.Rows.Rebuild(buffer, columnsPerRow, tabWidth);
+		if (!caches.Rows.RebuildUnlessCancelled(buffer, columnsPerRow, tabWidth, cancellation))
+		{
+			return std::nullopt;
+		}
+
 		caches.SeenChange = buffer.GetChangeSequence();
 
 		return caches;

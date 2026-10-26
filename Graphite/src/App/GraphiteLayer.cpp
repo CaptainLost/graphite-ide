@@ -737,6 +737,9 @@ namespace Graphite {
 
 	void GraphiteLayer::OnDetach()
 	{
+		// WARNING: Before m_Jobs is destroyed, which runs every read still queued and waits for the one running.
+		m_Documents.CancelAllReads();
+
 		m_StateKeeper.Flush();
 		m_ReviewStore.Flush();
 

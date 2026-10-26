@@ -1190,7 +1190,7 @@ TEST_CASE("A tab whose file is still being read draws no editor and asks for not
 
 	CHECK(frames.StackAfter == frames.StackBefore);
 	CHECK_FALSE(AnyWindowNamedLike(kEditorSurface));
-	CHECK_FALSE(frames.Result.RetryLoad);
+	CHECK_FALSE(frames.Result.RetryPressed);
 	CHECK_FALSE(frames.Result.DrewRows);
 }
 
@@ -1208,7 +1208,7 @@ TEST_CASE("A tab whose file could not be read offers Retry and reports the press
 
 	frames.Frames.Click(ImVec2(middleX, stretches.front().Middle()), [&frames] { frames.Draw(); });
 
-	CHECK(frames.Result.RetryLoad);
+	CHECK(frames.Result.RetryPressed);
 	CHECK_FALSE(AnyWindowNamedLike(kEditorSurface));
 }
 
@@ -1221,5 +1221,36 @@ TEST_CASE("A tab refused as binary says why and offers nothing to press")
 		frames.Frames, HoveredItems::Along::Down, kDocumentWidth * kHalf, 0.0f, kDocumentHeight, [&frames] { frames.Draw(); });
 
 	CHECK(stretches.empty());
-	CHECK_FALSE(frames.Result.RetryLoad);
+	CHECK_FALSE(frames.Result.RetryPressed);
+}
+TEST_CASE("A pane measures the same wrap before a document's text is there as once it is")
+{
+	EditorFrames frames{"short text\n"};
+	frames.Next();
+	REQUIRE(frames.Result.Wrap.has_value());
+	const Graphite::WrapGeometry withText = *frames.Result.Wrap;
+
+	frames.Item = Core::OpenItem{.Path = "C:/p/big.log", .FileSize = 100ull * 1024 * 1024};
+	frames.Item.LoadTicket = 1;
+	frames.Next();
+	REQUIRE(frames.Result.Wrap.has_value());
+
+	CHECK(*frames.Result.Wrap == withText);
+}
+
+TEST_CASE("A wrapped row loses a column to each line-number digit and gains the scrollbar's room when it is hidden")
+{
+	const Graphite::WrapGeometry geometry{.WidthBesideScrollbar = 500.0f,
+										  .ScrollbarWidth = 20.0f,
+										  .FixedGutterWidth = 30.0f,
+										  .CellWidth = 10.0f,
+										  .LineNumberGap = 5.0f};
+
+	const std::size_t threeDigits = Graphite::WrappedColumns(geometry, 999, Graphite::VerticalScrollbar::Shown);
+	const std::size_t fourDigits = Graphite::WrappedColumns(geometry, 1000, Graphite::VerticalScrollbar::Shown);
+	const std::size_t scrollbarHidden = Graphite::WrappedColumns(geometry, 999, Graphite::VerticalScrollbar::Hidden);
+
+	CHECK(threeDigits == 43);
+	CHECK(fourDigits == threeDigits - 1);
+	CHECK(scrollbarHidden == threeDigits + 2);
 }

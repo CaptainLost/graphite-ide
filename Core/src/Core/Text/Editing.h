@@ -6,16 +6,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <vector>
 
 namespace Core {
 
+	class CancellationToken;
 	struct OpenItem;
 	class TextBuffer;
 
-	// What an item measures of its document's whole text. Built apart from the item, so a worker can measure a document
-	// it has just read before the item takes it.
 	struct LineCaches
 	{
 		std::size_t TabWidth = DefaultTabWidth;
@@ -27,6 +27,9 @@ namespace Core {
 	};
 
 	LineCaches ComputeLineCaches(const TextBuffer& buffer, std::size_t tabWidth, std::size_t columnsPerRow);
+
+	std::optional<LineCaches> ComputeLineCachesUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
+															   std::size_t columnsPerRow, const CancellationToken& cancellation);
 
 	void AdoptLineCaches(OpenItem& item, LineCaches caches);
 

@@ -28,6 +28,9 @@ namespace Core {
 		TextBuffer() = default;
 		explicit TextBuffer(std::string original);
 
+		// WARNING: The starts must be the line index of the text: 0, then the offset after every '\n'.
+		static TextBuffer FromIndexedText(std::string original, std::vector<std::size_t> lineStarts);
+
 		void Insert(std::size_t offset, std::string_view text);
 		void Erase(std::size_t from, std::size_t to);
 

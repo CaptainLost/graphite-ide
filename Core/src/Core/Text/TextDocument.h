@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
@@ -11,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace Core {
 
@@ -27,6 +29,7 @@ namespace Core {
 		std::string Content;
 		LineEnding Ending = LineEnding::Lf;
 		bool Mixed = false;
+		std::vector<std::size_t> ContentLineStarts{0};
 	};
 
 	NormalisedLineEndings NormaliseLineEndings(std::string_view text);
@@ -37,6 +40,8 @@ namespace Core {
 		static Result<TextDocument> FromContent(std::string bytes, std::filesystem::path path);
 
 		static Result<TextDocument> Load(const std::filesystem::path& path);
+
+		static Result<TextDocument> Load(const std::filesystem::path& path, const CancellationToken& cancellation);
 
 		TextBuffer& GetBuffer() { return m_Buffer; }
 		const TextBuffer& GetBuffer() const { return m_Buffer; }
@@ -71,6 +76,8 @@ namespace Core {
 		void AcceptDiskState();
 
 	private:
+		static Result<TextDocument> FromContent(std::string bytes, std::filesystem::path path, const CancellationToken& cancellation);
+
 		TextBuffer m_Buffer;
 		std::filesystem::path m_Path;
 		Encoding m_Encoding = Encoding::Utf8;

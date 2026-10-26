@@ -188,6 +188,18 @@ namespace Graphite {
 			float TotalWidth = 0.0f;
 		};
 
+		GutterMetrics MeasureGutter(std::size_t lineCount, float cellWidth, bool changeColumn)
+		{
+			GutterMetrics gutter;
+			gutter.BreakpointWidth = kBreakpointColumnCells * cellWidth;
+			gutter.ChangeWidth = changeColumn ? Core::Scaled(kChangeColumnWidth) : 0.0f;
+			gutter.FoldWidth = kFoldColumnCells * cellWidth;
+			gutter.Numbers = MeasureLineNumberColumn(lineCount, cellWidth);
+			gutter.TotalWidth = gutter.BreakpointWidth + gutter.ChangeWidth + gutter.Numbers.Width() + gutter.FoldWidth;
+
+			return gutter;
+		}
+
 		struct EditorMetrics
 		{
 			float FontSizeBase = 0.0f;
@@ -224,15 +236,43 @@ namespace Graphite {
 			metrics.LineHeight = std::round(kLineHeightFactor * metrics.FontSize);
 			metrics.TextOffsetY = CentredTextOffset(metrics.LineHeight, metrics.FontSize);
 			metrics.CellWidth = Core::MonospaceCellWidth();
-
-			metrics.Gutter.BreakpointWidth = kBreakpointColumnCells * metrics.CellWidth;
-			metrics.Gutter.ChangeWidth = changeColumn ? Core::Scaled(kChangeColumnWidth) : 0.0f;
-			metrics.Gutter.FoldWidth = kFoldColumnCells * metrics.CellWidth;
-			metrics.Gutter.Numbers = MeasureLineNumberColumn(buffer.GetLineCount(), metrics.CellWidth);
-			metrics.Gutter.TotalWidth = metrics.Gutter.BreakpointWidth + metrics.Gutter.ChangeWidth +
-										metrics.Gutter.Numbers.Width() + metrics.Gutter.FoldWidth;
+			metrics.Gutter = MeasureGutter(buffer.GetLineCount(), metrics.CellWidth, changeColumn);
 
 			return metrics;
+		}
+
+		WrapGeometry WrapGeometryOf(const GutterMetrics& gutter, float cellWidth, float widthWithoutScrollbar)
+		{
+			WrapGeometry geometry;
+			geometry.ScrollbarWidth = ImGui::GetStyle().ScrollbarSize;
+			geometry.WidthBesideScrollbar = widthWithoutScrollbar - geometry.ScrollbarWidth;
+			geometry.FixedGutterWidth = gutter.BreakpointWidth + gutter.ChangeWidth + gutter.FoldWidth;
+			geometry.CellWidth = cellWidth;
+			geometry.LineNumberGap = gutter.Numbers.Gap;
+
+			return geometry;
+		}
+
+		// WARNING: The surface has no padding, so its width without a scrollbar is the window's here, where it would begin.
+		WrapGeometry WrapGeometryBeforeTheText(const EditorView& view)
+		{
+			constexpr std::size_t kNoLines = 0;
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), view.FontSize);
+			const float cellWidth = Core::MonospaceCellWidth();
+			const GutterMetrics gutter = MeasureGutter(kNoLines, cellWidth, view.ChangeDisplay.Gutter);
+			const float widthWithoutScrollbar = ImGui::GetContentRegionAvail().x;
+			ImGui::PopFont();
+
+			return WrapGeometryOf(gutter, cellWidth, widthWithoutScrollbar);
+		}
+
+		float SurfaceWidthWithoutScrollbar()
+		{
+			const float availableNow = ImGui::GetContentRegionAvail().x;
+			const bool scrollbarShown = ImGui::GetCurrentWindow()->ScrollbarY;
+
+			return scrollbarShown ? availableNow + ImGui::GetStyle().ScrollbarSize : availableNow;
 		}
 
 		// WARNING: NoNavInputs is needed as much as the scrollbar flag. With ImGui's keyboard
@@ -243,18 +283,8 @@ namespace Graphite {
 			return ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoNavInputs;
 		}
 
-		std::size_t ColumnsThatFit(const EditorMetrics& metrics, float available, bool wordWrap)
-		{
-			if (!wordWrap)
-			{
-				return Core::RowMap::kNoWrap;
-			}
 
-			const float columnsLeftForText =
-				(available - metrics.Gutter.TotalWidth) / metrics.CellWidth;
 
-			return static_cast<std::size_t>(std::max(kLeastWrapColumns, columnsLeftForText));
-		}
 
 		void RewrapIfGeometryChanged(Core::OpenItem& item, const Core::TextBuffer& buffer,
 									 std::size_t columnsPerRow)
@@ -292,6 +322,14 @@ namespace Graphite {
 		{
 			return static_cast<float>(lenses.TotalScreenRows(item.Rows.GetTotalRows())) *
 				   metrics.LineHeight;
+		}
+		// WARNING: ImGui shows a new surface's scrollbar only from its second frame, so a tall document would be wrapped twice.
+		VerticalScrollbar ScrollbarOfSurface(const Core::OpenItem& item, const EditorMetrics& metrics, const LensRows& lenses)
+		{
+			const bool scrollbarShown = ImGui::GetCurrentWindow()->ScrollbarY;
+			const bool documentTallerThanView = DocumentHeightOf(item, metrics, lenses) > ImGui::GetContentRegionAvail().y;
+
+			return scrollbarShown || documentTallerThanView ? VerticalScrollbar::Shown : VerticalScrollbar::Hidden;
 		}
 
 		// WARNING: Deliberately not translated through LensRows. The count is handed to
@@ -2979,6 +3017,23 @@ namespace Graphite {
 		}
 	}
 
+	std::size_t WrappedColumns(const WrapGeometry& geometry, std::size_t lineCount, VerticalScrollbar scrollbar)
+	{
+		if (geometry.CellWidth <= 0.0f)
+		{
+			return Core::RowMap::kNoWrap;
+		}
+
+		const float roomOfHiddenScrollbar = scrollbar == VerticalScrollbar::Hidden ? geometry.ScrollbarWidth : 0.0f;
+		const float rowWidth = geometry.WidthBesideScrollbar + roomOfHiddenScrollbar;
+		const LineNumberColumn numbers{.Digits = LineNumberDigits(lineCount),
+									   .CellWidth = geometry.CellWidth,
+									   .Gap = geometry.LineNumberGap};
+		const float columnsLeftForText = (rowWidth - geometry.FixedGutterWidth - numbers.Width()) / geometry.CellWidth;
+
+		return static_cast<std::size_t>(std::max(kLeastWrapColumns, columnsLeftForText));
+	}
+
 	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
 								 const EditorView& view, FindBar& findBar)
 	{
@@ -2986,7 +3041,8 @@ namespace Graphite {
 
 		if (!item.Document)
 		{
-			result.RetryLoad = DrawWithoutDocumentAndReportRetry(item);
+			result.Wrap = WrapGeometryBeforeTheText(view);
+			result.RetryPressed = DrawWithoutDocumentAndReportRetry(item);
 			return result;
 		}
 
@@ -3036,11 +3092,17 @@ namespace Graphite {
 				view.Syntax->SetTabWidth(item.TabWidth);
 			}
 
-			RewrapIfGeometryChanged(item, buffer,
-									ColumnsThatFit(metrics, available, view.WordWrap));
-
 			const LensModel* const drawnLenses = view.ShowLensRows ? view.Lens : nullptr;
 			const LensRows& lenses = LensRowsOf(drawnLenses);
+
+			const WrapGeometry wrap = WrapGeometryOf(metrics.Gutter, metrics.CellWidth, SurfaceWidthWithoutScrollbar());
+			result.Wrap = wrap;
+
+			const std::size_t columnsPerRow =
+				view.WordWrap ? WrappedColumns(wrap, buffer.GetLineCount(), ScrollbarOfSurface(item, metrics, lenses))
+							  : Core::RowMap::kNoWrap;
+
+			RewrapIfGeometryChanged(item, buffer, columnsPerRow);
 
 			const PointerState pointer = AddInteractiveSurface(
 				origin, ContentWidthOf(item, metrics, available, view.WordWrap),

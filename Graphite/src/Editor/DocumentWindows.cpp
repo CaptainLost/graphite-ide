@@ -171,13 +171,22 @@ namespace Graphite {
 			item.Caret = Core::Caret{.Offset = offset, .Anchor = offset};
 		}
 
-		TabState TabStillBeingRead(const Core::OpenItem& item, const std::optional<TabState>& restoring)
+		TabState TabStillBeingRead(const Core::OpenItem& item, std::size_t topLine)
 		{
-			TabState tab = restoring.value_or(TabState{});
-			tab.Path = item.Path;
-			tab.Preview = item.Preview;
+			TabState tab{.Path = item.Path, .Preview = item.Preview, .Top = topLine};
+
+			if (item.CaretOnLoad)
+			{
+				tab.Line = item.CaretOnLoad->Line;
+				tab.Column = item.CaretOnLoad->Column;
+			}
 
 			return tab;
+		}
+
+		Core::WrapColumnsForLineCount WrapColumnsOfTallDocumentIn(const WrapGeometry& geometry)
+		{
+			return [geometry](std::size_t lineCount) { return WrappedColumns(geometry, lineCount, VerticalScrollbar::Shown); };
 		}
 	}
 
@@ -243,8 +252,9 @@ namespace Graphite {
 
 			if (Core::IsLoading(item))
 			{
-				const std::optional<TabState> noRestore;
-				state.Tabs.push_back(TabStillBeingRead(item, kept != nullptr ? kept->Restoring : noRestore));
+				const std::size_t topOfFile = 0;
+				const std::size_t topLine = kept != nullptr ? kept->TopLineOnLoad.value_or(topOfFile) : topOfFile;
+				state.Tabs.push_back(TabStillBeingRead(item, topLine));
 				continue;
 			}
 
@@ -325,10 +335,11 @@ namespace Graphite {
 
 			if (Core::IsLoading(item))
 			{
-				item.PlaceCaretOnLoad = [line = tab.Line, column = tab.Column](Core::OpenItem& loaded) {
-					PlaceRestoredCaret(loaded, line, column);
-				};
-				StateFor(tab.Path).Restoring = tab;
+				item.CaretOnLoad = Core::CaretWhenLoaded{
+					.Line = tab.Line,
+					.Column = tab.Column,
+					.Place = [line = tab.Line, column = tab.Column](Core::OpenItem& loaded) { PlaceRestoredCaret(loaded, line, column); }};
+				StateFor(tab.Path).TopLineOnLoad = tab.Top;
 				continue;
 			}
 
@@ -374,22 +385,55 @@ namespace Graphite {
 		m_Documents.OpenConfirmed(path, tabKind);
 	}
 
+	// WARNING: A file changed while it was read is caught here, not by the watcher event that came during the read.
 	void DocumentWindows::LandFinishedLoads()
 	{
+		ReloadBatch batch;
+
 		for (const std::size_t landedIndex : m_Documents.TakeFinishedLoads())
 		{
-			const Core::OpenItem& item = m_Documents.At(landedIndex);
-			DocumentState* const state = FindState(item.Path);
+			KeepTopLineAskedForByRestore(landedIndex);
+			RespondToSync(landedIndex, Core::SyncWithFile(m_Documents, landedIndex), batch);
+		}
 
-			if (state == nullptr || !state->Restoring)
-			{
-				continue;
-			}
+		AnnounceExpectedReloads(batch);
+	}
 
-			const std::size_t savedTopLine = state->Restoring->Top;
-			state->Restoring.reset();
+	void DocumentWindows::KeepTopLineAskedForByRestore(std::size_t index)
+	{
+		const Core::OpenItem& item = m_Documents.At(index);
+		DocumentState* const state = FindState(item.Path);
 
-			KeepRestoredTopLine(item, savedTopLine);
+		if (state == nullptr || !state->TopLineOnLoad)
+		{
+			return;
+		}
+
+		const std::size_t savedTopLine = *state->TopLineOnLoad;
+		state->TopLineOnLoad.reset();
+
+		KeepRestoredTopLine(item, savedTopLine);
+	}
+
+	void DocumentWindows::HandWrapToLoads(bool wordWrap)
+	{
+		const std::optional<WrapGeometry> wanted = wordWrap ? m_WrapOfLastDrawnEditor : std::nullopt;
+
+		if (wanted == m_WrapHandedToLoads)
+		{
+			return;
+		}
+
+		m_Documents.SetWrapForLoads(wanted ? WrapColumnsOfTallDocumentIn(*wanted) : Core::WrapColumnsForLineCount{});
+		m_WrapHandedToLoads = wanted;
+	}
+
+	void DocumentWindows::RetryLoad(std::size_t index)
+	{
+		if (m_Documents.RetryLoad(index) == Core::ItemLoad::NeedsConfirmation)
+		{
+			const Core::OpenItem& item = m_Documents.At(index);
+			AskAboutSize(item.Path, !item.Preview);
 		}
 	}
 
@@ -2365,9 +2409,14 @@ namespace Graphite {
 					m_Documents.Promote(index);
 				}
 
-				if (editorResult.RetryLoad)
+				if (editorResult.Wrap)
 				{
-					m_Documents.LoadAgain(index, Core::LargeFileConfirmation::Confirmed);
+					m_WrapOfLastDrawnEditor = editorResult.Wrap;
+				}
+
+				if (editorResult.RetryPressed)
+				{
+					RetryLoad(index);
 				}
 
 				if (editorResult.DefinitionRequested)
@@ -2477,6 +2526,8 @@ namespace Graphite {
 							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.Hover, frame.Scheme,
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot);
+
+		HandWrapToLoads(frame.WordWrap);
 
 		m_CloseRequested.reset();
 

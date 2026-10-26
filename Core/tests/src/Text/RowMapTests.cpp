@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/RowMap.h"
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/WrapLayout.h"
 
@@ -197,4 +198,15 @@ TEST_CASE("A caret on a visible line maps correctly around a zero-row line")
 
 	CHECK(VisualToCaret(buffer, rows, before, kTabWidth) == secondCharacterOfFirstLine);
 	CHECK(VisualToCaret(buffer, rows, after, kTabWidth) == secondCharacterOfThirdLine);
+}
+
+TEST_CASE("A rebuild given up stops and says so")
+{
+	const TextBuffer buffer = BufferOf("one\ntwo\nthree\n");
+	CancellationToken cancellation;
+	cancellation.Cancel();
+
+	RowMap rows;
+
+	CHECK_FALSE(rows.RebuildUnlessCancelled(buffer, kFourColumnsPerRow, kTabWidth, cancellation));
 }

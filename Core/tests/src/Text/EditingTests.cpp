@@ -839,3 +839,24 @@ TEST_CASE("Typing above and below the widest line over and over leaves the wides
 
 	CheckLineCachesAreCorrect(item);
 }
+
+TEST_CASE("Line caches given up answer nothing, and measured to the end match the ones an item computes")
+{
+	const Core::TextBuffer buffer{"if (x)\n\treturn widest;\n"};
+	constexpr std::size_t kTabWidth = 4;
+	const std::size_t unwrapped = Core::RowMap::kNoWrap;
+
+	Core::CancellationToken givenUp;
+	givenUp.Cancel();
+	CHECK_FALSE(Core::ComputeLineCachesUnlessCancelled(buffer, kTabWidth, unwrapped, givenUp).has_value());
+
+	const Core::CancellationToken keptGoing;
+	const std::optional<Core::LineCaches> caches = Core::ComputeLineCachesUnlessCancelled(buffer, kTabWidth, unwrapped, keptGoing);
+	REQUIRE(caches.has_value());
+
+	const Core::LineCaches expected = Core::ComputeLineCaches(buffer, kTabWidth, unwrapped);
+	CHECK(caches->IndentDepths == expected.IndentDepths);
+	CHECK(caches->WidestColumn == expected.WidestColumn);
+	CHECK(caches->WidestLine == expected.WidestLine);
+	CHECK(caches->Rows.GetTotalRows() == expected.Rows.GetTotalRows());
+}

@@ -187,3 +187,12 @@ TEST_CASE("OpenItem defaults its tab width to the shared default")
 
 	CHECK(item.TabWidth == DefaultTabWidth);
 }
+
+TEST_CASE("Indent depths given up answer nothing")
+{
+	const Core::TextBuffer buffer{"if (x)\n    return;\n"};
+	Core::CancellationToken cancellation;
+	cancellation.Cancel();
+
+	CHECK_FALSE(Core::IndentDepthsUnlessCancelled(buffer, kTabWidth, cancellation).has_value());
+}
