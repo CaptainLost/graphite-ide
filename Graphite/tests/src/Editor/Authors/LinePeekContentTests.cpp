@@ -187,6 +187,33 @@ TEST_CASE("Peek content notes a history that stops early")
 	CHECK(content.StopsEarly);
 }
 
+TEST_CASE("Peek content for a line with no known author fails with a message")
+{
+	const auto head = MakeHead();
+	const auto authors = Lay(head, "a\nb\nc\n");
+	REQUIRE(authors.Lines.size() >= 4);
+	REQUIRE(authors.Lines[3].Kind == Graphite::LineAuthorKind::Unknown);
+
+	const auto content = Build(&authors, 3, "", nullptr);
+
+	CHECK(content.State == PeekState::Failed);
+	CHECK(content.Error == "This line has no committed history.");
+}
+
+TEST_CASE("Peek content fails with the message of a history error")
+{
+	const auto head = MakeHead();
+	const auto authors = Lay(head, "a\nb\nc\n");
+	LineHistoryState history;
+	history.Error = Core::Error{};
+	history.Error->Message = "walk failed";
+
+	const auto content = Build(&authors, 1, "b", &history);
+
+	CHECK(content.State == PeekState::Failed);
+	CHECK(content.Error == "walk failed");
+}
+
 TEST_CASE("Peek content header counts the changes")
 {
 	const auto head = MakeHead();

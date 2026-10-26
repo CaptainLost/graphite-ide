@@ -141,6 +141,8 @@ namespace Graphite {
 
 		if (author.Kind == LineAuthorKind::Unknown)
 		{
+			content.State = PeekState::Failed;
+			content.Error = "This line has no committed history.";
 			return content;
 		}
 
