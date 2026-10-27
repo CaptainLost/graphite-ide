@@ -190,3 +190,23 @@ TEST_CASE("EmptyState puts its button beside the message in a region too short t
 
 	ImGui::End();
 }
+
+TEST_CASE("EmptyState beside its button in a region lower than a button keeps to the region")
+{
+	Frame frame;
+
+	ImGui::SetNextWindowPos(ImVec2(100.0f, 100.0f));
+	ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+	ImGui::Begin("Lower than a button");
+
+	const ImVec2 origin = ImGui::GetCursorScreenPos();
+	const float lineHeight = ImGui::GetTextLineHeight();
+	const ImVec2 region(360.0f, (lineHeight + ImGui::GetFrameHeight()) * 0.5f);
+
+	REQUIRE(region.y < ImGui::GetFrameHeight());
+	CHECK_FALSE(Core::EmptyState("File too large to preview (20 MB)", "Open", region));
+
+	CHECK(ImGui::GetItemRectMax().y == doctest::Approx(origin.y + region.y));
+
+	ImGui::End();
+}

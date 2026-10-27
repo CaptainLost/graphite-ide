@@ -143,8 +143,9 @@ namespace Core {
 
 			if (FitsBesideButton(oneLineMessage, region, buttonSize, style))
 			{
-				const float rowBottom = DrawBesideButton(oneLineMessage, origin, region, buttonSize, style);
-				bool clicked = Core::TextButton(action, buttonSize);
+				const ImVec2 rowButtonSize(buttonSize.x, std::clamp(region.y, ImGui::GetTextLineHeight(), buttonSize.y));
+				const float rowBottom = DrawBesideButton(oneLineMessage, origin, region, rowButtonSize, style);
+				bool clicked = Core::TextButton(action, rowButtonSize);
 
 				if (noteWhileDisabled != nullptr && OfferWhileDisabled(noteWhileDisabled))
 				{
