@@ -350,7 +350,7 @@ namespace Graphite {
 			bool Focused = false;
 		};
 
-		ShownPicture RenderImageTab(const Core::OpenItem& item, EditorSettings& settings,
+		ShownPicture RenderImageTab(const CommandContext& context, const Core::OpenItem& item, EditorSettings& settings,
 									const std::filesystem::path& workspaceRoot, bool updatedAsShown);
 
 		void CheckPictureOnDisk(std::size_t index);

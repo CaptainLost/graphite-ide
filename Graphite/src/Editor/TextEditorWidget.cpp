@@ -897,40 +897,6 @@ namespace Graphite {
 			ApplyEditKeys(input, buffer, item, indentStyle, sinks, result);
 		}
 
-		Core::FrameInput RouteEditorStrokes(const CommandContext& context,
-											const Core::FrameInput& input, bool& ranRepeat)
-		{
-			Core::FrameInput remaining;
-
-			const bool routable = IsFullyRoutable(context);
-
-			for (const Core::KeyStroke& stroke : input.GetStrokes())
-			{
-				const Core::KeyPressedEvent pressed{stroke.Key, stroke.Modifiers, stroke.IsRepeat};
-
-				const bool ran = routable &&
-								 context.Router->OnKeyPressed(*context.Commands, *context.Keys,
-															  Core::ShortcutScope::FocusedEditor,
-															  pressed);
-
-				if (!ran)
-				{
-					remaining.PushKey(stroke.Key, stroke.Modifiers, stroke.IsRepeat);
-				}
-				else if (stroke.IsRepeat)
-				{
-					ranRepeat = true;
-				}
-			}
-
-			for (const unsigned int codepoint : input.GetCharacters())
-			{
-				remaining.PushCharacter(codepoint);
-			}
-
-			return remaining;
-		}
-
 		bool IsHistoryAction(EditorAction action)
 		{
 			return action == EditorAction::Undo || action == EditorAction::Redo;
@@ -2815,6 +2781,40 @@ namespace Graphite {
 		}
 	}
 
+	Core::FrameInput RouteFocusedEditorStrokes(const CommandContext& context,
+											   const Core::FrameInput& input, bool& ranRepeat)
+	{
+		Core::FrameInput remaining;
+
+		const bool routable = IsFullyRoutable(context);
+
+		for (const Core::KeyStroke& stroke : input.GetStrokes())
+		{
+			const Core::KeyPressedEvent pressed{stroke.Key, stroke.Modifiers, stroke.IsRepeat};
+
+			const bool ran = routable &&
+							 context.Router->OnKeyPressed(*context.Commands, *context.Keys,
+														  Core::ShortcutScope::FocusedEditor,
+														  pressed);
+
+			if (!ran)
+			{
+				remaining.PushKey(stroke.Key, stroke.Modifiers, stroke.IsRepeat);
+			}
+			else if (stroke.IsRepeat)
+			{
+				ranRepeat = true;
+			}
+		}
+
+		for (const unsigned int codepoint : input.GetCharacters())
+		{
+			remaining.PushCharacter(codepoint);
+		}
+
+		return remaining;
+	}
+
 	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
 								 const EditorView& view, FindBar& findBar)
 	{
@@ -2934,7 +2934,7 @@ namespace Graphite {
 
 			if (focused && context.Input != nullptr)
 			{
-				remaining = RouteEditorStrokes(context, *context.Input, ranRepeat);
+				remaining = RouteFocusedEditorStrokes(context, *context.Input, ranRepeat);
 			}
 
 			ApplyPendingActions(widget.PendingActions, item, sinks, widget.History, ranRepeat, result);

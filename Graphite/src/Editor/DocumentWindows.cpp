@@ -37,6 +37,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Events/EventBus.h"
+#include "Core/Events/FrameInput.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/FontSet.h"
@@ -988,12 +989,24 @@ namespace Graphite {
 		return shown != m_ShownPictures.end() ? shown->second.Status : std::vector<ViewStatusItem>{};
 	}
 
-	DocumentWindows::ShownPicture DocumentWindows::RenderImageTab(const Core::OpenItem& item, EditorSettings& settings,
+	DocumentWindows::ShownPicture DocumentWindows::RenderImageTab(const CommandContext& context,
+																  const Core::OpenItem& item, EditorSettings& settings,
 																  const std::filesystem::path& workspaceRoot,
 																  bool updatedAsShown)
 	{
+		// WARNING: A popup does not count: with the zoom menu open, a stroke belongs to the menu, not to the tab behind it.
+		const bool holdsKeyboard =
+			ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows | ImGuiFocusedFlags_NoPopupHierarchy);
+
 		const ImageTabFrame frame = DrawImageTab(m_Images.For(item.Path),
 												 BuildBreadcrumb(workspaceRoot, item.Path, {}, 0), settings);
+
+		// A picture takes no keys itself, so what the router leaves is dropped.
+		if (holdsKeyboard && context.Input != nullptr)
+		{
+			bool ranRepeat = false;
+			static_cast<void>(RouteFocusedEditorStrokes(context, *context.Input, ranRepeat));
+		}
 
 		// WARNING: A tab that came on screen this frame was updated as hidden, so its load starts on the next frame,
 		// which nothing else may ask for.
@@ -2132,7 +2145,8 @@ namespace Graphite {
 
 			if (visible && ShowsPicture(item))
 			{
-				ShownPicture picture = RenderImageTab(item, settings, workspaceRoot, updatedAsShown.contains(item.Path));
+				ShownPicture picture =
+					RenderImageTab(context, item, settings, workspaceRoot, updatedAsShown.contains(item.Path));
 
 				if (picture.Focused)
 				{
@@ -2278,8 +2292,8 @@ namespace Graphite {
 				}
 			}
 
-			// WARNING: Checked again after the editor draws: a chord bound to the close command runs
-			// from inside its editor's draw, after the check above had already looked.
+			// WARNING: Checked again after the tab draws: a chord bound to the close command runs
+			// from inside its editor's or its picture's draw, after the check above had already looked.
 			if (m_CloseRequested && *m_CloseRequested == item.Path)
 			{
 				m_CloseRequested.reset();

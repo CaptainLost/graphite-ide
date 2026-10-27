@@ -112,6 +112,11 @@ namespace Graphite {
 
 	class FindBar;
 
+	// Only the view holding the keyboard may call it, since it fires the FocusedEditor commands, Close among them.
+	// The strokes no command took come back with every typed character, for the view to apply.
+	Core::FrameInput RouteFocusedEditorStrokes(const CommandContext& context, const Core::FrameInput& input,
+											   bool& ranRepeat);
+
 	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
 								 const EditorView& view, FindBar& findBar);
 }

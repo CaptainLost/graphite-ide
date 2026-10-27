@@ -20,10 +20,13 @@
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
+#include "Core/Base/KeyCodes.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/EventBus.h"
+#include "Core/Events/FrameInput.h"
+#include "Core/Events/KeyEvent.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/Text/DocumentSet.h"
@@ -154,6 +157,7 @@ namespace {
 		explicit DrawnDocuments(std::filesystem::path root) : Root(std::move(root))
 		{
 			Settings.RegisterCommands(Commands, Keys);
+			Windows.RegisterCommands(Commands, Keys);
 			Settings.SetPictureZoom([this](Graphite::PictureZoom zoom) { return Windows.ZoomFocusedPicture(zoom); });
 		}
 
@@ -167,7 +171,7 @@ namespace {
 					beforeTheWindows();
 				}
 
-				Windows.Render(Graphite::CommandContext{.Commands = &Commands, .Keys = &Keys, .Router = &Router},
+				Windows.Render(Graphite::CommandContext{.Commands = &Commands, .Keys = &Keys, .Router = &Router, .Input = &Input},
 							   Graphite::EditorFrame{.FontSize = Settings.GetFontSize(),
 													 .Indent = Settings.GetIndentStyle(),
 													 .FallbackDockNode = 0,
@@ -238,6 +242,17 @@ namespace {
 			Frame();
 		}
 
+		// As the application takes a key: routed as Global when it arrives, then queued for whichever view holds the
+		// keyboard in the frame that follows.
+		void Press(Core::KeyCode key, Core::KeyModifier modifiers)
+		{
+			const Core::KeyPressedEvent pressed{key, modifiers, false};
+			Router.OnKeyPressed(Commands, Keys, Core::ShortcutScope::Global, pressed);
+			Input.PushKey(key, modifiers, false);
+			Frame();
+			Input.Clear();
+		}
+
 		ImGuiFrames Frames;
 		std::filesystem::path Root;
 		TempAppSettings Store;
@@ -270,6 +285,7 @@ namespace {
 		Core::CommandRegistry Commands;
 		Core::Keymap Keys;
 		Core::ShortcutRouter Router;
+		Core::FrameInput Input;
 		std::map<std::filesystem::path, ImVec2> Places;
 	};
 
@@ -338,6 +354,57 @@ TEST_CASE("Closing an image tab frees its picture")
 	CHECK(drawn.Documents.GetCount() == 0);
 	CHECK(drawn.Textures.GetLiveCount() == 0);
 	CHECK(drawn.Windows.GetViewStatusItems().empty());
+}
+
+TEST_CASE("The close chord closes the image tab that holds the keyboard")
+{
+	TempDirectory folder;
+	const std::filesystem::path picture = folder.MakeFile("logo.png", Contents(ImageFixtures::kPng2x2));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(picture, true);
+	drawn.ShowLanded();
+	drawn.Focus(picture);
+
+	REQUIRE(drawn.Picture(picture).GetState() == Graphite::ImageTabState::Ready);
+	REQUIRE(drawn.Documents.GetCount() == 2);
+
+	SUBCASE("Ctrl+W")
+	{
+		drawn.Press(Core::KeyCode::W, Core::KeyModifier::Control);
+	}
+
+	SUBCASE("Ctrl+F4")
+	{
+		drawn.Press(Core::KeyCode::F4, Core::KeyModifier::Control);
+	}
+
+	CHECK_FALSE(drawn.Documents.Find(picture).has_value());
+	CHECK(drawn.Documents.Find(notes).has_value());
+	CHECK(drawn.Textures.GetLiveCount() == 0);
+}
+
+TEST_CASE("Ctrl+= pressed in a focused image tab zooms its picture one step and leaves the font")
+{
+	TempDirectory folder;
+	const std::filesystem::path picture = folder.MakeFile("logo.png", Contents(ImageFixtures::kPng2x2));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(picture, true);
+	drawn.ShowLanded();
+	drawn.Focus(picture);
+
+	const float font = drawn.Settings.GetFontSize();
+	REQUIRE(drawn.Picture(picture).GetZoom().Zoom == 1.0f);
+
+	drawn.Press(Core::KeyCode::Equal, Core::KeyModifier::Control);
+
+	CHECK(drawn.Picture(picture).GetZoom().Zoom == 1.5f);
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font));
+	CHECK(drawn.Documents.Find(picture).has_value());
 }
 
 TEST_CASE("A changed image file reloads in its tab")
