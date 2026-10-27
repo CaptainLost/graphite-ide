@@ -50,8 +50,8 @@ namespace Graphite {
 
 		// WARNING: A hidden document is not passed to Update, so its buffer is neither copied nor
 		// diffed until it is shown again. A repository change re-reads the head blame only of the
-		// documents passed here since the change before it; the others are marked stale and read
-		// again on their next Update.
+		// documents passed here since the OnUpdate before the one it settles in, which is the
+		// documents on screen; the others are marked stale and read again on their next Update.
 		void Update(const std::filesystem::path& path, const Core::TextBuffer& buffer);
 
 		// Null until a table has arrived. A file with no committed history to lay over it (untracked, unusable, or a
@@ -86,8 +86,8 @@ namespace Graphite {
 			bool HeadInFlight = false;
 			bool HeadAgain = false;
 
-			// Shown: passed to Update since the last repository change. HeadStale: a repository change
-			// came while it was not, so its head is read again on its next Update.
+			// Shown: passed to Update since the last OnUpdate. HeadStale: a repository change settled
+			// while it was not, so its head is read again on its next Update.
 			bool Shown = false;
 			bool HeadStale = false;
 
