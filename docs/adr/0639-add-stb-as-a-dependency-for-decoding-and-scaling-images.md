@@ -53,6 +53,9 @@ external includes keeps them out of everything else.
 
 ### Neutral
 
+- The submodule carries stb's other libraries, such as `stb_truetype.h` and
+  `stb_image_write.h`; nothing builds or includes them.
+
 ## Alternatives Considered
 
 - **WIC (Windows Imaging Component).** Already on every Windows machine and
