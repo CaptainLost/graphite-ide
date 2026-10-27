@@ -74,7 +74,8 @@ namespace Core {
 
 		// One line followed back along first parents to the commit that added it, listing every
 		// commit that changed it on the way, newest first. A rename is followed. Not Complete when
-		// MaxWalk or a diff that cannot be read stopped the walk first.
+		// MaxWalk or a diff that cannot be read stopped the walk first, or when a root commit was
+		// reached without the file in it.
 		Result<LineHistory> QueryLineHistory(const LineHistoryRequest& request) const;
 
 		// The commits reachable from `tip`, itself included, as `git rev-list --count` gives them.

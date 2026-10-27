@@ -1,10 +1,13 @@
 #include <doctest/doctest.h>
 
+#include "Core/Git/Blame.h"
 #include "Core/Git/LineHistory.h"
 #include "Core/Git/Repository.h"
 
 #include "Git/GitFixture.h"
 
+#include <cstddef>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -39,6 +42,22 @@ namespace {
 		}
 
 		return commits;
+	}
+
+	// The request the editor makes for a line of HEAD: from the commit blame names for it, at the path and line it
+	// had there.
+	LineHistoryRequest RequestFromBlame(const Repository& repository, const std::filesystem::path& file,
+										std::size_t line)
+	{
+		const Result<Core::Blame> blame = repository.QueryBlame(Core::BlameRequest{file, HeadCommitId(repository)});
+		REQUIRE(blame.HasValue());
+
+		const Core::BlameHunk* const hunk = Core::HunkOfLine(blame.GetValue(), line);
+		REQUIRE(hunk != nullptr);
+
+		return LineHistoryRequest{.From = hunk->Commit,
+								  .File = hunk->OriginalPath,
+								  .Line = hunk->OriginalFirstLine + (line - hunk->FirstLine)};
 	}
 }
 
@@ -157,6 +176,71 @@ TEST_CASE("Line history follows the first parent of a merge")
 	const LineHistory history = HistoryOf(repository, LineHistoryRequest{.From = merge, .File = "a.txt", .Line = 2});
 
 	CHECK(CommitsOf(history) == std::vector<Oid>{merge, c0});
+	CHECK(history.Complete);
+}
+
+TEST_CASE("Line history from the blamed commit equals the walk from HEAD on a linear history")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "x\none\ny\nz\n");
+	const Oid c1 = OidOf(fixture.Commit("c1"));
+
+	fixture.Write("a.txt", "x\ntwo\ny\nz\n");
+	const Oid c2 = OidOf(fixture.Commit("c2"));
+
+	fixture.Write("a.txt", "x\ntwo\ny\nZ\n");
+	OidOf(fixture.Commit("c3"));
+
+	fixture.Write("b.txt", "unrelated\n");
+	OidOf(fixture.Commit("c4"));
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const LineHistoryRequest fromBlamed = RequestFromBlame(repository, "a.txt", 2);
+	REQUIRE(fromBlamed.From == c2);
+
+	const LineHistory blamed = HistoryOf(repository, fromBlamed);
+	const LineHistory walked =
+		HistoryOf(repository, LineHistoryRequest{.From = HeadCommitId(repository), .File = "a.txt", .Line = 2});
+
+	CHECK(CommitsOf(blamed) == std::vector<Oid>{c2, c1});
+	CHECK(CommitsOf(blamed) == CommitsOf(walked));
+	CHECK(blamed.Complete == walked.Complete);
+}
+
+TEST_CASE("Line history of a line from a merged branch starts at the side commit blame names")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "x\none\ny\n");
+	const Oid c0 = OidOf(fixture.Commit("c0"));
+
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("a.txt", "x\nside\ny\n");
+	const Oid s1 = OidOf(fixture.Commit("s1"));
+
+	fixture.Checkout("master");
+	fixture.Write("b.txt", "main\n");
+	OidOf(fixture.Commit("m1"));
+
+	fixture.Write("a.txt", "x\nside\ny\n");
+	const Oid merge = OidOf(fixture.MergeCommit("merge side", "side"));
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	REQUIRE(HeadCommitId(repository) == merge);
+
+	// Blame follows every parent, so it names the commit that wrote the line on its branch rather than the merge;
+	// the history then walks that commit's first parents.
+	const LineHistoryRequest request = RequestFromBlame(repository, "a.txt", 2);
+	CHECK(request.From == s1);
+
+	const LineHistory history = HistoryOf(repository, request);
+
+	REQUIRE_FALSE(history.Changes.empty());
+	CHECK(history.Changes.front().Commit.Id == s1);
+	CHECK(CommitsOf(history) == std::vector<Oid>{s1, c0});
 	CHECK(history.Complete);
 }
 

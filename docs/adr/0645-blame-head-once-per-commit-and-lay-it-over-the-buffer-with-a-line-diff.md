@@ -66,7 +66,10 @@ model next to `ChangeMarkersModel`, built the same way:
   through `GitModel`'s single log slot. `RequestLineHistory` ignores a
   request equal to the one already held or in flight, `GetLineHistory`
   reports what has arrived, and `ForgetLineHistory` drops it so that a late
-  delivery is ignored.
+  delivery is ignored. The blame follows every parent, so a line that came
+  in through a merge is attributed to the commit that wrote it on its
+  branch; its line history starts at that commit and walks that commit's
+  first parents, never the merge's.
 - A path is tracked on its first `Update`, and `Retain` drops the state of
   every closed document. A hidden document is not passed to `Update`, so
   its buffer is neither copied nor diffed, and a repository change only

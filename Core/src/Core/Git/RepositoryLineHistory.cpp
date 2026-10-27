@@ -10,7 +10,6 @@
 #include <git2.h>
 
 #include <cstddef>
-#include <format>
 #include <optional>
 #include <utility>
 #include <vector>

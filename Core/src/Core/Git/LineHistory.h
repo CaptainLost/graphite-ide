@@ -34,6 +34,8 @@ namespace Core {
 	struct LineHistory
 	{
 		std::vector<LineChange> Changes;   // newest first
-		bool Complete = true;              // false only when MaxWalk or an unreadable diff stopped the walk
+		// False only when MaxWalk or an unreadable diff stopped the walk, or a root commit was reached with the file
+		// absent from it, so the commit that added the line was never found.
+		bool Complete = true;
 	};
 }
