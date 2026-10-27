@@ -35,7 +35,9 @@ They run as jobs.
   files" or "Moving Foo to the Recycle Bin…".
   - Duplicate counts the files it has copied.
   - Delete to the Recycle Bin can report no progress, so it shows no count.
-- Actions on that path are disabled until the job ends.
+- Actions on that path, and on a copy's destination, are disabled until the job
+  ends. Rename, Delete and Duplicate are also disabled on every folder that
+  holds such a path; creating a file or folder inside it stays allowed.
 - Success refreshes the tree, as before. A failure is reported in the toast
   already used for that operation.
 

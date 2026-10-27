@@ -25,9 +25,15 @@ arithmetic can build. The cost showed in two places:
 - **Keep the answers a reload already has.** A reload asks only about nodes it
   did not know before.
 - **Ask about everything again when an ignore source may have changed:** a
-  `.gitignore`, `.git/info/exclude` or the repository's config. If that signal
-  cannot be routed reliably, the automatic reload keeps the answers and an
-  explicit Refresh asks again.
+  `.gitignore`, `.git/info/exclude` or the repository's config.
+  - The watcher reports such a change inside the open folder.
+  - Some sources are outside the watch: a `.gitignore` in a folder above the open
+    folder, and `info/exclude` and `config` in a linked worktree's common git
+    folder. The automatic reload compares their modification stamps with the
+    ones taken at the last full ask.
+- **Every Refresh the user chooses asks about everything again.** That also
+  catches a source no rule above names, such as a `core.excludesFile` outside
+  the repository.
 
 ## Rationale
 
@@ -45,6 +51,9 @@ reload pays for every node to find out what was already known.
 
 - A rule changed outside the signals named here leaves a mark stale until an
   explicit Refresh.
+- libgit2 compares rule files by size and whole-second time, so a rules file
+  rewritten at the same size within the same second goes unnoticed until a
+  Refresh.
 
 ### Neutral
 

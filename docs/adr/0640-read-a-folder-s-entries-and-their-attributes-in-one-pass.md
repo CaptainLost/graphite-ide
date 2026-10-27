@@ -23,8 +23,12 @@ enumeration itself already returns every entry's attributes.
 On Windows, `Core::ReadDirectory` enumerates with
 `FindFirstFileExW(FindExInfoBasic, FIND_FIRST_EX_LARGE_FETCH)` and takes the
 hidden flag, the directory flag and the size from the data the enumeration
-returns. It never queries an entry again. The entries, their order and their
+returns. It queries no ordinary entry again. The entries, their order and their
 flags stay as they were. Other platforms keep their own branch.
+
+A symbolic link or junction is the one exception. It is listed as what it
+points at, with one extra query, as before. A dangling link is listed as an
+empty file.
 
 ## Rationale
 
@@ -45,8 +49,7 @@ is one system call per entry, and on a large folder that is a frozen window.
 
 ### Neutral
 
-- Reparse points and links are reported as the enumeration sees them, which is
-  what the attribute query saw too.
+- A folder full of links costs one query per link, as it did before.
 
 ## Alternatives Considered
 

@@ -22,7 +22,15 @@ The solution is read in a job.
   solution".
 - **During a later read**, the view keeps the tree it has and adds a loader line
   "Reading the solution again".
+  - Its edit actions are disabled until the read lands, because they would act
+    on the old tree.
 - **An edit made in the solution view** saves the file and then starts a read.
+- **A failed read** shows its reason in the solution view.
+  - A read that threw is retried on the next reload.
+  - A file that does not parse waits until it changes.
+- **A Find in Files limited to the solution's projects**, asked for during the
+  first read, waits behind the loader and starts when the read lands. It never
+  falls back to the whole folder.
 - **A result for a closed folder, or for a read that a newer one replaced**, is
   dropped.
 
