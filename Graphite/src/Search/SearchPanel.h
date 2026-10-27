@@ -40,19 +40,25 @@ namespace Graphite {
 
 		std::size_t GetHitCount() const { return m_Groups.GetCount(); }
 
+		bool HasSearched() const { return m_SearchedNeedle.has_value(); }
+
+		bool IsSearching() const { return m_Progress.Running; }
+
 		void Focus();
 
 	private:
-		enum class SearchHold : std::uint8_t
+		struct HeldSearch
 		{
-			None,
-			UntilTheSolutionIsRead,
-			BecauseTheSolutionIsUnreadable
+			SearchStart Request;
+			std::uint64_t FolderGeneration = 0;
 		};
 
 		SearchStart BuildRequest() const;
+		void AddProjectFiles(SearchStart& request) const;
 		SearchScope CurrentScope() const;
-		void StartOrHoldSearch();
+		void StartSearch(SearchStart request);
+		void ResolveHeldSearch();
+		void ForgetUnreadableSolutionOnceOutdated();
 
 		void RenderQuery();
 		void RenderSummary();
@@ -75,7 +81,8 @@ namespace Graphite {
 
 		std::optional<std::string> m_SearchedNeedle;
 
-		SearchHold m_Held = SearchHold::None;
+		std::optional<HeldSearch> m_HeldSearch;
+		std::optional<std::uint64_t> m_ProjectsUnreadableInFolder;
 
 		bool m_FocusQueryNextFrame = false;
 

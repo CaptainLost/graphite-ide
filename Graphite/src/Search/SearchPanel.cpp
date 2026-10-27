@@ -30,6 +30,8 @@ namespace Graphite {
 	namespace {
 
 		constexpr bool OpenAsPermanentTab = true;
+		constexpr const char* kReadingTheSolution = "Reading the solution";
+		constexpr const char* kProjectsUnreadable = "The solution could not be read, so Projects only has no files to search.";
 		constexpr float FillAvailableWidth = -1.0f;
 		constexpr float MaskFieldWidthInFontSizes = 10.0f;
 	}
@@ -48,10 +50,8 @@ namespace Graphite {
 
 	void SearchPanel::OnUpdate(Core::Timestep)
 	{
-		if (m_Held == SearchHold::UntilTheSolutionIsRead && CurrentScope() != SearchScope::WaitForSolution)
-		{
-			StartOrHoldSearch();
-		}
+		ResolveHeldSearch();
+		ForgetUnreadableSolutionOnceOutdated();
 
 		m_Drained.clear();
 		m_Service.Drain(m_Drained, m_Progress);
@@ -105,15 +105,17 @@ namespace Graphite {
 			}
 		}
 
-		request.Options.ProjectsOnly = CurrentScope() == SearchScope::Projects;
-
-		if (request.Options.ProjectsOnly)
-		{
-			EnumerateProjectFiles(*m_Workspace.GetLoadedSolution(),
-								  [&request](const std::filesystem::path& file) { request.ProjectFiles.push_back(file); });
-		}
+		request.Options.ProjectsOnly = false;
 
 		return request;
+	}
+
+	void SearchPanel::AddProjectFiles(SearchStart& request) const
+	{
+		request.Options.ProjectsOnly = true;
+
+		EnumerateProjectFiles(*m_Workspace.GetLoadedSolution(),
+							  [&request](const std::filesystem::path& file) { request.ProjectFiles.push_back(file); });
 	}
 
 	std::optional<std::string> SearchPanel::GetStatusMessage() const
@@ -186,27 +188,83 @@ namespace Graphite {
 		m_Drained.clear();
 		m_Progress = SearchProgress{};
 		m_SearchedNeedle.reset();
-		m_Held = SearchHold::None;
+		m_HeldSearch.reset();
+		m_ProjectsUnreadableInFolder.reset();
 
-		StartOrHoldSearch();
-	}
+		SearchStart request = BuildRequest();
 
-	void SearchPanel::StartOrHoldSearch()
-	{
 		switch (CurrentScope())
 		{
 		case SearchScope::WholeFolder:
+			StartSearch(std::move(request));
+			return;
 		case SearchScope::Projects:
-			m_Held = SearchHold::None;
-			m_SearchedNeedle = std::string{m_QueryBuffer.data()};
-			m_Service.Start(BuildRequest());
+			AddProjectFiles(request);
+			StartSearch(std::move(request));
 			return;
 		case SearchScope::WaitForSolution:
-			m_Held = SearchHold::UntilTheSolutionIsRead;
+			m_HeldSearch = HeldSearch{.Request = std::move(request), .FolderGeneration = m_Workspace.GetFolderGeneration()};
 			return;
 		case SearchScope::SolutionUnreadable:
-			m_Held = SearchHold::BecauseTheSolutionIsUnreadable;
+			m_ProjectsUnreadableInFolder = m_Workspace.GetFolderGeneration();
 			return;
+		}
+	}
+
+	void SearchPanel::StartSearch(SearchStart request)
+	{
+		m_SearchedNeedle = request.Query.Needle;
+		m_Progress.Running = !request.Query.Needle.empty();
+		m_Service.Start(std::move(request));
+	}
+
+	void SearchPanel::ResolveHeldSearch()
+	{
+		if (!m_HeldSearch)
+		{
+			return;
+		}
+
+		const bool folderChanged = m_HeldSearch->FolderGeneration != m_Workspace.GetFolderGeneration();
+
+		if (folderChanged)
+		{
+			m_HeldSearch.reset();
+			return;
+		}
+
+		if (m_Workspace.IsReadingSolution())
+		{
+			return;
+		}
+
+		SearchStart request = std::move(m_HeldSearch->Request);
+		m_HeldSearch.reset();
+
+		if (!m_Workspace.GetLoadedSolution())
+		{
+			m_ProjectsUnreadableInFolder = m_Workspace.GetFolderGeneration();
+			return;
+		}
+
+		AddProjectFiles(request);
+		StartSearch(std::move(request));
+	}
+
+	void SearchPanel::ForgetUnreadableSolutionOnceOutdated()
+	{
+		if (!m_ProjectsUnreadableInFolder)
+		{
+			return;
+		}
+
+		const bool projectsOnlyUnticked = !m_Settings.Get().ProjectsOnly;
+		const bool solutionReadSince = m_Workspace.GetLoadedSolution().has_value();
+		const bool anotherFolder = *m_ProjectsUnreadableInFolder != m_Workspace.GetFolderGeneration();
+
+		if (projectsOnlyUnticked || solutionReadSince || anotherFolder)
+		{
+			m_ProjectsUnreadableInFolder.reset();
 		}
 	}
 
@@ -232,15 +290,15 @@ namespace Graphite {
 
 	void SearchPanel::RenderResults()
 	{
-		switch (m_Held)
+		if (m_HeldSearch)
 		{
-		case SearchHold::None:
-			break;
-		case SearchHold::UntilTheSolutionIsRead:
-			Core::LoadingState("Reading the solution");
+			Core::LoadingState(kReadingTheSolution);
 			return;
-		case SearchHold::BecauseTheSolutionIsUnreadable:
-			Core::EmptyState("The solution could not be read, so Projects only has no files to search.");
+		}
+
+		if (m_ProjectsUnreadableInFolder)
+		{
+			Core::EmptyState(kProjectsUnreadable);
 			return;
 		}
 
