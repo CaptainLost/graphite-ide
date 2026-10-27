@@ -41,6 +41,7 @@ namespace Graphite {
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kDiffWordWrapKey = "diffWordWrap";
 		constexpr const char* kDiffLayoutKey = "diffLayout";
+		constexpr const char* kImageBackgroundKey = "imageBackground";
 		constexpr const char* kDiffScopeKey = "diffScope";
 		constexpr const char* kDiffColourSyntaxKey = "diffColourSyntax";
 		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
@@ -430,6 +431,16 @@ namespace Graphite {
 	void AppSettings::SetDiffLayout(std::string_view layout)
 	{
 		Set(kDiffLayoutKey, std::string{layout});
+	}
+
+	std::string AppSettings::GetImageBackground() const
+	{
+		return std::string{Get(kImageBackgroundKey)};
+	}
+
+	void AppSettings::SetImageBackground(std::string_view background)
+	{
+		Set(kImageBackgroundKey, std::string{background});
 	}
 
 	std::string AppSettings::GetDiffScope() const

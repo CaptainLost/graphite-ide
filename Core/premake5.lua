@@ -41,6 +41,8 @@ project "Core"
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.miniz}",
         "%{IncludeDir.MinizExport}",
+        "%{IncludeDir.stb}",
+        "%{IncludeDir.stbDeprecated}",
         "%{IncludeDir.ImAnim}",
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.ImSpinner}",

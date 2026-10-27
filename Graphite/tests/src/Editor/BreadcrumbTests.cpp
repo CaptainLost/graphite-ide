@@ -149,6 +149,8 @@ namespace {
 		ImVec2 RowStart;
 		float WindowLeft = 0.0f;
 		float ContentBottom = 0.0f;
+		Graphite::BreadcrumbTools Tools;
+		ImVec2 CursorAfterTheRow;
 
 		explicit DocumentFrames(BreadcrumbModel model) : Item(ItemWith("first line\nsecond line\nthird line\n")), Model(std::move(model))
 		{
@@ -172,7 +174,8 @@ namespace {
 			WindowLeft = ImGui::GetWindowPos().x;
 			ContentBottom = ImGui::GetCursorScreenPos().y + ImGui::GetContentRegionAvail().y;
 
-			Graphite::DrawBreadcrumb(Model);
+			Graphite::DrawBreadcrumb(Model, Tools);
+			CursorAfterTheRow = ImGui::GetCursorScreenPos();
 
 			if (WithEditor)
 			{
@@ -882,4 +885,101 @@ TEST_CASE("A click on the breadcrumb leaves the caret where it was and the focus
 
 	CHECK(document.Item.Caret.Offset == caret);
 	CHECK(ImGui::GetCurrentContext()->NavWindow == surface);
+}
+
+TEST_CASE("A path row with tools gives up folders to make room for them")
+{
+	constexpr float kToolsWidth = 200.0f;
+	constexpr std::size_t kLastFolder = 2;
+	constexpr float kBothSides = 2.0f;
+
+	BreadcrumbModel model = FileOnly("CommandLine.cpp", FileKind::CppSource);
+	model.Folders = {"Graphite", "src", "App"};
+
+	DocumentFrames document(model);
+	document.WithEditor = false;
+
+	float lastFolderAndFile = 0.0f;
+	document.Frames.Next([&] {
+		document.Draw();
+		lastFolderAndFile = Graphite::BreadcrumbWidth(model, kLastFolder);
+	});
+
+	document.Width = std::ceil(lastFolderAndFile) + Core::Scaled(kRowLeftPadding) * kBothSides + kOnePixel;
+
+	ImU32 dim = 0;
+	document.Frames.Next([&] {
+		document.Draw();
+		dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+	});
+	const std::size_t withoutTools = GlyphQuadsInColour(DocumentDrawing(), dim).size();
+
+	document.Tools.Width = kToolsWidth;
+	document.Tools.Draw = [] {};
+	document.Frames.Next([&] { document.Draw(); });
+	const std::size_t withTools = GlyphQuadsInColour(DocumentDrawing(), dim).size();
+
+	CHECK(withoutTools > 0);
+	CHECK(withTools < withoutTools);
+}
+
+TEST_CASE("A path row draws its tools at its right end")
+{
+	constexpr float kToolsWidth = 100.0f;
+
+	DocumentFrames document(FileOnly("widget.txt", FileKind::Other));
+	document.WithEditor = false;
+	document.Tools.Width = kToolsWidth;
+
+	ImVec2 at;
+	int calls = 0;
+	document.Tools.Draw = [&] {
+		at = ImGui::GetCursorScreenPos();
+		++calls;
+	};
+	document.Next();
+
+	const ImGuiWindow* window = ImGui::FindWindowByName(kDocumentWindow);
+	REQUIRE(window != nullptr);
+
+	CHECK(calls == 1);
+	CHECK(at.x == doctest::Approx(window->InnerRect.Max.x - Core::Scaled(kRowLeftPadding) - kToolsWidth));
+	CHECK(at.y == doctest::Approx(document.RowStart.y));
+	CHECK(document.CursorAfterTheRow.y == doctest::Approx(document.RowStart.y + Core::Scaled(kRowHeight)));
+}
+
+TEST_CASE("A button among the path row's tools takes a click")
+{
+	constexpr float kToolsWidth = 100.0f;
+
+	DocumentFrames document(FileOnly("widget.txt", FileKind::Other));
+	document.WithEditor = false;
+	document.Tools.Width = kToolsWidth;
+
+	bool pressed = false;
+	document.Tools.Draw = [&] {
+		pressed = ImGui::InvisibleButton("##Tool", ImVec2(kToolsWidth, Core::Scaled(kRowHeight))) || pressed;
+	};
+	document.Next();
+
+	const ImGuiWindow* window = ImGui::FindWindowByName(kDocumentWindow);
+	REQUIRE(window != nullptr);
+
+	document.Click(ImVec2(window->InnerRect.Max.x - Core::Scaled(kRowLeftPadding) - kToolsWidth * kHalf,
+						  document.RowStart.y + Core::Scaled(kRowHeight) * kHalf));
+
+	CHECK(pressed);
+}
+
+TEST_CASE("A path row without tools draws as before")
+{
+	DocumentFrames document(FileOnly("widget.txt", FileKind::Other));
+
+	document.Next();
+	document.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+	CHECK(document.CursorAfterTheRow.y == doctest::Approx(document.RowStart.y + Core::Scaled(kRowHeight)));
+	CHECK(surface->Pos.y == doctest::Approx(document.RowStart.y + Core::Scaled(kRowHeight)));
 }

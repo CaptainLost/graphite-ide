@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Core {
 	class DocumentSet;
@@ -34,6 +35,18 @@ namespace Graphite {
 		ImU32 Error = 0;
 		ImU32 Warning = 0;
 		ImU32 Ready = 0;
+	};
+
+	// One item the view on screen puts on the right of the bar when no text document is shown.
+	struct ViewStatusItem
+	{
+		std::string Text;
+		bool Code = false;
+
+		// A square of this colour, over a checkerboard so its alpha shows, before the text.
+		std::optional<ImU32> Swatch;
+
+		bool operator==(const ViewStatusItem&) const = default;
 	};
 
 	struct StatusMessages
@@ -62,6 +75,8 @@ namespace Graphite {
 		std::optional<std::string> ExplorerFileOperation;
 
 		std::optional<Core::Color> MissedNotificationColour;
+
+		std::vector<ViewStatusItem> View;
 
 		StatusBarColours Colours;
 	};

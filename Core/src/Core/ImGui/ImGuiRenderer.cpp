@@ -8,6 +8,7 @@
 #include "Core/ImGui/DetachedWindows.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/Animation.h"
+#include "Core/ImGui/ImageTexture.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Platform/Window.h"
@@ -46,6 +47,8 @@ namespace Core {
 		constexpr float kClearAlpha = 1.0f;
 
 		FontSet g_fonts;
+
+		ImGuiTextureFactory* g_textures = nullptr;
 
 		void DestroyContexts()
 		{
@@ -100,6 +103,12 @@ namespace Core {
 		ImGui::GetStyle().FontScaleMain = scale;
 	}
 
+	TextureFactory& ImGuiRenderer::GetTextures()
+	{
+		CORE_ASSERT(g_textures != nullptr, "ImGuiRenderer::GetTextures called with no renderer running");
+		return *g_textures;
+	}
+
 	void ImGuiRenderer::UpdateStyleScale()
 	{
 		const float viewportDpi = ImGui::GetMainViewport()->DpiScale;
@@ -143,8 +152,12 @@ namespace Core {
 			return;
 		}
 
+		// WARNING: the backend shuts down first, because it frees what is still on the GPU through texture data the
+		// factory owns; the factory goes next, while the context it registered that data with is still there.
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
+		g_textures = nullptr;
+		m_Textures.reset();
 		DestroyContexts();
 	}
 
@@ -211,6 +224,11 @@ namespace Core {
 		}
 
 		InstallDetachedWindowHooks(ImGui::GetPlatformIO());
+
+		GLint maximumTextureSide = 0;
+		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximumTextureSide);
+		m_Textures = CreateScope<ImGuiTextureFactory>(maximumTextureSide);
+		g_textures = m_Textures.get();
 
 		m_Initialized = true;
 		CORE_INFO("ImGui initialized (docking + viewports)");
@@ -309,5 +327,7 @@ namespace Core {
 			ImGui::RenderPlatformWindowsDefault();
 			glfwMakeContextCurrent(previousContext);
 		}
+
+		m_Textures->CollectRetired();
 	}
 }

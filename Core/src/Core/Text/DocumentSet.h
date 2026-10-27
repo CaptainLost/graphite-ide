@@ -28,6 +28,13 @@ namespace Core {
 		ReadFailed
 	};
 
+	// What a tab draws for its item. An Image item has no document: its picture is the file itself.
+	enum class ItemView
+	{
+		Text,
+		Image
+	};
+
 	inline constexpr std::size_t NoRowAim = static_cast<std::size_t>(-1);
 
 	struct FindMatch
@@ -75,6 +82,7 @@ namespace Core {
 		// Shared with every other view of the same file, through the set's store.
 		std::shared_ptr<TextDocument> Document;
 		OpenFailure Failure = OpenFailure::None;
+		ItemView View = ItemView::Text;
 		std::uint64_t FileSize = 0;
 		Caret Caret;
 		bool Preview = false;

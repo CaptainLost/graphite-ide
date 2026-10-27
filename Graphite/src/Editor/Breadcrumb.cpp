@@ -248,13 +248,19 @@ namespace Graphite {
 			}
 		}
 
-		float RoomIn(float rowWidth)
+		float RoomIn(float rowWidth, float toolsWidth)
 		{
-			return rowWidth - Core::Scaled(kBreadcrumbLeftPadding) - Core::Scaled(kBreadcrumbRightPadding);
+			return rowWidth - Core::Scaled(kBreadcrumbLeftPadding) - Core::Scaled(kBreadcrumbRightPadding) - toolsWidth;
+		}
+
+		float ToolsLeftIn(const ImRect& row, float toolsWidth)
+		{
+			return row.Max.x - Core::Scaled(kBreadcrumbRightPadding) - toolsWidth;
 		}
 
 		// WARNING: The row is a button that never acts, and NoFocus keeps its press from focusing anything. A press
 		// on a window's empty space focuses that window, which takes the keyboard from the editor surface below.
+		// It stops short of the tools, so a press on them reaches them.
 		void ReserveRow(ImVec2 size)
 		{
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, kNoItemSpacing));
@@ -320,7 +326,11 @@ namespace Graphite {
 	// measured from the window's edge and not from inside the window padding. Down, the row stands at the inner
 	// rectangle's top, directly under the tab bar whatever its height, so the window's top padding is not kept above
 	// it while its side and bottom padding stay.
-	void DrawBreadcrumb(const BreadcrumbModel& model)
+	//
+	// The tools stand at the row's right end and the folders give up room for them. The reserving button spans only
+	// what is left of them, and the cursor is put back at the row's start first, so the row ends at its bottom edge
+	// whatever the tools did with the cursor.
+	void DrawBreadcrumb(const BreadcrumbModel& model, const BreadcrumbTools& tools)
 	{
 		const ImGuiWindow* window = ImGui::GetCurrentWindow();
 
@@ -335,7 +345,7 @@ namespace Graphite {
 
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 
-		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(row.GetWidth())));
+		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(row.GetWidth(), tools.Width)));
 
 		ImGui::PushClipRect(row.Min, row.Max, kClipWithinTheWindow);
 		DrawSegments(segments, row.Min.x + Core::Scaled(kBreadcrumbLeftPadding), row);
@@ -343,7 +353,19 @@ namespace Graphite {
 
 		ImGui::PopFont();
 
+		const bool hasTools = tools.Draw && tools.Width > 0.0f;
+		const float toolsLeft = ToolsLeftIn(row, hasTools ? tools.Width : 0.0f);
+
+		if (hasTools)
+		{
+			ImGui::PushClipRect(row.Min, row.Max, kClipWithinTheWindow);
+			ImGui::SetCursorScreenPos(ImVec2(toolsLeft, row.Min.y));
+			tools.Draw();
+			ImGui::PopClipRect();
+		}
+
 		ImGui::SetCursorScreenPos(rowStart);
-		ReserveRow(ImVec2(std::max(0.0f, ImGui::GetContentRegionAvail().x), rowHeight));
+		const float reserved = hasTools ? toolsLeft - rowStart.x : ImGui::GetContentRegionAvail().x;
+		ReserveRow(ImVec2(std::max(0.0f, reserved), rowHeight));
 	}
 }

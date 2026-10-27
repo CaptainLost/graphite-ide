@@ -95,6 +95,11 @@ Date: 2026-10-19
   folder. The read-only warning stays, in the warning colour, where the path
   stood.
 
+Amended by [0648](0648-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md):
+a tab's view may put tools on the row's right, which take clicks, so the row is
+no longer purely display-only; and image tabs get the row, where this record
+said every image opens as a tab with no row.
+
 This amends [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md)
 and [0535](0535-show-git-state-in-the-status-bar-read-only-and-keep-git-actions-in-the-panels.md).
 

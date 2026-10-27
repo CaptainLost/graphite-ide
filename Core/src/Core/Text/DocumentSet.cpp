@@ -5,6 +5,7 @@
 #include "Core/Base/ByteSize.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Image/ImageFormat.h"
 #include "Core/Jobs/Mailbox.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileProbe.h"
@@ -21,6 +22,7 @@ namespace Core {
 		enum class ProbeVerdict
 		{
 			ReadText,
+			ShowImage,
 			NeedsConfirmation,
 			Refused
 		};
@@ -50,10 +52,19 @@ namespace Core {
 			item.FileSize = probe.Size;
 			item.Failure = OpenFailure::None;
 			item.FailureDetail.clear();
+			item.View = ItemView::Text;
 
 			switch (probe.Kind)
 			{
 			case FileKind::Binary:
+				if (ImageFormatOfPath(item.Path))
+				{
+					// A text file named .png, such as a Git LFS pointer, never gets here: only a NUL makes it Binary.
+					item.View = ItemView::Image;
+					item.Document.reset();
+					return ProbeVerdict::ShowImage;
+				}
+
 				item.Failure = OpenFailure::Binary;
 				return ProbeVerdict::Refused;
 			case FileKind::TooLarge:
@@ -339,6 +350,8 @@ namespace Core {
 			return ItemLoad::NeedsConfirmation;
 		case ProbeVerdict::Refused:
 			return ItemLoad::Failed;
+		case ProbeVerdict::ShowImage:
+			return ItemLoad::Loaded;
 		case ProbeVerdict::ReadText:
 			break;
 		}
@@ -389,6 +402,8 @@ namespace Core {
 			return ItemLoad::NeedsConfirmation;
 		case ProbeVerdict::Refused:
 			return ItemLoad::Failed;
+		case ProbeVerdict::ShowImage:
+			return ItemLoad::Loaded;
 		case ProbeVerdict::ReadText:
 			break;
 		}

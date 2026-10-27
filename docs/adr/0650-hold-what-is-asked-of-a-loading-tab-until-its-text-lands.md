@@ -1,4 +1,4 @@
-# 0645. Hold what is asked of a loading tab until its text lands
+# 0650. Hold what is asked of a loading tab until its text lands
 
 Status: proposed
 Date: 2026-10-27

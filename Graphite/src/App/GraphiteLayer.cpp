@@ -239,6 +239,7 @@ namespace Graphite {
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
+		m_EditorSettings.SetPictureZoom([this](PictureZoom zoom) { return m_DocumentWindows.ZoomFocusedPicture(zoom); });
 		explorer->RegisterCommands(m_Commands);
 		m_Panels.RegisterCommands(m_Commands);
 		m_Terminals.RegisterCommands(m_Commands, m_Keys);
@@ -1110,6 +1111,8 @@ namespace Graphite {
 											.Warning = statusPalette.DiagnosticWarning,
 											.Ready = ServerReadyColour(ChromePaletteFor(m_ActiveScheme.Get()).Background)};
 
+		messages.View = m_DocumentWindows.GetViewStatusItems();
+
 		switch (DrawStatusBar(m_Documents, shownIndex, messages))
 		{
 		case StatusBarClick::GitBranch:
@@ -1196,7 +1199,8 @@ namespace Graphite {
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,
-											 .WorkspaceRoot = m_Workspace.GetRoot()},
+											 .WorkspaceRoot = m_Workspace.GetRoot(),
+											 .Settings = m_EditorSettings},
 								 *m_ReferencesPanel);
 
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
