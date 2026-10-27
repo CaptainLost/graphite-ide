@@ -118,6 +118,7 @@ namespace {
 		std::optional<std::size_t> LensClicked;
 		int StackBefore = 0;
 		int StackAfter = 0;
+		float Width = kDocumentWidth;
 		float Height = kDocumentHeight;
 
 		explicit EditorFrames(std::string content)
@@ -129,7 +130,7 @@ namespace {
 		void Draw()
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, Height));
+			ImGui::SetNextWindowSize(ImVec2(Width, Height));
 			ImGui::Begin("Document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			StackBefore = ImGui::GetCurrentContext()->FontStack.Size;
@@ -576,6 +577,7 @@ namespace {
 	// ImGui names a child window "<parent>/<label>_<id>", so a label's slash and underscore pick out that child alone.
 	constexpr std::string_view kPeekWindowMark = "/##LinePeek_";
 	constexpr std::string_view kPeekListMark = "/##LinePeekList_";
+	constexpr std::string_view kPeekDetailMark = "/##LinePeekDiff_";
 	constexpr bool kJustOpened = true;
 
 	ImGuiWindow* ActiveWindowNamedWith(std::string_view mark)
@@ -638,6 +640,36 @@ namespace {
 											   .Commit = Core::Oid{}}};
 
 		return content;
+	}
+
+	// An entry whose diff is `lineCount` added lines reading `text`, the one at `tracked` the line the peek follows.
+	Graphite::PeekEntry LongEntry(const char* title, std::string_view text, std::size_t lineCount, std::size_t tracked)
+	{
+		Graphite::PeekEntry entry{.Title = title, .Meta = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
+
+		for (std::size_t line = 0; line < lineCount; ++line)
+		{
+			entry.Lines.push_back({Core::DiffLineKind::Added, std::string{text}, line == tracked});
+		}
+
+		return entry;
+	}
+
+	Graphite::LinePeekContent ReadyPeek(std::string header, std::vector<Graphite::PeekEntry> entries)
+	{
+		Graphite::LinePeekContent content;
+		content.State = Graphite::PeekState::Ready;
+		content.Header = std::move(header);
+		content.Entries = std::move(entries);
+
+		return content;
+	}
+
+	// The accent the peek draws its bar in, beside the tracked line in the detail.
+	ImU32 PeekAccent()
+	{
+		return ImGui::ColorConvertFloat4ToU32(
+			Core::ToImVec4(Graphite::ColourFromScheme(Graphite::DarkScheme(), Graphite::ChromeColor::Accent)));
 	}
 
 	void ShowPeek(EditorFrames& editor, std::size_t line, const Graphite::LinePeekContent& content,
@@ -1975,9 +2007,10 @@ TEST_CASE("Peek offers Show commit beside the byline above a long diff")
 
 	Graphite::PeekEntry entry{.Title = "Add", .Meta = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
 
+	// The tracked line is the first, so the detail opens at its top.
 	for (int line = 0; line < kDiffLines; ++line)
 	{
-		entry.Lines.push_back({Core::DiffLineKind::Added, "line", line == kDiffLines - 1});
+		entry.Lines.push_back({Core::DiffLineKind::Added, "line", line == 0});
 	}
 
 	content.Entries = {entry};
@@ -2004,6 +2037,128 @@ TEST_CASE("Peek offers Show commit beside the byline above a long diff")
 	}
 
 	CHECK(found);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek detail opens each entry and each peek at its own place")
+{
+	constexpr std::size_t kDiffLines = 40;
+	constexpr std::size_t kFirstDiffLine = 0;
+	constexpr std::size_t kFirstEntry = 0;
+	constexpr std::size_t kSecondEntry = 1;
+
+	EditorFrames editor{LinesOf(kDiffLines)};
+
+	// Every entry's tracked line is its first, so each opens at its top.
+	const Graphite::LinePeekContent first =
+		ReadyPeek("History of line 1", {LongEntry("Fix", "line", kDiffLines, kFirstDiffLine),
+										LongEntry("Add", "line", kDiffLines, kFirstDiffLine)});
+	const Graphite::LinePeekContent second =
+		ReadyPeek("History of line 2", {LongEntry("Fix", "line", kDiffLines, kFirstDiffLine),
+										LongEntry("Add", "line", kDiffLines, kFirstDiffLine)});
+
+	const auto detailScroll = [] {
+		const ImGuiWindow* const detail = ActiveWindowNamedWith(kPeekDetailMark);
+		REQUIRE(detail != nullptr);
+		return detail->Scroll.y;
+	};
+
+	const auto scrollDetailToItsEnd = [&editor, &detailScroll] {
+		ImGuiWindow* const detail = ActiveWindowNamedWith(kPeekDetailMark);
+		REQUIRE(detail != nullptr);
+		ImGui::SetScrollY(detail, detail->ScrollMax.y);
+		editor.Next();
+		editor.Next();
+		REQUIRE(detailScroll() > 0.0f);
+	};
+
+	ShowPeek(editor, kFirstLine, first, kJustOpened);
+	editor.Next();
+	editor.View.Peek->JustOpened = false;
+	editor.Next();
+	editor.Next();
+
+	scrollDetailToItsEnd();
+
+	editor.View.Peek->Selected = kSecondEntry;
+	editor.Next();
+	editor.Next();
+
+	CHECK(detailScroll() == 0.0f);
+
+	editor.View.Peek->Selected = kFirstEntry;
+	editor.Next();
+	editor.Next();
+
+	CHECK(detailScroll() == 0.0f);
+
+	scrollDetailToItsEnd();
+
+	// Another line's peek in the same editor, on the entry of the same number.
+	ShowPeek(editor, kSecondLine, second, kJustOpened);
+	editor.Next();
+	editor.View.Peek->JustOpened = false;
+	editor.Next();
+	editor.Next();
+
+	CHECK(detailScroll() == 0.0f);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek detail shows the tracked line of an entry when it opens")
+{
+	constexpr std::size_t kDiffLines = 40;
+	constexpr std::size_t kTrackedLine = 25;
+
+	EditorFrames editor{LinesOf(kDiffLines)};
+	const Graphite::LinePeekContent content =
+		ReadyPeek("History of line 1", {LongEntry("Fix", "line", kDiffLines, kTrackedLine)});
+
+	ShowPeek(editor, kFirstLine, content, kJustOpened);
+	editor.Next();
+	editor.View.Peek->JustOpened = false;
+	editor.Next();
+	editor.Next();
+
+	const ImGuiWindow* const detail = ActiveWindowNamedWith(kPeekDetailMark);
+	REQUIRE(detail != nullptr);
+
+	const std::optional<VerticalExtent> bar = VerticalExtentInColour(*detail->DrawList, PeekAccent());
+	REQUIRE(bar.has_value());
+
+	CHECK(bar->Top >= detail->InnerRect.Min.y - kJustInside);
+	CHECK(bar->Bottom <= detail->InnerRect.Max.y + kJustInside);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek detail keeps the tracked line clear of its sideways scrollbar in a narrow editor")
+{
+	constexpr std::size_t kDiffLines = 40;
+	constexpr std::size_t kTrackedLine = 25;
+	constexpr float kNarrowWidth = 420.0f;
+	constexpr std::string_view kWideLine = "a line of code far wider than the narrow detail beside the list";
+
+	EditorFrames editor{LinesOf(kDiffLines)};
+	editor.Width = kNarrowWidth;
+
+	const Graphite::LinePeekContent content =
+		ReadyPeek("History of line 1", {LongEntry("Fix", kWideLine, kDiffLines, kTrackedLine)});
+
+	ShowPeek(editor, kFirstLine, content, kJustOpened);
+	editor.Next();
+	editor.View.Peek->JustOpened = false;
+	editor.Next();
+	editor.Next();
+
+	const ImGuiWindow* const detail = ActiveWindowNamedWith(kPeekDetailMark);
+	REQUIRE(detail != nullptr);
+	REQUIRE(detail->ScrollbarX);
+
+	const std::optional<VerticalExtent> bar = VerticalExtentInColour(*detail->DrawList, PeekAccent());
+	REQUIRE(bar.has_value());
+
+	CHECK(bar->Top >= detail->InnerRect.Min.y - kJustInside);
+	CHECK(bar->Bottom <= detail->InnerRect.Max.y + kJustInside);
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 

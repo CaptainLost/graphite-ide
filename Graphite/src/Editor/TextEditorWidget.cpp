@@ -3020,7 +3020,7 @@ namespace Graphite {
 		// BeginChild sizes its item like any other and would push the surface's CursorMaxPos out to the peek's far
 		// corner; ReserveDocumentExtent has already reserved its rows, so the extent is restored after EndChild.
 		std::optional<PeekAction> DrawPeekBlock(const LinePeekContent& content, std::size_t selected, const ImRect& block,
-												const ResolvedScheme& scheme)
+												const ResolvedScheme& scheme, bool justOpened)
 		{
 			ImGuiWindow* const surface = ImGui::GetCurrentWindow();
 			const ImVec2 extentBeforePeek = surface->DC.CursorMaxPos;
@@ -3047,7 +3047,7 @@ namespace Graphite {
 
 			if (peekVisible)
 			{
-				answer = DrawLinePeek(content, selected, ImGui::GetContentRegionAvail(), scheme);
+				answer = DrawLinePeek(content, selected, ImGui::GetContentRegionAvail(), scheme, justOpened);
 				peekFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
 			}
 
@@ -3659,7 +3659,7 @@ namespace Graphite {
 			if (peekOnScreen && view.Peek->Content != nullptr)
 			{
 				const std::optional<PeekAction> answer =
-					DrawPeekBlock(*view.Peek->Content, view.Peek->Selected, *peekBlock, scheme);
+					DrawPeekBlock(*view.Peek->Content, view.Peek->Selected, *peekBlock, scheme, view.Peek->JustOpened);
 
 				if (answer && !result.PeekAnswer)
 				{

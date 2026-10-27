@@ -31,9 +31,11 @@ namespace Graphite {
 
 	// Draws the peek into the current window, whose content region is `size`: the header with a close button, the
 	// list of entries on the left and the selected entry's diff on the right. The diff is set in the font size in
-	// effect when this is called, which is the editor's. Returns what was clicked this frame, if anything.
+	// effect when this is called, which is the editor's. Each entry, and each when the peek has just opened, is shown
+	// from its top, scrolled only as far as it takes to show its tracked line whole. Returns what was clicked this
+	// frame, if anything.
 	std::optional<PeekAction> DrawLinePeek(const LinePeekContent& content, std::size_t selected, ImVec2 size,
-										   const ResolvedScheme& scheme);
+										   const ResolvedScheme& scheme, bool justOpened);
 
 	struct PeekFrame
 	{
