@@ -27,13 +27,15 @@ arithmetic can build. The cost showed in two places:
 - **Ask about everything again when an ignore source may have changed:** a
   `.gitignore`, `.git/info/exclude` or the repository's config.
   - The watcher reports such a change inside the open folder.
-  - Some sources are outside the watch: a `.gitignore` in a folder above the open
-    folder, and `info/exclude` and `config` in a linked worktree's common git
-    folder. The automatic reload compares their modification stamps with the
-    ones taken at the last full ask.
-- **Every Refresh the user chooses asks about everything again.** That also
-  catches a source no rule above names, such as a `core.excludesFile` outside
-  the repository.
+  - Some sources are outside the watch:
+    - a `.gitignore` in a folder above the open folder,
+    - `info/exclude` and `config` in a linked worktree's common git folder,
+    - the worktree's own `config.worktree`,
+    - the global excludes file.
+
+    The automatic reload compares their modification stamps with the ones taken
+    just before the last full ask.
+- **Every Refresh the user chooses asks about everything again.**
 
 ## Rationale
 
@@ -54,6 +56,8 @@ reload pays for every node to find out what was already known.
 - libgit2 compares rule files by size and whole-second time, so a rules file
   rewritten at the same size within the same second goes unnoticed until a
   Refresh.
+- libgit2 finds the global excludes file when it opens the repository. A global
+  file that appears later takes effect only after the repository is opened again.
 
 ### Neutral
 
