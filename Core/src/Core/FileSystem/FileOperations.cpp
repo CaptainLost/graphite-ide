@@ -32,6 +32,14 @@ namespace Core {
 			return Error{.Code = ErrorCode::NotFound, .Message = std::format("'{}' no longer exists", ToUtf8(path))};
 		}
 
+		bool IsTaken(const std::filesystem::path& path, const PathTaken& isReserved)
+		{
+			std::error_code ignoredError;
+			const bool reserved = isReserved && isReserved(path);
+
+			return reserved || std::filesystem::exists(path, ignoredError);
+		}
+
 		struct CopyTally
 		{
 			const CopiedFileCount& OnFileCopied;
@@ -53,11 +61,17 @@ namespace Core {
 		std::error_code CopyFolder(const std::filesystem::path& from, const std::filesystem::path& to, CopyTally& tally)
 		{
 			std::error_code error;
-			std::filesystem::create_directory(to, from, error);
+			const bool created = std::filesystem::create_directory(to, from, error);
 
 			if (error)
 			{
 				return error;
+			}
+
+			// WARNING: create_directory answers false with no error for a folder that exists, and copying on would merge.
+			if (!created)
+			{
+				return std::make_error_code(std::errc::file_exists);
 			}
 
 			std::filesystem::directory_iterator walk{from, error};
@@ -229,12 +243,6 @@ namespace Core {
 			return NoLongerExistsError(path);
 		}
 
-		// WARNING: create_directory succeeds on a folder that exists, so a copy would merge into whatever is there.
-		if (std::filesystem::exists(destination, existsError))
-		{
-			return AlreadyExistsError(destination);
-		}
-
 		CopyTally tally{.OnFileCopied = onFileCopied};
 		const std::error_code error = CopyEntry(path, destination, tally);
 
@@ -284,8 +292,13 @@ namespace Core {
 
 	std::filesystem::path MakeUniquePath(const std::filesystem::path& path)
 	{
-		std::error_code ignoredError;
-		if (!std::filesystem::exists(path, ignoredError))
+		const PathTaken nothingReserved;
+		return MakeUniquePath(path, nothingReserved);
+	}
+
+	std::filesystem::path MakeUniquePath(const std::filesystem::path& path, const PathTaken& isReserved)
+	{
+		if (!IsTaken(path, isReserved))
 		{
 			return path;
 		}
@@ -297,7 +310,7 @@ namespace Core {
 		std::filesystem::path candidate = parent / FromUtf8(stem + " copy" + extension);
 		int copyNumber = kFirstNumberedCopy;
 
-		while (std::filesystem::exists(candidate, ignoredError))
+		while (IsTaken(candidate, isReserved))
 		{
 			candidate = parent / FromUtf8(stem + " copy " + std::to_string(copyNumber) + extension);
 			++copyNumber;

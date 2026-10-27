@@ -200,6 +200,32 @@ TEST_CASE("DuplicateTo refuses a folder that exists rather than copying into it"
 	CHECK_FALSE(std::filesystem::exists(temporaryDirectory.GetPath() / "taken" / "a.txt"));
 }
 
+TEST_CASE("DuplicateTo refuses a file that exists and leaves it as it was")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path source = temporaryDirectory.MakeFile("source.txt", "new");
+	const std::filesystem::path taken = temporaryDirectory.MakeFile("taken.txt", "old");
+
+	const Core::Result<std::filesystem::path> duplicateResult = Core::DuplicateTo(source, taken);
+
+	REQUIRE_FALSE(duplicateResult.HasValue());
+
+	std::ifstream stream{taken, std::ios::binary};
+	const std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+	CHECK(contents == "old");
+}
+
+TEST_CASE("MakeUniquePath passes over a name another operation has reserved but not made yet")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path wanted = temporaryDirectory.MakeFile("notes.txt", "x");
+	const std::filesystem::path reserved = temporaryDirectory.GetPath() / "notes copy.txt";
+	const Core::PathTaken isReserved = [&reserved](const std::filesystem::path& path) { return path == reserved; };
+
+	CHECK(MakeUniquePath(wanted, isReserved) == temporaryDirectory.GetPath() / "notes copy 2.txt");
+	CHECK(MakeUniquePath(temporaryDirectory.GetPath() / "free.txt", isReserved) == temporaryDirectory.GetPath() / "free.txt");
+}
+
 TEST_CASE("Duplicate reports a missing source")
 {
 	TempDirectory temporaryDirectory;

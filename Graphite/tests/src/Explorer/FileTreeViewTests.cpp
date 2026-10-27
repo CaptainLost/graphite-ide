@@ -24,12 +24,16 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <filesystem>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -105,8 +109,9 @@ namespace {
 	class ExplorerScreen
 	{
 	public:
-		explicit ExplorerScreen(const std::filesystem::path& folder, Core::JobSubmitter submitJob = RunJobsAtOnce())
-			: View{Workspace, Documents, Events, Modals, Scheme, std::move(submitJob)}
+		explicit ExplorerScreen(const std::filesystem::path& folder, Core::JobSubmitter submitJob = RunJobsAtOnce(),
+								Graphite::FileOperationRunner runFileOperation = Graphite::RunFileOperation)
+			: View{Workspace, Documents, Events, Modals, Scheme, std::move(submitJob), std::move(runFileOperation)}
 		{
 			REQUIRE(Workspace.OpenFolder(folder));
 
@@ -1016,13 +1021,87 @@ TEST_CASE("While a file inside a folder is moved to the Recycle Bin, the folder 
 	screen.Next();
 }
 
-TEST_CASE("The copy a duplicate is making offers no Rename, Delete or New File once its row appears")
+namespace {
+	class Gate
+	{
+	public:
+		void Open()
+		{
+			const std::lock_guard<std::mutex> lock(m_Mutex);
+			m_Open = true;
+			m_Opened.notify_all();
+		}
+
+		void WaitUntilOpen()
+		{
+			std::unique_lock<std::mutex> lock(m_Mutex);
+			m_Opened.wait(lock, [this] { return m_Open; });
+		}
+
+	private:
+		std::mutex m_Mutex;
+		std::condition_variable m_Opened;
+		bool m_Open = false;
+	};
+
+	struct CopyThenWait
+	{
+		Gate& MayFinish;
+
+		Core::Result<std::filesystem::path> operator()(const Graphite::RunningFileOperation& operation,
+													   const Core::CopiedFileCount& noteCopied) const
+		{
+			Core::Result<std::filesystem::path> copied = Graphite::RunFileOperation(operation, noteCopied);
+			MayFinish.WaitUntilOpen();
+			return copied;
+		}
+	};
+
+	struct CopyOnItsOwnThread
+	{
+		Gate MayFinish;
+		std::thread Worker;
+
+		Core::JobSubmitter Submitter()
+		{
+			return [this](std::function<void()> job) { Worker = std::thread{std::move(job)}; };
+		}
+
+		void Finish()
+		{
+			MayFinish.Open();
+
+			if (Worker.joinable())
+			{
+				Worker.join();
+			}
+		}
+
+		~CopyOnItsOwnThread() { Finish(); }
+	};
+
+	bool WaitUntilExists(const std::filesystem::path& path)
+	{
+		constexpr std::chrono::seconds kTimeout{10};
+		constexpr std::chrono::milliseconds kPollInterval{5};
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kTimeout;
+
+		while (!std::filesystem::exists(path) && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(kPollInterval);
+		}
+
+		return std::filesystem::exists(path);
+	}
+}
+
+TEST_CASE("The copy a duplicate is making offers no Rename, Delete or New File while the copy runs")
 {
 	TempDirectory folder;
 	folder.MakeFile("box/inside.txt");
 
-	DeferredJobs jobs;
-	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	CopyOnItsOwnThread copy;
+	ExplorerScreen screen{folder.GetPath(), copy.Submitter(), CopyThenWait{.MayFinish = copy.MayFinish}};
 
 	constexpr int kBoxRow = 1;
 	constexpr int kCopyRow = 2;
@@ -1031,10 +1110,8 @@ TEST_CASE("The copy a duplicate is making offers no Rename, Delete or New File o
 
 	screen.RightClickRow(kBoxRow, kDepth);
 	REQUIRE(screen.ChooseMenuItem("Duplicate"));
-	screen.Next();
-	REQUIRE(jobs.Count() == 1);
+	REQUIRE(WaitUntilExists(folder.GetPath() / "box copy" / "inside.txt"));
 
-	folder.MakeDirectory("box copy");
 	screen.Workspace.GetTree().Refresh(screen.Workspace.GetTree().GetRoot());
 	screen.Next();
 	REQUIRE(ChildNamed(screen.Workspace.GetTree().GetRoot(), "box copy") != nullptr);
@@ -1044,6 +1121,63 @@ TEST_CASE("The copy a duplicate is making offers no Rename, Delete or New File o
 	CHECK(screen.IsMenuItemEnabled("Delete") == disabled);
 	CHECK(screen.IsMenuItemEnabled("New File") == disabled);
 	screen.Press(ImGuiKey_Escape);
+
+	copy.Finish();
+	screen.Next();
+}
+
+TEST_CASE("A path typed in the New File field that leads into a folder being copied is refused")
+{
+	TempDirectory folder;
+	folder.MakeFile("box/inside.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	constexpr int kBoxRow = 1;
+	constexpr int kDepth = 1;
+
+	screen.RightClickRow(kBoxRow, kDepth);
+	REQUIRE(screen.ChooseMenuItem("Duplicate"));
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	screen.ChooseFromRootMenu("New File");
+	screen.Type("box\\made.txt");
+	screen.Press(ImGuiKey_Enter);
+	screen.Next();
+
+	CHECK_FALSE(std::filesystem::exists(folder.GetPath() / "box" / "made.txt"));
+
+	jobs.RunAll();
+	screen.Next();
+}
+
+TEST_CASE("New Folder passes over the name a running copy has reserved for its copy")
+{
+	TempDirectory folder;
+	folder.MakeFile("new folder/inside.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	constexpr int kFolderRow = 1;
+	constexpr int kDepth = 1;
+
+	screen.RightClickRow(kFolderRow, kDepth);
+	REQUIRE(screen.ChooseMenuItem("Duplicate"));
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	screen.ChooseFromRootMenu("New Folder");
+
+	CHECK(std::filesystem::is_directory(folder.GetPath() / "new folder copy 2"));
+	CHECK_FALSE(std::filesystem::exists(folder.GetPath() / "new folder copy"));
+
+	jobs.RunAll();
+	screen.Next();
+
+	CHECK(std::filesystem::exists(folder.GetPath() / "new folder copy" / "inside.txt"));
 }
 
 TEST_CASE("Refresh chosen from the folder's menu asks again whether each entry is ignored")

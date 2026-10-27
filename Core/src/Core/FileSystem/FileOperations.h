@@ -10,6 +10,8 @@ namespace Core {
 
 	using CopiedFileCount = std::function<void(std::size_t copiedFiles)>;
 
+	using PathTaken = std::function<bool(const std::filesystem::path& path)>;
+
 	Result<void> CreateEmptyFile(const std::filesystem::path& path);
 
 	Result<void> MakeDirectory(const std::filesystem::path& path);
@@ -25,4 +27,6 @@ namespace Core {
 	Result<void> MoveToRecycleBin(const std::filesystem::path& path);
 
 	std::filesystem::path MakeUniquePath(const std::filesystem::path& path);
+
+	std::filesystem::path MakeUniquePath(const std::filesystem::path& path, const PathTaken& isReserved);
 }

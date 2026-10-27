@@ -175,7 +175,7 @@ namespace Graphite {
 								  const std::filesystem::path& folderOpen, Clock::time_point now)
 	{
 		const std::filesystem::path copyDestination =
-			kind == FileOperationKind::Duplicate ? Core::MakeUniquePath(target) : std::filesystem::path{};
+			kind == FileOperationKind::Duplicate ? PickUniquePath(target) : std::filesystem::path{};
 
 		const RunningFileOperation operation{.Id = m_NextId++,
 											 .Kind = kind,
@@ -242,6 +242,26 @@ namespace Graphite {
 		}
 
 		return false;
+	}
+
+	bool FileOperationJobs::IsReservedForACopy(const std::filesystem::path& path) const
+	{
+		for (const RunningFileOperation& operation : m_Running)
+		{
+			if (!operation.CopyDestination.empty() && Core::SamePath(path, operation.CopyDestination))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	std::filesystem::path FileOperationJobs::PickUniquePath(const std::filesystem::path& wanted) const
+	{
+		const Core::PathTaken reservedForACopy = [this](const std::filesystem::path& path) { return IsReservedForACopy(path); };
+
+		return Core::MakeUniquePath(wanted, reservedForACopy);
 	}
 
 	std::optional<std::string> FileOperationJobs::StatusText() const

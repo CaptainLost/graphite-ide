@@ -96,10 +96,10 @@ namespace Graphite {
 
 	FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents,
 							   Core::EventBus& events, ModalGate& modals, const ActiveScheme& scheme,
-							   Core::JobSubmitter submitJob)
+							   Core::JobSubmitter submitJob, FileOperationRunner runFileOperation)
 		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_DeleteQuestion(modals, kDeleteTitle),
-		  m_NewFileQuestion(modals, kNewFileTitle), m_Scheme(scheme), m_FileOperations(submitJob),
-		  m_Listing(std::move(submitJob))
+		  m_NewFileQuestion(modals, kNewFileTitle), m_Scheme(scheme),
+		  m_FileOperations(submitJob, std::move(runFileOperation)), m_Listing(std::move(submitJob))
 	{
 		events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& changed) { NoteFilesChanged(changed); });
@@ -907,7 +907,7 @@ namespace Graphite {
 		}
 
 		const std::filesystem::path target =
-			Core::MakeUniquePath(action.Target / Core::FromUtf8(action.Name));
+			m_FileOperations.PickUniquePath(action.Target / Core::FromUtf8(action.Name));
 
 		const Core::Result<void> created = Core::MakeDirectory(target);
 
@@ -965,12 +965,6 @@ namespace Graphite {
 
 	void FileTreeView::HandleCreateNamedFile(const PendingAction& action)
 	{
-		if (m_FileOperations.IsBusy(action.Target))
-		{
-			ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(action.Target));
-			return;
-		}
-
 		const std::optional<NewFilePath> path = ParseNewFilePath(action.Name);
 
 		if (!path.has_value())
@@ -982,6 +976,12 @@ namespace Graphite {
 		}
 
 		const std::vector<FileToCreate> files{FileToCreate{.Path = *path, .Content = {}}};
+
+		if (const std::optional<std::filesystem::path> busy = BusyPathOnTheWay(action.Target, files); busy.has_value())
+		{
+			ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(*busy));
+			return;
+		}
 
 		if (const std::optional<std::string> problem = NewFileProblem(action.Target, files); problem.has_value())
 		{
@@ -996,6 +996,39 @@ namespace Graphite {
 			ReportFailure(Core::ToastKind::Error, "Create failed", created.GetError().Message);
 			ContinueNamingNewFile(action.Target, action.Name);
 		}
+	}
+
+	std::optional<std::filesystem::path> FileTreeView::BusyPathOnTheWay(const std::filesystem::path& folder,
+																		 const std::vector<FileToCreate>& files) const
+	{
+		for (const FileToCreate& file : files)
+		{
+			std::filesystem::path onTheWay = folder;
+
+			if (m_FileOperations.IsBusy(onTheWay))
+			{
+				return onTheWay;
+			}
+
+			for (const std::string& piece : file.Path.Folders)
+			{
+				onTheWay /= Core::FromUtf8(piece);
+
+				if (m_FileOperations.IsBusy(onTheWay))
+				{
+					return onTheWay;
+				}
+			}
+
+			onTheWay /= Core::FromUtf8(file.Path.File);
+
+			if (m_FileOperations.IsBusy(onTheWay))
+			{
+				return onTheWay;
+			}
+		}
+
+		return std::nullopt;
 	}
 
 	std::optional<std::string> FileTreeView::NewFileProblem(const std::filesystem::path& folder,
@@ -1345,9 +1378,9 @@ namespace Graphite {
 		{
 			m_NewFileQuestion.Answer();
 
-			if (m_FileOperations.IsBusy(folder))
+			if (const std::optional<std::filesystem::path> busy = BusyPathOnTheWay(folder, files); busy.has_value())
 			{
-				ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(folder));
+				ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(*busy));
 			}
 			else if (const Core::Result<std::filesystem::path> created = CreateFiles(folder, files); !created)
 			{

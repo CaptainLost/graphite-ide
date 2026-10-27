@@ -75,6 +75,10 @@ namespace Graphite {
 
 		bool ShowsBusy(const std::filesystem::path& path, Clock::time_point now) const;
 
+		bool IsReservedForACopy(const std::filesystem::path& path) const;
+
+		std::filesystem::path PickUniquePath(const std::filesystem::path& wanted) const;
+
 		std::optional<std::string> StatusText() const;
 
 		bool IsRunning() const { return !m_Running.empty(); }

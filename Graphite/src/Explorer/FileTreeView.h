@@ -39,7 +39,8 @@ namespace Graphite {
 	{
 	public:
 		FileTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events, ModalGate& modals,
-					 const ActiveScheme& scheme, Core::JobSubmitter submitJob);
+					 const ActiveScheme& scheme, Core::JobSubmitter submitJob,
+					 FileOperationRunner runFileOperation = RunFileOperation);
 
 		void Render();
 
@@ -151,6 +152,8 @@ namespace Graphite {
 														const std::vector<FileToCreate>& files);
 		std::optional<std::string> NewFileProblem(const std::filesystem::path& folder,
 												  const std::vector<FileToCreate>& files) const;
+		std::optional<std::filesystem::path> BusyPathOnTheWay(const std::filesystem::path& folder,
+															  const std::vector<FileToCreate>& files) const;
 		std::vector<FileToCreate> FilesFromTemplate(const std::filesystem::path& folder, FileTemplate fileTemplate,
 													std::string_view name) const;
 		void ReadFolderFromDisk(Core::FileNode& folder);
