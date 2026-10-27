@@ -53,9 +53,18 @@ namespace Graphite {
 
 		if (m_Debounce.Advance(timestep))
 		{
+			// WARNING: Not every entry. An entry lives as long as its tab, and blaming every tab viewed this session
+			// on each commit or fetch would hold the shared job queue for seconds a file.
 			for (auto& [path, entry] : m_Entries)
 			{
-				RequestHead(path, entry);
+				if (std::exchange(entry.Shown, false))
+				{
+					RequestHead(path, entry);
+				}
+				else
+				{
+					entry.HeadStale = true;
+				}
 			}
 		}
 
@@ -72,7 +81,9 @@ namespace Graphite {
 		const bool inserted = !m_Entries.contains(path);
 		Entry& entry = m_Entries[path];
 
-		if (inserted)
+		entry.Shown = true;
+
+		if (inserted || std::exchange(entry.HeadStale, false))
 		{
 			RequestHead(path, entry);
 		}
@@ -104,6 +115,14 @@ namespace Graphite {
 
 	void BlameModel::RequestHead(const std::filesystem::path& path, Entry& entry)
 	{
+		if (entry.HeadInFlight)
+		{
+			entry.HeadAgain = true;
+			return;
+		}
+
+		entry.HeadInFlight = true;
+
 		const std::uint64_t generation = ++m_Generation;
 		entry.HeadRequested = generation;
 
@@ -131,18 +150,34 @@ namespace Graphite {
 				}
 
 				Entry& target = *found;
+				target.HeadInFlight = false;
 
 				if (error)
 				{
-					CORE_WARN("Cannot blame '{}' at HEAD: {}", Core::ToUtf8(path), error->Message);
+					// A failure that lasts would otherwise be logged again on every repository change.
+					if (target.LoggedError != error->Message)
+					{
+						CORE_WARN("Cannot blame '{}' at HEAD: {}", Core::ToUtf8(path), error->Message);
+						target.LoggedError = error->Message;
+					}
+
 					target.Head.reset();
 					PublishWithoutHistory(target, Core::CreateRef<const HeadBlame>());
-					return;
+				}
+				else
+				{
+					target.LoggedError.reset();
+					target.Head = head;
+					target.Pending = true;
+					target.QuietFor = kEditQuietSeconds;
 				}
 
-				target.Head = head;
-				target.Pending = true;
-				target.QuietFor = kEditQuietSeconds;
+				// The answer is kept even so: under changes that keep coming, dropping each answer for the next would
+				// never show one.
+				if (std::exchange(target.HeadAgain, false))
+				{
+					RequestHead(path, target);
+				}
 			});
 		});
 	}

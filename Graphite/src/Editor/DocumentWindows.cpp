@@ -1624,8 +1624,8 @@ namespace Graphite {
 			return m_Documents.GetStore().Find(path) != nullptr;
 		};
 
-		// WARNING: Not isOpen alone. A path the blame model keeps is blamed again on every repository change, so with
-		// the Line author setting off only a document whose peek is open keeps its blame.
+		// Not isOpen alone: with the Line author setting off only a document whose peek is open needs its blame, and
+		// any other would hold HEAD's blame and text for nothing.
 		const auto keepsBlame = [this, &isOpen](const std::filesystem::path& path) {
 			if (!isOpen(path))
 			{

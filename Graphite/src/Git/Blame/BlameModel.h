@@ -20,6 +20,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <string>
 
 namespace Core {
 
@@ -48,7 +49,9 @@ namespace Graphite {
 		void OnUpdate(Core::Timestep timestep);
 
 		// WARNING: A hidden document is not passed to Update, so its buffer is neither copied nor
-		// diffed until it is shown again; its head blame is still re-read when the repository changes.
+		// diffed until it is shown again. A repository change re-reads the head blame only of the
+		// documents passed here since the change before it; the others are marked stale and read
+		// again on their next Update.
 		void Update(const std::filesystem::path& path, const Core::TextBuffer& buffer);
 
 		// Null until a table has arrived. A file with no committed history to lay over it (untracked, unusable, or a
@@ -77,6 +80,19 @@ namespace Graphite {
 		{
 			std::uint64_t HeadRequested = 0;
 			Core::Ref<const HeadBlame> Head;
+
+			// At most one head read is in flight a path. A request made while one is sets HeadAgain,
+			// and the read is made again once the first lands.
+			bool HeadInFlight = false;
+			bool HeadAgain = false;
+
+			// Shown: passed to Update since the last repository change. HeadStale: a repository change
+			// came while it was not, so its head is read again on its next Update.
+			bool Shown = false;
+			bool HeadStale = false;
+
+			// The last blame failure logged for the path, so a lasting one is logged once.
+			std::optional<std::string> LoggedError;
 
 			std::optional<std::size_t> Revision;
 			float QuietFor = 0.0f;

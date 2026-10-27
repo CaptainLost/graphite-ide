@@ -173,9 +173,10 @@ TEST_CASE("Blame model drops an answer that a newer request overtook")
 	std::function<void()> older = std::move(jobs.Jobs.front());
 	jobs.Jobs.clear();
 
+	// A path keeps one head read in flight, so only a reset lets a newer one start while the first is still out.
 	port.Head = Committed("a\nX\n", 2);
-	model.Invalidate();
-	model.OnUpdate(Core::Timestep{0.2f});
+	model.Clear();
+	model.Update(kPath, buffer);
 	REQUIRE(jobs.Jobs.size() == 1);
 
 	jobs.RunAll();
@@ -341,6 +342,79 @@ TEST_CASE("Blame model re-reads the head blame when the repository changes")
 	model.OnUpdate(kFrame);
 	Settle(model, jobs, buffer);
 
+	CHECK(model.Get(kPath)->Lines[1].Kind == LineAuthorKind::Committed);
+}
+
+TEST_CASE("Blame model does not re-blame a hidden tab until it is shown again")
+{
+	FakeBlamePort port;
+	port.Head = Committed("a\nb\n", 2);
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\nX\n"};
+	Settle(model, jobs, buffer);
+	REQUIRE(port.Calls == 1);
+
+	// Shown since the last repository change, so this one is read again.
+	model.Invalidate();
+	model.OnUpdate(Core::Timestep{0.2f});
+	jobs.RunAll();
+	model.OnUpdate(kFrame);
+	REQUIRE(port.Calls == 2);
+
+	// Not shown since: the tab is hidden.
+	model.Invalidate();
+	model.OnUpdate(Core::Timestep{0.2f});
+	jobs.RunAll();
+	model.OnUpdate(kFrame);
+	CHECK(port.Calls == 2);
+
+	port.Head = Committed("a\nX\n", 2);
+	model.Update(kPath, buffer);
+	jobs.RunAll();
+	CHECK(port.Calls == 3);
+
+	model.OnUpdate(kFrame);
+	Settle(model, jobs, buffer);
+
+	REQUIRE(model.Get(kPath) != nullptr);
+	CHECK(model.Get(kPath)->Lines[1].Kind == LineAuthorKind::Committed);
+}
+
+TEST_CASE("Blame model keeps one head read in flight per path")
+{
+	FakeBlamePort port;
+	port.Head = Committed("a\nb\n", 2);
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\nX\n"};
+
+	model.Update(kPath, buffer);
+	REQUIRE(jobs.Jobs.size() == 1);
+
+	model.Invalidate();
+	model.OnUpdate(Core::Timestep{0.2f});
+	model.Update(kPath, buffer);
+	CHECK(jobs.Jobs.size() == 1);
+
+	jobs.RunAll();
+	REQUIRE(port.Calls == 1);
+
+	// The change came in while the first read was on its way, so the path is read again once it lands.
+	port.Head = Committed("a\nX\n", 2);
+	model.OnUpdate(kFrame);
+	CHECK(jobs.Jobs.size() == 1);
+
+	jobs.RunAll();
+	CHECK(port.Calls == 2);
+
+	model.OnUpdate(kFrame);
+	Settle(model, jobs, buffer);
+
+	CHECK(port.Calls == 2);
+	REQUIRE(model.Get(kPath) != nullptr);
 	CHECK(model.Get(kPath)->Lines[1].Kind == LineAuthorKind::Committed);
 }
 

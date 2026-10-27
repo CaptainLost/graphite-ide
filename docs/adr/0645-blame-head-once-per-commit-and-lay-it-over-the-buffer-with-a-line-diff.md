@@ -33,8 +33,14 @@ model next to `ChangeMarkersModel`, built the same way:
   `RepositoryGitPort` implements with the calling thread's own repository
   handle. Only `RepositoryChangedEvent` and `Invalidate()`, which the
   application calls when this process has written to the repository
-  itself, mark the model dirty under the same debounce `GitModel` uses,
-  after which every tracked path's head blame is read again.
+  itself, mark the model dirty under the same debounce `GitModel` uses.
+  When it settles, the head blame is read again only for the paths shown
+  (passed to `Update`) since the previous one; every other path is marked
+  stale and read again on its next `Update`, so a tab left in the
+  background is not blamed on each commit or fetch. A path has at most one
+  head read in flight: a request made while one is out marks the path to
+  be read again once the first answer lands, and that answer is still
+  kept, so changes that keep coming cannot starve it.
   `WorkspaceFilesChangedEvent` is deliberately not subscribed to: HEAD's
   blame does not depend on the working tree, so saving a file never
   re-reads it. `WorkspaceOpenedEvent` and `WorkspaceClosedEvent` clear the
@@ -61,9 +67,11 @@ model next to `ChangeMarkersModel`, built the same way:
   request equal to the one already held or in flight, `GetLineHistory`
   reports what has arrived, and `ForgetLineHistory` drops it so that a late
   delivery is ignored.
-- A path is tracked on its first `Update`, hidden documents are not passed
-  to `Update` and so are not computed, and `Retain` drops the state of every
-  closed document.
+- A path is tracked on its first `Update`, and `Retain` drops the state of
+  every closed document. A hidden document is not passed to `Update`, so
+  its buffer is neither copied nor diffed, and a repository change only
+  marks its head blame stale; nothing is computed for it until it is shown
+  again.
 
 ## Rationale
 
@@ -84,8 +92,8 @@ rules, which are already understood and tested.
 - Lines the reader has not touched keep their author and commit while the
   lines around them move, and edited lines show as uncommitted at once.
 - The blame is shared by every pause, and is read again only when the
-  repository changes or this process writes to it; saving a file costs no
-  blame.
+  repository changes or this process writes to it, and then only for a
+  document shown since; saving a file costs no blame.
 
 ### Negative
 
@@ -101,6 +109,9 @@ rules, which are already understood and tested.
 - A change to a tracked file's committed content that git does not report
   as a repository change is not noticed until the next one; the working
   tree alone never changes a blame of HEAD.
+- A document brought back from the background shows the authors of the
+  HEAD it was last blamed at until its stale head blame has been read
+  again.
 
 ### Neutral
 
