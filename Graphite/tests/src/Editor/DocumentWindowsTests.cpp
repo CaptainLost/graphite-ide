@@ -143,6 +143,7 @@ namespace {
 		void Close(const std::filesystem::path&, LanguageId) override {}
 		Graphite::ServerReadiness ReadinessOf(const std::filesystem::path&, LanguageId) override { return Graphite::ServerReadiness::CannotRun; }
 		bool HasChosenServer(LanguageId) override { return false; }
+		std::string ServerNameOf(LanguageId) override { return {}; }
 	};
 
 	class SilentTexts final : public Graphite::FileTextSource
