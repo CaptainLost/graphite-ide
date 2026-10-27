@@ -325,7 +325,8 @@ namespace Graphite {
 		VerticalScrollbar ScrollbarOfSurface(const Core::OpenItem& item, const EditorMetrics& metrics, const LensRows& lenses)
 		{
 			const bool scrollbarShown = ImGui::GetCurrentWindow()->ScrollbarY;
-			const bool documentTallerThanView = DocumentHeightOf(item, metrics, lenses) > ImGui::GetContentRegionAvail().y;
+			const float contentHeightAsImGuiMeasuresIt = ImTrunc64(DocumentHeightOf(item, metrics, lenses));
+			const bool documentTallerThanView = contentHeightAsImGuiMeasuresIt > ImGui::GetContentRegionAvail().y;
 
 			return scrollbarShown || documentTallerThanView ? VerticalScrollbar::Shown : VerticalScrollbar::Hidden;
 		}

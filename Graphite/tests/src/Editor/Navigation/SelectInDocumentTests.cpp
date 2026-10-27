@@ -4,6 +4,7 @@
 
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Core/Text/TextBuffer.h"
 
 #include "DeferredJobs.h"
 #include "TempDirectory.h"
@@ -148,4 +149,13 @@ TEST_CASE("A UTF-16 range asked for while its file is read is selected once the 
 
 	CHECK(documents.At(0).Caret.Anchor == 3);
 	CHECK(documents.At(0).Caret.Offset == 6);
+}
+TEST_CASE("A UTF-16 column becomes the byte column of the same character, reading only what it needs")
+{
+	const Core::TextBuffer buffer{"x\n\xc4\x85\xc4\x85 target and a long tail\n"};
+
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 1, Utf16Column(0)) == 0);
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 1, Utf16Column(2)) == 4);
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 1, Utf16Column(3)) == 5);
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 0, Utf16Column(40)) == 1);
 }

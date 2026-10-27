@@ -140,6 +140,21 @@ TEST_CASE("A tab's caret column counted in UTF-16 units keeps its unit through a
 	CHECK(read.Tabs[1].ColumnIn == Core::ColumnUnit::Byte);
 }
 
+TEST_CASE("A tab's caret column of an unknown unit is read as counted in bytes")
+{
+	const WorkspaceState state{.Tabs = {TabState{.Path = kRoot / "src" / "Main.cpp", .Line = 3, .Column = 7}}};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(state, kRoot, file);
+	file.Set("restore.tab.0.columnUnit", "furlongs");
+
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	REQUIRE(read.Tabs.size() == 1);
+	CHECK(read.Tabs[0].ColumnIn == Core::ColumnUnit::Byte);
+	CHECK(read.Tabs[0].Column == 7);
+}
+
 TEST_CASE("Paths inside the folder are stored relative to it, so the folder can move")
 {
 	WorkspaceState state;

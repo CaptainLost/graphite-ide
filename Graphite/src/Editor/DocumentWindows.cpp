@@ -5,6 +5,7 @@
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/Breadcrumb.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
+#include "Editor/Navigation/SelectInDocument.h"
 #include "Editor/Overlays/LensWaiting.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/TabColour.h"
@@ -169,7 +170,7 @@ namespace Graphite {
 		{
 			const Core::TextBuffer& buffer = item.Document->GetBuffer();
 			const std::size_t byteColumn =
-				columnIn == Core::ColumnUnit::Utf16CodeUnit ? FromUtf16Column(buffer.LineText(line), Utf16Column(column)) : column;
+				columnIn == Core::ColumnUnit::Utf16CodeUnit ? ByteColumnOfUtf16Column(buffer, line, Utf16Column(column)) : column;
 			const std::size_t offset = RestoredCaretOffset(buffer, line, byteColumn);
 
 			item.Caret = Core::Caret{.Offset = offset, .Anchor = offset};
@@ -451,9 +452,15 @@ namespace Graphite {
 	void DocumentWindows::HandWrapOfItsPaneToRead(std::size_t index, bool wordWrap)
 	{
 		const Core::OpenItem& item = m_Documents.At(index);
+
+		if (!item.LoadTicket)
+		{
+			return;
+		}
+
 		DocumentState* const state = FindState(item.Path);
 
-		if (!item.LoadTicket || state == nullptr || !state->PaneWrapWhileRead)
+		if (state == nullptr || !state->PaneWrapWhileRead)
 		{
 			return;
 		}

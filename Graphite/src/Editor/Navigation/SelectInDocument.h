@@ -9,6 +9,7 @@
 namespace Core {
 
 	class DocumentSet;
+	class TextBuffer;
 }
 
 namespace Graphite {
@@ -19,6 +20,9 @@ namespace Graphite {
 
 	bool SpansOneLine(std::size_t line, Utf16Column column, std::size_t endLine,
 					  Utf16Column endColumn);
+
+	// WARNING: Reads only the prefix the column can reach, so a giant line is not copied for it.
+	std::size_t ByteColumnOfUtf16Column(const Core::TextBuffer& buffer, std::size_t line, Utf16Column column);
 
 	bool SelectInDocument(Core::DocumentSet& documents, const std::filesystem::path& path,
 						  std::size_t line, std::size_t from, std::size_t to,

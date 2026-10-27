@@ -1284,3 +1284,60 @@ TEST_CASE("A tall wrapped document shows no horizontal scrollbar in the frame it
 	CHECK(surface->ScrollbarY);
 	CHECK_FALSE(surface->ScrollbarX);
 }
+TEST_CASE("Where a document just fits its surface, the rows reserve room for a scrollbar only when one shows")
+{
+	constexpr int kFittingLines = 15;
+	const float surfaceHeight = static_cast<float>(kFittingLines) * kEditorLineHeight;
+
+	for (const int linesPastFit : {-1, 0, 1})
+	{
+		const int lineCount = kFittingLines + linesPastFit;
+		std::string text;
+
+		for (int line = 0; line < lineCount; ++line)
+		{
+			text += line + 1 < lineCount ? "a\n" : "a";
+		}
+
+		ImGuiFrames frames;
+		Core::OpenItem item = ItemWith(text);
+		Graphite::EditorView view;
+		view.FontSize = kEditorFontSize;
+		view.WordWrap = true;
+		const Graphite::CommandContext context;
+		Graphite::FindBar bar;
+		Graphite::EditorFrameResult result;
+
+		const auto draw = [&] {
+			const float windowHeight = surfaceHeight + 2.0f * ImGui::GetStyle().WindowPadding.y;
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, windowHeight));
+			ImGui::Begin("Document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			result = Graphite::DrawEditor(context, item, view, bar);
+			ImGui::End();
+		};
+
+		frames.Next(draw);
+		frames.Next(draw);
+		frames.Next(draw);
+
+		const ImGuiWindow* surface = nullptr;
+
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if (std::string_view{window->Name}.find(kEditorSurface) != std::string_view::npos)
+			{
+				surface = window;
+			}
+		}
+
+		REQUIRE(surface != nullptr);
+		REQUIRE(result.Wrap.has_value());
+
+		const bool scrollbarShown = surface->ScrollbarY;
+		const Graphite::VerticalScrollbar shownOrHidden = scrollbarShown ? Graphite::VerticalScrollbar::Shown : Graphite::VerticalScrollbar::Hidden;
+
+		CHECK(scrollbarShown == (linesPastFit > 0));
+		CHECK(item.ColumnsPerWrappedRow == Graphite::WrappedColumns(*result.Wrap, static_cast<std::size_t>(lineCount), shownOrHidden));
+	}
+}

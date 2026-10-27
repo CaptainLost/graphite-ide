@@ -13,6 +13,7 @@
 namespace Graphite {
 
 	namespace {
+		constexpr std::size_t kMostUtf8BytesPerUtf16Unit = 3;
 
 		Core::OpenItem* OpenForSelection(Core::DocumentSet& documents,
 										 const std::filesystem::path& path,
@@ -57,17 +58,22 @@ namespace Graphite {
 									  Utf16Column endColumn)
 		{
 			const Core::TextBuffer& buffer = item.Document->GetBuffer();
-			const std::string lineText = buffer.LineText(line);
 			const std::size_t lineStart = buffer.LineStart(line);
 
-			const std::size_t from = std::min(FromUtf16Column(lineText, column), lineText.size());
-			const std::size_t to =
-				SpansOneLine(line, column, endLine, endColumn)
-					? std::min(FromUtf16Column(lineText, endColumn), lineText.size())
-					: from;
+			const std::size_t from = ByteColumnOfUtf16Column(buffer, line, column);
+			const std::size_t to = SpansOneLine(line, column, endLine, endColumn) ? ByteColumnOfUtf16Column(buffer, line, endColumn) : from;
 
 			Select(item, lineStart + from, lineStart + to);
 		}
+	}
+
+	std::size_t ByteColumnOfUtf16Column(const Core::TextBuffer& buffer, std::size_t line, Utf16Column column)
+	{
+		const std::size_t lineStart = buffer.LineStart(line);
+		const std::size_t prefixLength = std::min(buffer.LineLength(line), column.Value * kMostUtf8BytesPerUtf16Unit);
+		const std::string prefix = buffer.Substring(lineStart, lineStart + prefixLength);
+
+		return std::min(FromUtf16Column(prefix, column), prefix.size());
 	}
 
 	bool SpansOneLine(std::size_t line, Utf16Column column, std::size_t endLine,
