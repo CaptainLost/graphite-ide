@@ -54,7 +54,7 @@ namespace Core {
 
 		bool IsIgnored(const std::filesystem::path& path) const;
 
-		std::vector<std::filesystem::path> IgnoreRuleFilesAbove(const std::filesystem::path& folder) const;
+		std::vector<std::filesystem::path> IgnoreRuleFilesOutside(const std::filesystem::path& folder) const;
 
 		// A file inside a submodule belongs to the submodule's own repository, so reading it here as
 		// untracked would be wrong. The index is asked rather than HEAD because a checkout, a
@@ -216,5 +216,6 @@ namespace Core {
 		std::unique_ptr<git_repository, Free> m_Handle;
 		std::filesystem::path m_WorkingDirectory;
 		PathKeyText m_WorkingDirectoryKey;
+		std::vector<std::filesystem::path> m_GlobalExcludesFiles;
 	};
 }

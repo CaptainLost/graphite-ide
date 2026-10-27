@@ -197,6 +197,7 @@ namespace Graphite {
 		m_Events.Publish(WorkspaceOpeningEvent{root});
 
 		m_Tree = std::move(candidate);
+		++m_FolderGeneration;
 		m_Root = root;
 
 		TryOpenRepository();
@@ -239,12 +240,16 @@ namespace Graphite {
 
 	void Workspace::RefreshWholeTree(Core::IgnoreAnswers ignoreAnswers)
 	{
-		m_Tree.Refresh(m_Tree.GetRoot(), ignoreAnswers);
-
-		if (ignoreAnswers == Core::IgnoreAnswers::AskAgain)
+		if (ignoreAnswers == Core::IgnoreAnswers::Keep)
 		{
-			m_IgnoreSourceStamps = StampIgnoreSourcesTheWatcherCannotSee();
+			m_Tree.Refresh(m_Tree.GetRoot(), ignoreAnswers);
+			return;
 		}
+
+		// WARNING: Stamped before asking, so a rule edited while the tree is asked is not taken as seen.
+		std::vector<IgnoreSourceStamp> stampsBeforeAsking = StampIgnoreSourcesTheWatcherCannotSee();
+		m_Tree.Refresh(m_Tree.GetRoot(), ignoreAnswers);
+		m_IgnoreSourceStamps = std::move(stampsBeforeAsking);
 	}
 
 	std::vector<IgnoreSourceStamp> Workspace::StampIgnoreSourcesTheWatcherCannotSee() const
@@ -256,7 +261,7 @@ namespace Graphite {
 			return stamps;
 		}
 
-		for (const std::filesystem::path& file : m_Repository->IgnoreRuleFilesAbove(m_Root))
+		for (const std::filesystem::path& file : m_Repository->IgnoreRuleFilesOutside(m_Root))
 		{
 			stamps.push_back(StampOf(file));
 		}
@@ -374,6 +379,7 @@ namespace Graphite {
 		m_Tree.SetIgnoreQuery(kNoIgnoreQuery);
 		m_Repository.reset();
 		m_Tree = Core::FileTree{};
+		++m_FolderGeneration;
 		m_Root.clear();
 
 		ResetSolutionState();
@@ -593,6 +599,7 @@ namespace Graphite {
 		APP_INFO("Workspace moved from '{}' to '{}'", Core::ToUtf8(previousRoot), Core::ToUtf8(movedRoot));
 
 		m_Root = movedRoot;
+		++m_FolderGeneration;
 		m_Tree.Rebase(movedRoot);
 
 		// WARNING: the watcher followed the directory, but the copy of the root inside its thread
@@ -758,6 +765,7 @@ namespace Graphite {
 			++m_SolutionLoads;
 		}
 
+		m_ReadingAgainAfterAThrow = false;
 		StartReadingSolution();
 	}
 
@@ -780,6 +788,7 @@ namespace Graphite {
 	{
 		++m_SolutionReadGeneration;
 		m_ReadingSolution = false;
+		m_ReadingAgainAfterAThrow = false;
 	}
 
 	void Workspace::TakeFinishedSolutionReads()
@@ -798,18 +807,25 @@ namespace Graphite {
 
 	void Workspace::ApplySolutionRead(SolutionRead finished)
 	{
+		const bool firstThrowInARow = !finished.Read && finished.ReaderThrew && !m_ReadingAgainAfterAThrow;
+
+		// WARNING: A throw says nothing about the files, so it is read once more at once; a second throw waits for them.
+		if (firstThrowInARow)
+		{
+			APP_WARN("Reading '{}' stopped ({}); reading it once more", Core::ToUtf8(m_SelectedSolution),
+					 finished.Read.GetError().Message);
+			m_ReadingAgainAfterAThrow = true;
+			StartReadingSolution();
+			return;
+		}
+
+		m_ReadingAgainAfterAThrow = false;
 		++m_SolutionLoads;
 
 		if (!finished.Read)
 		{
 			m_Solution.reset();
 			m_SolutionReadFailure = finished.Read.GetError().Message;
-
-			// WARNING: A throw says nothing about the files, so the same files are read again on the next chance.
-			if (finished.ReaderThrew)
-			{
-				ForgetSolutionAttempt();
-			}
 
 			APP_WARN("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution), finished.Read.GetError().Message);
 

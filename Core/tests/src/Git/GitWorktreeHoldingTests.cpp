@@ -81,7 +81,7 @@ TEST_CASE("A linked worktree's ignore rules include the exclude file and config 
 	AddWorktree(fixture, "side", worktreePath);
 
 	Core::Repository worktree = OpenRepositoryAt(worktreePath);
-	const std::vector<std::filesystem::path> files = worktree.IgnoreRuleFilesAbove(worktreePath);
+	const std::vector<std::filesystem::path> files = worktree.IgnoreRuleFilesOutside(worktreePath);
 
 	bool namesCommonExclude = false;
 	bool namesCommonConfig = false;

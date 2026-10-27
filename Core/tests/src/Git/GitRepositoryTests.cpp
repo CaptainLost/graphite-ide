@@ -291,7 +291,7 @@ TEST_CASE("A folder below the working directory has the rules files of the folde
 	Result<Repository> opened = Repository::Open(deep);
 	REQUIRE(opened.HasValue());
 
-	const std::vector<std::filesystem::path> files = opened.GetValue().IgnoreRuleFilesAbove(deep);
+	const std::vector<std::filesystem::path> files = opened.GetValue().IgnoreRuleFilesOutside(deep);
 
 	CHECK(NamesFile(files, temp.GetPath() / ".gitignore"));
 	CHECK(NamesFile(files, temp.GetPath() / "a" / ".gitignore"));
@@ -446,6 +446,78 @@ TEST_CASE("Repointing core.excludesFile needs the repository reopened because li
 	INFO("If this fails, libgit2 started rereading config — a refresh would then cover "
 		 "this case too and any workaround built around it can go.");
 	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "build.log"));
+}
+
+TEST_CASE("The excludes file core.excludesFile names, and a worktree config, are among the rules files outside the folder")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	const std::filesystem::path excludesFile = temp.GetPath() / "my-excludes";
+	WriteFileBytes(excludesFile, "\n");
+	SetExcludesFile(temp.GetPath(), excludesFile);
+
+	Result<Repository> opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
+
+	const std::vector<std::filesystem::path> files = opened.GetValue().IgnoreRuleFilesOutside(temp.GetPath());
+
+	CHECK(NamesFile(files, excludesFile));
+	CHECK(NamesFile(files, temp.GetPath() / ".git" / "config.worktree"));
+}
+
+namespace {
+	constexpr int kConfigLevelsReadByEveryRepository[] = {GIT_CONFIG_LEVEL_PROGRAMDATA, GIT_CONFIG_LEVEL_SYSTEM,
+														  GIT_CONFIG_LEVEL_XDG, GIT_CONFIG_LEVEL_GLOBAL};
+
+	// WARNING: libgit2's search paths are global to the process, so every one changed here is put back.
+	class SearchPathsInFolder
+	{
+	public:
+		explicit SearchPathsInFolder(const std::filesystem::path& folder)
+		{
+			git_libgit2_init();
+
+			for (const int level : kConfigLevelsReadByEveryRepository)
+			{
+				git_buf previous = GIT_BUF_INIT;
+				REQUIRE(git_libgit2_opts(GIT_OPT_GET_SEARCH_PATH, level, &previous) == 0);
+				m_Previous.push_back(previous.ptr != nullptr ? std::string{previous.ptr} : std::string{});
+				git_buf_dispose(&previous);
+
+				REQUIRE(git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, level, Core::ToUtf8(folder).c_str()) == 0);
+			}
+		}
+
+		~SearchPathsInFolder()
+		{
+			for (std::size_t levelIndex = 0; levelIndex < m_Previous.size(); ++levelIndex)
+			{
+				git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, kConfigLevelsReadByEveryRepository[levelIndex],
+								 m_Previous[levelIndex].c_str());
+			}
+		}
+
+		SearchPathsInFolder(const SearchPathsInFolder&) = delete;
+		SearchPathsInFolder& operator=(const SearchPathsInFolder&) = delete;
+
+	private:
+		std::vector<std::string> m_Previous;
+	};
+}
+
+TEST_CASE("Without core.excludesFile, the ignore file of the XDG configuration folder is among the rules files outside the folder")
+{
+	TempDirectory temp;
+	const std::filesystem::path repositoryRoot = temp.MakeDirectory("repo");
+	const std::filesystem::path configurationFolder = temp.MakeDirectory("xdg-git");
+	InitRepository(repositoryRoot);
+
+	const SearchPathsInFolder searchPaths{configurationFolder};
+
+	Result<Repository> opened = Repository::Open(repositoryRoot);
+	REQUIRE(opened.HasValue());
+
+	CHECK(NamesFile(opened.GetValue().IgnoreRuleFilesOutside(repositoryRoot), configurationFolder / "ignore"));
 }
 
 TEST_CASE("A moved-from repository holds no handle and answers every question with an error rather than handing libgit2 a null repository")

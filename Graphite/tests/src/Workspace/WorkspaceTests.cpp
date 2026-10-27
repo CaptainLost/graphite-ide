@@ -444,15 +444,16 @@ TEST_CASE("Opening a solution while it is read is not a failure, and the failure
 }
 
 namespace {
-	struct ReaderThatThrowsOnce
+	struct ReaderThatThrows
 	{
 		int* Calls = nullptr;
+		int Throws = 0;
 
 		Core::Result<Graphite::Solution> operator()(const std::filesystem::path& solution) const
 		{
 			++*Calls;
 
-			if (*Calls == 1)
+			if (*Calls <= Throws)
 			{
 				throw std::runtime_error("the disk went away");
 			}
@@ -460,35 +461,107 @@ namespace {
 			return Graphite::ReadSolution(solution);
 		}
 	};
+
+	constexpr int kAlways = 1000;
 }
 
-TEST_CASE("A solution read that throws says why in place of the solution, and the next reload reads it again")
+TEST_CASE("A solution read that throws once is read again at once, and says nothing when the second read succeeds")
 {
 	TempDirectory folder;
 	MakeSolution(folder, "App.slnx", kOneProjectSolution);
 
 	DeferredJobs jobs;
 	int readerCalls = 0;
-	SolutionWorkspace opened{jobs, ReaderThatThrowsOnce{.Calls = &readerCalls}};
+	SolutionWorkspace opened{jobs, ReaderThatThrows{.Calls = &readerCalls, .Throws = 1}};
 
 	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
 	jobs.RunAll();
 	opened.Workspace.Update();
 
-	CHECK_FALSE(opened.Workspace.IsReadingSolution());
-	CHECK_FALSE(opened.Workspace.GetLoadedSolution().has_value());
-	REQUIRE(opened.Workspace.GetSolutionReadFailure().has_value());
-	CHECK(opened.Workspace.GetSolutionReadFailure()->find("the disk went away") != std::string::npos);
-	CHECK(opened.Log.Toasts.size() == 1);
-
-	opened.Workspace.Reload(Core::IgnoreAnswers::Keep);
+	CHECK(opened.Workspace.IsReadingSolution());
 	REQUIRE(jobs.Count() == 1);
+
 	jobs.RunAll();
 	opened.Workspace.Update();
 
 	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
 	CHECK_FALSE(opened.Workspace.GetSolutionReadFailure().has_value());
+	CHECK(opened.Log.Toasts.empty());
 	CHECK(readerCalls == 2);
+}
+
+TEST_CASE("A solution read that throws every time is reported once, then waits for the solution's files to change")
+{
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSolution(folder, "App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	int readerCalls = 0;
+	SolutionWorkspace opened{jobs, ReaderThatThrows{.Calls = &readerCalls, .Throws = kAlways}};
+
+	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
+	jobs.RunAll();
+	opened.Workspace.Update();
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	CHECK_FALSE(opened.Workspace.IsReadingSolution());
+	REQUIRE(opened.Workspace.GetSolutionReadFailure().has_value());
+	CHECK(opened.Workspace.GetSolutionReadFailure()->find("the disk went away") != std::string::npos);
+	CHECK(opened.Log.Toasts.size() == 1);
+	CHECK(readerCalls == 2);
+
+	opened.Workspace.Reload(Core::IgnoreAnswers::Keep);
+	opened.Workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK(jobs.Count() == 0);
+	CHECK(opened.Log.Toasts.size() == 1);
+
+	std::ofstream(solution, std::ios::binary | std::ios::trunc) << kTwoProjectSolution;
+	opened.Workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK(jobs.Count() == 1);
+	jobs.RunAll();
+	opened.Workspace.Update();
+}
+
+TEST_CASE("A rules file appearing above an open subfolder is asked about on the next reload")
+{
+	TempDirectory temp;
+	REQUIRE(Core::Repository::Init(temp.GetPath()));
+	const std::filesystem::path subfolder = temp.MakeDirectory("sub");
+	std::ofstream(subfolder / "notes.txt") << "x";
+
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	REQUIRE(workspace.OpenFolder(subfolder));
+	REQUIRE_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+
+	WriteRules(temp.GetPath(), kRulesOfAnotherSize);
+	workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
+}
+
+TEST_CASE("A rules file disappearing above an open subfolder is asked about on the next reload")
+{
+	IgnoreRulesRepository repository;
+	const std::filesystem::path subfolder = repository.Temp.MakeDirectory("sub");
+	std::ofstream(subfolder / "build.log") << "x";
+
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	REQUIRE(workspace.OpenFolder(subfolder));
+	REQUIRE(IsRootChildIgnored(workspace, "build.log"));
+
+	std::filesystem::remove(repository.Temp.GetPath() / ".gitignore");
+	workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
 }
 
 TEST_CASE("A rules file above an open subfolder, which the watcher cannot see, is asked about again on the next reload")

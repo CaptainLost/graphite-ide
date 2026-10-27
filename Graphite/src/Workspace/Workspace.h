@@ -142,6 +142,7 @@ namespace Graphite {
 		}
 
 		bool IsOpen() const { return m_Tree.HasRoot(); }
+		std::uint64_t GetFolderGeneration() const { return m_FolderGeneration; }
 		const std::filesystem::path& GetRoot() const { return m_Root; }
 		Core::FileTree& GetTree() { return m_Tree; }
 		const Core::FileTree& GetTree() const { return m_Tree; }
@@ -222,6 +223,7 @@ namespace Graphite {
 		Core::Ref<Core::Mailbox<SolutionRead>> m_FinishedSolutionReads = Core::CreateRef<Core::Mailbox<SolutionRead>>();
 		std::uint64_t m_SolutionReadGeneration = 0;
 		bool m_ReadingSolution = false;
+		bool m_ReadingAgainAfterAThrow = false;
 		std::optional<Core::Repository> m_Repository;
 		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;
 		Core::FileTree m_Tree;
@@ -229,6 +231,7 @@ namespace Graphite {
 
 		bool m_WatcherResumed = false;
 		std::filesystem::path m_Root;
+		std::uint64_t m_FolderGeneration = 0;
 
 		std::optional<Solution> m_Solution;
 		std::optional<std::string> m_SolutionReadFailure;
