@@ -4,6 +4,8 @@
 #include "Git/Blame/HeadBlame.h"
 #include "Git/Changes/ChangeBases.h"
 #include "Git/GitPort.h"
+#include "Git/Work/WorkPort.h"
+#include "Core/Git/PatchMatch.h"
 #include "Review/ReviewPort.h"
 
 #include <atomic>
@@ -19,7 +21,7 @@ namespace Graphite {
 
 	// WARNING: A git_repository must not be used from two threads at once, so each worker thread
 	// caches its own handle per root.
-	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort
+	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public WorkPort
 	{
 	public:
 		explicit RepositoryGitPort(std::filesystem::path root);
@@ -82,6 +84,9 @@ namespace Graphite {
 												  const std::filesystem::path& newPath) override;
 		Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) override;
 
+		Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request) override;
+		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override;
+
 		void SetRoot(std::filesystem::path root);
 
 		// WARNING: Reaches the calling thread's handles only, so it is run on the thread whose handles of a closed or
@@ -102,5 +107,8 @@ namespace Graphite {
 		std::uint64_t m_Generation = 0;
 
 		std::atomic<std::uint64_t> m_OpenCount{0};
+
+		// Needs no reset when the root changes: an object id names the same commit in any repository.
+		Core::PatchIdCache m_PatchIds;
 	};
 }

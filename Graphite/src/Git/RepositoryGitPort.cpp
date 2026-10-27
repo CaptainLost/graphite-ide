@@ -1193,6 +1193,90 @@ namespace Graphite {
 		return TextsOf(std::move(oldSide).GetValue(), std::move(newSide).GetValue());
 	}
 
+	Core::Result<std::size_t> RepositoryGitPort::CountUncommitted(const std::filesystem::path& worktree)
+	{
+		// WARNING: Not cached per thread, for the reason QueryWorktreeDiff gives. A wholly untracked folder
+		// is one entry, as QueryStatus collapses it.
+		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const Core::Repository repository = std::move(opened).GetValue();
+		Core::Result<Core::WorkingTreeStatus> status = repository.QueryStatus();
+
+		if (!status.HasValue())
+		{
+			return status.GetError();
+		}
+
+		return status.GetValue().Entries.size();
+	}
+
+	Core::Result<WorkFacts> RepositoryGitPort::ReadWorkFacts(const WorkFactsRequest& request)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const Core::Repository* repository = opened.GetValue();
+
+		Core::Result<std::vector<Core::WorktreeEntry>> entries = repository->QueryWorktrees();
+
+		if (!entries.HasValue())
+		{
+			return entries.GetError();
+		}
+
+		WorkFacts facts;
+		facts.Answers = request;
+
+		for (Core::WorktreeEntry& entry : entries.GetValue())
+		{
+			WorktreeFacts worktree;
+
+			if (!entry.IsMain && !entry.FolderMissing)
+			{
+				const Core::Result<std::size_t> count = CountUncommitted(entry.Path);
+
+				if (count.HasValue())
+				{
+					worktree.Uncommitted = count.GetValue();
+				}
+			}
+
+			worktree.Entry = std::move(entry);
+			facts.Worktrees.push_back(std::move(worktree));
+		}
+
+		for (const BranchTip& branch : request.Branches)
+		{
+			BranchFacts answer;
+			answer.FullName = branch.FullName;
+
+			Core::Result<Core::PatchMatch> match =
+				repository->MatchPatches(branch.Tip, request.TrunkTip, request.PatchBudget, m_PatchIds);
+
+			if (match.HasValue())
+			{
+				answer.Match = match.GetValue();
+			}
+			else
+			{
+				answer.Failure = match.GetError();
+			}
+
+			facts.Branches.push_back(std::move(answer));
+		}
+
+		return facts;
+	}
+
 	Core::Result<SinceViewedAnswer> RepositoryGitPort::ReadSinceViewed(const SinceViewedRequest& request)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
