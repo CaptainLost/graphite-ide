@@ -143,9 +143,15 @@ namespace Core {
 
 			if (FitsBesideButton(oneLineMessage, region, buttonSize, style))
 			{
-				const ImVec2 rowButtonSize(buttonSize.x, std::clamp(region.y, ImGui::GetTextLineHeight(), buttonSize.y));
+				const float lineHeight = ImGui::GetTextLineHeight();
+				const ImVec2 rowButtonSize(buttonSize.x, std::clamp(region.y, lineHeight, buttonSize.y));
 				const float rowBottom = DrawBesideButton(oneLineMessage, origin, region, rowButtonSize, style);
+
+				// WARNING: ImGui keeps a button's label below its full frame padding, so a button lowered to fit takes padding that fits.
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+									ImVec2(style.FramePadding.x, (rowButtonSize.y - lineHeight) * kHalf));
 				bool clicked = Core::TextButton(action, rowButtonSize);
+				ImGui::PopStyleVar();
 
 				if (noteWhileDisabled != nullptr && OfferWhileDisabled(noteWhileDisabled))
 				{
