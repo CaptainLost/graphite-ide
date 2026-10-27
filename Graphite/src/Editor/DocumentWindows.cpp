@@ -955,25 +955,51 @@ namespace Graphite {
 	// the wheel itself and never routes it; the font is what the pointer is over, whichever tab has the focus.
 	bool DocumentWindows::ZoomFocusedPicture(PictureZoom zoom)
 	{
-		if (!m_FocusedPicture || ImGui::GetIO().MouseWheel != 0.0f)
+		if (ImGui::GetIO().MouseWheel != 0.0f)
 		{
 			return false;
 		}
 
-		const std::optional<std::size_t> index = m_Documents.Find(*m_FocusedPicture);
+		const std::optional<std::filesystem::path> picture = PictureTakingTheZoom();
+
+		if (!picture)
+		{
+			return false;
+		}
+
+		const std::optional<std::size_t> index = m_Documents.Find(*picture);
 
 		if (!index || !ShowsPicture(m_Documents.At(*index)))
 		{
 			return false;
 		}
 
-		if (const auto shown = m_ShownPictures.find(*m_FocusedPicture); shown != m_ShownPictures.end())
+		if (const auto shown = m_ShownPictures.find(*picture); shown != m_ShownPictures.end())
 		{
-			ZoomImageTab(m_Images.For(*m_FocusedPicture), zoom, shown->second.Area);
+			ZoomImageTab(m_Images.For(*picture), zoom, shown->second.Area);
 			Core::Redraw::Request();
 		}
 
 		return true;
+	}
+
+	// WARNING: With the focus outside every document tab, as in a menu or a popup, the zoom is meant for the active tab:
+	// a menu takes the focus before its item runs, so no tab holds it at that moment.
+	std::optional<std::filesystem::path> DocumentWindows::PictureTakingTheZoom() const
+	{
+		if (m_FocusedPicture)
+		{
+			return m_FocusedPicture;
+		}
+
+		const std::filesystem::path* const active = m_Documents.GetActiveItemPath();
+
+		if (m_DocumentFocused || active == nullptr || !m_ShownPictures.contains(*active))
+		{
+			return std::nullopt;
+		}
+
+		return *active;
 	}
 
 	std::vector<ViewStatusItem> DocumentWindows::GetViewStatusItems() const
@@ -2073,6 +2099,7 @@ namespace Graphite {
 
 		std::map<std::filesystem::path, ShownPicture> shownPictures;
 		std::optional<std::filesystem::path> focusedPicture;
+		bool documentFocused = false;
 
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -2133,6 +2160,7 @@ namespace Graphite {
 				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
 				{
 					ActivateAndRememberNode(index);
+					documentFocused = true;
 				}
 
 				const ImGuiMouseButton leftMouseButton = ImGuiMouseButton_Left;
@@ -2325,6 +2353,7 @@ namespace Graphite {
 
 		m_ShownPictures = std::move(shownPictures);
 		m_FocusedPicture = std::move(focusedPicture);
+		m_DocumentFocused = documentFocused;
 
 		// Edits a drawn tab made were sent as it drew. This sends the rest: a reload, or an edit
 		// made through another view.

@@ -150,8 +150,8 @@ namespace Graphite {
 
 		std::optional<std::string> GetStatusMessage() const;
 
-		// True when the tab with the keyboard focus last frame shows a picture, which takes the zoom instead of the
-		// font.
+		// True when a picture takes the zoom instead of the font: the one in the tab with the keyboard focus last
+		// frame, or, when no tab had it, the active tab's.
 		bool ZoomFocusedPicture(PictureZoom zoom);
 
 		// What the active tab's picture put in the status bar last frame; nothing when it shows no picture.
@@ -353,6 +353,8 @@ namespace Graphite {
 		ShownPicture RenderImageTab(const CommandContext& context, const Core::OpenItem& item, EditorSettings& settings,
 									const std::filesystem::path& workspaceRoot, bool updatedAsShown);
 
+		std::optional<std::filesystem::path> PictureTakingTheZoom() const;
+
 		void CheckPictureOnDisk(std::size_t index);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
@@ -480,10 +482,11 @@ namespace Graphite {
 
 		std::set<std::filesystem::path> m_Shown;
 
-		// The pictures drawn last frame, and the one whose window had the keyboard focus. Both are kept as they were
-		// for the whole of the next frame, so a command run while it draws sees what the user saw.
+		// The pictures drawn last frame, the one whose window had the keyboard focus, and whether any tab had it. All
+		// are kept as they were for the whole of the next frame, so a command run while it draws sees what the user saw.
 		std::map<std::filesystem::path, ShownPicture> m_ShownPictures;
 		std::optional<std::filesystem::path> m_FocusedPicture;
+		bool m_DocumentFocused = false;
 
 		// WARNING: Constructed after m_Server, which it holds.
 		LspAnswerRouter m_Router;

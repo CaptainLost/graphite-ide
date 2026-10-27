@@ -86,6 +86,8 @@ namespace {
 	constexpr ImVec2 kBesideTheFirst(640.0f, 0.0f);
 	constexpr std::size_t kAnalysisBudgetBytes = 1u << 20;
 	constexpr ImVec2 kPictureSize(2.0f, 2.0f);
+	constexpr ImVec2 kMenuPlace(0.0f, 450.0f);
+	constexpr const char* kMenuPopup = "##menu";
 
 	template<std::size_t Count>
 	std::string Contents(const std::uint8_t (&bytes)[Count])
@@ -251,6 +253,39 @@ namespace {
 			Input.PushKey(key, modifiers, false);
 			Frame();
 			Input.Clear();
+		}
+
+		// As a menu runs its item: from a popup that took the keyboard focus a frame earlier.
+		bool RunFromMenu(const std::string& commandId)
+		{
+			bool ran = false;
+
+			const auto menu = [this, &commandId, &ran](bool choose) {
+				ImGui::SetNextWindowPos(kMenuPlace);
+				ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+
+				if (!ImGui::IsPopupOpen(kMenuPopup))
+				{
+					ImGui::OpenPopup(kMenuPopup);
+				}
+
+				if (ImGui::BeginPopup(kMenuPopup))
+				{
+					if (choose)
+					{
+						ran = Commands.RunFromMenu(commandId);
+						ImGui::CloseCurrentPopup();
+					}
+
+					ImGui::EndPopup();
+				}
+
+				ImGui::End();
+			};
+
+			Frame([&menu] { menu(false); });
+			Frame([&menu] { menu(true); });
+			return ran;
 		}
 
 		ImGuiFrames Frames;
@@ -552,4 +587,53 @@ TEST_CASE("Ctrl+wheel over a text editor changes the font while a picture holds 
 
 	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
 	CHECK(drawn.Picture(picture).GetZoom().Zoom == 1.0f);
+}
+
+TEST_CASE("Zoom In from a menu zooms the active image tab's picture and not the font")
+{
+	TempDirectory folder;
+	const std::filesystem::path picture = folder.MakeFile("logo.png", Contents(ImageFixtures::kPng2x2));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(picture, true);
+	drawn.ShowLanded();
+	drawn.Focus(picture);
+
+	const float font = drawn.Settings.GetFontSize();
+	REQUIRE(drawn.Picture(picture).GetZoom().Zoom == 1.0f);
+
+	CHECK(drawn.RunFromMenu("editor.zoomIn"));
+
+	CHECK(drawn.Picture(picture).GetZoom().Zoom == 1.5f);
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font));
+
+	CHECK(drawn.RunFromMenu("editor.resetZoom"));
+
+	CHECK(drawn.Picture(picture).GetZoom().Zoom > 100.0f);
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font));
+}
+
+TEST_CASE("Zoom In from a menu changes the font while a text tab is active")
+{
+	TempDirectory folder;
+	const std::filesystem::path picture = folder.MakeFile("logo.png", Contents(ImageFixtures::kPng2x2));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(picture, true);
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.ShowLanded();
+	drawn.Focus(notes);
+
+	const float font = drawn.Settings.GetFontSize();
+	const float zoom = drawn.Picture(picture).GetZoom().Zoom;
+
+	CHECK(drawn.RunFromMenu("editor.zoomIn"));
+
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+	CHECK(drawn.Picture(picture).GetZoom().Zoom == zoom);
 }
