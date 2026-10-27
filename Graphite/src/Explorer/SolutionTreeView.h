@@ -46,6 +46,7 @@ namespace Graphite {
 
 		bool CanEditSolution() const;
 		bool CanEditNow() const;
+		const char* NotEditableReason() const;
 
 		void NewFolderInRoot();
 

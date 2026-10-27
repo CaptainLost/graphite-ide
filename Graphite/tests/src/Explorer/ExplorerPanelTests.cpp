@@ -9,6 +9,7 @@
 #include "UI/PanelHeader.h"
 #include "Workspace/Workspace.h"
 
+#include "DeferredJobs.h"
 #include "DrawnColours.h"
 #include "HoveredItems.h"
 #include "ImGuiFrames.h"
@@ -36,6 +37,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -89,7 +91,9 @@ namespace {
 	class ExplorerPanelScreen
 	{
 	public:
-		explicit ExplorerPanelScreen(const std::filesystem::path& folder)
+		explicit ExplorerPanelScreen(const std::filesystem::path& folder,
+									 Core::JobSubmitter workspaceJobs = Graphite::RunJobWhereSubmitted)
+			: Workspace{Events, Settings.Get(), Core::DirectoryWatcher::Start, std::move(workspaceJobs)}
 		{
 			REQUIRE(Workspace.OpenFolder(folder));
 
@@ -160,6 +164,18 @@ namespace {
 			return HoveredAcross(Frames, HeaderMiddle(), HeaderTop.x, ContentRight, [this] { Draw(); });
 		}
 
+		bool IsHeaderItemDisabled(std::size_t index)
+		{
+			const std::vector<HoveredStretch> items = HeaderItems();
+			REQUIRE(index < items.size());
+
+			ImGui::GetIO().AddMousePosEvent(items[index].Middle(), HeaderMiddle());
+			Next();
+
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+			return context.HoveredId == items[index].Id && context.HoveredIdIsDisabled;
+		}
+
 		void ClickHeaderItem(std::size_t index)
 		{
 			const std::vector<HoveredStretch> items = HeaderItems();
@@ -182,7 +198,7 @@ namespace {
 		ImGuiFrames Frames;
 		TempAppSettings Settings;
 		Core::EventBus Events;
-		Graphite::Workspace Workspace{Events, Settings.Get()};
+		Graphite::Workspace Workspace;
 		Core::DocumentSet Documents;
 		Graphite::ModalGate Modals;
 		Graphite::ActiveScheme Scheme;
@@ -281,6 +297,30 @@ TEST_CASE("Over a solution the Explorer's header holds New Folder and Refresh, a
 	screen.ClickHeaderItem(kSolutionNewFolderButton);
 
 	CHECK(ReadWhole(solution).find("New Folder") != std::string::npos);
+}
+
+TEST_CASE("While the solution is read again, the Explorer header's New Folder is disabled, and enabled once the read lands")
+{
+	TempDirectory folder;
+	folder.MakeFile("Only.slnx", kEmptySolution);
+
+	DeferredJobs jobs;
+	ExplorerPanelScreen screen{folder.GetPath(), jobs.Submitter()};
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.ChooseInDropdown(kModeDropdown, kSolutionOption);
+	REQUIRE(screen.HeaderItems().size() == 3);
+	REQUIRE_FALSE(screen.IsHeaderItemDisabled(kSolutionNewFolderButton));
+
+	screen.Workspace.ReloadSolution();
+	REQUIRE(screen.Workspace.IsReadingSolution());
+
+	CHECK(screen.IsHeaderItemDisabled(kSolutionNewFolderButton));
+
+	jobs.RunAll();
+	screen.Workspace.Update();
+
+	CHECK_FALSE(screen.IsHeaderItemDisabled(kSolutionNewFolderButton));
 }
 
 TEST_CASE("With two solutions in the folder, the Explorer's header chooses between them")

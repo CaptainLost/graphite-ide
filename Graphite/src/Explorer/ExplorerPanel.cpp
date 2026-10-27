@@ -187,6 +187,14 @@ namespace Graphite {
 		std::vector<PanelHeaderAction> actions;
 		std::ranges::transform(commands, std::back_inserter(actions), &ExplorerPanel::ActionFor);
 
+		for (std::size_t commandIndex = 0; commandIndex < commands.size(); ++commandIndex)
+		{
+			if (commands[commandIndex] == HeaderCommand::NewSolutionFolder)
+			{
+				actions[commandIndex].Enabled = m_Solution.CanEditNow();
+			}
+		}
+
 		const PanelHeaderResult result = DrawPanelHeader(choices, actions);
 
 		if (result.ClickedAction.has_value())

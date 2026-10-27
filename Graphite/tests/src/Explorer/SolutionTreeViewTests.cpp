@@ -14,6 +14,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui.h>
@@ -637,6 +638,40 @@ TEST_CASE("While the solution is read again, its rows offer no edits")
 	jobs.RunAll();
 	screen.Workspace.Update();
 	screen.Next();
+}
+
+TEST_CASE("A .sln being read again gives its own reason for refusing edits, and a .slnx the read")
+{
+	const std::string oneProjectSln =
+		"Microsoft Visual Studio Solution File, Format Version 12.00\n"
+		"Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"Tools\", \"Tools\\Tools.csproj\", \"{BBBB0001-0000-0000-0000-000000000000}\"\n"
+		"EndProject\n";
+
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path sln = folder.MakeFile("Old.sln", oneProjectSln);
+	const std::filesystem::path slnx = folder.MakeFile("New.slnx", kOneProjectSolution);
+
+	for (const std::filesystem::path& solution : {sln, slnx})
+	{
+		DeferredJobs jobs;
+		SolutionScreen screen{solution, jobs.Submitter()};
+		jobs.RunAll();
+		screen.Workspace.Update();
+		screen.Next();
+
+		screen.Workspace.ReloadSolution();
+		REQUIRE(screen.Workspace.IsReadingSolution());
+
+		const std::string_view reason = screen.View.NotEditableReason();
+		const bool namesTheRead = reason.find("read again") != std::string_view::npos;
+
+		CAPTURE(Core::ToUtf8(solution.filename()));
+		CHECK(namesTheRead == (solution == slnx));
+
+		jobs.RunAll();
+		screen.Workspace.Update();
+	}
 }
 
 TEST_CASE("A removal confirmed after the solution started being read again is refused, and the file keeps the project")

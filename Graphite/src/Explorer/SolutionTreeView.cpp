@@ -773,7 +773,7 @@ namespace Graphite {
 
 	void SolutionTreeView::NewFolderInRoot()
 	{
-		if (!CanEditSolution())
+		if (!CanEditNow())
 		{
 			return;
 		}
@@ -812,11 +812,21 @@ namespace Graphite {
 		return CanEditSolution() && !m_Workspace.IsReadingSolution();
 	}
 
+	const char* SolutionTreeView::NotEditableReason() const
+	{
+		if (!CanEditSolution())
+		{
+			return kNotEditableTip;
+		}
+
+		return kReadingAgainTip;
+	}
+
 	void SolutionTreeView::ExplainNotEditable(bool editable) const
 	{
 		if (!editable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			ImGui::SetTooltip("%s", m_Workspace.IsReadingSolution() ? kReadingAgainTip : kNotEditableTip);
+			ImGui::SetTooltip("%s", NotEditableReason());
 		}
 	}
 

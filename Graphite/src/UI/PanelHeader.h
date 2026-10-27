@@ -17,6 +17,7 @@ namespace Graphite {
 		const char* Id;
 		const char* Glyph;
 		const char* Tooltip;
+		bool Enabled = true;
 	};
 
 	struct PanelHeaderChoice

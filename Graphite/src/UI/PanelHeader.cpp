@@ -220,11 +220,14 @@ namespace Graphite {
 				const PanelHeaderAction& action = actions[index];
 
 				ImGui::SetCursorScreenPos(ImVec2(x, buttonTop));
+				ImGui::BeginDisabled(!action.Enabled);
 
 				if (Core::DrawIconButton(action.Id, action.Glyph, kNotEngaged, action.Tooltip, kAction))
 				{
 					clicked = index;
 				}
+
+				ImGui::EndDisabled();
 
 				x += Core::IconButtonSize(kAction.Fit) + Core::Scaled(kBetweenActions);
 			}
