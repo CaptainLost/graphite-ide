@@ -506,7 +506,7 @@ namespace Graphite {
 		// open, so no blame is held for a file nobody is looking at the authors of.
 		bool m_LineAuthor = false;
 
-		// This frame's Escape belongs to the open navigation bubble, so no document's peek or find bar closes on it.
+		// This frame's Escape belongs to the navigation bubble on screen, so no document's peek or find bar closes on it.
 		bool m_BubbleTakesEscape = false;
 
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;

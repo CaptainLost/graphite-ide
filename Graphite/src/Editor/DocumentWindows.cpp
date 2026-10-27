@@ -3025,8 +3025,15 @@ namespace Graphite {
 
 		// WARNING: Read before the documents draw. The bubble at the caret is the most passing thing an Escape closes,
 		// and AbandonNavigationIfReaderMovedOn below closes it on this same Escape, so without this one Escape closed
-		// the bubble and the peek under the line together.
-		m_BubbleTakesEscape = m_Bubble.IsOpen() && ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating);
+		// the bubble and the peek under the line together. Only a bubble the reader sees takes it, at the caret the
+		// documents placed last frame: one whose outcome has faded, whose wait has not shown yet, or whose caret is out
+		// of view stays open until the reader moves on, and an Escape it took closed nothing anyone could see.
+		const DocumentState* const bubbleState = FindState(m_Bubble.GetPath());
+		const bool bubbleSeen = bubbleState != nullptr &&
+								m_Bubble.IsSeenAt(ImGui::GetTime(), bubbleState->Caret, ImGui::GetFrameCount() - 1,
+												  ImGui::GetTopMostPopupModal() != nullptr);
+
+		m_BubbleTakesEscape = bubbleSeen && ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
 							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.LineAuthor,
