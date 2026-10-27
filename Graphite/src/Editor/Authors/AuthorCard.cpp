@@ -80,6 +80,12 @@ namespace Graphite {
 				MutedText(content.ShortHash);
 				ImGui::SameLine();
 			}
+			else
+			{
+				// The row starts with a button's word rather than the hash, so the button's frame goes out by its padding
+				// and the word lines up with the text above, where a committed card's hash starts.
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() - ImGui::GetStyle().FramePadding.x);
+			}
 
 			if (Core::TextButton("History of this line"))
 			{
@@ -303,7 +309,7 @@ namespace Graphite {
 		Core::PushInterfaceFont();
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + maxContentWidth);
 
-		ImGui::TextUnformatted(content.Name.c_str());
+		SemiboldText(content.Name);
 
 		if (!content.Email.empty())
 		{
@@ -325,6 +331,9 @@ namespace Graphite {
 		{
 			DrawBody(content.Body, maxContentWidth, appearing);
 		}
+
+		// A divider above the actions, which the theme draws in its border colour.
+		ImGui::Separator();
 
 		const std::optional<AuthorCardAction::Kind> clicked = DrawActions(content);
 

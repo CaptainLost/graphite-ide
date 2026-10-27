@@ -241,10 +241,9 @@ namespace Graphite {
 			return "History of line " + std::to_string(line + 1);
 		}
 
-		void FillHeader(LinePeekContent& content, std::size_t line)
+		void FillCounts(LinePeekContent& content)
 		{
-			content.Header = LineHeader(line) + std::string{kMiddleDotSeparator} +
-							 Core::Counted(static_cast<long long>(content.Entries.size()), "change") +
+			content.Counts = Core::Counted(static_cast<long long>(content.Entries.size()), "change") +
 							 std::string{kMiddleDotSeparator} + "follows renames";
 		}
 
@@ -259,7 +258,7 @@ namespace Graphite {
 	{
 		LinePeekContent content;
 
-		// The line alone until the history is ready, when the count and the renames note join it.
+		// The counts and the renames note join it once the history is ready.
 		content.Header = LineHeader(input.Line);
 
 		if (input.Authors == nullptr || input.Authors->Head == nullptr)
@@ -295,7 +294,7 @@ namespace Graphite {
 		{
 			content.Entries.push_back(UncommittedEntry(input, author, true));
 			content.State = PeekState::Ready;
-			FillHeader(content, input.Line);
+			FillCounts(content);
 			return content;
 		}
 
@@ -327,7 +326,7 @@ namespace Graphite {
 
 		content.StopsEarly = !input.History->History->Complete;
 		content.State = PeekState::Ready;
-		FillHeader(content, input.Line);
+		FillCounts(content);
 		return content;
 	}
 

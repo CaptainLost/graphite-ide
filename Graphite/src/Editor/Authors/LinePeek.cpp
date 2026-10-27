@@ -5,6 +5,7 @@
 #include "Editor/Authors/LinePeekContent.h"
 #include "Theme/ColorScheme.h"
 #include "Theme/GitPalette.h"
+#include "UI/FittedText.h"
 #include "UI/TypographicMarks.h"
 
 #include "Core/ImGui/FontSet.h"
@@ -29,6 +30,7 @@ namespace Graphite {
 		constexpr float kListWidthEms = 15.0f;
 		constexpr float kLinesPerEntry = 2.0f;
 		constexpr float kAccentBarWidth = 3.0f;
+		constexpr float kSelectedBarWidth = 2.0f;
 		constexpr float kDiffTextInset = 6.0f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kBothSides = 2.0f;
@@ -74,21 +76,36 @@ namespace Graphite {
 			return ImGui::GetColorU32(ImGuiCol_Text);
 		}
 
-		// The header's text, clipped short of the close button at the row's right end. True when the button was
-		// clicked.
-		bool DrawHeader(const std::string& header, float width)
+		// The history icon, the title in the semibold face and the counts muted, clipped short of the close button at the
+		// row's right end. True when the button was clicked.
+		bool DrawHeader(const LinePeekContent& content, float width)
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
 
 			const float lineHeight = ImGui::GetTextLineHeight();
 			const float closeWidth = ImGui::CalcTextSize(ICON_LC_X).x + style.FramePadding.x * kBothSides;
 			const float textWidth = std::max(0.0f, width - closeWidth - style.ItemSpacing.x);
+			const float gap = style.ItemSpacing.x;
 			const ImVec2 corner = ImGui::GetCursorScreenPos();
 
 			ImDrawList* const draw = ImGui::GetWindowDrawList();
+			float x = corner.x;
 
 			draw->PushClipRect(corner, ImVec2(corner.x + textWidth, corner.y + lineHeight), true);
-			draw->AddText(corner, ImGui::GetColorU32(ImGuiCol_Text), header.data(), header.data() + header.size());
+
+			draw->AddText(ImVec2(x, corner.y), ImGui::GetColorU32(ImGuiCol_Text), ICON_LC_HISTORY);
+			x += ImGui::CalcTextSize(ICON_LC_HISTORY).x + gap;
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+			draw->AddText(ImVec2(x, corner.y), ImGui::GetColorU32(ImGuiCol_Text), content.Header.c_str());
+			x += ImGui::CalcTextSize(content.Header.c_str()).x + gap;
+			ImGui::PopFont();
+
+			if (!content.Counts.empty())
+			{
+				draw->AddText(ImVec2(x, corner.y), ImGui::GetColorU32(ImGuiCol_TextDisabled), content.Counts.c_str());
+			}
+
 			draw->PopClipRect();
 
 			ImGui::Dummy(ImVec2(textWidth, lineHeight));
@@ -97,8 +114,8 @@ namespace Graphite {
 			return Core::SmallTextButton(kCloseLabel);
 		}
 
-		// Each entry is two lines on a row as wide as the list, its title and then its meta muted. Returns the entry
-		// clicked.
+		// Each entry is two lines on a row as wide as the list, its title and then its meta muted, each cut with an
+		// ellipsis to the row; the selected one has the accent bar at its left. Returns the entry clicked.
 		std::optional<std::size_t> DrawEntries(const LinePeekContent& content, std::size_t selected,
 											   const PeekColours& colours)
 		{
@@ -153,12 +170,22 @@ namespace Graphite {
 
 				const ImVec2 min = ImGui::GetItemRectMin();
 				const ImVec2 max = ImGui::GetItemRectMax();
+				const float room = std::max(0.0f, max.x - min.x - inset * kBothSides);
+
+				// WARNING: Cut to fit, not clipped: a clip took the end of the meta line, which is the short hash.
+				const std::string title = FitToWidth(entry.Title, room);
+				const std::string meta = FitToWidth(entry.Meta, room);
 
 				ImDrawList* const draw = ImGui::GetWindowDrawList();
 
+				if (isSelected)
+				{
+					draw->AddRectFilled(min, ImVec2(min.x + Core::Scaled(kSelectedBarWidth), max.y), colours.Accent);
+				}
+
 				draw->PushClipRect(min, max, true);
-				draw->AddText(ImVec2(min.x + inset, min.y), titleColour, entry.Title.c_str());
-				draw->AddText(ImVec2(min.x + inset, min.y + lineHeight), metaColour, entry.Meta.c_str());
+				draw->AddText(ImVec2(min.x + inset, min.y), titleColour, title.c_str());
+				draw->AddText(ImVec2(min.x + inset, min.y + lineHeight), metaColour, meta.c_str());
 				draw->PopClipRect();
 			}
 
@@ -266,7 +293,7 @@ namespace Graphite {
 
 		const float top = ImGui::GetCursorPosY();
 
-		if (DrawHeader(content.Header, size.x))
+		if (DrawHeader(content, size.x))
 		{
 			answer = PeekAction{.Action = PeekAction::Kind::Close};
 		}

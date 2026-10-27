@@ -209,6 +209,7 @@ TEST_CASE("Peek content names the line while its history loads")
 
 	CHECK(content.State == PeekState::Loading);
 	CHECK(content.Header == "History of line 2");
+	CHECK(content.Counts.empty());
 }
 
 TEST_CASE("Peek content lists an uncommitted edit first with the HEAD line it replaced")
@@ -422,5 +423,6 @@ TEST_CASE("Peek content header counts the changes")
 
 	const auto content = Build(&authors, 2, "c", &history);
 
-	CHECK(content.Header == "History of line 3 \xC2\xB7 2 changes \xC2\xB7 follows renames");
+	CHECK(content.Header == "History of line 3");
+	CHECK(content.Counts == "2 changes \xC2\xB7 follows renames");
 }
