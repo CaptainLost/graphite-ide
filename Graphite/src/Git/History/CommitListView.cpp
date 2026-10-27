@@ -318,6 +318,13 @@ namespace Graphite {
 
 			return std::nullopt;
 		}
+
+		// File History names a file at the root "/README.md" so that it names that file alone, and its row reads
+		// "README.md".
+		std::string_view WithoutRootAnchor(std::string_view pathHighlight)
+		{
+			return pathHighlight.starts_with('/') ? pathHighlight.substr(1) : pathHighlight;
+		}
 	}
 
 	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
@@ -569,7 +576,7 @@ namespace Graphite {
 					}
 					else
 					{
-						RenderFileRow(commit, row.File, palette, diffOf, diffFailed, pathHighlight);
+						RenderFileRow(commit, row.File, palette, diffOf, diffFailed, WithoutRootAnchor(pathHighlight));
 					}
 
 					ImGui::PopID();
