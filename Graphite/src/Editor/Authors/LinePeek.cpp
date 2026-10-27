@@ -16,6 +16,7 @@
 #include <IconsLucide.h>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <format>
@@ -259,18 +260,30 @@ namespace Graphite {
 		{
 			DetailLayout layout;
 
+			const ImGuiStyle& style = ImGui::GetStyle();
+
+			// WARNING: The title and the byline are cut to the view, not to the content region, which in a detail that
+			// scrolls sideways is as wide as its widest diff line.
+			const float viewWidth = ImGui::GetCurrentWindow()->InnerRect.GetWidth();
+
 			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
-			ImGui::TextUnformatted(entry.Title.c_str());
+			ImGui::TextUnformatted(FitToWidth(entry.Title, viewWidth).c_str());
 			ImGui::PopFont();
 
 			// WARNING: Beside the byline, not under the diff. Under it the button sat below the fold of every entry with
-			// more than a few lines, reachable only by scrolling.
+			// more than a few lines, reachable only by scrolling. The byline gives way to it, or a narrow peek cut the
+			// button to its first letters.
+			float bylineRoom = viewWidth;
+
 			if (entry.Commit.has_value())
 			{
+				const float buttonWidth = ImGui::CalcTextSize(kShowCommit).x + style.FramePadding.x * kBothSides;
+
+				bylineRoom = std::max(0.0f, viewWidth - buttonWidth - style.ItemSpacing.x);
 				ImGui::AlignTextToFramePadding();
 			}
 
-			ImGui::TextDisabled("%s", entry.Byline.c_str());
+			ImGui::TextDisabled("%s", FitToWidth(entry.Byline, bylineRoom).c_str());
 
 			if (entry.Commit.has_value())
 			{
@@ -279,7 +292,7 @@ namespace Graphite {
 			}
 
 			// The bands of a hunk touch, as they do in the Git diff.
-			const float spacingX = ImGui::GetStyle().ItemSpacing.x;
+			const float spacingX = style.ItemSpacing.x;
 
 			Core::PushCodeFont(codeSize);
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacingX, kNoItemSpacing));

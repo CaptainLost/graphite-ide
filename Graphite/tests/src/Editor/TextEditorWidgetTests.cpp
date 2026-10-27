@@ -2162,6 +2162,60 @@ TEST_CASE("Peek detail keeps the tracked line clear of its sideways scrollbar in
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Peek detail keeps Show commit whole in a narrow editor")
+{
+	constexpr std::size_t kDiffLines = 3;
+	constexpr float kNarrowWidth = 420.0f;
+	constexpr float kStep = 2.0f;
+	constexpr float kBothSides = 2.0f;
+
+	EditorFrames editor{LinesOf(kDiffLines)};
+	editor.Width = kNarrowWidth;
+
+	Graphite::PeekEntry entry =
+		LongEntry("Iterate a copy so handlers can unsubscribe while publishing", "line", kDiffLines, kFirstLine);
+	entry.Byline = "Anna Kowalczyk-Wisniewska \xC2\xB7 2026-07-14 16:42";
+
+	const Graphite::LinePeekContent content = ReadyPeek("History of line 1", {entry});
+	float buttonWidth = 0.0f;
+
+	ShowPeek(editor, kFirstLine, content);
+	editor.Next();
+	editor.Frames.Next([&] {
+		editor.Draw();
+
+		Core::PushInterfaceFont();
+		buttonWidth = ImGui::CalcTextSize("Show commit").x + ImGui::GetStyle().FramePadding.x * kBothSides;
+		ImGui::PopFont();
+	});
+
+	ImGuiWindow* const detail = ActiveWindowNamedWith(kPeekDetailMark);
+	REQUIRE(detail != nullptr);
+
+	const ImGuiID showCommit = detail->GetID("Show commit");
+	const ImRect shown = detail->InnerClipRect;
+	float left = FLT_MAX;
+	float right = -FLT_MAX;
+
+	for (float y = shown.Min.y + kStep; y < shown.Max.y && left == FLT_MAX; y += kStep)
+	{
+		for (float x = shown.Min.x + kStep; x < shown.Max.x; x += kStep)
+		{
+			editor.HoverAt(ImVec2(x, y));
+
+			if (ImGui::GetCurrentContext()->HoveredId == showCommit)
+			{
+				left = std::min(left, x);
+				right = std::max(right, x);
+			}
+		}
+	}
+
+	REQUIRE(left < right);
+	CHECK(right - left >= buttonWidth - kStep * kBothSides);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("Peek scrolls into view when it opens")
 {
 	constexpr std::size_t kLineCount = 60;
