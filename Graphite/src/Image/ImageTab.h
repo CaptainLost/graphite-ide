@@ -54,6 +54,10 @@ namespace Graphite {
 		// The whole line shown in place of the picture.
 		const std::string& GetFailure() const;
 
+		// False for a picture too large to preview, which reading the same file again cannot change; a change to the
+		// file is read without asking.
+		bool CanRetry() const;
+
 		// Set while the picture on screen is an older version because the newer one could not be read.
 		const std::string& GetReloadFailure() const;
 
@@ -104,6 +108,7 @@ namespace Graphite {
 
 		ImageTabState m_State = ImageTabState::Loading;
 		std::string m_Failure;
+		bool m_CanRetry = true;
 		std::string m_ReloadFailure;
 
 		std::optional<ImageFacts> m_Facts;

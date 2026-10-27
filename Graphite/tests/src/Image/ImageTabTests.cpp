@@ -224,6 +224,7 @@ TEST_CASE("An image tab that cannot decode its file fails with the reason")
 	CHECK(tab.GetFacts() == nullptr);
 	CHECK(tab.GetTexture() == nullptr);
 	CHECK(tab.GetDecodedBytes() == 0);
+	CHECK(tab.CanRetry());
 
 	SUBCASE("Retry loads again and shows the picture once the file is readable")
 	{
@@ -244,6 +245,7 @@ TEST_CASE("An image tab that cannot decode its file fails with the reason")
 
 		CHECK(missing.GetState() == ImageTabState::Failed);
 		CHECK(missing.GetFailure() == "Could not read this image: the file was not found");
+		CHECK(missing.CanRetry());
 	}
 
 	SUBCASE("A file another program holds shut fails as one that cannot be opened")
@@ -275,6 +277,7 @@ TEST_CASE("An image past the pixel limit fails as too large to preview")
 	CHECK(tab.GetFailure() == "Image is too large to preview (20000 × 12000)");
 	CHECK(tab.GetFacts() == nullptr);
 	CHECK(tab.GetTexture() == nullptr);
+	CHECK_FALSE(tab.CanRetry());
 }
 
 TEST_CASE("A changed file reloads and keeps the old picture until the new one is ready")

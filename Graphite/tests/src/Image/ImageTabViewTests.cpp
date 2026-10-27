@@ -338,6 +338,17 @@ TEST_CASE("An image tab that failed shows the reason with Retry")
 	CHECK(screen.Jobs.Count() == 1);
 }
 
+TEST_CASE("An image tab too large to preview shows the reason without Retry")
+{
+	ImageScreen screen("huge.png", Contents(ImageFixtures::kPngHeader20000x12000));
+	screen.Land();
+	REQUIRE(screen.Tab.GetState() == ImageTabState::Failed);
+
+	CHECK(screen.FindText("Image is too large to preview (20000 × 12000)").has_value());
+	CHECK_FALSE(screen.FindText("Retry").has_value());
+	CHECK_FALSE(screen.Picture.has_value());
+}
+
 TEST_CASE("An image tab whose new version could not be read keeps its picture under one line with Retry")
 {
 	ImageScreen screen("picture.png", Contents(ImageFixtures::kPng2x2));

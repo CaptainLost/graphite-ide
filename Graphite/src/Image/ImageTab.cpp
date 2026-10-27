@@ -142,6 +142,11 @@ namespace Graphite {
 		return m_Failure;
 	}
 
+	bool ImageTab::CanRetry() const
+	{
+		return m_CanRetry;
+	}
+
 	const std::string& ImageTab::GetReloadFailure() const
 	{
 		return m_ReloadFailure;
@@ -296,6 +301,7 @@ namespace Graphite {
 			// The facts of a released picture would describe one that is no longer shown.
 			m_Facts.reset();
 			m_Failure = FailureLine(error);
+			m_CanRetry = error.Code != Core::ErrorCode::TooLarge;
 			m_State = ImageTabState::Failed;
 			return;
 		}

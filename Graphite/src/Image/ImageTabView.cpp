@@ -161,7 +161,7 @@ namespace Graphite {
 			Core::LoadingState(kLoadingText);
 			break;
 		case ImageTabState::Failed:
-			if (Core::EmptyState(tab.GetFailure(), kRetryLabel))
+			if (Core::EmptyState(tab.GetFailure(), tab.CanRetry() ? kRetryLabel : nullptr))
 			{
 				tab.Load();
 			}
