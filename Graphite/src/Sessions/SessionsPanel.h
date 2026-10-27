@@ -3,6 +3,7 @@
 #include "Sessions/LocalClock.h"
 #include "Sessions/ClaudeLaunch.h"
 #include "Sessions/SessionIndex.h"
+#include "Sessions/SessionTitles.h"
 #include "Terminal/CommandTerminal.h"
 
 #include "Core/Base/Base.h"
@@ -58,6 +59,10 @@ namespace Graphite {
 		void OnUpdate(Core::Timestep timestep) override;
 		void OnImGuiRender() override;
 
+		// WARNING: The identity of the result changes only when the indexed sessions do, so a holder may compare
+		// pointers to know whether to rebuild what it derived.
+		Core::Ref<const SessionTitles> GetTitles() const { return m_Titles; }
+
 	private:
 		struct VisibleRow
 		{
@@ -70,6 +75,7 @@ namespace Graphite {
 		void StartIndexing();
 		void TakeFromIndex();
 		void TakeFromWatcher();
+		void RebuildTitles();
 		void SaveCacheWhenSettled();
 		void SaveCache();
 
@@ -103,6 +109,7 @@ namespace Graphite {
 		std::chrono::steady_clock::time_point m_NextDirectoryCheck;
 
 		std::map<std::filesystem::path, SessionSummary> m_Sessions;
+		Core::Ref<const SessionTitles> m_Titles = Core::CreateRef<const SessionTitles>();
 
 		LocalClock m_Clock;
 

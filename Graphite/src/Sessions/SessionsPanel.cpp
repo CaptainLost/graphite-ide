@@ -154,6 +154,8 @@ namespace Graphite {
 			m_Sessions[summary.File] = summary;
 		}
 
+		RebuildTitles();
+
 		m_Index.Start(m_Projects, std::move(cached));
 		m_InitialScan = true;
 		m_CacheDirty = true;
@@ -185,6 +187,16 @@ namespace Graphite {
 			m_Sessions.erase(file);
 			m_CacheDirty = true;
 		}
+
+		if (!delivery.Updated.empty() || !delivery.Removed.empty())
+		{
+			RebuildTitles();
+		}
+	}
+
+	void SessionsPanel::RebuildTitles()
+	{
+		m_Titles = Core::CreateRef<const SessionTitles>(LatestSessionTitles(m_Sessions));
 	}
 
 	void SessionsPanel::TakeFromWatcher()
