@@ -47,6 +47,7 @@ namespace {
 		std::map<std::filesystem::path, std::string> Titles;
 		bool HaveFacts = true;
 		bool StaleFacts = false;
+			std::string MovedSinceFacts; // full name of a branch that is at another tip now than when the facts were read
 		Core::HeadState MainHead{.Kind = Core::HeadKind::Branch, .BranchName = "feature"};
 
 		Scene()
@@ -149,8 +150,18 @@ namespace {
 				facts.Branches.push_back(branch);
 			}
 
+			std::vector<Core::Branch> current = Branches;
+
+			for (Core::Branch& branch : current)
+			{
+				if (branch.FullName == MovedSinceFacts)
+				{
+					branch.Tip = OidOf(222);
+				}
+			}
+
 			Graphite::WorkBoardInput input;
-			input.Branches = &Branches;
+			input.Branches = &current;
 			input.Facts = HaveFacts ? &facts : nullptr;
 			input.WorkingCopyChanges = WorkingCopyChanges;
 			input.TitleOf = [this](const std::filesystem::path& worktree) -> std::optional<std::string> {
@@ -356,6 +367,22 @@ TEST_CASE("Facts that answer other branches are used but the board says they are
 
 	CHECK(board.FactsPending);
 	CHECK(ReadyFor(board, "side") != nullptr);
+}
+
+TEST_CASE("A branch that moved since the facts were read is unchecked, not ready")
+{
+	Scene scene;
+	scene.Add("side");
+	scene.Matches["refs/heads/side"] = Match(0, 3, 0, 0);
+	scene.MovedSinceFacts = "refs/heads/side";
+
+	const Graphite::WorkBoard board = scene.Build();
+
+	CHECK(board.FactsPending);
+	CHECK(ReadyFor(board, "side") == nullptr);
+	const Graphite::WorkCard* card = CardFor(board, "side");
+	REQUIRE(card != nullptr);
+	CHECK_FALSE(card->Checked);
 }
 
 TEST_CASE("A failed branch read gets an unchecked card")

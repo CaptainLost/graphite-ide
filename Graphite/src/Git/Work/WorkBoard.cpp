@@ -71,6 +71,19 @@ namespace Graphite {
 			return nullptr;
 		}
 
+		bool TipMovedSince(const WorkFacts* facts, const Core::Branch& branch)
+		{
+			for (const BranchTip& answered : facts->Answers.Branches)
+			{
+				if (answered.FullName == branch.FullName)
+				{
+					return answered.Tip != branch.Tip;
+				}
+			}
+
+			return false;
+		}
+
 		WorkState StateOf(std::size_t ahead, std::size_t behind)
 		{
 			if (behind > 0)
@@ -197,6 +210,12 @@ namespace Graphite {
 			}
 
 			const BranchFacts* branchFacts = FactsOf(facts, branch.FullName);
+
+				// WARNING: Facts read at another tip say nothing about this one; the branch counts as unchecked.
+				if (branchFacts != nullptr && TipMovedSince(facts, branch))
+				{
+					branchFacts = nullptr;
+				}
 			const WorktreeFacts* worktree = LinkedWorktreeOf(facts, branch.FullName);
 			const Core::PatchMatch* match = branchFacts != nullptr && branchFacts->Match.has_value() ? &*branchFacts->Match : nullptr;
 
