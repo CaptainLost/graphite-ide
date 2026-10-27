@@ -4,6 +4,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Git/GitFixture.h"
+#include "Git/WorktreeFixture.h"
 #include "TempDirectory.h"
 
 #include <git2.h>
@@ -14,44 +15,6 @@
 #include <vector>
 
 namespace {
-
-	void AddWorktree(const GitFixture& fixture, const std::string& branch, const std::filesystem::path& worktreePath)
-	{
-		{
-			Core::Result<Core::Repository> openedToInitialiseLibgit2 = Core::Repository::Open(fixture.GetPath());
-			REQUIRE(openedToInitialiseLibgit2.HasValue());
-		}
-
-		git_repository* rawRepository = nullptr;
-		REQUIRE(git_repository_open(&rawRepository, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
-
-		git_reference* branchReference = nullptr;
-		REQUIRE(git_branch_lookup(&branchReference, rawRepository, branch.c_str(), GIT_BRANCH_LOCAL) == 0);
-
-		git_worktree_add_options options = GIT_WORKTREE_ADD_OPTIONS_INIT;
-		options.ref = branchReference;
-
-		git_worktree* worktree = nullptr;
-		const std::string worktreeName = branch + "-tree";
-		REQUIRE(git_worktree_add(&worktree, rawRepository, worktreeName.c_str(), Core::ToUtf8(worktreePath).c_str(),
-								 &options) == 0);
-
-		git_worktree_free(worktree);
-		git_reference_free(branchReference);
-		git_repository_free(rawRepository);
-	}
-
-	void DetachHeadOf(const std::filesystem::path& worktreePath)
-	{
-		git_repository* worktreeRepository = nullptr;
-		REQUIRE(git_repository_open(&worktreeRepository, Core::ToUtf8(worktreePath).c_str()) == 0);
-
-		git_oid headCommit{};
-		REQUIRE(git_reference_name_to_id(&headCommit, worktreeRepository, "HEAD") == 0);
-		REQUIRE(git_repository_set_head_detached(worktreeRepository, &headCommit) == 0);
-
-		git_repository_free(worktreeRepository);
-	}
 
 	std::filesystem::path HoldingPath(const Core::Repository& repository, const std::string& branchFullName)
 	{

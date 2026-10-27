@@ -13,6 +13,7 @@
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
+#include "Core/Git/Worktree.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -133,6 +134,10 @@ namespace Core {
 		// it; a worktree whose HEAD is detached, as during a rebase, holds no branch, and nor does a
 		// linked worktree whose folder is gone.
 		Result<std::optional<std::filesystem::path>> WorktreeHolding(const std::string& branchFullName) const;
+
+		// The main checkout first, then the linked worktrees in name order. Asked from a linked
+		// worktree, the same list.
+		Result<std::vector<WorktreeEntry>> QueryWorktrees() const;
 
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
 		Result<HeadState> QueryHead() const;
