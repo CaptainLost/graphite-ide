@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Editor/Navigation/SelectInDocument.h"
+#include "Language/Server/LspProtocol.h"
 
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
@@ -150,6 +151,7 @@ TEST_CASE("A UTF-16 range asked for while its file is read is selected once the 
 	CHECK(documents.At(0).Caret.Anchor == 3);
 	CHECK(documents.At(0).Caret.Offset == 6);
 }
+
 TEST_CASE("A UTF-16 column becomes the byte column of the same character, reading only what it needs")
 {
 	const Core::TextBuffer buffer{"x\n\xc4\x85\xc4\x85 target and a long tail\n"};
@@ -158,4 +160,15 @@ TEST_CASE("A UTF-16 column becomes the byte column of the same character, readin
 	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 1, Utf16Column(2)) == 4);
 	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 1, Utf16Column(3)) == 5);
 	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 0, Utf16Column(40)) == 1);
+}
+
+TEST_CASE("A UTF-16 column inside a surrogate pair after a three-byte character reads the whole pair")
+{
+	const std::string line = "\xe2\x82\xac\xf0\x9f\x98\x80x tail";
+	const Core::TextBuffer buffer{line + "\n"};
+
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 0, Utf16Column(2)) == Graphite::FromUtf16Column(line, Utf16Column(2)));
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 0, Utf16Column(2)) == 7);
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 0, Utf16Column(3)) == 7);
+	CHECK(Graphite::ByteColumnOfUtf16Column(buffer, 0, Utf16Column(1)) == 3);
 }

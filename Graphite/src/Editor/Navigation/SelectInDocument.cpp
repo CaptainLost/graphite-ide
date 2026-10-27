@@ -14,6 +14,18 @@ namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kMostUtf8BytesPerUtf16Unit = 3;
+		constexpr std::size_t kLongestUtf8Character = 4;
+
+		// WARNING: a column can fall inside a surrogate pair, whose character starts before the column's bytes end, so the prefix holds one whole character more.
+		std::size_t PrefixReachingColumn(std::size_t lineLength, Utf16Column column)
+		{
+			if (column.Value >= lineLength)
+			{
+				return lineLength;
+			}
+
+			return std::min(lineLength, column.Value * kMostUtf8BytesPerUtf16Unit + kLongestUtf8Character);
+		}
 
 		Core::OpenItem* OpenForSelection(Core::DocumentSet& documents,
 										 const std::filesystem::path& path,
@@ -70,7 +82,7 @@ namespace Graphite {
 	std::size_t ByteColumnOfUtf16Column(const Core::TextBuffer& buffer, std::size_t line, Utf16Column column)
 	{
 		const std::size_t lineStart = buffer.LineStart(line);
-		const std::size_t prefixLength = std::min(buffer.LineLength(line), column.Value * kMostUtf8BytesPerUtf16Unit);
+		const std::size_t prefixLength = PrefixReachingColumn(buffer.LineLength(line), column);
 		const std::string prefix = buffer.Substring(lineStart, lineStart + prefixLength);
 
 		return std::min(FromUtf16Column(prefix, column), prefix.size());
