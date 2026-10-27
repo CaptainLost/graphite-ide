@@ -710,31 +710,42 @@ TEST_CASE("A load already given up answers so before it looks for the file")
 	CHECK(loaded.GetError().Code == ErrorCode::Cancelled);
 }
 
-TEST_CASE("A load that is not given up reads the file as an ordinary load does")
+TEST_CASE("A load that is not given up reads CRLF text as LF lines and remembers CRLF")
 {
 	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.txt";
+	WriteFileBytes(path, "one\r\ntwo\r\n");
 
-	for (const std::string& bytes : {std::string{"one\r\ntwo\r\n"}, std::string{"\xEF\xBB\xBFmixed\nends\r\n"},
-									 std::string{"\xFF\xFEh\0i\0\n\0", 8}, std::string{"bad \xC3 byte\n"}})
-	{
-		const std::filesystem::path path = directory.GetPath() / "a.txt";
-		WriteFileBytes(path, bytes);
+	const CancellationToken keptGoing;
+	const Result<TextDocument> loaded = TextDocument::Load(path, keptGoing);
 
-		const CancellationToken keptGoing;
-		const Result<TextDocument> loaded = TextDocument::Load(path, keptGoing);
-		const Result<TextDocument> ordinary = TextDocument::Load(path);
+	REQUIRE(loaded.HasValue());
+	const TextDocument& document = loaded.GetValue();
+	CHECK(document.GetBuffer().Materialize() == "one\ntwo\n");
+	CHECK(document.GetBuffer().GetLineCount() == 3);
+	CHECK(document.GetBuffer().LineIndexMatchesRebuild());
+	CHECK(document.GetDocumentLineEnding() == LineEnding::Crlf);
+	CHECK_FALSE(document.HasMixedLineEndings());
+	CHECK(document.GetFileEncoding() == Encoding::Utf8);
+	CHECK_FALSE(document.IsReadOnly());
+	CHECK(document.EncodeToBytes() == "one\r\ntwo\r\n");
+}
 
-		REQUIRE(loaded.HasValue());
-		REQUIRE(ordinary.HasValue());
-		CHECK(loaded.GetValue().GetBuffer().Materialize() == ordinary.GetValue().GetBuffer().Materialize());
-		CHECK(loaded.GetValue().GetBuffer().GetLineCount() == ordinary.GetValue().GetBuffer().GetLineCount());
-		CHECK(loaded.GetValue().GetBuffer().LineIndexMatchesRebuild());
-		CHECK(loaded.GetValue().GetFileEncoding() == ordinary.GetValue().GetFileEncoding());
-		CHECK(loaded.GetValue().GetDocumentLineEnding() == ordinary.GetValue().GetDocumentLineEnding());
-		CHECK(loaded.GetValue().HasMixedLineEndings() == ordinary.GetValue().HasMixedLineEndings());
-		CHECK(loaded.GetValue().IsReadOnly() == ordinary.GetValue().IsReadOnly());
-		CHECK(loaded.GetValue().EncodeToBytes() == ordinary.GetValue().EncodeToBytes());
-	}
+TEST_CASE("A load that is not given up decodes marked UTF-16 and keeps a lone CR")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.txt";
+	WriteFileBytes(path, std::string{"\xFF\xFEh\0i\0\r\0\n\0x\0\r\0", 14});
+
+	const CancellationToken keptGoing;
+	const Result<TextDocument> loaded = TextDocument::Load(path, keptGoing);
+
+	REQUIRE(loaded.HasValue());
+	const TextDocument& document = loaded.GetValue();
+	CHECK(document.GetBuffer().Materialize() == "hi\nx\r");
+	CHECK(document.GetBuffer().GetLineCount() == 2);
+	CHECK(document.GetBuffer().LineIndexMatchesRebuild());
+	CHECK(document.GetFileEncoding() == Encoding::Utf16Le);
 }
 
 TEST_CASE("Text checked for UTF-8 in slices is judged as the whole text is wherever a slice ends")

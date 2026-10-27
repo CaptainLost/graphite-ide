@@ -287,6 +287,30 @@ namespace Core {
 		return Substring(lineStart, lineStart + LineLength(line));
 	}
 
+	std::string_view TextBuffer::LineTextView(std::size_t line, std::string& copyWhenSplit) const
+	{
+		const std::size_t lineStart = LineStart(line);
+		const std::size_t lineLength = LineLength(line);
+
+		if (lineLength == 0)
+		{
+			return {};
+		}
+
+		const Piece& piece = m_Pieces[IndexOfPieceCovering(lineStart)];
+		const std::size_t lineStartInPiece = lineStart - piece.DocumentStart;
+		const bool lineLiesInOnePiece = lineStartInPiece + lineLength <= piece.Length;
+
+		if (lineLiesInOnePiece)
+		{
+			return std::string_view{SourceBuffer(piece.Origin)}.substr(piece.SourceOffset + lineStartInPiece, lineLength);
+		}
+
+		copyWhenSplit = Substring(lineStart, lineStart + lineLength);
+
+		return copyWhenSplit;
+	}
+
 	std::size_t TextBuffer::ToOffset(Position position) const
 	{
 		if (position.Line >= m_LineStarts.size())

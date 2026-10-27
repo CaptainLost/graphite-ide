@@ -1106,3 +1106,32 @@ TEST_CASE("Typing after an erase-then-insert transaction coalesces with the inse
 	CHECK(buffer.Undo().has_value());
 	CHECK(buffer.Materialize() == "one two three");
 }
+
+TEST_CASE("A line that lies in one piece is viewed without a copy")
+{
+	const TextBuffer buffer{"first\nsecond line\nthird"};
+	std::string copyWhenSplit;
+
+	CHECK(buffer.LineTextView(1, copyWhenSplit) == "second line");
+	CHECK(buffer.LineTextView(2, copyWhenSplit) == "third");
+	CHECK(copyWhenSplit.empty());
+}
+
+TEST_CASE("A line that an edit split across pieces is viewed through a copy of it")
+{
+	TextBuffer buffer{"first\nsecond line\nthird"};
+	buffer.Insert(9, "-inserted-");
+	std::string copyWhenSplit;
+
+	CHECK(buffer.LineTextView(1, copyWhenSplit) == "sec-inserted-ond line");
+	CHECK(copyWhenSplit == "sec-inserted-ond line");
+	CHECK(buffer.LineTextView(1, copyWhenSplit) == buffer.LineText(1));
+}
+
+TEST_CASE("An empty line is viewed as empty")
+{
+	const TextBuffer buffer{"a\n\nb"};
+	std::string copyWhenSplit;
+
+	CHECK(buffer.LineTextView(1, copyWhenSplit).empty());
+}

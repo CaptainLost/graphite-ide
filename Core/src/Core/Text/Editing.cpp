@@ -14,6 +14,7 @@
 
 #include <optional>
 #include <span>
+#include <string>
 #include <utility>
 
 namespace Core {
@@ -176,6 +177,37 @@ namespace Core {
 
 	}
 
+	std::optional<WidestLineFound> FindWidestLineUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
+															const CancellationToken& cancellation)
+	{
+		WidestLineFound widest;
+		CancellationPacing pacing{cancellation};
+
+		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
+		{
+			if (pacing.CancelledBefore(buffer.LineLength(line)))
+			{
+				return std::nullopt;
+			}
+
+			std::string copyWhenSplit;
+			const std::optional<std::size_t> countedWidth =
+				ColumnCountUnlessCancelled(buffer.LineTextView(line, copyWhenSplit), tabWidth, cancellation);
+
+			if (!countedWidth)
+			{
+				return std::nullopt;
+			}
+
+			if (*countedWidth > widest.Column)
+			{
+				widest = WidestLineFound{.Line = line, .Column = *countedWidth};
+			}
+		}
+
+		return widest;
+	}
+
 	LineCaches ComputeLineCaches(const TextBuffer& buffer, std::size_t tabWidth, std::size_t columnsPerRow)
 	{
 		const CancellationToken neverCancelled;
@@ -193,34 +225,18 @@ namespace Core {
 			return std::nullopt;
 		}
 
+		const std::optional<WidestLineFound> widest = FindWidestLineUnlessCancelled(buffer, tabWidth, cancellation);
+
+		if (!widest)
+		{
+			return std::nullopt;
+		}
+
 		LineCaches caches;
 		caches.TabWidth = tabWidth;
 		caches.IndentDepths = std::move(*depths);
-
-		CancellationPacing pacing{cancellation};
-
-		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
-		{
-			if (pacing.CancelledBefore(buffer.LineLength(line)))
-			{
-				return std::nullopt;
-			}
-
-			const std::optional<std::size_t> countedWidth = ColumnCountUnlessCancelled(buffer.LineText(line), tabWidth, cancellation);
-
-			if (!countedWidth)
-			{
-				return std::nullopt;
-			}
-
-			const std::size_t width = *countedWidth;
-
-			if (width > caches.WidestColumn)
-			{
-				caches.WidestColumn = width;
-				caches.WidestLine = line;
-			}
-		}
+		caches.WidestColumn = widest->Column;
+		caches.WidestLine = widest->Line;
 
 		if (!caches.Rows.RebuildUnlessCancelled(buffer, columnsPerRow, tabWidth, cancellation))
 		{

@@ -81,6 +81,9 @@ namespace Core {
 
 		std::string LineText(std::size_t line) const;
 
+		// WARNING: Copies into copyWhenSplit only when edits split the line; the view lasts until the next edit or that copy changes.
+		std::string_view LineTextView(std::size_t line, std::string& copyWhenSplit) const;
+
 		std::size_t ToOffset(Position position) const;
 		Position ToPosition(std::size_t offset) const;
 

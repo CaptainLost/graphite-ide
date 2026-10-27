@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace Core {
@@ -74,8 +75,9 @@ namespace Core {
 
 			if (columnsPerRow != kNoWrap)
 			{
+				std::string copyWhenSplit;
 				std::optional<std::vector<std::size_t>> breaks =
-					WrapColumnsUnlessCancelled(buffer.LineText(line), columnsPerRow, tabWidth, cancellation);
+					WrapColumnsUnlessCancelled(buffer.LineTextView(line, copyWhenSplit), columnsPerRow, tabWidth, cancellation);
 
 				if (!breaks)
 				{

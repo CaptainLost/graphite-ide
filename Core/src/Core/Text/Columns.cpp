@@ -12,6 +12,19 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kColumnCountSliceBytes = 1024 * 1024;
+
+		// WARNING: Past a cut inside a long run of stray continuation bytes, the run still belongs to the character before the cut.
+		std::size_t EndOfContinuationRun(std::string_view text, std::size_t from, std::size_t limit)
+		{
+			std::size_t runEnd = from;
+
+			while (runEnd < limit && IsUtf8ContinuationByte(text[runEnd]))
+			{
+				++runEnd;
+			}
+
+			return runEnd;
+		}
 	}
 
 	std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth)
@@ -66,7 +79,9 @@ namespace Core {
 			}
 
 			const std::size_t sliceEnd = SliceEndAtCharacterBoundary(lineText, sliceStart, kColumnCountSliceBytes);
-			column = ColumnAfterText(lineText.substr(sliceStart, sliceEnd - sliceStart), column, tabWidth);
+			const std::size_t countFrom = sliceStart == 0 ? sliceStart : EndOfContinuationRun(lineText, sliceStart, sliceEnd);
+
+			column = ColumnAfterText(lineText.substr(countFrom, sliceEnd - countFrom), column, tabWidth);
 			sliceStart = sliceEnd;
 		}
 

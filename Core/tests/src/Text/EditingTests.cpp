@@ -840,16 +840,26 @@ TEST_CASE("Typing above and below the widest line over and over leaves the wides
 	CheckLineCachesAreCorrect(item);
 }
 
-TEST_CASE("Line caches cancelled partway through measuring the widest line answer nothing")
+TEST_CASE("The widest-line pass cancelled partway through many lines answers nothing")
 {
 	const Core::TextBuffer buffer{std::string(20000, '\n')};
 	constexpr std::size_t kTabWidth = 4;
-	constexpr std::size_t kSecondAskOfTheWidestLinePass = 4;
-	const std::size_t unwrapped = Core::RowMap::kNoWrap;
+	constexpr std::size_t kSecondAsk = 2;
 
-	CHECK_FALSE(Core::ComputeLineCachesUnlessCancelled(buffer, kTabWidth, unwrapped,
-														Core::CancellationToken::CancelledAtCheck(kSecondAskOfTheWidestLinePass))
-					.has_value());
+	CHECK_FALSE(Core::FindWidestLineUnlessCancelled(buffer, kTabWidth, Core::CancellationToken::CancelledAtCheck(kSecondAsk)).has_value());
+}
+
+TEST_CASE("The widest-line pass finds the widest line counting tabs to their stops")
+{
+	const Core::TextBuffer buffer{"ab\n\tx\nabcd\n"};
+	constexpr std::size_t kTabWidth = 4;
+	const Core::CancellationToken keptGoing;
+
+	const std::optional<Core::WidestLineFound> widest = Core::FindWidestLineUnlessCancelled(buffer, kTabWidth, keptGoing);
+
+	REQUIRE(widest.has_value());
+	CHECK(widest->Line == 1);
+	CHECK(widest->Column == 5);
 }
 
 

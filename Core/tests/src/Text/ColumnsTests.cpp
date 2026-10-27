@@ -281,15 +281,23 @@ TEST_CASE("Counting the columns of one giant line can be cancelled partway throu
 	CHECK_FALSE(Core::ColumnCountUnlessCancelled(giantLine, kTabWidth, Core::CancellationToken::CancelledAtCheck(kSecondSlice)).has_value());
 }
 
-TEST_CASE("Counting columns in slices gives what an ordinary count gives, tabs and wide characters included")
+TEST_CASE("Counting columns in slices steps back from a slice end that falls inside a character")
 {
-	std::string line;
+	constexpr std::size_t kSliceBytesOfTheCount = 1024 * 1024;
+	const std::string threeByteCharacter = "\xe2\x82\xac";
+	const Core::CancellationToken keptGoing;
 
-	while (line.size() < 3 * 1024 * 1024)
+	for (std::size_t bytesBeforeSliceEnd = 1; bytesBeforeSliceEnd < threeByteCharacter.size(); ++bytesBeforeSliceEnd)
 	{
-		line += "\t\xc4\x85x\xe2\x82\xac y";
-	}
+		const std::string line = std::string(kSliceBytesOfTheCount - bytesBeforeSliceEnd, 'a') + threeByteCharacter + "\tx\xc4\x85 y";
 
+		CHECK(Core::ColumnCountUnlessCancelled(line, kTabWidth, keptGoing) == Core::ColumnCount(line, kTabWidth));
+	}
+}
+
+TEST_CASE("Counting columns in slices gives a long run of stray continuation bytes the one column an ordinary count gives it")
+{
+	const std::string line = "x" + std::string(3 * 1024 * 1024, '\x80') + "\ty";
 	const Core::CancellationToken keptGoing;
 
 	CHECK(Core::ColumnCountUnlessCancelled(line, kTabWidth, keptGoing) == Core::ColumnCount(line, kTabWidth));

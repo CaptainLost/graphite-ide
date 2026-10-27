@@ -232,15 +232,40 @@ TEST_CASE("A rebuild cancelled while it wraps one giant line stops inside the li
 											 CancellationToken::CancelledAtCheck(kAskPastTheLinesFirstSlice)));
 }
 
-TEST_CASE("A rebuild that is not cancelled matches an ordinary one")
+TEST_CASE("A rebuild that is not cancelled builds the rows wrapping gives each line")
 {
-	const TextBuffer buffer = BufferOf("a long line that wraps\n\tand a tab\nshort\n");
+	const std::vector<std::string> lines{"a long line that wraps", "\tand a tab", "short", ""};
+	const TextBuffer buffer = BufferOf(lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n" + lines[3]);
 	const CancellationToken keptGoing;
 
 	RowMap rows;
-	RowMap expected;
-	expected.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
-
 	REQUIRE(rows.RebuildUnlessCancelled(buffer, kFourColumnsPerRow, kTabWidth, keptGoing));
-	CHECK(rows.GetTotalRows() == expected.GetTotalRows());
+
+	CHECK(rows.GetLineCount() == lines.size());
+	CHECK(rows.GetColumnsPerRow() == kFourColumnsPerRow);
+
+	std::size_t expectedTotalRows = 0;
+
+	for (std::size_t line = 0; line < lines.size(); ++line)
+	{
+		const std::vector<std::size_t> expectedBreaks = WrapColumns(lines[line], kFourColumnsPerRow, kTabWidth);
+
+		CHECK(rows.BreaksOf(line) == expectedBreaks);
+		CHECK(rows.RowsOf(line) == expectedBreaks.size() + 1);
+		CHECK(rows.FirstRowOf(line) == expectedTotalRows);
+		expectedTotalRows += expectedBreaks.size() + 1;
+	}
+
+	CHECK(rows.GetTotalRows() == expectedTotalRows);
+}
+
+TEST_CASE("A rebuild cancelled while it wraps a line into thousands of rows stops between rows")
+{
+	const TextBuffer buffer = BufferOf(std::string(600 * 1024, 'a'));
+	constexpr std::size_t kFirstAskBetweenRows = 2;
+
+	RowMap rows;
+
+	CHECK_FALSE(rows.RebuildUnlessCancelled(buffer, kWideEnoughNotToWrap, kTabWidth,
+											 CancellationToken::CancelledAtCheck(kFirstAskBetweenRows)));
 }

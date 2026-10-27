@@ -204,3 +204,15 @@ TEST_CASE("Indent depths cancelled partway through a few long lines answer nothi
 
 	CHECK_FALSE(Core::IndentDepthsUnlessCancelled(buffer, kTabWidth, Core::CancellationToken::CancelledAtCheck(kSecondAsk)).has_value());
 }
+TEST_CASE("A line indented past the first bytes read for its indent still measures its whole indent")
+{
+	const std::string deepIndent(300, ' ');
+	const Core::TextBuffer buffer{"top\n" + deepIndent + "deep\n" + deepIndent};
+
+	const std::vector<std::size_t> depths = Core::IndentDepths(buffer, kTabWidth);
+
+	REQUIRE(depths.size() == 3);
+	CHECK(depths[0] == 0);
+	CHECK(depths[1] == 300);
+	CHECK(depths[2] == 0);
+}

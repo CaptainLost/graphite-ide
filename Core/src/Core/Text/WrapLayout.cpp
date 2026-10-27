@@ -165,8 +165,7 @@ namespace Core {
 				byteOffset = scan.EndByte;
 				column = scan.EndColumn;
 
-				// The loop condition means the scan always reaches the row's last cell. Stopping when it
-				// somehow does not, rather than guessing a break, keeps this loop from standing still.
+				// WARNING: Stopping rather than guessing a break when the scan misses the row's last cell keeps this loop from standing still.
 				if (!scan.FoundLastCellCharacter)
 				{
 					break;

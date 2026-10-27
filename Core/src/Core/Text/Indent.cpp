@@ -14,10 +14,42 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kDepthOfMissingNeighbour = 0;
+		constexpr std::size_t kFirstIndentPrefixBytes = 64;
 
 		bool IsIndentWhitespace(char character)
 		{
 			return character == ' ' || character == '\t';
+		}
+
+		struct LineIndent
+		{
+			bool IsBlank = true;
+			std::size_t Depth = 0;
+		};
+
+		// WARNING: Reads a prefix that doubles until it holds text, so a giant line is not copied for its indent.
+		LineIndent IndentOfLine(const TextBuffer& buffer, std::size_t line, std::size_t tabWidth)
+		{
+			const std::size_t lineStart = buffer.LineStart(line);
+			const std::size_t lineLength = buffer.LineLength(line);
+			std::size_t prefixLength = std::min(lineLength, kFirstIndentPrefixBytes);
+
+			while (true)
+			{
+				const std::string prefix = buffer.Substring(lineStart, lineStart + prefixLength);
+
+				if (!ContainsOnlySpacesAndTabs(prefix))
+				{
+					return LineIndent{.IsBlank = false, .Depth = IndentDepth(prefix, tabWidth)};
+				}
+
+				if (prefixLength == lineLength)
+				{
+					return LineIndent{};
+				}
+
+				prefixLength = std::min(lineLength, prefixLength * 2);
+			}
 		}
 
 		std::optional<std::size_t> DepthAboveRange(const TextBuffer& buffer, std::size_t firstLine,
@@ -25,12 +57,11 @@ namespace Core {
 		{
 			for (std::size_t linesLeftAbove = firstLine; linesLeftAbove > 0; --linesLeftAbove)
 			{
-				const std::size_t lineIndex = linesLeftAbove - 1;
-				const std::string text = buffer.LineText(lineIndex);
+				const LineIndent indent = IndentOfLine(buffer, linesLeftAbove - 1, tabWidth);
 
-				if (!ContainsOnlySpacesAndTabs(text))
+				if (!indent.IsBlank)
 				{
-					return IndentDepth(text, tabWidth);
+					return indent.Depth;
 				}
 			}
 
@@ -42,11 +73,11 @@ namespace Core {
 		{
 			for (std::size_t lineIndex = lastLine + 1; lineIndex < buffer.GetLineCount(); ++lineIndex)
 			{
-				const std::string text = buffer.LineText(lineIndex);
+				const LineIndent indent = IndentOfLine(buffer, lineIndex, tabWidth);
 
-				if (!ContainsOnlySpacesAndTabs(text))
+				if (!indent.IsBlank)
 				{
-					return IndentDepth(text, tabWidth);
+					return indent.Depth;
 				}
 			}
 
@@ -161,14 +192,10 @@ namespace Core {
 				return std::nullopt;
 			}
 
-			const std::string text = buffer.LineText(lineIndex);
+			const LineIndent indent = IndentOfLine(buffer, lineIndex, tabWidth);
 			const std::size_t rangeIndex = lineIndex - firstLine;
-			isBlankLine[rangeIndex] = ContainsOnlySpacesAndTabs(text);
-
-			if (!isBlankLine[rangeIndex])
-			{
-				depths[rangeIndex] = IndentDepth(text, tabWidth);
-			}
+			isBlankLine[rangeIndex] = indent.IsBlank;
+			depths[rangeIndex] = indent.Depth;
 		}
 
 		const std::vector<std::optional<std::size_t>> nearestDepthAbove =

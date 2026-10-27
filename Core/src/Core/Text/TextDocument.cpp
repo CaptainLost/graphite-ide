@@ -59,7 +59,7 @@ namespace Core {
 			return message;
 		}
 
-		// WARNING: Slices end where a character starts, so no character is split and the answer is the whole text's.
+		// WARNING: A slice ends where a character starts, or inside a run of stray continuation bytes, which both checks judge alike.
 		std::optional<bool> HoldsInEverySliceUnlessCancelled(std::string_view content, bool (*holdsIn)(std::string_view),
 															   const CancellationToken& cancellation)
 		{
@@ -148,50 +148,55 @@ namespace Core {
 			return fileBytes;
 		}
 
-		bool NormaliseUnlessCancelled(std::string_view text, NormalisedLineEndings& normalised, const CancellationToken& cancellation)
+		// WARNING: Rewritten in place, which only ever shortens the text, so a load holds one copy of the file, not two.
+		bool NormaliseInPlaceUnlessCancelled(std::string& text, NormalisedLineEndings& normalised, const CancellationToken& cancellation)
 		{
-			normalised.Content.reserve(text.size());
-
 			std::size_t crlfCount = 0;
 			std::size_t lfCount = 0;
 			std::size_t nextCancellationCheck = 0;
-			std::size_t byteIndex = 0;
+			std::size_t readIndex = 0;
+			std::size_t writeIndex = 0;
 
-			while (byteIndex < text.size())
+			while (readIndex < text.size())
 			{
-				if (byteIndex >= nextCancellationCheck)
+				if (readIndex >= nextCancellationCheck)
 				{
 					if (cancellation.IsCancelled())
 					{
 						return false;
 					}
 
-					nextCancellationCheck = byteIndex + kBytesBetweenCancellationChecks;
+					nextCancellationCheck = readIndex + kBytesBetweenCancellationChecks;
 				}
 
 				const bool startsCrlf =
-					text[byteIndex] == '\r' && byteIndex + 1 < text.size() && text[byteIndex + 1] == '\n';
+					text[readIndex] == '\r' && readIndex + 1 < text.size() && text[readIndex + 1] == '\n';
 
 				if (startsCrlf)
 				{
 					++crlfCount;
-					normalised.Content.push_back('\n');
-					normalised.ContentLineStarts.push_back(normalised.Content.size());
-					byteIndex += kCrlfLength;
+					text[writeIndex] = '\n';
+					++writeIndex;
+					normalised.ContentLineStarts.push_back(writeIndex);
+					readIndex += kCrlfLength;
 					continue;
 				}
 
-				normalised.Content.push_back(text[byteIndex]);
+				const char byte = text[readIndex];
+				text[writeIndex] = byte;
+				++writeIndex;
 
-				if (text[byteIndex] == '\n')
+				if (byte == '\n')
 				{
 					++lfCount;
-					normalised.ContentLineStarts.push_back(normalised.Content.size());
+					normalised.ContentLineStarts.push_back(writeIndex);
 				}
 
-				++byteIndex;
+				++readIndex;
 			}
 
+			text.resize(writeIndex);
+			normalised.Content = std::move(text);
 			normalised.Mixed = crlfCount > 0 && lfCount > 0;
 			normalised.Ending = crlfCount > lfCount ? LineEnding::Crlf : LineEnding::Lf;
 
@@ -223,7 +228,7 @@ namespace Core {
 			return decoded.GetError();
 		}
 
-		const std::string content = std::move(decoded).GetValue();
+		std::string content = std::move(decoded).GetValue();
 		const bool contentWasDecoded = TransformsContent(sniffedEncoding);
 
 		if (contentWasDecoded)
@@ -253,7 +258,7 @@ namespace Core {
 
 		NormalisedLineEndings normalised;
 
-		if (!NormaliseUnlessCancelled(content, normalised, cancellation))
+		if (!NormaliseInPlaceUnlessCancelled(content, normalised, cancellation))
 		{
 			return ReadGivenUp(path);
 		}
@@ -344,9 +349,10 @@ namespace Core {
 	NormalisedLineEndings NormaliseLineEndings(std::string_view text)
 	{
 		const CancellationToken neverCancelled;
+		std::string content{text};
 		NormalisedLineEndings normalised;
 
-		NormaliseUnlessCancelled(text, normalised, neverCancelled);
+		NormaliseInPlaceUnlessCancelled(content, normalised, neverCancelled);
 
 		return normalised;
 	}

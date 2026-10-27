@@ -26,6 +26,15 @@ namespace Core {
 		std::uint64_t SeenChange = 0;
 	};
 
+	struct WidestLineFound
+	{
+		std::size_t Line = 0;
+		std::size_t Column = 0;
+	};
+
+	std::optional<WidestLineFound> FindWidestLineUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
+															const CancellationToken& cancellation);
+
 	LineCaches ComputeLineCaches(const TextBuffer& buffer, std::size_t tabWidth, std::size_t columnsPerRow);
 
 	std::optional<LineCaches> ComputeLineCachesUnlessCancelled(const TextBuffer& buffer, std::size_t tabWidth,
