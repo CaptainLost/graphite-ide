@@ -692,35 +692,36 @@ namespace Graphite {
 
 		const ReviewMenu menu = ReviewMenuOf(branch);
 
-		if (menu.Items.empty())
+		const bool hasSubmenu = !menu.Submenu.empty() && !menu.SubmenuItems.empty();
+
+		if (menu.Items.empty() && !hasSubmenu)
 		{
 			return;
 		}
 
 		ImGui::Separator();
 
-		const bool inSubmenu = !menu.Submenu.empty();
+		DrawReviewMenuItems(menu.Items);
 
-		if (inSubmenu && !ImGui::BeginMenu(menu.Submenu.c_str()))
+		if (hasSubmenu && ImGui::BeginMenu(menu.Submenu.c_str()))
 		{
-			return;
+			DrawReviewMenuItems(menu.SubmenuItems);
+			ImGui::EndMenu();
 		}
+	}
 
-		for (std::size_t itemIndex = 0; itemIndex < menu.Items.size(); ++itemIndex)
+	void GitView::DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items)
+	{
+		for (std::size_t itemIndex = 0; itemIndex < items.size(); ++itemIndex)
 		{
 			ImGui::PushID(static_cast<int>(itemIndex));
 
-			if (ImGui::MenuItem(menu.Items[itemIndex].Label.c_str()) && OnReviewMenuItem)
+			if (ImGui::MenuItem(items[itemIndex].Label.c_str()) && OnReviewMenuItem)
 			{
-				OnReviewMenuItem(menu.Items[itemIndex]);
+				OnReviewMenuItem(items[itemIndex]);
 			}
 
 			ImGui::PopID();
-		}
-
-		if (inSubmenu)
-		{
-			ImGui::EndMenu();
 		}
 	}
 

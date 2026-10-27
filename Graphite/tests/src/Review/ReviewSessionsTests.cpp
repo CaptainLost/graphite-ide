@@ -498,3 +498,125 @@ TEST_CASE("A file viewed as it is, changed only in its base, or deleted has no d
 	deleted.Change = Core::FileChange::Deleted;
 	CHECK_FALSE(Graphite::SinceViewedRequestFor(sessions, kBranch, ReviewGroup::Commits, deleted, range, shown).has_value());
 }
+
+TEST_CASE("A draft holds settings but is not kept")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft(kBranch, kBase);
+
+	REQUIRE(sessions.Find(kBranch) != nullptr);
+	CHECK(sessions.Find(kBranch)->Base == kBase);
+	CHECK(sessions.Find(kBranch)->Draft);
+	CHECK_FALSE(sessions.IsKept(kBranch));
+
+	Graphite::SessionSettings flat;
+	flat.Shape = Graphite::ListShape::Flat;
+	sessions.SetSettings(kBranch, flat);
+
+	CHECK(sessions.Find(kBranch)->Settings.Shape == Graphite::ListShape::Flat);
+	CHECK_FALSE(sessions.IsKept(kBranch));
+	CHECK_FALSE(sessions.IsKept("refs/heads/unknown"));
+}
+
+TEST_CASE("A draft opens with uncommitted work included")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft(kBranch, kBase);
+
+	CHECK(sessions.Find(kBranch)->Settings.IncludeUncommitted);
+}
+
+TEST_CASE("The first mark keeps a draft")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft(kBranch, kBase);
+	const Core::FileDiff file = ModifiedFile("a.cpp", 1, 2);
+
+	sessions.Mark(kBranch, ReviewGroup::Commits, file);
+
+	CHECK(sessions.IsKept(kBranch));
+	CHECK_FALSE(sessions.Find(kBranch)->Draft);
+	CHECK(sessions.StateOf(kBranch, ReviewGroup::Commits, file) == ViewedState::Viewed);
+}
+
+TEST_CASE("Starting a review over a draft keeps its settings and takes the new base")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft(kBranch, kBase);
+	Graphite::SessionSettings flat;
+	flat.Shape = Graphite::ListShape::Flat;
+	sessions.SetSettings(kBranch, flat);
+
+	sessions.Start(kBranch, "refs/heads/other");
+
+	CHECK(sessions.IsKept(kBranch));
+	CHECK(sessions.Find(kBranch)->Base == "refs/heads/other");
+	CHECK(sessions.Find(kBranch)->Settings == flat);
+}
+
+TEST_CASE("Opening a draft over a kept session changes nothing")
+{
+	ReviewSessions sessions;
+	sessions.Start(kBranch, kBase);
+	const std::uint64_t before = sessions.GetVersion();
+
+	sessions.OpenDraft(kBranch, "refs/heads/other");
+
+	CHECK(sessions.GetVersion() == before);
+	CHECK(sessions.Find(kBranch)->Base == kBase);
+	CHECK(sessions.IsKept(kBranch));
+
+	sessions.OpenDraft("refs/heads/second", kBase);
+	const std::uint64_t withDraft = sessions.GetVersion();
+	sessions.OpenDraft("refs/heads/second", "refs/heads/other");
+
+	CHECK(sessions.GetVersion() == withDraft);
+	CHECK(sessions.Find("refs/heads/second")->Base == kBase);
+}
+
+TEST_CASE("Keeping turns a draft into a session and leaves anything else alone")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft(kBranch, kBase);
+
+	sessions.Keep(kBranch);
+	CHECK(sessions.IsKept(kBranch));
+
+	const std::uint64_t before = sessions.GetVersion();
+	sessions.Keep(kBranch);
+	sessions.Keep("refs/heads/unknown");
+
+	CHECK(sessions.GetVersion() == before);
+	CHECK(sessions.Find("refs/heads/unknown") == nullptr);
+}
+
+TEST_CASE("Pruning and renaming treat drafts like sessions")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft("refs/heads/before", kBase);
+
+	sessions.Rename("refs/heads/before", "refs/heads/after");
+
+	REQUIRE(sessions.Find("refs/heads/after") != nullptr);
+	CHECK(sessions.Find("refs/heads/after")->Draft);
+	CHECK(sessions.Find("refs/heads/before") == nullptr);
+
+	const std::vector<Core::Branch> none;
+	sessions.Prune(none);
+	CHECK(sessions.Find("refs/heads/after") != nullptr);
+	sessions.Prune(none);
+	CHECK(sessions.Find("refs/heads/after") == nullptr);
+}
+
+TEST_CASE("Drafts are left out of reviews.json")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft("refs/heads/looked-at", kBase);
+	sessions.Start(kBranch, kBase);
+
+	const Graphite::DecodedSessions decoded =
+		Graphite::DecodeReviewSessionsText(Graphite::EncodeReviewSessions(sessions.GetAll()));
+
+	REQUIRE(decoded.Sessions.size() == 1);
+	CHECK(decoded.Sessions.contains(kBranch));
+}

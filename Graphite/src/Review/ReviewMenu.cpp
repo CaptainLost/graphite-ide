@@ -9,6 +9,7 @@ namespace Graphite {
 
 	namespace {
 
+		constexpr const char* kReview = "Review";
 		constexpr const char* kOpenReview = "Open review";
 		constexpr const char* kEndReview = "End review\xE2\x80\xA6";
 		constexpr const char* kReviewAgainst = "Review against";
@@ -23,10 +24,8 @@ namespace Graphite {
 			return menu;
 		}
 
-		ReviewMenu BasePicker(const Core::Branch& reviewed, const std::vector<Core::Branch>& branches)
+		void AddBasePicker(ReviewMenu& menu, const Core::Branch& reviewed, const std::vector<Core::Branch>& branches)
 		{
-			ReviewMenu menu;
-
 			for (const Core::Branch& candidate : branches)
 			{
 				const bool isAnotherLocalBranch =
@@ -34,19 +33,17 @@ namespace Graphite {
 
 				if (isAnotherLocalBranch)
 				{
-					menu.Items.push_back(ReviewMenuItem{.Label = candidate.Name,
-														.Action = ReviewAction::Start,
-														.Branch = reviewed.FullName,
-														.Base = candidate.FullName});
+					menu.SubmenuItems.push_back(ReviewMenuItem{.Label = candidate.Name,
+															   .Action = ReviewAction::Start,
+															   .Branch = reviewed.FullName,
+															   .Base = candidate.FullName});
 				}
 			}
 
-			if (!menu.Items.empty())
+			if (!menu.SubmenuItems.empty())
 			{
 				menu.Submenu = kReviewAgainst;
 			}
-
-			return menu;
 		}
 
 		ViewedCount ViewedInCommits(const ReviewSessions& sessions, const std::string& branch, const Core::Diff& committed)
@@ -68,35 +65,30 @@ namespace Graphite {
 	ReviewMenu ReviewMenuFor(const Core::Branch& branch, const std::vector<Core::Branch>& branches,
 							 const ReviewSessions& sessions)
 	{
-		if (sessions.Find(branch.FullName) != nullptr)
+		if (sessions.IsKept(branch.FullName))
 		{
 			return SessionMenu(branch.FullName);
 		}
 
+		ReviewMenu menu;
 		const std::optional<ReviewOffer> offer = OfferReview(branch, branches);
 
-		if (!offer.has_value())
+		if (offer.has_value() && offer->Base.has_value())
 		{
-			return ReviewMenu{};
+			menu.Items.push_back(ReviewMenuItem{.Label = kReview,
+												.Action = ReviewAction::Open,
+												.Branch = offer->Branch,
+												.Base = *offer->Base});
 		}
 
-		if (!offer->Base.has_value())
-		{
-			return BasePicker(branch, branches);
-		}
-
-		ReviewMenu menu;
-		menu.Items.push_back(ReviewMenuItem{.Label = offer->Label,
-											.Action = ReviewAction::Start,
-											.Branch = offer->Branch,
-											.Base = *offer->Base});
+		AddBasePicker(menu, branch, branches);
 		return menu;
 	}
 
 	std::string ReviewBadgeText(const ReviewSessions& sessions, const std::string& branch, const ReviewRange* range,
 								const Core::Error* rangeError, const Core::Diff* committed)
 	{
-		if (sessions.Find(branch) == nullptr)
+		if (!sessions.IsKept(branch))
 		{
 			return std::string{};
 		}

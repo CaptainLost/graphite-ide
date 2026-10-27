@@ -76,19 +76,38 @@ namespace {
 	}
 }
 
-TEST_CASE("A branch without a session is offered a review against the checked-out branch")
+TEST_CASE("A branch without a kept session offers Review and a submenu of other bases")
 {
 	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
 	const ReviewSessions sessions;
 
 	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
 
-	CHECK(menu.Submenu.empty());
 	REQUIRE(menu.Items.size() == 1);
-	CHECK(menu.Items[0].Label == "Review against main");
-	CHECK(menu.Items[0].Action == ReviewAction::Start);
+	CHECK(menu.Items[0].Label == "Review");
+	CHECK(menu.Items[0].Action == ReviewAction::Open);
 	CHECK(menu.Items[0].Branch == kSide);
 	CHECK(menu.Items[0].Base == kMain);
+	CHECK(menu.Submenu == "Review against");
+	REQUIRE(menu.SubmenuItems.size() == 1);
+	CHECK(menu.SubmenuItems[0].Label == "main");
+	CHECK(menu.SubmenuItems[0].Action == ReviewAction::Start);
+	CHECK(menu.SubmenuItems[0].Branch == kSide);
+	CHECK(menu.SubmenuItems[0].Base == kMain);
+}
+
+TEST_CASE("A draft counts as no session in the review menu")
+{
+	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
+	ReviewSessions sessions;
+	sessions.OpenDraft(kSide, kMain);
+
+	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
+
+	REQUIRE(menu.Items.size() == 1);
+	CHECK(menu.Items[0].Label == "Review");
+	CHECK(menu.Items[0].Base == kMain);
+	CHECK(menu.Submenu == "Review against");
 }
 
 TEST_CASE("The checked-out branch is offered a review against its upstream and nothing without one")
@@ -107,7 +126,7 @@ TEST_CASE("The checked-out branch is offered a review against its upstream and n
 	CHECK(Graphite::ReviewMenuFor(withoutUpstream[0], withoutUpstream, sessions).Items.empty());
 }
 
-TEST_CASE("A branch under review offers to open its review and to end it")
+TEST_CASE("A kept session offers Open review and End review")
 {
 	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
 	ReviewSessions sessions;
@@ -116,6 +135,7 @@ TEST_CASE("A branch under review offers to open its review and to end it")
 	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
 
 	CHECK(menu.Submenu.empty());
+	CHECK(menu.SubmenuItems.empty());
 	REQUIRE(menu.Items.size() == 2);
 	CHECK(menu.Items[0].Label == "Open review");
 	CHECK(menu.Items[0].Action == ReviewAction::Open);
@@ -132,13 +152,14 @@ TEST_CASE("With HEAD detached the other local branches are offered as bases in a
 
 	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
 
+	CHECK(menu.Items.empty());
 	CHECK(menu.Submenu == "Review against");
-	REQUIRE(menu.Items.size() == 2);
-	CHECK(menu.Items[0].Label == "main");
-	CHECK(menu.Items[0].Base == kMain);
-	CHECK(menu.Items[1].Label == "next");
-	CHECK(menu.Items[1].Branch == kSide);
-	CHECK(menu.Items[1].Action == ReviewAction::Start);
+	REQUIRE(menu.SubmenuItems.size() == 2);
+	CHECK(menu.SubmenuItems[0].Label == "main");
+	CHECK(menu.SubmenuItems[0].Base == kMain);
+	CHECK(menu.SubmenuItems[1].Label == "next");
+	CHECK(menu.SubmenuItems[1].Branch == kSide);
+	CHECK(menu.SubmenuItems[1].Action == ReviewAction::Start);
 }
 
 TEST_CASE("With HEAD detached and no other local branch nothing is offered")
@@ -146,12 +167,25 @@ TEST_CASE("With HEAD detached and no other local branch nothing is offered")
 	const std::vector<Core::Branch> branches = {LocalBranch("side", kNotCheckedOut), RemoteBranch("origin/main")};
 	const ReviewSessions sessions;
 
-	CHECK(Graphite::ReviewMenuFor(branches[0], branches, sessions).Items.empty());
+	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[0], branches, sessions);
+
+	CHECK(menu.Items.empty());
+	CHECK(menu.SubmenuItems.empty());
 }
 
 TEST_CASE("A branch without a session has no badge")
 {
 	const ReviewSessions sessions;
+	const ReviewRange range = RangeFrom(1, 2);
+	const Core::Diff committed;
+
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, &committed).empty());
+}
+
+TEST_CASE("A draft shows no badge")
+{
+	ReviewSessions sessions;
+	sessions.OpenDraft(kSide, kMain);
 	const ReviewRange range = RangeFrom(1, 2);
 	const Core::Diff committed;
 

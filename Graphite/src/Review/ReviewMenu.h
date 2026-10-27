@@ -38,6 +38,7 @@ namespace Graphite {
 		std::vector<ReviewMenuItem> Items;
 
 		std::string Submenu;
+		std::vector<ReviewMenuItem> SubmenuItems;
 	};
 
 	ReviewMenu ReviewMenuFor(const Core::Branch& branch, const std::vector<Core::Branch>& branches,

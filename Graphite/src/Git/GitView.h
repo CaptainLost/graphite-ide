@@ -157,6 +157,7 @@ namespace Graphite {
 		void RenderRefMenu(const Core::Branch& branch);
 
 		void RenderReviewItem(const Core::Branch& branch);
+		void DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items);
 
 		void RenderStashes();
 		void RenderStashMenu(const Core::StashEntry& stash);

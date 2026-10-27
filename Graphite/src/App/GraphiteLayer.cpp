@@ -673,6 +673,11 @@ namespace Graphite {
 			m_ReviewWindows.Open(item.Branch);
 			break;
 		case ReviewAction::Open:
+			if (!item.Base.empty())
+			{
+				m_ReviewStore.GetSessions().OpenDraft(item.Branch, item.Base);
+			}
+
 			m_ReviewWindows.Open(item.Branch);
 			break;
 		case ReviewAction::End:
@@ -686,7 +691,7 @@ namespace Graphite {
 		const ReviewSessions& sessions = m_ReviewStore.GetSessions();
 		const ReviewSession* session = sessions.Find(branch.FullName);
 
-		if (session == nullptr)
+		if (session == nullptr || session->Draft)
 		{
 			return std::string{};
 		}

@@ -41,6 +41,10 @@ namespace Graphite {
 		SessionSettings Settings;
 		BranchMarks Marks;
 
+		// A draft holds the base and settings of a branch that is only looked at. It is not written to
+		// reviews.json and shows no badge until a viewed mark keeps it.
+		bool Draft = false;
+
 		friend bool operator==(const ReviewSession&, const ReviewSession&) = default;
 	};
 
@@ -53,6 +57,15 @@ namespace Graphite {
 
 		void Start(const std::string& branch, const std::string& base);
 		void End(const std::string& branch);
+
+		// A draft holds a branch's base and settings while the branch is only looked at. It opens with
+		// IncludeUncommitted on. A branch that already has a draft or a session is left alone.
+		void OpenDraft(const std::string& branch, const std::string& base);
+
+		// Turns a draft into a kept session; anything else is left alone.
+		void Keep(const std::string& branch);
+
+		bool IsKept(const std::string& branch) const;
 
 		void SetSettings(const std::string& branch, const SessionSettings& settings);
 

@@ -238,7 +238,45 @@ namespace Graphite {
 		if (inserted)
 		{
 			++m_Version;
+			return;
 		}
+
+		ReviewSession& session = entry->second;
+
+		if (session.Draft)
+		{
+			session.Base = base;
+			session.Draft = false;
+			++m_Version;
+		}
+	}
+
+	void ReviewSessions::OpenDraft(const std::string& branch, const std::string& base)
+	{
+		ReviewSession draft{.Base = base, .Draft = true};
+		draft.Settings.IncludeUncommitted = true;
+
+		if (m_Sessions.try_emplace(branch, std::move(draft)).second)
+		{
+			++m_Version;
+		}
+	}
+
+	void ReviewSessions::Keep(const std::string& branch)
+	{
+		ReviewSession* session = SessionNamed(m_Sessions, branch);
+
+		if (session != nullptr && session->Draft)
+		{
+			session->Draft = false;
+			++m_Version;
+		}
+	}
+
+	bool ReviewSessions::IsKept(const std::string& branch) const
+	{
+		const ReviewSession* session = Find(branch);
+		return session != nullptr && !session->Draft;
 	}
 
 	void ReviewSessions::End(const std::string& branch)
@@ -299,6 +337,7 @@ namespace Graphite {
 			return;
 		}
 
+		session->Draft = false;
 		session->Marks.insert_or_assign(MarkKey{.Group = group, .Path = ShownPath(file)},
 										ViewedMark{.Old = file.OldId, .New = file.NewId});
 		++m_Version;
@@ -435,6 +474,11 @@ namespace Graphite {
 
 		for (const auto& [branch, session] : sessions)
 		{
+			if (session.Draft)
+			{
+				continue;
+			}
+
 			encoded[branch] = EncodeSession(session);
 		}
 
