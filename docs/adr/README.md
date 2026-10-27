@@ -682,4 +682,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0650](0650-hold-what-is-asked-of-a-loading-tab-until-its-text-lands.md) | Hold what is asked of a loading tab until its text lands | proposed | 2026-10-27 |
 | [0651](0651-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
 | [0652](0652-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md) | Place non-document rows as blocks from a source the language server does not own | proposed | 2026-10-26 |
+| [0653](0653-count-a-branch-as-holding-work-while-a-commit-of-its-own-has-no-patch-twin-in-the-trunk-or-its-worktree-has-changes.md) | Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes | proposed | 2026-10-28 |
 <!-- /adr-index -->
