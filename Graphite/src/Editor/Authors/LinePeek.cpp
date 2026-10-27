@@ -11,6 +11,7 @@
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextButton.h"
+#include "Core/ImGui/TextMetrics.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsLucide.h>
@@ -115,6 +116,20 @@ namespace Graphite {
 			return Core::SmallTextButton(kCloseLabel);
 		}
 
+		// The meta line cut to the room by its name alone, so the age and the short hash after it stay whole; a room too
+		// narrow even for those cuts the whole line from its end.
+		std::string FitMeta(const PeekEntry& entry, float room)
+		{
+			const float restWidth = Core::TextWidth(entry.MetaRest);
+
+			if (restWidth >= room)
+			{
+				return FitToWidth(entry.MetaName + entry.MetaRest, room);
+			}
+
+			return FitToWidth(entry.MetaName, room - restWidth) + entry.MetaRest;
+		}
+
 		// Each entry is two lines on a row as wide as the list, its title and then its meta muted, each cut with an
 		// ellipsis to the row; the selected one has the accent bar at its left. Returns the entry clicked.
 		std::optional<std::size_t> DrawEntries(const LinePeekContent& content, std::size_t selected,
@@ -169,15 +184,18 @@ namespace Graphite {
 					continue;
 				}
 
-				const ImVec2 min = ImGui::GetItemRectMin();
-				const ImVec2 max = ImGui::GetItemRectMax();
+				ImDrawList* const draw = ImGui::GetWindowDrawList();
+
+				// WARNING: A Selectable's box reaches half the item spacing past each side, and the borderless list
+				// clips at its own edges, so the bar and the text are placed from the part of the row that shows. From
+				// the box's own left the bar was drawn wholly in the clipped strip.
+				const ImVec2 min(std::max(ImGui::GetItemRectMin().x, draw->GetClipRectMin().x), ImGui::GetItemRectMin().y);
+				const ImVec2 max(std::min(ImGui::GetItemRectMax().x, draw->GetClipRectMax().x), ImGui::GetItemRectMax().y);
 				const float room = std::max(0.0f, max.x - min.x - inset * kBothSides);
 
 				// WARNING: Cut to fit, not clipped: a clip took the end of the meta line, which is the short hash.
 				const std::string title = FitToWidth(entry.Title, room);
-				const std::string meta = FitToWidth(entry.Meta, room);
-
-				ImDrawList* const draw = ImGui::GetWindowDrawList();
+				const std::string meta = FitMeta(entry, room);
 
 				if (isSelected)
 				{

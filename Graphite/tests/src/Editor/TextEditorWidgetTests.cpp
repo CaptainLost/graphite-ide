@@ -628,13 +628,13 @@ namespace {
 		content.State = Graphite::PeekState::Ready;
 		content.Header = "History of line 1";
 		content.Entries = {Graphite::PeekEntry{.Title = "Fix",
-											   .Meta = "Ann",
+											   .MetaName = "Ann",
 											   .Byline = "Ann",
 											   .Lines = {{Core::DiffLineKind::Removed, "frist", true},
 														 {Core::DiffLineKind::Added, "first", true}},
 											   .Commit = Core::Oid{}},
 						   Graphite::PeekEntry{.Title = "Add",
-											   .Meta = "Ann",
+											   .MetaName = "Ann",
 											   .Byline = "Ann",
 											   .Lines = {{Core::DiffLineKind::Added, "frist", true}},
 											   .Commit = Core::Oid{}}};
@@ -645,7 +645,7 @@ namespace {
 	// An entry whose diff is `lineCount` added lines reading `text`, the one at `tracked` the line the peek follows.
 	Graphite::PeekEntry LongEntry(const char* title, std::string_view text, std::size_t lineCount, std::size_t tracked)
 	{
-		Graphite::PeekEntry entry{.Title = title, .Meta = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
+		Graphite::PeekEntry entry{.Title = title, .MetaName = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
 
 		for (std::size_t line = 0; line < lineCount; ++line)
 		{
@@ -1994,6 +1994,26 @@ TEST_CASE("Peek reports a selected entry")
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Peek list draws the selected entry's bar where the list shows it")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent history = PeekOfTwoCommits();
+
+	ShowPeek(editor, kFirstLine, history);
+	editor.Next();
+	editor.Next();
+
+	const ImGuiWindow* const list = ActiveWindowNamedWith(kPeekListMark);
+	REQUIRE(list != nullptr);
+
+	const std::optional<HorizontalExtent> bar = HorizontalExtentInColour(*list->DrawList, PeekAccent());
+	REQUIRE(bar.has_value());
+
+	CHECK(bar->Left >= list->InnerClipRect.Min.x);
+	CHECK(bar->Right <= list->InnerClipRect.Max.x);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("Peek offers Show commit beside the byline above a long diff")
 {
 	constexpr int kDiffLines = 30;
@@ -2005,7 +2025,7 @@ TEST_CASE("Peek offers Show commit beside the byline above a long diff")
 	content.State = Graphite::PeekState::Ready;
 	content.Header = "History of line 1";
 
-	Graphite::PeekEntry entry{.Title = "Add", .Meta = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
+	Graphite::PeekEntry entry{.Title = "Add", .MetaName = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
 
 	// The tracked line is the first, so the detail opens at its top.
 	for (int line = 0; line < kDiffLines; ++line)
