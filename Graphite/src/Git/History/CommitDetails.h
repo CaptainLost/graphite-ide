@@ -18,6 +18,8 @@ namespace Graphite {
 
 	DiffStats CountChanges(const Core::Diff& diff);
 
+	std::string UncountedChangesText(bool diffFailed);
+
 	// WARNING: The offset is the reader's, not the author's, because Core::Signature drops the author's. Seconds are dropped, not rounded.
 	std::string FormattedTimestamp(std::chrono::sys_seconds instant, std::chrono::minutes offset);
 

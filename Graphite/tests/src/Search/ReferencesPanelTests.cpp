@@ -25,6 +25,93 @@ TEST_CASE("References become hits grouped by file and ordered by line")
 	CHECK(hits[0].Text == "a.cpp line 4");
 }
 
+TEST_CASE("References waiting on a server say what the server is doing, and wait with a loader")
+{
+	const Graphite::ReferencesSummary summary = Graphite::SummariseReferences(
+		Graphite::ReferencesPhase::WaitingForServer, "Foo", 0, "waiting for Roslyn to load Graphite.csproj");
+
+	CHECK(summary.Text == "References to Foo \xC2\xB7 waiting for Roslyn to load Graphite.csproj");
+	CHECK(summary.Waiting);
+}
+
+TEST_CASE("References being found say so with a loader rather than a count")
+{
+	const Graphite::ReferencesSummary summary =
+		Graphite::SummariseReferences(Graphite::ReferencesPhase::Finding, "Foo", 0, "");
+
+	CHECK(summary.Text == "Finding references to Foo");
+	CHECK(summary.Waiting);
+}
+
+TEST_CASE("Found references give their count, and say when the server had not finished indexing")
+{
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Found, "Foo", 12, "").Text == "References to Foo: 12 hits");
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Found, "Foo", 1, "").Text == "References to Foo: 1 hit");
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Found, "Foo", 0, "").Text == "References to Foo: 0 hits");
+
+	const Graphite::ReferencesSummary incomplete = Graphite::SummariseReferences(
+		Graphite::ReferencesPhase::Found, "Foo", 12, "clangd is still indexing (40%), the list may be incomplete");
+
+	CHECK(incomplete.Text == "References to Foo: 12 hits \xC2\xB7 clangd is still indexing (40%), the list may be incomplete");
+	CHECK_FALSE(incomplete.Waiting);
+}
+
+TEST_CASE("References that failed or could not be asked give no count")
+{
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Failed, "Foo", 0, "clangd did not answer").Text ==
+		  "References to Foo");
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Unavailable, "Foo", 0, "clangd not installed").Text ==
+		  "References to Foo");
+	CHECK(Graphite::ReferencesFailureText("clangd returned an error") == "Couldn't get references: clangd returned an error");
+}
+
+TEST_CASE("Only an answer about the symbol already listed, while it is being updated, is a refresh")
+{
+	CHECK(Graphite::AnswersRefreshOf(Graphite::ReferencesPhase::Found, true, "Foo", "Foo"));
+	CHECK_FALSE(Graphite::AnswersRefreshOf(Graphite::ReferencesPhase::Found, false, "Foo", "Foo"));
+	CHECK_FALSE(Graphite::AnswersRefreshOf(Graphite::ReferencesPhase::Found, true, "Foo", "Bar"));
+	CHECK_FALSE(Graphite::AnswersRefreshOf(Graphite::ReferencesPhase::Finding, true, "Foo", "Foo"));
+	CHECK(Graphite::RefreshFailureText("clangd did not answer") == "Couldn't update the list: clangd did not answer");
+}
+
+TEST_CASE("The hit selected before a refresh is found again in the refreshed list by file, line and order on the line")
+{
+	Graphite::HitGroups before;
+	before.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 4});
+	before.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 9});
+	before.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 9});
+
+	const std::optional<Graphite::HitPlace> place =
+		Graphite::PlaceOfSelectedHit(before.Get(), Graphite::HitSelection{.Group = before.Get()[0].Id, .Hit = 2});
+
+	REQUIRE(place.has_value());
+	CHECK(place->Line == 9);
+	CHECK(place->OrdinalOnLine == 1);
+
+	Graphite::HitGroups after;
+	after.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 2});
+	after.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 4});
+	after.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 9});
+	after.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 9});
+
+	const std::optional<Graphite::HitSelection> again = Graphite::SelectionAtPlace(after.Get(), *place);
+
+	REQUIRE(again.has_value());
+	CHECK(again->Group == after.Get()[0].Id);
+	CHECK(again->Hit == 3);
+}
+
+TEST_CASE("A selected hit gone from the refreshed list leaves nothing selected")
+{
+	Graphite::HitGroups after;
+	after.Add(Graphite::SearchHit{.File = "D:/a.cpp", .Line = 2});
+
+	const Graphite::HitPlace gone{.File = "D:/a.cpp", .Line = 9};
+
+	CHECK_FALSE(Graphite::SelectionAtPlace(after.Get(), gone).has_value());
+	CHECK_FALSE(Graphite::PlaceOfSelectedHit(after.Get(), Graphite::HitSelection{.Group = "nowhere", .Hit = 0}).has_value());
+}
+
 TEST_CASE("An empty reply becomes no hits rather than one empty group")
 {
 	CHECK(Graphite::AsHits({}, "Draw", LineOf).empty());

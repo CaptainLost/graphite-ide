@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Graphite {
@@ -38,6 +39,11 @@ namespace Graphite {
 		std::optional<HoverQuestion> InfoFailedFor;
 		std::optional<HoverQuestion> PreviewFailedFor;
 
+		std::string InfoFailureText;
+		std::string PreviewFailureText;
+
+		bool NoDefinitionFound = false;
+
 		float TooltipNaturalHeight = 0.0f;
 
 		ImVec2 TooltipMin{};
@@ -53,6 +59,10 @@ namespace Graphite {
 		ImVec2 AnchorMin{};
 		ImVec2 AnchorMax{};
 	};
+
+	std::string HoverFailureText(const LanguageServices::Answer& answer);
+
+	std::string HoverLoadingText(const ServerStatus& status);
 
 	void HoldHoverAnswer(HoverState& hover, const HoverQuestion& question,
 						 const LanguageServices::Answer& answer);

@@ -51,16 +51,28 @@ namespace {
 		// Shared, because a dialog abandoned by its owner still runs to the end.
 		std::shared_ptr<std::promise<void>> Release = std::make_shared<std::promise<void>>();
 		std::shared_ptr<std::atomic<bool>> Returned = std::make_shared<std::atomic<bool>>(false);
+		std::shared_ptr<std::atomic<bool>> Running = std::make_shared<std::atomic<bool>>(false);
 
 		AsyncDialog::Picker MakePicker() const
 		{
-			return [release = Release->get_future().share(), returned = Returned]() -> Picked {
+			return [release = Release->get_future().share(), returned = Returned, running = Running]() -> Picked {
+				running->store(true);
 				release.wait();
 				returned->store(true);
 				return std::filesystem::path("picked");
 			};
 		}
 	};
+
+	void WaitUntilPickerRuns(const HeldOpenPicker& heldPicker)
+	{
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kGiveUpAfter;
+
+		while (!heldPicker.Running->load() && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(kPollInterval);
+		}
+	}
 
 	void WaitUntilPickerReturns(const HeldOpenPicker& heldPicker)
 	{
@@ -216,6 +228,34 @@ TEST_CASE("AsyncDialog counts as closed when the callback runs so the callback c
 
 	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredCount == bothDialogs; }));
 	CHECK_FALSE(dialog.IsOpen());
+}
+
+TEST_CASE("AsyncDialog brings nothing to the front when no dialog is open")
+{
+	AsyncDialog dialog;
+
+	dialog.BringToFront();
+
+	CHECK_FALSE(dialog.IsOpen());
+}
+
+TEST_CASE("AsyncDialog bringing an open dialog to the front neither waits for the picker nor answers for it")
+{
+	AsyncDialog dialog;
+	HeldOpenPicker heldPicker;
+	bool delivered = false;
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](const std::filesystem::path&) { delivered = true; }, IgnoreFailure));
+	WaitUntilPickerRuns(heldPicker);
+	REQUIRE(heldPicker.Running->load());
+
+	dialog.BringToFront();
+	dialog.Poll();
+
+	CHECK(dialog.IsOpen());
+	CHECK_FALSE(delivered);
+
+	heldPicker.Release->set_value();
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return delivered; }));
 }
 
 TEST_CASE("AsyncDialog destroyed while a dialog is open neither waits for it nor calls back")

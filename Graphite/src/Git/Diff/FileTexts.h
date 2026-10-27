@@ -66,10 +66,28 @@ namespace Graphite {
 	// so this compares both sides' bytes and presence, never the pointer.
 	bool TokensStillGood(const FileTexts* held, const FileTexts& fresh);
 
+	enum class TextsProgress
+	{
+		Unknown,
+		Loading,
+		Failed
+	};
+
+	struct TextsWait
+	{
+		TextsProgress Progress = TextsProgress::Unknown;
+
+		std::string Reason;
+
+		friend bool operator==(const TextsWait&, const TextsWait&) = default;
+	};
+
 	struct FileTextsBinding
 	{
 		Core::Ref<const FileTexts> Texts;
 		FileTokens Tokens;
+
+		TextsWait Wait;
 
 		// WARNING: Commit is held alongside Key because forgiving a failed entry for the file
 		// just left needs the commit that entry was keyed under, not the one now on screen.

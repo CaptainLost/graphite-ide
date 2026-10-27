@@ -163,6 +163,28 @@ TEST_CASE("The background tooltip says what is kept against what may be")
 	CHECK(detail.find("42 of 385") != std::string::npos);
 	CHECK(detail.find("34 MB") != std::string::npos);
 	CHECK(detail.find("128 MB") != std::string::npos);
+	CHECK(detail.find("The file you are reading has its own questions answered first") != std::string::npos);
+}
+
+TEST_CASE("A paused background pass says it is paused, and its tooltip says until what")
+{
+	Graphite::AnalysisProgress progress;
+	progress.Done = 42;
+	progress.Total = 385;
+	progress.Pause = Graphite::AnalysisPause::UntilServerIsReady;
+	progress.PausedForServer = "clangd";
+
+	CHECK(Graphite::BackgroundAnalysisText(progress) == "analysing workspace: 42 of 385 \xC2\xB7 paused");
+
+	const std::string untilReady = Graphite::BackgroundAnalysisDetail(progress, 0, 0);
+
+	CHECK(untilReady.find("Paused until clangd is ready.") != std::string::npos);
+	CHECK(untilReady.find("The file you are reading") == std::string::npos);
+
+	progress.Pause = Graphite::AnalysisPause::WhileSavedAnalysisLoads;
+
+	CHECK(Graphite::BackgroundAnalysisDetail(progress, 0, 0).find("Paused while the saved analysis loads.") !=
+		  std::string::npos);
 }
 
 TEST_CASE("A restricted server says so and says why")

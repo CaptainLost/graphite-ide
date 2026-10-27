@@ -1,4 +1,4 @@
-# 0642. Let a tab's view put its tools on the right of the path row, and give the row to image tabs
+# 0648. Let a tab's view put its tools on the right of the path row, and give the row to image tabs
 
 Status: proposed
 Date: 2026-10-26
@@ -65,13 +65,13 @@ need to know where not to react.
 
 ### Put the tools in the status bar
 
-Rejected: 0620 and 0641 give the status bar items about the document, not
+Rejected: 0620 and 0647 give the status bar items about the document, not
 controls over it, and the bar is far from the picture.
 
 ## Related
 
 - [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md) —
   the row; amended here.
-- [0641](0641-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md) —
+- [0647](0647-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md) —
   the status bar's items from the view on screen.
 - `Graphite/src/Editor/Breadcrumb.h` — `BreadcrumbTools` and `DrawBreadcrumb`.

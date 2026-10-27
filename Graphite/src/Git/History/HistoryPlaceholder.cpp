@@ -8,14 +8,14 @@ namespace Graphite {
 	}
 
 	std::optional<std::string> HistoryPlaceholder(bool hasStatus, const std::optional<Core::Error>& statusError,
-												  const std::optional<Core::Error>& logError)
+												  const std::optional<Core::Error>& logError, LogAttempt attempt)
 	{
 		if (IsMissingRepository(hasStatus, statusError))
 		{
 			return "No repository.";
 		}
 
-		if (logError.has_value())
+		if (logError.has_value() && attempt == LogAttempt::Settled)
 		{
 			return "Could not load the history: " + logError->Message;
 		}

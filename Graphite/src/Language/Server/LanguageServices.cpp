@@ -366,10 +366,7 @@ namespace Graphite {
 				}
 			}
 
-			for (const auto& [requestId, ticket] : server.Pending)
-			{
-				Fail(ticket);
-			}
+			FailPending(server, ReplyFailure::ServerUnavailable, key.Language);
 
 			Retire(std::move(server.Client));
 
@@ -684,13 +681,25 @@ namespace Graphite {
 		return static_cast<Ticket>(m_NextTicket++);
 	}
 
-	void LanguageServices::Fail(Ticket ticket)
+	void LanguageServices::Fail(Ticket ticket, ReplyFailure reason, ServerStatus server)
 	{
 		Answer answer;
 		answer.For = ticket;
 		answer.Failed = true;
+		answer.FailedBecause = reason;
+		answer.ServerAtFailure = std::move(server);
 
 		m_Answers.push_back(std::move(answer));
+	}
+
+	void LanguageServices::FailPending(ManagedServer& server, ReplyFailure reason, LanguageId language)
+	{
+		for (const auto& [requestId, ticket] : server.Pending)
+		{
+			Fail(ticket, reason, WithLanguage(server.Status, language));
+		}
+
+		server.Pending.clear();
 	}
 
 	LanguageServices::Ticket LanguageServices::AskVia(
@@ -703,15 +712,21 @@ namespace Graphite {
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			Fail(ticket);
+			Fail(ticket, ReplyFailure::ServerUnavailable, StatusFor(language));
 			return ticket;
 		}
 
 		ManagedServer* server = FindManagedServer(key);
 
-		if (server == nullptr || !server->Client)
+		if (server == nullptr)
 		{
-			Fail(ticket);
+			Fail(ticket, ReplyFailure::ServerUnavailable, ServerStatus{.Language = language});
+			return ticket;
+		}
+
+		if (!server->Client)
+		{
+			Fail(ticket, ReplyFailure::ServerUnavailable, WithLanguage(server->Status, language));
 			return ticket;
 		}
 
@@ -719,7 +734,7 @@ namespace Graphite {
 
 		if (requestId == kDeclinedRequest)
 		{
-			Fail(ticket);
+			Fail(ticket, ReplyFailure::ServerError, WithLanguage(server->Status, language));
 			return ticket;
 		}
 
@@ -804,10 +819,14 @@ namespace Graphite {
 		update.Closed.insert(update.Closed.end(),
 							 std::make_move_iterator(m_Diagnostics.Closed.begin()),
 							 std::make_move_iterator(m_Diagnostics.Closed.end()));
+		update.Unanswered.insert(update.Unanswered.end(),
+								 std::make_move_iterator(m_Diagnostics.Unanswered.begin()),
+								 std::make_move_iterator(m_Diagnostics.Unanswered.end()));
 
 		m_Diagnostics.Published.clear();
 		m_Diagnostics.Versions.clear();
 		m_Diagnostics.Closed.clear();
+		m_Diagnostics.Unanswered.clear();
 	}
 
 	void LanguageServices::Cancel(Ticket ticket)
@@ -1162,17 +1181,13 @@ namespace Graphite {
 			Retire(std::move(server.Client));
 		}
 
-		for (const auto& [requestId, ticket] : server.Pending)
-		{
-			Fail(ticket);
-		}
-		server.Pending.clear();
-
 		server.Restarts = kNoRestarts;
 		server.RestartPending = false;
 
 		server.ProjectSearch = kNoProjectSearch;
 		MarkRestricted(server);
+
+		FailPending(server, ReplyFailure::ServerUnavailable, key.Language);
 	}
 
 	void LanguageServices::ReplayOpenDocuments(ManagedServer& server)
@@ -1409,6 +1424,11 @@ namespace Graphite {
 				static_cast<ServerReply&>(delivered) = std::move(static_cast<ServerReply&>(answer));
 				delivered.For = pendingTicket;
 
+				if (delivered.Failed)
+				{
+					delivered.ServerAtFailure = WithLanguage(drained.Status, key.Language);
+				}
+
 				m_Answers.push_back(std::move(delivered));
 				server.Pending.erase(pending);
 			}
@@ -1416,6 +1436,10 @@ namespace Graphite {
 			m_Diagnostics.Published.insert(m_Diagnostics.Published.end(),
 										   std::make_move_iterator(drained.Diagnostics.begin()),
 										   std::make_move_iterator(drained.Diagnostics.end()));
+
+			m_Diagnostics.Unanswered.insert(m_Diagnostics.Unanswered.end(),
+											std::make_move_iterator(drained.Unanswered.begin()),
+											std::make_move_iterator(drained.Unanswered.end()));
 
 			m_Messages.insert(m_Messages.end(), std::make_move_iterator(drained.Messages.begin()),
 							  std::make_move_iterator(drained.Messages.end()));
@@ -1473,11 +1497,7 @@ namespace Graphite {
 				continue;
 			}
 
-			for (const auto& [requestId, ticket] : server.Pending)
-			{
-				Fail(ticket);
-			}
-			server.Pending.clear();
+			FailPending(server, ReplyFailure::ServerUnavailable, key.Language);
 
 			if (!MayRestart(server.Restarts))
 			{

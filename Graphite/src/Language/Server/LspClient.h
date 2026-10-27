@@ -29,6 +29,13 @@
 
 namespace Graphite {
 
+	enum class ReplyFailure : std::uint8_t
+	{
+		ServerError,
+		TimedOut,
+		ServerUnavailable
+	};
+
 	// What a server answered to one request, whichever kind of request it was.
 	struct ServerReply
 	{
@@ -38,6 +45,11 @@ namespace Graphite {
 		std::string Text;
 		HoverInfo Hover;
 		bool Failed = false;
+
+		// WARNING: Both are read only when Failed is set. ServerAtFailure is the server's status as the request
+		// failed, which a restart in the same poll has already replaced by the time anyone reads the answer.
+		ReplyFailure FailedBecause = ReplyFailure::ServerError;
+		ServerStatus ServerAtFailure;
 	};
 
 	class LspClient
@@ -81,7 +93,13 @@ namespace Graphite {
 
 		static constexpr std::chrono::seconds kHandshakeTimeout{30};
 
+		static constexpr std::chrono::seconds kNavigationTimeLimit{30};
+		static constexpr std::chrono::seconds kReferencesTimeLimit{120};
+		static constexpr std::chrono::seconds kAnalysisTimeLimit{60};
+
 		void ExpireHandshakeIfStalled(std::chrono::steady_clock::time_point now);
+
+		void ExpireOverdueRequests(std::chrono::steady_clock::time_point now);
 
 		std::size_t QueuedCount() const;
 
@@ -93,6 +111,8 @@ namespace Graphite {
 			std::vector<ServerMessage> Messages;
 
 			std::vector<std::filesystem::path> Recolour;
+
+			std::vector<DocumentVersionNote> Unanswered;
 		};
 
 		// WARNING: UI thread only.
@@ -147,6 +167,10 @@ namespace Graphite {
 
 			std::string Uri;
 			DocumentVersion Version;
+
+			// WARNING: Empty while the request waits in the pre-handshake queue: the time limit counts from when the
+			// request reaches the server, not from when it was asked.
+			std::optional<std::chrono::steady_clock::time_point> Deadline;
 		};
 
 		using DocumentTable = std::unordered_map<std::string, Document>;
@@ -161,6 +185,7 @@ namespace Graphite {
 			std::vector<PublishedDiagnostics> Diagnostics;
 			std::vector<ServerMessage> Messages;
 			std::vector<std::filesystem::path> Recolour;
+			std::vector<DocumentVersionNote> Unanswered;
 
 			struct RunningProgress
 			{
@@ -213,6 +238,17 @@ namespace Graphite {
 		RequestId AskLocked(std::string_view method, const nlohmann::json& params, Question question,
 							std::optional<FilePosition> from = std::nullopt);
 
+		static std::chrono::seconds TimeLimitOf(Question question);
+
+		// WARNING: ProtocolMutex must be held by the caller.
+		static std::optional<std::chrono::steady_clock::time_point> DeadlineFromNowLocked(const Shared& shared, Question question);
+
+		static void StartWaitingDeadlinesLocked(Shared& shared);
+
+		static bool IsOverdue(const Asked& asked, std::chrono::steady_clock::time_point now);
+
+		static Answer FailedAnswer(RequestId id, ReplyFailure reason);
+
 		void BeginHandshake(const std::filesystem::path& root);
 
 		bool RequestShutdown();
@@ -247,6 +283,9 @@ namespace Graphite {
 		static void PullShownLocked(Shared& shared);
 
 		static void ReceivePull(Shared& shared, const Asked& asked, const IncomingMessage& reply);
+
+		// WARNING: ProtocolMutex must be held by the caller.
+		static std::optional<DocumentVersionNote> GiveUpPullLocked(Shared& shared, const Asked& asked);
 
 		static void NameOpenDocumentsAsOpenedLocked(const Shared& shared, std::vector<Location>& locations);
 

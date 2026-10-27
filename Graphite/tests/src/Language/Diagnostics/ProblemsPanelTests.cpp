@@ -41,6 +41,16 @@ namespace {
 		return nullptr;
 	}
 
+	Graphite::ServerStatus ReadyServer(const std::filesystem::path&, Graphite::LanguageId language)
+	{
+		return Graphite::ServerStatus{.State = Graphite::ServerState::Ready, .Name = "clangd", .Language = language};
+	}
+
+	bool AnyServerChosen(Graphite::LanguageId)
+	{
+		return true;
+	}
+
 	Graphite::DiagnosticsUpdate OneErrorIn(const std::filesystem::path& path)
 	{
 		constexpr int kFirstVersion = 1;
@@ -75,7 +85,7 @@ TEST_CASE("A file in Problems draws its badge in its kind's colour and its name 
 	diagnostics.Apply(OneErrorIn(settingsFile));
 
 	const Graphite::ActiveScheme scheme;
-	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme, ReadyServer, AnyServerChosen};
 
 	frames.Next([&] {
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -119,7 +129,7 @@ TEST_CASE("A file heading in Problems takes one list row pitch, as the problem r
 	diagnostics.Apply(OneErrorIn(sourceFile));
 
 	const Graphite::ActiveScheme scheme;
-	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme, ReadyServer, AnyServerChosen};
 
 	float pitch = 0.0f;
 	ImGui::GetStyle().ItemSpacing.y = kInterfaceItemSpacing;
@@ -169,7 +179,7 @@ TEST_CASE("A problem's highlight is inset six pixels from the Problems panel's e
 	diagnostics.Apply(OneErrorIn(settingsFile));
 
 	const Graphite::ActiveScheme scheme;
-	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme, ReadyServer, AnyServerChosen};
 
 	REQUIRE(panel.GetSides() == Core::Panel::Sides::Flush);
 
@@ -233,7 +243,7 @@ TEST_CASE("A file heading in Problems stands a list row's end inset in from the 
 	diagnostics.Apply(OneErrorIn(settingsFile));
 
 	const Graphite::ActiveScheme scheme;
-	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme, ReadyServer, AnyServerChosen};
 
 	float rowEndInset = 0.0f;
 

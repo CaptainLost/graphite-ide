@@ -182,6 +182,10 @@ TEST_CASE("A ticket asked of a configured server whose binary is missing comes b
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].For == ticket);
 	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerUnavailable);
+	CHECK(answers[0].ServerAtFailure.State == Graphite::ServerState::NotFound);
+	CHECK(answers[0].ServerAtFailure.Name == "clangd");
+	CHECK(answers[0].ServerAtFailure.Language == Graphite::LanguageId::Cpp);
 }
 
 TEST_CASE("Opening a folder starts a server for a language the tree contains")
@@ -350,6 +354,26 @@ TEST_CASE("A ticket for a language with no configured server is answered Failed 
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].For == ticket);
 	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerUnavailable);
+	CHECK(answers[0].ServerAtFailure.State == Graphite::ServerState::NotConfigured);
+}
+
+TEST_CASE("A ticket for a language whose server is turned off fails naming the server off")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetChoiceProvider(TurnedOffFor);
+
+	services.AskDefinition(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp, kNowhere);
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerUnavailable);
+	CHECK(answers[0].ServerAtFailure.State == Graphite::ServerState::Off);
+	CHECK(answers[0].ServerAtFailure.Language == Graphite::LanguageId::Cpp);
 }
 
 TEST_CASE("A semantic-tokens ticket the client refuses before the handshake is failed at once")
@@ -542,6 +566,8 @@ TEST_CASE("A ticket asked of a restricted server comes back Failed")
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].For == ticket);
 	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerUnavailable);
+	CHECK(answers[0].ServerAtFailure.State == Graphite::ServerState::Restricted);
 }
 
 TEST_CASE("Warming up a refused root starts nothing")
@@ -1607,6 +1633,7 @@ TEST_CASE("Reconfigure answers what the old server still owed as failed")
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].For == ticket);
 	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerUnavailable);
 }
 
 TEST_CASE("Reconfigure to a server turned off stops the server and reports Off")

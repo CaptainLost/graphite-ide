@@ -48,6 +48,11 @@ namespace Graphite {
 
 	std::string EmptyDiffMessage(const OpenDiff& diff);
 
+	std::optional<std::string> DiffFailureOf(const OpenDiff& diff, const GitModel& model);
+
+	// WARNING: Forgets the failure before asking again, or the old failure stays on screen until the new answer lands.
+	void RetryDiff(const OpenDiff& diff, GitModel& model);
+
 	class DiffWindows
 	{
 	public:

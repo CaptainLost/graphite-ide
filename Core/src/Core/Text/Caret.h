@@ -50,6 +50,14 @@ namespace Core {
 		friend bool operator==(const OffsetRange&, const OffsetRange&) = default;
 	};
 
+	// What a drag that started on a double or triple click grows the selection by.
+	enum class SelectionUnit
+	{
+		Character,
+		Word,
+		Line
+	};
+
 	bool HasSelection(const Caret& caret);
 
 	OffsetRange SelectionRange(const Caret& caret);
@@ -65,6 +73,11 @@ namespace Core {
 	Caret SelectWordAt(const TextBuffer& buffer, std::size_t offset);
 
 	Caret SelectLineAt(const TextBuffer& buffer, std::size_t line);
+
+	// The selection while a drag that began on `origin` (the word or line first selected) reaches
+	// `offset`: whole words or lines, always containing the origin, whichever side the pointer is on.
+	Caret ExtendByUnit(const TextBuffer& buffer, OffsetRange origin, std::size_t offset,
+					   SelectionUnit unit);
 
 	Caret SelectAll(const TextBuffer& buffer);
 }

@@ -55,6 +55,15 @@ namespace Graphite {
 		virtual ServerReadiness ReadinessOf(const std::filesystem::path& path,
 											LanguageId language) = 0;
 		virtual bool HasChosenServer(LanguageId language) = 0;
+
+		virtual std::string ServerNameOf(LanguageId language) = 0;
+	};
+
+	enum class AnalysisPause : std::uint8_t
+	{
+		NotPaused,
+		WhileSavedAnalysisLoads,
+		UntilServerIsReady
 	};
 
 	struct AnalysisProgress
@@ -62,6 +71,9 @@ namespace Graphite {
 		std::size_t Done = 0;
 		std::size_t Total = 0;
 		bool Walking = false;
+
+		AnalysisPause Pause = AnalysisPause::NotPaused;
+		std::string PausedForServer;
 	};
 
 	class WorkspaceAnalysis
@@ -128,6 +140,8 @@ namespace Graphite {
 
 		void StartNext(const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
 
+		void PauseUntilServerIsReady(LanguageId language);
+
 		void BeginArrivedFiles(
 			double now, const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
 
@@ -160,5 +174,8 @@ namespace Graphite {
 		std::optional<double> m_BusySince;
 
 		std::vector<FileText> m_Arrived;
+
+		AnalysisPause m_Pause = AnalysisPause::NotPaused;
+		std::string m_PausedForServer;
 	};
 }

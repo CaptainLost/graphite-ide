@@ -16,6 +16,7 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/FileIcons.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
@@ -31,6 +32,8 @@
 
 #include "Core/Events/EventBus.h"
 
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <format>
 #include <string>
@@ -41,9 +44,26 @@
 namespace Graphite {
 
 	namespace {
+
+		constexpr const char* kFilterFieldId = "##fileFilter";
+		constexpr const char* kRefreshingFileList = "Refreshing the file list";
+
 		std::string NewFromTemplateLabel()
 		{
 			return std::string{"New File from Template"} + std::string{kEllipsis};
+		}
+
+		bool DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting)
+		{
+			const float inset = TreeRowChevronBoxLeft();
+
+			ImGui::Indent(inset);
+			ImGui::PushTextWrapPos(ListRowEndPosX());
+			const bool loaderShows = Core::LoadingLine(text.c_str(), whileWaiting);
+			ImGui::PopTextWrapPos();
+			ImGui::Unindent(inset);
+
+			return loaderShows;
 		}
 	}
 
@@ -126,7 +146,14 @@ namespace Graphite {
 		}
 
 		ResolvePendingRename();
-		RenderFilter();
+		const bool typingInFilter = RenderFilter();
+
+		// WARNING: Read from the moment the filter is focused, so the list is fresh by the first letter, and never in
+		// the background on a change on disk: every entry read costs a git ignore check.
+		if (typingInFilter || m_Filter.IsActive())
+		{
+			m_Listing.Update();
+		}
 
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
@@ -192,14 +219,16 @@ namespace Graphite {
 		m_ScrollToPath = path;
 	}
 
-	void FileTreeView::RenderFilter()
+	bool FileTreeView::RenderFilter()
 	{
 		const Core::PanelMarginScope margin;
 
-		if (DrawFilterField("##fileFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf), {.Hint = "Filter files"}))
+		if (DrawFilterField(kFilterFieldId, m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf), {.Hint = "Filter files"}))
 		{
 			m_Filter.Build();
 		}
+
+		return ImGui::GetActiveID() == ImGui::GetID(kFilterFieldId);
 	}
 
 	void FileTreeView::NewFileInRoot()
@@ -236,8 +265,10 @@ namespace Graphite {
 	{
 		const Core::PanelMarginScope margin;
 
+		const ImVec2 fillTheRegion{0.0f, 0.0f};
+
 		ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
-		const bool clicked = Core::EmptyState("No folder open.", "Open Folder");
+		const bool clicked = Core::EmptyState("No folder open.", "Open Folder", fillTheRegion, kFileDialogOpenNote);
 		ImGui::EndDisabled();
 
 		if (clicked)
@@ -250,8 +281,6 @@ namespace Graphite {
 	{
 		constexpr const char* kFilteredTreeScope = "##filteredTree";
 
-		m_Listing.Update();
-
 		if (!m_Listing.HasListing())
 		{
 			RenderSearching();
@@ -259,6 +288,15 @@ namespace Graphite {
 		}
 
 		RebuildFilteredTreeWhenOutOfDate();
+
+		const ListingFreshness freshness =
+			m_Listing.IsUpToDate() ? ListingFreshness::UpToDate : ListingFreshness::Refreshing;
+		const bool nothingMatches = !AnyChildPassesFilter(m_FilteredTree);
+
+		if (freshness == ListingFreshness::Refreshing && !nothingMatches)
+		{
+			DrawTreeLoader(kRefreshingFileList, Core::WhileLoaderWaits::TakeNoRoom);
+		}
 
 		// WARNING: The scope keeps the filtered rows' ids apart from the real tree's. ImGui stores a
 		// folder's open state by id, so a folder opened by the filter would stay open after it.
@@ -268,11 +306,31 @@ namespace Graphite {
 
 		m_ReopenFilteredFolders = false;
 
-		const bool nothingMatches = !AnyChildPassesFilter(m_FilteredTree);
-
-		if (nothingMatches)
+		if (!nothingMatches)
 		{
-			DrawTreeMessage(std::format("No files match \"{}\"", m_Filter.InputBuf));
+			return;
+		}
+
+		const std::string answeredMessage = NoMatchingFilesText(m_Filter.InputBuf, ListingFreshness::UpToDate);
+
+		switch (freshness)
+		{
+		case ListingFreshness::UpToDate:
+			DrawTreeMessage(answeredMessage);
+			return;
+		case ListingFreshness::Refreshing:
+		{
+			// WARNING: The answered message stays until the loader shows, so a re-read over in a frame or two, as on every
+			// save, changes nothing on screen.
+			const std::string refreshingMessage = NoMatchingFilesText(m_Filter.InputBuf, ListingFreshness::Refreshing);
+
+			if (!DrawTreeLoader(refreshingMessage, Core::WhileLoaderWaits::TakeNoRoom))
+			{
+				DrawTreeMessage(answeredMessage);
+			}
+
+			return;
+		}
 		}
 	}
 

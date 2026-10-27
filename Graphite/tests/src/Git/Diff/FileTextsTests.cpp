@@ -2,6 +2,9 @@
 
 #include "Git/Diff/FileTexts.h"
 
+#include "GitFixtures.h"
+#include "Git/GitModel.h"
+
 TEST_CASE("A successful read is present with its text")
 {
 	Core::Result<Graphite::SideText> side = Graphite::ReadSideText(std::string{"hello"});
@@ -108,4 +111,93 @@ TEST_CASE("Tokens are stale when a side appears or disappears")
 	const Graphite::FileTexts fresh{.Old = "", .New = "b", .HasOld = true, .HasNew = true};
 
 	CHECK_FALSE(Graphite::TokensStillGood(&held, fresh));
+}
+
+namespace {
+
+	constexpr float kNoTimePasses = 0.0f;
+
+	Core::FileDiff ChangedFile(const char* path)
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Modified;
+		file.OldPath = path;
+		file.NewPath = path;
+		return file;
+	}
+}
+
+TEST_CASE("A commit's texts on their way are loading, and once held nothing is waited for")
+{
+	EmptyGitPort port;
+	std::vector<std::function<void()>> held;
+	Graphite::GitModel model(port, [&held](std::function<void()> job) { held.push_back(std::move(job)); });
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+	const Core::FileDiff file = ChangedFile("a.txt");
+
+	binding.Update(model, OidWithFirstByte(1), file);
+
+	CHECK(binding.Wait.Progress == Graphite::TextsProgress::Loading);
+
+	for (const std::function<void()>& job : held)
+	{
+		job();
+	}
+
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	binding.Update(model, OidWithFirstByte(1), file);
+
+	CHECK(binding.Texts != nullptr);
+	CHECK(binding.Wait == Graphite::TextsWait{});
+}
+
+TEST_CASE("A commit's texts that could not be read say why")
+{
+	EmptyGitPort port;
+	port.TextsFailure = Core::Error{Core::ErrorCode::IoFailure, "blob missing"};
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+	const Core::FileDiff file = ChangedFile("a.txt");
+
+	binding.Update(model, OidWithFirstByte(1), file);
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	binding.Update(model, OidWithFirstByte(1), file);
+
+	CHECK(binding.Wait == Graphite::TextsWait{.Progress = Graphite::TextsProgress::Failed, .Reason = "blob missing"});
+}
+
+TEST_CASE("A binary file's texts are never waited for")
+{
+	EmptyGitPort port;
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+	Core::FileDiff file = ChangedFile("logo.png");
+	file.IsBinary = true;
+
+	binding.Update(model, OidWithFirstByte(1), file);
+
+	CHECK(binding.Wait == Graphite::TextsWait{});
+}
+
+TEST_CASE("A working-tree diff's texts that could not be read say why")
+{
+	EmptyGitPort port;
+	port.DiffAnswer.Files.push_back(ChangedFile("a.txt"));
+	port.TextsFailure = Core::Error{Core::ErrorCode::IoFailure, "sharing violation"};
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	Graphite::FileTextsBinding binding;
+	binding.UpdateFromWorkingTree(model, model.GetWorkingTreeDiff()->Files.front());
+
+	CHECK(binding.Wait == Graphite::TextsWait{.Progress = Graphite::TextsProgress::Failed, .Reason = "sharing violation"});
 }

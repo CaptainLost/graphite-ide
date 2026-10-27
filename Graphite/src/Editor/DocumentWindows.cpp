@@ -18,6 +18,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/LspClient.h"
+#include "Language/Server/ServerWaitingText.h"
 
 #include "Persistence/CaretRestore.h"
 
@@ -71,6 +72,7 @@ namespace Graphite {
 	namespace {
 		constexpr double kTransientMessageSeconds = 4.0;
 		constexpr unsigned int kNoDockNode = 0;
+		constexpr bool kNotRepeating = false;
 		constexpr float kNoRunOffset = 0.0f;
 		constexpr float kNoRunSpacing = 0.0f;
 
@@ -942,7 +944,17 @@ namespace Graphite {
 			return;
 		}
 
-		m_Router.AskSwitchSourceHeader(m_Documents.At(index).Path);
+		const Core::OpenItem& item = m_Documents.At(index);
+		const std::size_t revision = item.Document ? item.Document->GetBuffer().GetRevision() : 0;
+
+		m_Router.CancelDefinition();
+
+		m_Bubble.BeginWaiting(NavigationCommand::SwitchSourceHeader, item.Path, item.Caret.Offset, revision,
+							  std::string{kLookingForCounterpart}, ImGui::GetTime());
+
+		m_Router.AskSwitchSourceHeader(item.Path);
+
+		FollowNavigationWait();
 	}
 
 	void DocumentWindows::SetTransientMessage(std::string text)
@@ -1401,7 +1413,7 @@ namespace Graphite {
 		{
 			const DocumentState& closedState = m_States.at(path);
 
-			if (const std::optional<LensState>& lens = closedState.Lens)
+			if (const std::optional<LensState>& lens = closedState.Lens; lens && LearnsFromServer(path))
 			{
 				KeepAnalysis(path, *lens, m_DocumentStates.SemanticFor(path));
 			}
@@ -1427,6 +1439,14 @@ namespace Graphite {
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
 	{
 		return m_Router.IsAnalysing(path);
+	}
+
+	// WARNING: Under a server turned off, never chosen or kept from an untrusted folder, a file's lenses are hidden and
+	// keep only what an earlier session learned: restoring its counts would show nothing, and keeping them on close
+	// would write that session's analysis over a better one.
+	bool DocumentWindows::LearnsFromServer(const std::filesystem::path& path)
+	{
+		return !HasNoServerToWaitFor(m_Router.StatusOf(path));
 	}
 
 	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
@@ -1473,7 +1493,11 @@ namespace Graphite {
 
 		lens.Declarations = std::move(restored->Declarations);
 		lens.HaveDeclarations = !lens.Declarations.empty();
-		lens.Model.SeedCounts(std::move(restored->Counts));
+
+		if (LearnsFromServer(item.Path))
+		{
+			lens.Model.SeedCounts(std::move(restored->Counts));
+		}
 
 		// WARNING: A lens anchors to a row and this runs before the document has drawn once, so
 		// its row map is empty and every line maps to row zero. Anchoring now would collapse the
@@ -1678,14 +1702,6 @@ namespace Graphite {
 			return;
 		}
 
-		const LanguageId language = LanguageOfPath(item.Path);
-
-		if (!m_Server.HasChosenServer(language))
-		{
-			SetTransientMessage("no definition found");
-			return;
-		}
-
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		const Core::Position position = buffer.ToPosition(item.Caret.Offset);
 		const std::string lineText = buffer.LineText(position.Line);
@@ -1699,10 +1715,18 @@ namespace Graphite {
 		const CaretScreenPosition screenPosition =
 			state != nullptr ? state->CaretScreen : CaretScreenPosition{};
 
+		// WARNING: F12 and Alt+O share one bubble, so the command it shows replaces the other's question.
+		m_Router.CancelSwitchSourceHeader();
+
+		m_Bubble.BeginWaiting(NavigationCommand::Definition, item.Path, item.Caret.Offset, buffer.GetRevision(),
+							  std::string{kFindingDefinition}, ImGui::GetTime());
+
 		m_Router.AskDefinition(DefinitionQuestion{.Path = item.Path,
 												  .CaretOffset = item.Caret.Offset,
 												  .From = where,
 												  .Screen = screenPosition});
+
+		FollowNavigationWait();
 	}
 
 	void DocumentWindows::RequestReferences(std::size_t index, ReferencesPanel& panel)
@@ -1732,7 +1756,7 @@ namespace Graphite {
 		const auto [wordFrom, wordTo] = Core::SelectionRange(word);
 		const std::string symbol = buffer.Substring(wordFrom, wordTo);
 
-		RequestReferencesAt(item, LanguageOfPath(item.Path), where, symbol, panel);
+		RequestReferencesAt(item, where, symbol, panel);
 	}
 
 	void DocumentWindows::RequestReferencesForLens(const Core::OpenItem& item,
@@ -1751,25 +1775,71 @@ namespace Graphite {
 			where.Line = declaration.NameLine;
 			where.Column = declaration.NameColumn;
 
-			RequestReferencesAt(item, LanguageOfPath(item.Path), where, declaration.Name, panel);
+			RequestReferencesAt(item, where, declaration.Name, panel);
 			return;
 		}
 	}
 
-	void DocumentWindows::RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
-											  const FilePosition& where, const std::string& symbol,
-											  ReferencesPanel& panel)
+	void DocumentWindows::RequestReferencesAt(const Core::OpenItem& item, const FilePosition& where,
+											  const std::string& symbol, ReferencesPanel& panel)
 	{
-		if (!m_Server.HasChosenServer(language))
+		AskReferencesAndShow(ReferencesQuestion{.Path = item.Path, .Where = where, .Symbol = symbol}, panel);
+		panel.Focus();
+	}
+
+	void DocumentWindows::AskReferencesAndShow(ReferencesQuestion question, ReferencesPanel& panel)
+	{
+		const std::string symbol = question.Symbol;
+		const std::filesystem::path path = question.Path;
+
+		if (m_Router.AskReferences(std::move(question)) == QuestionFate::HeldUntilServerIsUp)
 		{
-			SetTransientMessage("no references found");
+			panel.ShowWaiting(symbol, ServerWaitingText(m_Router.StatusOf(path)));
 			return;
 		}
 
-		m_Router.AskReferences(item.Path, where, symbol);
-
 		panel.ShowWorking(symbol);
-		panel.Focus();
+	}
+
+	void DocumentWindows::FollowReferencesPanel(ReferencesPanel& panel)
+	{
+		if (const ReferencesQuestion* held = m_Router.HeldReferences())
+		{
+			panel.ShowWaiting(held->Symbol, ServerWaitingText(m_Router.StatusOf(held->Path)));
+		}
+
+		if (panel.TakeRetry() && m_Router.LastReferences())
+		{
+			AskReferencesAndShow(*m_Router.LastReferences(), panel);
+		}
+	}
+
+	void DocumentWindows::ShowReferencesAnswer(const ReferencesQuestion& question, const LanguageServices::Answer& answer,
+											   ReferencesPanel& panel)
+	{
+		if (answer.Failed && answer.FailedBecause == ReplyFailure::ServerUnavailable)
+		{
+			panel.ShowUnavailable(question.Symbol, AsSentence(ReplyFailureText(answer), answer.ServerAtFailure));
+			return;
+		}
+
+		if (answer.Failed)
+		{
+			panel.ShowFailure(question.Symbol, ReplyFailureText(answer));
+			return;
+		}
+
+		const ServerStatus status = m_Router.StatusOf(question.Path);
+		const std::string incompleteWhy =
+			IsStillIndexing(status) ? StillIndexingText(status) + ", the list may be incomplete" : std::string{};
+
+		panel.ShowResults(question.Symbol, answer.Locations, incompleteWhy);
+	}
+
+	void DocumentWindows::ShowReferencesRefreshing(const ReferencesQuestion& question, ReferencesPanel& panel)
+	{
+		panel.ShowRefreshing("Updating the list now that " + ServerNameOf(m_Router.StatusOf(question.Path)) +
+							 " has finished indexing");
 	}
 
 	void DocumentWindows::ApplyHoverAnswer(const HoverQuestion& question,
@@ -1817,11 +1887,20 @@ namespace Graphite {
 	void DocumentWindows::ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
 														const LanguageServices::Answer& answer)
 	{
-		if (answer.Failed || answer.Locations.empty())
+		if (answer.Failed)
 		{
-			APP_INFO("No header/source counterpart for {}", Core::ToUtf8(from));
+			m_Bubble.End(NavigationCommand::SwitchSourceHeader, AsSentence(ReplyFailureText(answer), answer.ServerAtFailure), ImGui::GetTime());
 			return;
 		}
+
+		if (answer.Locations.empty())
+		{
+			APP_INFO("No header/source counterpart for {}", Core::ToUtf8(from));
+			m_Bubble.End(NavigationCommand::SwitchSourceHeader, std::string{kNoCounterpart}, ImGui::GetTime());
+			return;
+		}
+
+		m_Bubble.Close(NavigationCommand::SwitchSourceHeader);
 
 		const bool permanent = true;
 		RequestOpen(answer.Locations.front().Path, permanent);
@@ -1839,7 +1918,7 @@ namespace Graphite {
 
 		if (answer.Failed)
 		{
-			SetTransientMessage("no definition found");
+			m_Bubble.End(NavigationCommand::Definition, AsSentence(ReplyFailureText(answer), answer.ServerAtFailure), ImGui::GetTime());
 			return;
 		}
 
@@ -1849,10 +1928,12 @@ namespace Graphite {
 		switch (outcome)
 		{
 		case DefinitionOutcome::None:
-			SetTransientMessage("no definition found");
+			m_Bubble.End(NavigationCommand::Definition, NoDefinitionFoundText(m_Router.StatusOf(question.Path)), ImGui::GetTime());
 			break;
 
 		case DefinitionOutcome::Jumped:
+			m_Bubble.Close(NavigationCommand::Definition);
+
 			if (!candidates.empty())
 			{
 				Jump(m_Documents, candidates.front(), [this](const std::filesystem::path& path) { RequestOpen(path, true); });
@@ -1865,9 +1946,11 @@ namespace Graphite {
 			// cheaper loss: F12 asks again with one keystroke.
 			if (!m_Modals.TryOpen(kDefinitionChoicesTitle))
 			{
-				SetTransientMessage("close the open dialog, then press F12 again");
+				m_Bubble.End(NavigationCommand::Definition, std::string{kCloseTheDialogFirst}, ImGui::GetTime());
 				break;
 			}
+
+			m_Bubble.Close(NavigationCommand::Definition);
 
 			m_DefinitionChoices = std::move(candidates);
 			m_DefinitionChoiceLines.clear();
@@ -1974,6 +2057,80 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
+	void DocumentWindows::FollowNavigationWait()
+	{
+		const ServerStatus status = m_Router.StatusOf(m_Bubble.GetPath());
+		const std::string waitingForServer = AsSentence(ServerWaitingText(status), status);
+
+		if (m_Bubble.IsWaitingFor(NavigationCommand::Definition))
+		{
+			m_Bubble.SetWaitingText(m_Router.HoldsDefinition() ? waitingForServer : std::string{kFindingDefinition});
+		}
+
+		if (m_Bubble.IsWaitingFor(NavigationCommand::SwitchSourceHeader))
+		{
+			m_Bubble.SetWaitingText(m_Router.HoldsSwitchSourceHeader() ? waitingForServer
+																	   : std::string{kLookingForCounterpart});
+		}
+	}
+
+	void DocumentWindows::AbandonNavigationIfReaderMovedOn()
+	{
+		if (!m_Bubble.IsOpen())
+		{
+			return;
+		}
+
+		ReaderPosition reader{.ActiveDocument = ActiveTextDocument(m_Documents),
+							  .BubbleDocumentShown = IsShown(m_Bubble.GetPath()),
+							  .EscapePressed = ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating)};
+
+		if (const std::optional<std::size_t> index = m_Documents.Find(m_Bubble.GetPath()); index && m_Documents.At(*index).Document)
+		{
+			const Core::OpenItem& item = m_Documents.At(*index);
+
+			reader.CaretOffset = item.Caret.Offset;
+			reader.Revision = item.Document->GetBuffer().GetRevision();
+		}
+		else
+		{
+			reader.BubbleDocumentShown = false;
+		}
+
+		const std::optional<NavigationCommand> abandoned = m_Bubble.AbandonIfReaderMovedOn(reader);
+
+		if (abandoned == NavigationCommand::Definition)
+		{
+			m_Router.CancelDefinition();
+		}
+		else if (abandoned == NavigationCommand::SwitchSourceHeader)
+		{
+			m_Router.CancelSwitchSourceHeader();
+		}
+	}
+
+	void DocumentWindows::RenderNavigationBubble()
+	{
+		const double now = ImGui::GetTime();
+
+		if (const std::optional<double> changeAt = m_Bubble.NextChangeAfter(now))
+		{
+			Core::Redraw::RequestIn(std::chrono::duration<double>(*changeAt - now));
+		}
+
+		const std::optional<ShownBubble> shown = m_Bubble.ShownAt(now);
+		const DocumentState* const state = FindState(m_Bubble.GetPath());
+
+		const bool caretDrawnThisFrame = state != nullptr && state->Caret.DrawnInFrame == ImGui::GetFrameCount();
+
+		if (!shown || !caretDrawnThisFrame)
+		{
+			return;
+		}
+
+		m_BubbleSize = DrawNavigationBubble(*shown, state->Caret, m_BubbleSize);
+	}
+
 	double DocumentWindows::FrameClock()
 	{
 		return ImGui::GetTime();
@@ -2013,11 +2170,20 @@ namespace Graphite {
 				m_Windows.ApplySwitchSourceHeaderAnswer(from, answer);
 			}
 
-			void ApplyReferences(const std::string& symbol,
+			void ApplyReferences(const ReferencesQuestion& question,
 								 const LanguageServices::Answer& answer) override
 			{
-				m_Panel.ShowResults(symbol, answer.Failed ? std::vector<Location>{}
-														  : answer.Locations);
+				m_Windows.ShowReferencesAnswer(question, answer, m_Panel);
+			}
+
+			void AskedHeldReferences(const ReferencesQuestion& question) override
+			{
+				m_Panel.ShowWorking(question.Symbol);
+			}
+
+			void RefreshingReferences(const ReferencesQuestion& question) override
+			{
+				m_Windows.ShowReferencesRefreshing(question, m_Panel);
 			}
 
 			void ApplySemanticTokens(const std::filesystem::path& path,
@@ -2080,7 +2246,8 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
-		HoverSettings hoverSettings, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
+		bool highlightOccurrences, HoverSettings hoverSettings, const ResolvedScheme& scheme,
+		ReferencesPanel& referencesPanel,
 		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot, EditorSettings& settings)
 	{
 		m_Shown.clear();
@@ -2193,6 +2360,7 @@ namespace Graphite {
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.ChangeDisplay = changeDisplay;
+				view.HighlightOccurrences = highlightOccurrences;
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 				view.Declarations = lens != nullptr ? &lens->Declarations : nullptr;
@@ -2232,6 +2400,14 @@ namespace Graphite {
 				view.Hover = lens != nullptr ? &state.Hover : nullptr;
 				view.HoverConfig = hoverSettings;
 				view.HoverSemantics = &m_PreviewSemantics;
+
+				if (lens != nullptr)
+				{
+					const ServerStatus serverStatus = m_Router.StatusOf(item.Path);
+
+					view.HoverLoadingText = HoverLoadingText(serverStatus);
+					view.ShowLensRows = !HasNoServerToWaitFor(serverStatus);
+				}
 
 				if (state.Hover.Preview)
 				{
@@ -2278,6 +2454,14 @@ namespace Graphite {
 
 				state.CaretScreen =
 					CaretScreenPosition{.X = editorResult.CaretScreenX, .Y = editorResult.CaretScreenY};
+
+				state.Caret = CaretPlacement{.X = editorResult.CaretScreenX,
+											 .Y = editorResult.CaretScreenY,
+											 .LineHeight = editorResult.CaretLineHeight,
+											 .SurfaceMin = ImVec2(editorResult.SurfaceLeft, editorResult.SurfaceTop),
+											 .SurfaceMax = ImVec2(editorResult.SurfaceRight, editorResult.SurfaceBottom),
+											 .Viewport = editorResult.Viewport,
+											 .DrawnInFrame = ImGui::GetFrameCount()};
 
 				if (lens != nullptr)
 				{
@@ -2378,6 +2562,8 @@ namespace Graphite {
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
 		CollectServerAnswers(referencesPanel);
+		FollowReferencesPanel(referencesPanel);
+		FollowNavigationWait();
 
 		const ImVec4 danger = DangerColourOf(frame.Scheme);
 
@@ -2388,11 +2574,14 @@ namespace Graphite {
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.ChangeMarkers, frame.Hover, frame.Scheme,
+							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.Hover, frame.Scheme,
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot, frame.Settings);
 
 		m_CloseRequested.reset();
+
+		AbandonNavigationIfReaderMovedOn();
+		RenderNavigationBubble();
 
 		PruneDocumentStates();
 

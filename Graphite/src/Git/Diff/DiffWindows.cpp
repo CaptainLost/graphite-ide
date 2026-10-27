@@ -22,6 +22,8 @@
 
 namespace {
 
+	constexpr const char* kRetry = "Retry";
+
 	// WARNING: These words are part of the window identity that imgui.ini keys a dock position
 	// by, so changing one moves every open tab of that kind back to the default.
 	const char* NameOfTarget(Core::DiffTarget target)
@@ -187,6 +189,55 @@ namespace Graphite {
 
 		return Core::ToUtf8(diff.Path.filename()) + " has no " + WordForEmptySide(diff.Target) +
 			   "changes.";
+	}
+
+	std::optional<std::string> DiffFailureOf(const OpenDiff& diff, const GitModel& model)
+	{
+		std::optional<Core::Error> reason;
+		std::string subject;
+
+		if (diff.Commit.has_value())
+		{
+			if (!model.IsDiffFailed(*diff.Commit))
+			{
+				return std::nullopt;
+			}
+
+			reason = model.GetDiffFailure(*diff.Commit);
+			subject = diff.Commit->ShortHex();
+		}
+		else
+		{
+			reason = model.GetWorkingTreeDiffFailure();
+
+			if (!reason.has_value())
+			{
+				return std::nullopt;
+			}
+
+			subject = Core::ToUtf8(diff.Path.filename());
+		}
+
+		std::string message = "Couldn't read the diff of " + subject;
+
+		if (reason.has_value() && !reason->Message.empty())
+		{
+			message += ": " + reason->Message;
+		}
+
+		return message;
+	}
+
+	void RetryDiff(const OpenDiff& diff, GitModel& model)
+	{
+		if (diff.Commit.has_value())
+		{
+			model.ForgetFailedDiffFor(*diff.Commit);
+			model.RequestDiffFor(*diff.Commit);
+			return;
+		}
+
+		model.RetryWorkingTreeDiff();
 	}
 
 	void DiffWindows::Open(const OpenDiff& diff)
@@ -386,17 +437,18 @@ namespace Graphite {
 					loadedDiff = model.GetWorkingTreeDiff();
 				}
 
-				if (!loadedDiff && !entry.Diff.Commit.has_value() && model.IsWorkingTreeDiffLoading())
+				if (!loadedDiff)
 				{
-					Core::LoadingState("Loading the diff");
-				}
-				else if (!loadedDiff)
-				{
-					const char* reloadLabel = entry.Diff.Commit.has_value() ? "Reload" : nullptr;
-
-					if (Core::EmptyState("This diff is no longer loaded.", reloadLabel))
+					if (const std::optional<std::string> failure = DiffFailureOf(entry.Diff, model))
 					{
-						model.RequestDiffFor(*entry.Diff.Commit);
+						if (Core::EmptyState(*failure, kRetry))
+						{
+							RetryDiff(entry.Diff, model);
+						}
+					}
+					else
+					{
+						Core::LoadingState("Loading the diff");
 					}
 				}
 				else
@@ -424,6 +476,7 @@ namespace Graphite {
 						entry.View.OnOpenFile = OpenFileIn(model);
 						entry.View.OnCopied = OnCopied;
 						entry.View.OnSetOptions = OnSetOptions;
+						entry.View.SetTextsWait(entry.Texts.Wait);
 
 						entry.View.Render(file, palette, syntax, selection, entry.Texts.Texts,
 										  entry.Texts.Tokens, options);

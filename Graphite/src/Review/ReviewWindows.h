@@ -122,6 +122,7 @@ namespace Graphite {
 			ListShape Shape = ListShape::Tree;
 			bool HideViewed = false;
 			std::uint64_t FoldsVersion = 0;
+			bool UncommittedLoading = false;
 
 			std::uint64_t SessionsVersion = 0;
 			bool Built = false;
@@ -208,7 +209,7 @@ namespace Graphite {
 		static void SetIncludeUncommitted(Tab& tab, ReviewSessions& sessions, ReviewModel& model, bool include);
 		static void ToggleViewed(const Tab& tab, ReviewSessions& sessions, ReviewGroup group, const Core::FileDiff& file);
 		static void RefreshRows(Tab& tab, const ReviewSessions& sessions, const SessionSettings& settings,
-								const LoadedReview& review);
+								const LoadedReview& review, bool uncommittedLoading);
 
 		static void FollowNewDiffs(Tab& tab, const LoadedReview& review);
 		static void UpdateTexts(Tab& tab, ReviewModel& model, const LoadedReview& review, const Core::FileDiff& file);
@@ -226,8 +227,10 @@ namespace Graphite {
 
 		void RenderTab(Tab& tab, const ReviewRenderInput& input);
 
-		void RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range, const RowsCache* rows);
-		void RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review);
+		void RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range, const RowsCache* rows,
+						  bool updating);
+		void RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
+						const ReviewRefresh& refresh);
 		void RenderPages(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 						 const ReviewGroups& groups, const OpenRelativeFile& openFile);
 		void RenderFileList(Tab& tab, const ReviewRenderInput& input, const FileList& list,

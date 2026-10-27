@@ -1,4 +1,4 @@
-# 0643. Open images as views inside the document tabs
+# 0649. Open images as views inside the document tabs
 
 Status: proposed
 Date: 2026-10-26
@@ -13,7 +13,7 @@ Date: 2026-10-26
   and `DocumentWindows` already gives its tabs preview tabs, closing, the
   Explorer's open marks, the git dot and restoring after a restart.
 - A picture is decoded off the UI thread and drawn through textures that must be
-  released on it ([0640](0640-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md)).
+  released on it ([0646](0646-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md)).
   A landed load or a gif's next frame frees the texture shown before it.
 - The layer routes every key as `Global`. Only the view holding the keyboard
   routes the frame's queued strokes as `FocusedEditor`, and only the text editor
@@ -62,7 +62,7 @@ Date: 2026-10-26
   holding the keyboard.
 - **Status bar.** The items a picture's view drew last frame are what
   `GetViewStatusItems` hands the bar when that tab is active
-  ([0641](0641-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md)).
+  ([0647](0647-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md)).
 - **Zoom chords and the zoom menu entries.** `EditorSettings::SetPictureZoom`
   takes a redirect that the three zoom commands ask first; they change the font
   only when it answers false. `DocumentWindows::ZoomFocusedPicture` answers true
@@ -149,7 +149,7 @@ not looking at and leave the picture as it was.
   a tab whose file disappears and comes back.
 - [0551](0551-open-a-result-with-one-click-model-shared-by-every-list-that-opens-files.md) —
   preview tabs, which image tabs share.
-- [0639](0639-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) —
+- [0645](0645-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) —
   the decoder behind the pictures.
-- [0642](0642-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) —
+- [0648](0648-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) —
   the path row's tools, which an image tab fills.

@@ -60,6 +60,14 @@ namespace Graphite {
 
 		float CaretScreenX = 0.0f;
 		float CaretScreenY = 0.0f;
+		float CaretLineHeight = 0.0f;
+
+		float SurfaceLeft = 0.0f;
+		float SurfaceTop = 0.0f;
+		float SurfaceRight = 0.0f;
+		float SurfaceBottom = 0.0f;
+
+		unsigned int Viewport = 0;
 
 		std::optional<std::size_t> LensClicked;
 
@@ -89,6 +97,9 @@ namespace Graphite {
 
 		LensModel* Lens = nullptr;
 
+		// WARNING: Hidden rows still follow edits through Lens, so they stand at the right declarations when shown.
+		bool ShowLensRows = true;
+
 		std::vector<Declaration>* Declarations = nullptr;
 
 		const DiagnosticOverlay* Diagnostics = nullptr;
@@ -99,6 +110,8 @@ namespace Graphite {
 
 		ChangeMarkerDisplay ChangeDisplay;
 
+		bool HighlightOccurrences = false;
+
 		ScrollAnchor* Anchor = nullptr;
 
 		EditorWidgetState* Widget = nullptr;
@@ -108,6 +121,8 @@ namespace Graphite {
 
 		const SemanticOverlay* HoverPreviewOverlay = nullptr;
 		PreviewSemantics* HoverSemantics = nullptr;
+
+		std::string HoverLoadingText;
 	};
 
 	class FindBar;

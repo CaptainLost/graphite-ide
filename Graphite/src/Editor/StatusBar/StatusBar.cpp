@@ -3,6 +3,7 @@
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
@@ -61,7 +62,8 @@ namespace Graphite {
 		{
 			Text,
 			Dot,
-			Swatch
+			Swatch,
+			Loader
 		};
 
 		struct Piece
@@ -234,6 +236,11 @@ namespace Graphite {
 				return Core::Scaled(kServerDotDiameter);
 			}
 
+			if (piece.Kind == PieceKind::Loader)
+			{
+				return Core::LoadingLineWidth(piece.Text.c_str());
+			}
+
 			return ImGui::CalcTextSize(piece.Text.c_str()).x;
 		}
 
@@ -262,7 +269,20 @@ namespace Graphite {
 			drawList.AddRectFilled(topLeft, bottomRight, colour);
 		}
 
-		void DrawPieces(const std::vector<Piece>& pieces, ImVec2 lineStart, float hoverAmount)
+		// WARNING: The loader keeps its wait under the current id, so it is drawn under the item's own.
+		void DrawLoaderPiece(const char* itemId, const Piece& piece, ImVec2 at, ImU32 colour)
+		{
+			ImGui::SetCursorScreenPos(at);
+			ImGui::PushID(itemId);
+			ImGui::PushStyleColor(ImGuiCol_TextDisabled, colour);
+
+			Core::LoadingLine(piece.Text.c_str(), Core::WhileLoaderWaits::ShowText);
+
+			ImGui::PopStyleColor();
+			ImGui::PopID();
+		}
+
+		void DrawPieces(const char* itemId, const std::vector<Piece>& pieces, ImVec2 lineStart, float hoverAmount)
 		{
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
 			const float lineMiddle = lineStart.y + ImGui::GetTextLineHeight() * kHalf;
@@ -283,6 +303,10 @@ namespace Graphite {
 				else if (piece.Kind == PieceKind::Swatch)
 				{
 					DrawSwatch(*drawList, ImVec2(x, lineMiddle - width * kHalf), width, colour);
+				}
+				else if (piece.Kind == PieceKind::Loader)
+				{
+					DrawLoaderPiece(itemId, piece, ImVec2(x, lineStart.y), colour);
 				}
 				else
 				{
@@ -363,11 +387,12 @@ namespace Graphite {
 				ImGui::Dummy(ImVec2(drawn.Width, ImGui::GetTextLineHeight()));
 			}
 
-			DrawPieces(item.Pieces, lineStart, hoverAmount);
+			// WARNING: Asked before the pieces draw, since a loader piece submits items of its own.
+			drawn.Hovered = ImGui::IsItemHovered();
+
+			DrawPieces(item.Id, item.Pieces, lineStart, hoverAmount);
 
 			PopItemFace(item.Face);
-
-			drawn.Hovered = ImGui::IsItemHovered();
 
 			return drawn;
 		}
@@ -428,6 +453,32 @@ namespace Graphite {
 			StatusItem item = BarTextItem(std::move(text), std::move(tooltip));
 			item.Id = id;
 			item.Reports = reports;
+
+			return item;
+		}
+
+		StatusItem BranchItem(const GitStatusSegment& segment)
+		{
+			StatusItem item = ClickableTextItem("##GitBranch", StatusBarClick::GitBranch, segment.Branch, segment.BranchTooltip);
+
+			if (segment.BranchBusy)
+			{
+				item.Pieces.front().Kind = PieceKind::Loader;
+			}
+
+			return item;
+		}
+
+		StatusItem ActivityItem(const GitActivity& activity)
+		{
+			StatusItem item = BarTextItem(activity.Text, activity.Tooltip);
+			item.Id = "##GitActivity";
+			item.Reports = activity.OpensGit ? StatusBarClick::GitBranch : StatusBarClick::None;
+
+			if (activity.Busy)
+			{
+				item.Pieces.front().Kind = PieceKind::Loader;
+			}
 
 			return item;
 		}
@@ -589,7 +640,7 @@ namespace Graphite {
 
 				if (segment.HasRepository)
 				{
-					row.Place(ClickableTextItem("##GitBranch", StatusBarClick::GitBranch, segment.Branch, segment.BranchTooltip), gap);
+					row.Place(BranchItem(segment), gap);
 				}
 				else
 				{
@@ -604,6 +655,11 @@ namespace Graphite {
 				if (!segment.Changes.empty())
 				{
 					row.Place(ClickableTextItem("##GitChanges", StatusBarClick::GitChanges, segment.Changes, segment.ChangesTooltip), gap);
+				}
+
+				if (segment.Activity.has_value())
+				{
+					row.Place(ActivityItem(*segment.Activity), gap);
 				}
 			}
 

@@ -132,6 +132,65 @@ TEST_CASE("A preview is coloured once for a tab width and again only when the wi
 	CHECK(wider.Dedented.Lines[0] == "public int Size;");
 }
 
+TEST_CASE("A hover that could not reach its server keeps the server's state to show, and one that erred keeps nothing")
+{
+	HoverState hover;
+	Core::DocumentSet documents;
+
+	LanguageServices::Answer notInstalled;
+	notInstalled.Failed = true;
+	notInstalled.FailedBecause = Graphite::ReplyFailure::ServerUnavailable;
+	notInstalled.ServerAtFailure = Graphite::ServerStatus{.State = Graphite::ServerState::NotInstalled, .Name = "clangd"};
+
+	Graphite::HoldHoverAnswer(hover, QuestionAt(1), notInstalled);
+	Graphite::HoldPreviewAnswer(hover, QuestionAt(1), notInstalled, documents);
+
+	CHECK(hover.InfoFailureText == "clangd not installed");
+	CHECK(hover.PreviewFailureText == "clangd not installed");
+
+	LanguageServices::Answer erred;
+	erred.Failed = true;
+	erred.FailedBecause = Graphite::ReplyFailure::ServerError;
+	erred.ServerAtFailure = Graphite::ServerStatus{.State = Graphite::ServerState::Ready, .Name = "clangd"};
+
+	Graphite::HoldHoverAnswer(hover, QuestionAt(1), erred);
+
+	CHECK(hover.InfoFailureText.empty());
+}
+
+TEST_CASE("A hover under a server turned off, not chosen or kept from an untrusted folder has nothing to say")
+{
+	for (const Graphite::ServerState state :
+		 {Graphite::ServerState::Off, Graphite::ServerState::NotConfigured, Graphite::ServerState::Restricted})
+	{
+		LanguageServices::Answer unavailable;
+		unavailable.Failed = true;
+		unavailable.FailedBecause = Graphite::ReplyFailure::ServerUnavailable;
+		unavailable.ServerAtFailure = Graphite::ServerStatus{.State = state, .Name = "clangd"};
+
+		CAPTURE(static_cast<int>(state));
+		CHECK(Graphite::HoverFailureText(unavailable).empty());
+	}
+}
+
+TEST_CASE("A hover waits with the server's own words while it comes up, and is loading otherwise")
+{
+	CHECK(Graphite::HoverLoadingText(Graphite::ServerStatus{.State = Graphite::ServerState::Starting, .Name = "clangd"}) ==
+		  "Waiting for clangd to start");
+	CHECK(Graphite::HoverLoadingText(Graphite::ServerStatus{.State = Graphite::ServerState::Ready, .Name = "clangd"}) ==
+		  "Loading\xE2\x80\xA6");
+}
+
+TEST_CASE("A preview answered with no location is remembered as no definition found")
+{
+	HoverState hover;
+	Core::DocumentSet documents;
+
+	Graphite::HoldPreviewAnswer(hover, QuestionAt(1), LanguageServices::Answer{}, documents);
+
+	CHECK(hover.NoDefinitionFound);
+}
+
 TEST_CASE("A new preview answer drops the colours of the last one")
 {
 	HoverState hover;

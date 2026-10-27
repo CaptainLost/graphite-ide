@@ -10,6 +10,7 @@ namespace Graphite {
 		ImU32 Text = 0;
 		ImU32 Number = 0;
 		ImU32 Selection = 0;
+		ImU32 SelectionOccurrence = 0;
 		ImU32 CurrentLine = 0;
 		ImU32 Guide = 0;
 		ImU32 GutterFill = 0;

@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/LoadingState.h"
 
 #include "Git/Branches/RefSectionHeading.h"
 #include "Git/StashBranch.h"
@@ -62,9 +63,10 @@ namespace Graphite {
 			RequestLog(HistoryReach{});
 		}
 
-		const std::size_t stashCount = stashes ? stashes->size() : 0;
+		const std::optional<std::size_t> stashCount =
+			stashListWasRead ? std::optional<std::size_t>{stashes->size()} : std::nullopt;
 
-		if (!DrawRefSectionHeading("Stashes", "Stashes", std::format("({})", stashCount), m_StashesCollapsed))
+		if (!DrawRefSectionHeading("Stashes", "Stashes", StashSectionCount(stashCount), m_StashesCollapsed))
 		{
 			return;
 		}
@@ -74,7 +76,19 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", error->Message.c_str());
 		}
 
-		if (!stashes || stashes->empty())
+		if (!stashListWasRead)
+		{
+			if (!error.has_value())
+			{
+				ImGui::PushID("##stashesLoading");
+				Core::LoadingLine("Loading stashes");
+				ImGui::PopID();
+			}
+
+			return;
+		}
+
+		if (stashes->empty())
 		{
 			if (!error.has_value())
 			{
@@ -127,7 +141,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 		if (ImGui::MenuItem("Apply"))
 		{

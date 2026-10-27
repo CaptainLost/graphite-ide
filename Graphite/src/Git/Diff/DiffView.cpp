@@ -7,12 +7,14 @@
 #include "Git/History/CommitLabels.h"
 #include "Git/Diff/DiffPanes.h"
 #include "Core/ImGui/IconButton.h"
+#include "UI/FittedText.h"
 #include "UI/LineNumberColumn.h"
 #include "UI/SplitResults.h"
 #include "UI/TypographicMarks.h"
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/ImGui/Theme.h"
@@ -66,6 +68,30 @@ namespace Graphite {
 			std::size_t First = 0;
 			std::size_t End = 0;
 		};
+
+		void DrawWholeFileNote(const WholeFileNote& note, float roomKeptOnTheRight)
+		{
+			ImGui::PushID("##wholeFileNote");
+
+			if (note.Loading)
+			{
+				Core::LoadingLine(note.Text.c_str());
+			}
+			else
+			{
+				bool cut = false;
+				const float room = std::max(ImGui::GetContentRegionAvail().x - roomKeptOnTheRight, kNoWidth);
+				const std::string fitted = FitToWidth(note.Text, room, &cut);
+				ImGui::TextDisabled("%s", fitted.c_str());
+
+				if (cut)
+				{
+					ImGui::SetItemTooltip("%s", note.Text.c_str());
+				}
+			}
+
+			ImGui::PopID();
+		}
 
 		// WARNING: CalcTextSize rounds up, so a row never comes out wider than the width it fits.
 		std::size_t CellsAcross(float width)
@@ -752,13 +778,41 @@ namespace Graphite {
 		std::size_t Columns = 0;
 	};
 
+	std::optional<WholeFileNote> WholeFileNoteFor(const DiffViewOptions& options, bool textsHeld, const TextsWait& wait)
+	{
+		const bool showsWholeFile = options.Scope == DiffScope::WholeFile;
+		const bool textsWanted = showsWholeFile || options.ColourSyntax;
+
+		if (textsHeld || !textsWanted)
+		{
+			return std::nullopt;
+		}
+
+		switch (wait.Progress)
+		{
+		case TextsProgress::Loading:
+			return WholeFileNote{.Text = showsWholeFile ? "Loading the whole file" : "Colouring", .Loading = true};
+
+		case TextsProgress::Failed:
+			return WholeFileNote{.Text = wait.Reason.empty() ? std::string{"Whole file unavailable"}
+															 : "Whole file unavailable: " + wait.Reason};
+
+		case TextsProgress::Unknown:
+			break;
+		}
+
+		return std::nullopt;
+	}
+
 	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
 						  const SyntaxPalette& syntax, ImU32 selection,
 						  const Core::Ref<const FileTexts>& wholeFileTexts, const FileTokens& tokens,
 						  const DiffViewOptions& options)
 	{
 		m_Options = options;
-		RenderToolbar(file);
+
+		const TextsWait wait = std::exchange(m_TextsWait, TextsWait{});
+		RenderToolbar(file, WholeFileNoteFor(m_Options, wholeFileTexts != nullptr, wait));
 
 		const bool wordWrap = m_Options.WordWrap;
 
@@ -820,7 +874,14 @@ namespace Graphite {
 
 		if (file.Hunks.empty())
 		{
-			Core::EmptyState("No changes in this file.");
+			const bool wholeFileOnItsWay =
+				m_Options.Scope == DiffScope::WholeFile && wait.Progress == TextsProgress::Loading;
+
+			if (!wholeFileOnItsWay)
+			{
+				Core::EmptyState("No changes in this file.");
+			}
+
 			return;
 		}
 
@@ -873,7 +934,7 @@ namespace Graphite {
 		}
 	}
 
-	void DiffView::RenderToolbar(const Core::FileDiff& file)
+	void DiffView::RenderToolbar(const Core::FileDiff& file, const std::optional<WholeFileNote>& note)
 	{
 		const std::filesystem::path& path = ShownPath(file);
 
@@ -974,6 +1035,12 @@ namespace Graphite {
 			{
 				OnOpenAsTab();
 			}
+		}
+
+		if (note.has_value())
+		{
+			ImGui::SameLine();
+			DrawWholeFileNote(*note, OnClose ? PaneCloseRoom() : kNoWidth);
 		}
 
 		if (OnClose && DrawPaneClose())

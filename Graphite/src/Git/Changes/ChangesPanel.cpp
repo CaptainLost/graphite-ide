@@ -7,7 +7,6 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/ClipboardCopy.h"
-#include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/Changes/CommitBlocker.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -183,22 +182,8 @@ namespace Graphite {
 			ResetStashDialog();
 		}
 
-		if (const std::optional<Core::Oid> committed = m_Model.TakeCommitted(); committed.has_value())
+		if (m_Model.TakeCommitted().has_value())
 		{
-			std::string statusMessage = "Committed " + committed->ShortHex();
-
-			const std::string trimmedMessage = Core::Trimmed(m_Message);
-			const std::string firstLineOfMessage =
-				Core::Trimmed(std::string_view(trimmedMessage).substr(0, trimmedMessage.find('\n')));
-
-			if (!firstLineOfMessage.empty())
-			{
-				statusMessage += ' ';
-				statusMessage += firstLineOfMessage;
-			}
-
-			m_Events.Publish(StatusMessageEvent{std::move(statusMessage)});
-
 			m_Message.clear();
 			m_Amend = false;
 		}
@@ -311,7 +296,13 @@ namespace Graphite {
 			const bool drawnUnstaged =
 				RenderSection("CHANGES", sections.Unstaged, *status, palette, drawnAbove);
 
-			if (!drawnAbove && !drawnUnstaged)
+			const bool noSectionDrawn = !drawnAbove && !drawnUnstaged;
+
+			if (noSectionDrawn && m_Model.IsUpdatingWorkingTree())
+			{
+				Core::LoadingState("Updating…");
+			}
+			else if (noSectionDrawn)
 			{
 				Core::EmptyState("No changes");
 			}
@@ -375,13 +366,21 @@ namespace Graphite {
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%zu)", rows.size());
 
+		const bool isFirstSectionDrawn = !spaced;
+
+		if (isFirstSectionDrawn && m_Model.IsUpdatingWorkingTree())
+		{
+			ImGui::SameLine();
+			Core::LoadingLine("Updating…");
+		}
+
 		if (rowHovered)
 		{
 			const char* allIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
 			ImGui::SetCursorScreenPos(ImVec2(ListRowEnd() - RowButtonWidth(), ListRowTextTop(rowScreenStart.y)));
 
-			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 			if (Core::DrawIconButton("##stageAll", allIcon, kNotEngaged,
 									 m_Section == Section::Staged ? "Unstage all" : "Stage all", kRowButton))
@@ -447,7 +446,7 @@ namespace Graphite {
 				}
 				else
 				{
-					RenderRow(entryIndex, status, palette);
+					RenderRow(entryIndex, status, palette, RowButtons::Offered);
 				}
 			}
 
@@ -460,7 +459,7 @@ namespace Graphite {
 	}
 
 	void ChangesPanel::RenderRow(std::size_t entryIndex, const Core::WorkingTreeStatus& status,
-								 const GitPalette& palette)
+								 const GitPalette& palette, RowButtons buttons)
 	{
 		const Core::FileStatus& file = status.Entries[entryIndex];
 
@@ -573,7 +572,7 @@ namespace Graphite {
 		if (rowHovered)
 		{
 			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
-			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled() || buttons == RowButtons::HeldForFreshListing);
 
 			if (offersDiscard)
 			{
@@ -686,7 +685,7 @@ namespace Graphite {
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
 
 		// WARNING: The count is shown only for an open folder git has answered for. The model
-		// keeps a listing until the next status refresh even after the folder is closed, so a
+		// keeps a listing after the folder is closed and asks again only while it is open, so a
 		// count on a closed row would describe a listing nobody has re-asked for. The only other
 		// number is one read off the disk, which is what git is asked instead of.
 		const bool listingIsKnown = expanded && listing != nullptr;
@@ -756,7 +755,7 @@ namespace Graphite {
 		else
 		{
 			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
-			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 			if (offersDiscard)
 			{
@@ -797,11 +796,6 @@ namespace Graphite {
 
 		m_Model.RequestUntrackedIn(file.Path);
 
-		if (listing == nullptr)
-		{
-			return;
-		}
-
 		const float childIndent = FolderChildIndent(placement, drawnGlyphs.Chevron, IconColumnWidth());
 
 		ImGui::Indent(childIndent);
@@ -811,13 +805,52 @@ namespace Graphite {
 		// are scoped under the folder's own path.
 		ImGui::PushID(Core::ToUtf8(file.Path).c_str());
 
-		for (std::size_t childIndex = 0; childIndex < listing->Entries.size(); ++childIndex)
+		if (listing == nullptr)
 		{
-			RenderRow(childIndex, *listing, palette);
+			RenderListingWait(file.Path);
+		}
+		else
+		{
+			const RowButtons childButtons = m_Model.IsUntrackedListingCurrent(file.Path) ? RowButtons::Offered
+																						  : RowButtons::HeldForFreshListing;
+
+			for (std::size_t childIndex = 0; childIndex < listing->Entries.size(); ++childIndex)
+			{
+				RenderRow(childIndex, *listing, palette, childButtons);
+			}
 		}
 
 		ImGui::PopID();
 		ImGui::Unindent(childIndent);
+	}
+
+	void ChangesPanel::RenderListingWait(const std::filesystem::path& folder)
+	{
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+		const float rowWidth = ImGui::GetContentRegionAvail().x;
+
+		ImGui::SetCursorPos(ImVec2(rowStart.x + RowPadding(), ListRowTextTop(rowStart.y)));
+
+		if (const std::optional<Core::Error> failure = m_Model.GetUntrackedFailureIn(folder); failure.has_value())
+		{
+			const std::string reason = "Could not list the files: " + failure->Message;
+			bool cut = false;
+			const std::string fitted = FitToWidth(reason, ImGui::GetContentRegionAvail().x - RowPadding(), &cut);
+			ImGui::TextDisabled("%s", fitted.c_str());
+
+			if (cut)
+			{
+				ImGui::SetItemTooltip("%s", reason.c_str());
+			}
+		}
+		else
+		{
+			Core::LoadingLine("Listing files");
+		}
+
+		// WARNING: A row laid out by hand ends on a Dummy the size of the row, or ImGui aborts on the SetCursorPos above.
+		ImGui::SetCursorPos(rowStart);
+		ImGui::Dummy(ImVec2(rowWidth, ListRowLineHeight()));
 	}
 
 	void ChangesPanel::RenderRowContextMenu(const Core::FileStatus& file, char letter)
@@ -883,12 +916,12 @@ namespace Graphite {
 	void ChangesPanel::RenderCommitBox()
 	{
 		const Core::PanelMarginScope margin;
-		const bool writeInFlight = m_Model.IsWriteInFlight();
+		const bool writesBlocked = m_Model.IsWriteUnsettled();
 
 		const float rowPadding = RowPadding();
 		const float boxWidth = ImGui::GetContentRegionAvail().x - rowPadding * 2.0f;
 
-		ImGui::BeginDisabled(writeInFlight);
+		ImGui::BeginDisabled(writesBlocked);
 
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + rowPadding);
 
@@ -916,7 +949,7 @@ namespace Graphite {
 		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
 
 		const std::optional<std::string_view> whyNot = WhyCommitIsDisabled(
-			{.WriteInFlight = writeInFlight,
+			{.WriteInFlight = writesBlocked,
 			 .AnythingStaged = status != nullptr && AnythingStaged(*status),
 			 .Merging = head != nullptr && head->Operation == Core::RepositoryOperation::Merge,
 			 .MessageIsEmpty = Core::Trimmed(m_Message).empty(),
@@ -953,7 +986,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		const bool canStash = !writeInFlight && status && !status->Entries.empty();
+		const bool canStash = !writesBlocked && status && !status->Entries.empty();
 
 		ImGui::BeginDisabled(!canStash);
 
@@ -976,7 +1009,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		ImGui::BeginDisabled(writeInFlight);
+		ImGui::BeginDisabled(writesBlocked);
 		DrawTickBox("Amend", &m_Amend);
 		ImGui::EndDisabled();
 	}
@@ -1126,7 +1159,7 @@ namespace Graphite {
 
 		const DialogLayout::ButtonSpec absentButton{};
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			absentButton, {.Label = "Discard", .Enabled = !m_Model.IsWriteInFlight()}, DangerColourOf(m_Scheme.Get()));
+			absentButton, {.Label = "Discard", .Enabled = !m_Model.IsWriteUnsettled()}, DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -1210,7 +1243,7 @@ namespace Graphite {
 		}
 
 		const DialogLayout::ButtonSpec stashButton{.Label = "Stash",
-												   .Enabled = !m_Model.IsWriteInFlight()};
+												   .Enabled = !m_Model.IsWriteUnsettled()};
 		const DialogLayout::ButtonSpec noDestructiveButton{};
 
 		const DialogLayout::Choice choice =

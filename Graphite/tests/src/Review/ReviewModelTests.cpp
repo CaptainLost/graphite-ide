@@ -168,6 +168,86 @@ TEST_CASE("A failed range keeps its error until a retry succeeds")
 	CHECK(model.GetRange(kKey) != nullptr);
 }
 
+TEST_CASE("A retried range is loading while its last error is still held")
+{
+	FakeReviewPort port;
+	port.RangeFailure = Core::Error{Core::ErrorCode::IoFailure, "disk on fire"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+	REQUIRE_FALSE(model.IsRangeLoading(kKey));
+
+	model.Retry(kKey);
+	model.RequestRange(kKey);
+
+	CHECK(model.IsRangeLoading(kKey));
+	CHECK(model.IsRangeRetrying(kKey));
+	CHECK(model.GetRangeError(kKey) != nullptr);
+
+	Settle(model, jobs);
+
+	CHECK_FALSE(model.IsRangeRetrying(kKey));
+}
+
+TEST_CASE("A failed range read again in the background is loading but not retried, so its failure stays on screen")
+{
+	FakeReviewPort port;
+	port.RangeFailure = Core::Error{Core::ErrorCode::IoFailure, "disk on fire"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+
+	CHECK(model.IsRangeLoading(kKey));
+	CHECK_FALSE(model.IsRangeRetrying(kKey));
+}
+
+TEST_CASE("A retry asked while a background read of the range runs stays a retry until its own read lands")
+{
+	FakeReviewPort port;
+	port.RangeFailure = Core::Error{Core::ErrorCode::IoFailure, "disk on fire"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+
+	model.Retry(kKey);
+	Settle(model, jobs);
+
+	CHECK(model.IsRangeRetrying(kKey));
+
+	model.RequestRange(kKey);
+	CHECK(model.IsRangeRetrying(kKey));
+
+	Settle(model, jobs);
+
+	CHECK_FALSE(model.IsRangeRetrying(kKey));
+	CHECK(port.RangeQueries == 3);
+}
+
+TEST_CASE("A range read again after its branch moved is loading while the earlier range is still held")
+{
+	FakeReviewPort port;
+	port.RangeAnswers = {RangeWithTip(2), RangeWithTip(3)};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+
+	CHECK(model.IsRangeLoading(kKey));
+	REQUIRE(model.GetRange(kKey) != nullptr);
+	CHECK(model.GetRange(kKey)->Ends.Tip == IdNumbered(2));
+}
+
 TEST_CASE("A range's diff is fetched once for the same ends")
 {
 	FakeReviewPort port;
@@ -267,6 +347,43 @@ TEST_CASE("Failed committed texts are read again after a retry")
 
 	CHECK(port.RangeTextReads == 2);
 	CHECK(model.GetCommittedTexts(ends, file) != nullptr);
+}
+
+TEST_CASE("Committed texts are loading until they land, and once they failed they say why")
+{
+	FakeReviewPort port;
+	port.RangeTextsFailure = Core::Error{Core::ErrorCode::IoFailure, "locked"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeEnds ends = RangeWithTip(2).Ends;
+	const Core::FileDiff file = TextFile("a.cpp");
+
+	model.RequestCommittedTexts(ends, file);
+
+	CHECK(model.CommittedTextsWait(ends, file) == Graphite::TextsWait{.Progress = Graphite::TextsProgress::Loading});
+
+	Settle(model, jobs);
+
+	CHECK(model.CommittedTextsWait(ends, file) ==
+		  Graphite::TextsWait{.Progress = Graphite::TextsProgress::Failed, .Reason = "locked"});
+}
+
+TEST_CASE("Committed texts that are held, or a binary file's, are waited for by nothing")
+{
+	FakeReviewPort port;
+	port.Texts.HasNew = true;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeEnds ends = RangeWithTip(2).Ends;
+	const Core::FileDiff file = TextFile("a.cpp");
+	Core::FileDiff binary = TextFile("image.png");
+	binary.IsBinary = true;
+
+	model.RequestCommittedTexts(ends, file);
+	Settle(model, jobs);
+
+	CHECK(model.CommittedTextsWait(ends, file) == Graphite::TextsWait{});
+	CHECK(model.CommittedTextsWait(ends, binary) == Graphite::TextsWait{});
 }
 
 TEST_CASE("Clearing drops every review and every held diff")

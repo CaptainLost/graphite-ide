@@ -83,6 +83,13 @@ namespace Graphite {
 
 		bool HasChosenServer(LanguageId language) override { return m_Services.HasChosenServer(language); }
 
+		std::string ServerNameOf(LanguageId language) override
+		{
+			const ServerDefinition* const chosen = m_Services.ChosenServer(language);
+
+			return chosen != nullptr ? std::string{chosen->DisplayName} : std::string{};
+		}
+
 	private:
 		LanguageServices& m_Services;
 	};

@@ -74,6 +74,7 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/FileIcons.h"
 #include "UI/InfoBars/LanguageSupportBar.h"
 #include "UI/InfoBars/RestrictedModeBar.h"
@@ -176,7 +177,10 @@ namespace Graphite {
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
 											   m_EditorSettings, m_PreviewSemantics));
 
-		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_Workspace, m_ActiveScheme));
+		m_Panels.Add(Core::CreateScope<ProblemsPanel>(
+			m_Diagnostics, m_Documents, m_Workspace, m_ActiveScheme,
+			[this](const std::filesystem::path& path, LanguageId language) { return m_LanguageServices.StatusFor(path, language); },
+			[this](LanguageId language) { return m_LanguageServices.HasChosenServer(language); }));
 
 		m_DiffWindows.OpenFile = [this](const std::filesystem::path& path) {
 			const bool permanentTab = true;
@@ -206,6 +210,7 @@ namespace Graphite {
 																   m_DiffWindows, m_Modals, m_DocumentBuffers,
 																   m_BranchList, m_Events));
 		gitView->Subscribe();
+		m_GitView = gitView;
 
 		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };
 		gitView->OnReviewMenuItem = [this](const ReviewMenuItem& item) { ApplyReviewMenuItem(item); };
@@ -443,6 +448,7 @@ namespace Graphite {
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
+			LetGoOfOldRepositoryOnWriteWorker();
 
 			LetGoOfFolderWindows();
 
@@ -491,6 +497,7 @@ namespace Graphite {
 
 			// WARNING: Clearing the root releases the port's cached repository handles, which otherwise block the user from deleting .git on Windows.
 			m_GitPort.SetRoot(noRoot);
+			LetGoOfOldRepositoryOnWriteWorker();
 
 			LetGoOfFolderWindows();
 
@@ -507,6 +514,11 @@ namespace Graphite {
 			[this](const WorkspaceFilesChangedEvent& event) {
 				m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything);
 			});
+	}
+
+	void GraphiteLayer::LetGoOfOldRepositoryOnWriteWorker()
+	{
+		m_GitWrites.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
 	}
 
 	void GraphiteLayer::LetGoOfFolderWindows()
@@ -1051,6 +1063,7 @@ namespace Graphite {
 			const Core::Ref<const Core::HeadState> head = m_Git.GetHead();
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
 			const Core::Ref<const Core::WorkingTreeStatus> gitStatus = m_Git.GetStatus();
+			const GitPanelWait gitWait = m_GitView != nullptr ? m_GitView->CurrentWait() : GitPanelWait{};
 
 			const GitStatusInputs gitStatusInputs{
 				.FolderOpen = m_Workspace.IsOpen(),
@@ -1058,6 +1071,8 @@ namespace Graphite {
 				.Head = head.get(),
 				.Branches = branches.get(),
 				.Status = gitStatus.get(),
+				.CheckingOut = gitWait.CheckingOut,
+				.Activity = DescribeGitActivity(m_Git.GetWriteReport(), gitWait.AwaitingAnswer),
 			};
 
 			messages.Git = GitStatusText(gitStatusInputs);
@@ -1168,6 +1183,7 @@ namespace Graphite {
 											 .WordWrap = m_EditorSettings.IsWordWrap(),
 											 .ChangeMarkers = {.Gutter = m_EditorSettings.HasGutterChangeMarkers(),
 															   .Scrollbar = m_EditorSettings.HasScrollbarChangeMarkers()},
+											 .HighlightOccurrences = m_EditorSettings.IsHighlightingOccurrences(),
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,
@@ -1348,8 +1364,8 @@ namespace Graphite {
 		if (!m_Workspace.IsOpen())
 		{
 			ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
-			const bool clicked =
-				m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.", "Open Folder");
+			const bool clicked = m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.",
+															  "Open Folder", kFileDialogOpenNote);
 			ImGui::EndDisabled();
 
 			if (clicked)

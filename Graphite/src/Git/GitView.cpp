@@ -100,39 +100,39 @@ namespace Graphite {
 
 	void GitView::OnUpdate(Core::Timestep)
 	{
+		const bool panelOnScreen = HasBeenDrawnOnLatestFrame();
+
 		// WARNING: Begin hands the modal gate back, and it only runs from OnImGuiRender, which is
 		// skipped for a panel that is hidden or behind another tab. An undrawn panel withdraws its
 		// questions here or it holds the gate for good.
-		if (!HasBeenDrawnOnLatestFrame())
+		if (!panelOnScreen)
 		{
+			HoldAskedQuestionsForPanel();
 			WithdrawQuestions();
 		}
 
 		FollowSelectedRef();
 
-		if (std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan())
+		if (const std::optional<Core::CheckoutTarget> heldTarget = m_HeldCheckout.TakeOnceOnScreen(panelOnScreen))
 		{
-			ApplyCheckoutPlan(std::move(*answer));
+			BeginCheckout(*heldTarget);
+		}
+
+		if (const std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan();
+			answer.has_value() && m_PendingCheckout == answer->Target)
+		{
+			m_PendingCheckout.reset();
+			ApplyCheckoutPlan(*answer, panelOnScreen);
 		}
 
 		if (std::optional<DeleteCheck> check = m_Model.TakeDeleteCheck())
 		{
-			const bool isAwaitedCheck = m_PendingDelete == check->Branch;
+			ApplyDeleteCheck(*check);
+		}
 
-			if (isAwaitedCheck)
-			{
-				m_PendingDelete.reset();
-
-				if (check->Failure.has_value())
-				{
-					ShowFailure(m_Events, "Delete branch failed", check->Branch + ": " + check->Failure->Message,
-								m_Model.GetWorkingDirectory());
-				}
-				else
-				{
-					m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
-				}
-			}
+		if (panelOnScreen)
+		{
+			AskDeleteHeldForPanel();
 		}
 
 		if (std::vector<std::filesystem::path> changed = m_Model.TakeCheckedOut(); !changed.empty())
@@ -198,6 +198,78 @@ namespace Graphite {
 		RequestLog(reach);
 	}
 
+	void GitView::HoldAskedQuestionsForPanel()
+	{
+		if (m_CheckoutQuestion.IsAsked() && m_AskedCheckout.has_value())
+		{
+			m_HeldCheckout.Hold(*m_AskedCheckout);
+			m_AskedCheckout.reset();
+		}
+
+		if (m_DeleteBranchQuestion.IsAsked())
+		{
+			m_Deletion.HoldForPanel();
+		}
+	}
+
+	void GitView::AskDeleteHeldForPanel()
+	{
+		constexpr bool kPanelOnScreen = true;
+
+		if (const std::optional<std::string> branch = m_Deletion.TakeHeldOnceOnScreen(kPanelOnScreen))
+		{
+			m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = *branch});
+		}
+	}
+
+	GitPanelCheckouts GitView::Checkouts() const
+	{
+		GitPanelCheckouts checkouts{.Planning = m_PendingCheckout,
+									.Asking = m_AskedCheckout,
+									.HeldForPanel = m_HeldCheckout.HeldTarget(),
+									.Writing = m_Model.GetCheckoutUnderWay()};
+
+		if (m_Deletion.IsHeldForPanel())
+		{
+			checkouts.DeleteHeldForPanel = m_Deletion.UnansweredBranch();
+		}
+
+		return checkouts;
+	}
+
+	GitPanelWait GitView::CurrentWait() const
+	{
+		return DescribePanelWait(Checkouts());
+	}
+
+	void GitView::BeginDelete(const std::string& branch)
+	{
+		m_Deletion.Begin(branch);
+
+		m_Model.RequestDeleteCheck(branch);
+		m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = branch});
+	}
+
+	void GitView::ApplyDeleteCheck(const DeleteCheck& check)
+	{
+		if (m_Deletion.Land(check) != DeleteCheckLanding::Failed)
+		{
+			return;
+		}
+
+		ShowFailure(m_Events, "Delete branch failed", check.Branch + ": " + check.Failure->Message,
+					m_Model.GetWorkingDirectory());
+
+		const std::string& branch = check.Branch;
+		m_DeleteBranchQuestion.WithdrawIf([&branch](const DeleteBranchPayload& payload) { return payload.IsAbout(branch); });
+	}
+
+	void GitView::FinishDeleteQuestion()
+	{
+		m_DeleteBranchQuestion.Answer();
+		m_Deletion.Finish();
+	}
+
 	void GitView::WithdrawQuestions()
 	{
 		if (m_DetachQuestion.IsAsked())
@@ -234,6 +306,9 @@ namespace Graphite {
 		m_IncludeUntracked = false;
 		m_StashSaveFailed = false;
 		m_BranchNameFor = nullptr;
+
+		m_AskedCheckout.reset();
+		m_Deletion.ForgetUnlessHeld();
 	}
 
 	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
@@ -242,25 +317,8 @@ namespace Graphite {
 		m_Model.RequestCheckoutPlan(target);
 	}
 
-	void GitView::ApplyCheckoutPlan(CheckoutPlanAnswer answer)
+	void GitView::ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen)
 	{
-		if (m_PendingCheckout != answer.Target)
-		{
-			return;
-		}
-
-		m_PendingCheckout.reset();
-
-		const std::string label = CheckoutTargetLabel(answer.Target);
-
-		if (answer.Failure.has_value() || !answer.Plan.has_value())
-		{
-			const std::string failureMessage =
-				answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan");
-			ShowFailure(m_Events, "Checkout failed", label + ": " + failureMessage, m_Model.GetWorkingDirectory());
-			return;
-		}
-
 		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
 		std::vector<std::filesystem::path> unsaved =
 			root.empty() ? std::vector<std::filesystem::path>{} : m_Buffers.ModifiedUnder(root);
@@ -273,23 +331,50 @@ namespace Graphite {
 			unsavedRelative.push_back(RelativeOrClimbing(path, root));
 		}
 
-		if (!NeedsCheckoutDialog(*answer.Plan, unsavedRelative))
+		const bool planFailed = answer.Failure.has_value() || !answer.Plan.has_value();
+		const bool needsDialog = !planFailed && NeedsCheckoutDialog(*answer.Plan, unsavedRelative);
+
+		switch (DecideOnCheckoutPlan({.Failed = planFailed, .NeedsDialog = needsDialog, .PanelOnScreen = panelOnScreen}))
 		{
-			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
-			return;
+		case CheckoutPlanVerdict::ReportFailure:
+		{
+			const std::string failureMessage =
+				answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan");
+			ShowFailure(m_Events, "Checkout failed", CheckoutTargetLabel(answer.Target) + ": " + failureMessage,
+						m_Model.GetWorkingDirectory());
+			break;
 		}
 
+		case CheckoutPlanVerdict::CheckOut:
+			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
+			break;
+
+		case CheckoutPlanVerdict::Ask:
+			AskCheckoutQuestion(answer, std::move(unsaved), unsavedRelative);
+			break;
+
+		case CheckoutPlanVerdict::HoldForPanel:
+			m_HeldCheckout.Hold(answer.Target);
+			break;
+		}
+	}
+
+	void GitView::AskCheckoutQuestion(const CheckoutPlanAnswer& answer, std::vector<std::filesystem::path> unsaved,
+									  const std::vector<std::filesystem::path>& unsavedRelative)
+	{
 		const Core::Ref<const Core::WorkingTreeStatus> gitStatusIfKnown = m_Model.GetStatus();
 
-		CheckoutQuestion question = BuildCheckoutQuestion(
-			label, *answer.Plan, gitStatusIfKnown ? *gitStatusIfKnown : Core::WorkingTreeStatus{}, unsavedRelative);
+		CheckoutQuestion question =
+			BuildCheckoutQuestion(CheckoutTargetLabel(answer.Target), *answer.Plan,
+								  gitStatusIfKnown ? *gitStatusIfKnown : Core::WorkingTreeStatus{}, unsavedRelative);
 
 		const bool untrackedForced = question.UntrackedForced;
 
-		m_CheckoutQuestion.AskOnce(CheckoutQuestionPayload{.Target = std::move(answer.Target),
+		m_CheckoutQuestion.AskOnce(CheckoutQuestionPayload{.Target = answer.Target,
 															.Question = std::move(question),
 															.UnsavedAbsolute = std::move(unsaved),
 															.IncludeUntracked = untrackedForced});
+		m_AskedCheckout = answer.Target;
 	}
 
 	void GitView::BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested)
@@ -379,10 +464,12 @@ namespace Graphite {
 		m_GraphOf.reset();
 		m_Graph = Core::CommitGraph{};
 
+		m_HeldCheckout.Forget();
+		m_Deletion.Finish();
+
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
 		WithdrawQuestions();
 		m_PendingCheckout.reset();
-		m_PendingDelete.reset();
 	}
 
 	void GitView::OnImGuiRender()
@@ -468,6 +555,7 @@ namespace Graphite {
 
 		frame.AuthorsInFlight = m_Model.IsBranchAuthorsInFlight();
 		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
+		frame.CheckingOut = CheckoutMarkedOnRows(Checkouts());
 		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
 		frame.LocalOffset = LocalOffset();
 
@@ -524,7 +612,7 @@ namespace Graphite {
 		const bool notSelected = false;
 		const char* const noShortcut = nullptr;
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 		if (branch.Kind == Core::RefKind::Local)
 		{
@@ -545,8 +633,7 @@ namespace Graphite {
 
 			if (ImGui::MenuItem("Delete", noShortcut, notSelected, !branch.IsHead))
 			{
-				m_PendingDelete = branch.Name;
-				m_Model.RequestDeleteCheck(branch.Name);
+				BeginDelete(branch.Name);
 			}
 		}
 		else
@@ -770,8 +857,10 @@ namespace Graphite {
 
 		if (!page)
 		{
-			const std::optional<std::string> placeholder =
-				HistoryPlaceholder(m_Model.GetStatus() != nullptr, m_Model.GetStatusError(), m_Model.GetLogError());
+			const LogAttempt attempt =
+				m_Model.IsLogAnswered(m_Model.GetLogGeneration()) ? LogAttempt::Settled : LogAttempt::InFlight;
+			const std::optional<std::string> placeholder = HistoryPlaceholder(
+				m_Model.GetStatus() != nullptr, m_Model.GetStatusError(), m_Model.GetLogError(), attempt);
 
 			if (placeholder.has_value())
 			{
@@ -794,7 +883,7 @@ namespace Graphite {
 				return m_Model.GetDiffFor(commit);
 			};
 
-			m_Commits.SetActionsEnabled(!m_Model.IsWriteInFlight());
+			m_Commits.SetActionsEnabled(!m_Model.IsWriteUnsettled());
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 			if (branches != m_RefsOf)
@@ -949,7 +1038,9 @@ namespace Graphite {
 			stats = CountChanges(*diff);
 		}
 
-		if (Graphite::RenderCommitDetails(commit, stats, LocalOffset(), palette))
+		const bool diffFailed = m_Model.IsDiffFailed(commit.Id);
+
+		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, LocalOffset(), palette))
 		{
 			m_Commits.ClearCommitSelection();
 		}
@@ -982,9 +1073,13 @@ namespace Graphite {
 
 		const Core::Ref<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
-		if (!diff && m_Model.IsDiffFailed(selected->Commit))
+		if (const std::optional<std::string> failure = DiffFailureOf(selection, m_Model); !diff && failure.has_value())
 		{
-			Core::EmptyState("The diff could not be read.");
+			if (Core::EmptyState(*failure, "Retry"))
+			{
+				RetryDiff(selection, m_Model);
+			}
+
 			return;
 		}
 
@@ -1005,6 +1100,7 @@ namespace Graphite {
 		const Core::FileDiff& file = diff->Files[*fileIndex];
 
 		m_Texts.Update(m_Model, selected->Commit, file);
+		m_Diff.SetTextsWait(m_Texts.Wait);
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
 		m_Diff.Render(file, palette, syntax, ReadEditorPalette(m_Scheme.Get()).Selection, m_Texts.Texts,

@@ -80,6 +80,10 @@ namespace Graphite {
 
 		void SetRoot(std::filesystem::path root);
 
+		// WARNING: Reaches the calling thread's handles only, so it is run on the thread whose handles of a closed or
+		// replaced folder must go, without opening the current one.
+		void LetGoOfHandlesNoLongerCurrent();
+
 		std::uint64_t GetOpenCount() const { return m_OpenCount.load(); }
 
 		std::size_t GetLiveHandleCountForThisThread() const;

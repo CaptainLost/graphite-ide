@@ -66,6 +66,17 @@ namespace {
 			return drawn;
 		}
 
+		float ScrollRoomAfterLoader(const char* text, ImVec2 size)
+		{
+			static_cast<void>(DrawLoaderPastItsWait(text, size));
+
+			BeginFrame("Loader", size);
+			const float scrollRoom = ImGui::GetScrollMaxY();
+			EndFrame();
+
+			return scrollRoom;
+		}
+
 		void DrawWithoutLoader()
 		{
 			BeginFrame("Loader", kWindowSize);
@@ -80,6 +91,10 @@ namespace {
 			bool SpinnerDrawn = false;
 			int Vertices = 0;
 			float LastItemLeft = 0.0f;
+			float RowLeft = 0.0f;
+			float LastItemRight = 0.0f;
+			float MeasuredWidth = 0.0f;
+			bool Shows = false;
 		};
 
 		LineDrawn DrawLineLoader(const char* text, ImVec2 size = kWindowSize,
@@ -88,12 +103,15 @@ namespace {
 			BeginFrame("LineLoader", size);
 
 			const float before = ImGui::GetCursorPosY();
+			const float rowLeft = ImGui::GetCursorScreenPos().x;
 			const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-			Core::LoadingLine(text, whileWaiting);
+			const bool shows = Core::LoadingLine(text, whileWaiting);
 			const float after = ImGui::GetCursorPosY();
 			const float lineHeightWithSpacing = ImGui::GetTextLineHeightWithSpacing();
 			const int vertices = ImGui::GetWindowDrawList()->VtxBuffer.Size - verticesBefore;
 			const float lastItemLeft = ImGui::GetItemRectMin().x;
+			const float lastItemRight = ImGui::GetItemRectMax().x;
+			const float measuredWidth = Core::LoadingLineWidth(text);
 
 			EndFrame();
 
@@ -101,7 +119,11 @@ namespace {
 							 .LineHeightWithSpacing = lineHeightWithSpacing,
 							 .SpinnerDrawn = vertices > 0,
 							 .Vertices = vertices,
-							 .LastItemLeft = lastItemLeft};
+							 .LastItemLeft = lastItemLeft,
+							 .RowLeft = rowLeft,
+							 .LastItemRight = lastItemRight,
+							 .MeasuredWidth = measuredWidth,
+							 .Shows = shows};
 		}
 
 		const ImRect& GetRegion() const { return m_Region; }
@@ -201,6 +223,19 @@ TEST_CASE("LoadingState in a window narrower than its text stays inside the wind
 	CHECK(drawn->Max.x <= window.GetRegion().Max.x + 0.5f);
 }
 
+TEST_CASE("LoadingState with a text wider than the window is tall keeps the text in the middle and adds no scrolling")
+{
+	LoaderWindow window;
+	const ImVec2 lowAndWide{800.0f, 120.0f};
+	constexpr const char* kLongText = "Waiting for clangd to start, 2 open files not checked yet";
+
+	const std::optional<ImRect> drawn = window.DrawLoaderPastItsWait(kLongText, lowAndWide);
+
+	REQUIRE(drawn.has_value());
+	CHECK(drawn->GetCenter().y == doctest::Approx(window.GetRegion().GetCenter().y).epsilon(0.01));
+	CHECK(window.ScrollRoomAfterLoader(kLongText, lowAndWide) == doctest::Approx(0.0f));
+}
+
 TEST_CASE("LoadingState asks for the next frame so its text keeps moving")
 {
 	LoaderWindow window;
@@ -264,6 +299,59 @@ TEST_CASE("LoadingLine that shows its text while it waits draws the text at once
 	CHECK(shown.Vertices > waiting.Vertices);
 	CHECK(shown.LastItemLeft == doctest::Approx(waiting.LastItemLeft));
 	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
+}
+
+TEST_CASE("LoadingLine asked to take no room takes none while it waits and one row once it shows")
+{
+	LoaderWindow window;
+	const Core::WhileLoaderWaits takeNoRoom = Core::WhileLoaderWaits::TakeNoRoom;
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	const LoaderWindow::LineDrawn waiting = window.DrawLineLoader("Refreshing the file list", kWindowSize, takeNoRoom);
+	const std::optional<Core::Redraw::Clock::time_point> wake = Core::Redraw::TakeDeadline();
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Refreshing the file list", kWindowSize, takeNoRoom);
+	}
+
+	CHECK(waiting.Advance == doctest::Approx(0.0f));
+	CHECK(waiting.Vertices == 0);
+	CHECK(wake.has_value());
+	CHECK(shown.SpinnerDrawn);
+	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
+}
+
+TEST_CASE("LoadingLineWidth is how far a shown LoadingLine reaches from where it starts")
+{
+	LoaderWindow window;
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Staging 2,000 files");
+	}
+
+	REQUIRE(shown.SpinnerDrawn);
+	CHECK(shown.LastItemRight - shown.RowLeft == doctest::Approx(shown.MeasuredWidth));
+}
+
+TEST_CASE("LoadingLine answers whether it shows yet, whatever it draws while it waits")
+{
+	LoaderWindow window;
+	const Core::WhileLoaderWaits showText = Core::WhileLoaderWaits::ShowText;
+
+	const LoaderWindow::LineDrawn waiting = window.DrawLineLoader("Loading 500 more", kWindowSize, showText);
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Loading 500 more", kWindowSize, showText);
+	}
+
+	CHECK_FALSE(waiting.Shows);
+	CHECK(shown.Shows);
 }
 
 TEST_CASE("LoadingLine asks for the next frame so its spinner keeps turning")

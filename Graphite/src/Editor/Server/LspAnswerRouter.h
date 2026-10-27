@@ -6,6 +6,7 @@
 #include "Language/Server/LanguageServices.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -40,6 +41,19 @@ namespace Graphite {
 		friend bool operator==(const HoverQuestion&, const HoverQuestion&) = default;
 	};
 
+	struct ReferencesQuestion
+	{
+		std::filesystem::path Path;
+		FilePosition Where;
+		std::string Symbol;
+	};
+
+	enum class QuestionFate : std::uint8_t
+	{
+		Asked,
+		HeldUntilServerIsUp
+	};
+
 	class LspAnswerTarget
 	{
 	public:
@@ -51,8 +65,12 @@ namespace Graphite {
 
 		virtual void ApplyDefinition(const DefinitionQuestion& question,
 									 const LanguageServices::Answer& answer) = 0;
-		virtual void ApplyReferences(const std::string& symbol,
+		virtual void ApplyReferences(const ReferencesQuestion& question,
 									 const LanguageServices::Answer& answer) = 0;
+
+		virtual void AskedHeldReferences(const ReferencesQuestion& question) = 0;
+
+		virtual void RefreshingReferences(const ReferencesQuestion& question) = 0;
 
 		virtual void ApplySwitchSourceHeader(const std::filesystem::path& from,
 											 const LanguageServices::Answer& answer) = 0;
@@ -108,11 +126,20 @@ namespace Graphite {
 
 		void DropCounts(const std::filesystem::path& path);
 
-		void AskDefinition(DefinitionQuestion question);
-		void AskReferences(const std::filesystem::path& path, const FilePosition& where,
-						   std::string symbol);
+		QuestionFate AskDefinition(DefinitionQuestion question);
+		QuestionFate AskReferences(ReferencesQuestion question);
 
-		void AskSwitchSourceHeader(const std::filesystem::path& path);
+		QuestionFate AskSwitchSourceHeader(const std::filesystem::path& path);
+
+		void CancelDefinition();
+		void CancelSwitchSourceHeader();
+
+		bool HoldsDefinition() const { return m_HeldDefinition.has_value(); }
+		bool HoldsSwitchSourceHeader() const { return m_HeldSwitch.has_value(); }
+
+		const ReferencesQuestion* HeldReferences() const;
+
+		const std::optional<ReferencesQuestion>& LastReferences() const { return m_LastReferences; }
 
 		void AskHover(HoverQuestion question);
 		void AskPreviewDefinition(HoverQuestion question);
@@ -124,6 +151,18 @@ namespace Graphite {
 		void Collect(LspAnswerTarget& target);
 
 	private:
+		bool IsComingUp(const std::filesystem::path& path);
+
+		void SendDefinition(DefinitionQuestion question);
+		void SendReferences(ReferencesQuestion question);
+		void SendSwitchSourceHeader(const std::filesystem::path& path);
+		void SendHover(HoverQuestion question);
+		void SendPreviewDefinition(HoverQuestion question);
+
+		void ReleaseHeldQuestions(LspAnswerTarget& target);
+
+		void AskAgainOnceIndexed(LspAnswerTarget& target);
+
 		struct Schedule
 		{
 			bool SymbolsWanted = true;
@@ -142,7 +181,7 @@ namespace Graphite {
 		struct PendingReferences
 		{
 			LanguageServices::Ticket Ticket{};
-			std::string Symbol;
+			ReferencesQuestion Question;
 		};
 
 		struct PendingSwitch
@@ -173,6 +212,18 @@ namespace Graphite {
 		std::optional<PendingSwitch> m_PendingSwitch;
 		std::optional<PendingHover> m_PendingHover;
 		std::optional<PendingHover> m_PendingPreview;
+
+		std::optional<DefinitionQuestion> m_HeldDefinition;
+		std::optional<ReferencesQuestion> m_HeldReferences;
+		std::optional<std::filesystem::path> m_HeldSwitch;
+		std::optional<HoverQuestion> m_HeldHover;
+		std::optional<HoverQuestion> m_HeldPreview;
+
+		std::optional<ReferencesQuestion> m_LastReferences;
+
+		// WARNING: Set when references were asked of a server still indexing, whose answer may leave out the files it
+		// has not reached; they are asked again once the index is complete.
+		std::optional<ReferencesQuestion> m_AskAgainOnceIndexed;
 
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSymbols;
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;

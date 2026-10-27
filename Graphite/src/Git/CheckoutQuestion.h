@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -49,4 +50,39 @@ namespace Graphite {
 	std::string DetachedCheckoutBody(const std::string& commitLabel);
 
 	std::string CheckoutTargetLabel(const Core::CheckoutTarget& target);
+
+	struct LandedCheckoutPlan
+	{
+		bool Failed = false;
+		bool NeedsDialog = false;
+		bool PanelOnScreen = false;
+	};
+
+	enum class CheckoutPlanVerdict
+	{
+		ReportFailure,
+		CheckOut,
+		Ask,
+		HoldForPanel
+	};
+
+	// WARNING: Decided once, as the plan lands. A plan judged again later, against the buffers of that moment,
+	// checks out a branch nobody confirmed once the reader has saved the edits its question was about.
+	CheckoutPlanVerdict DecideOnCheckoutPlan(const LandedCheckoutPlan& plan);
+
+	class HeldCheckout
+	{
+	public:
+		void Hold(Core::CheckoutTarget target) { m_Target = std::move(target); }
+
+		void Forget() { m_Target.reset(); }
+
+		const std::optional<Core::CheckoutTarget>& HeldTarget() const { return m_Target; }
+
+		// WARNING: Hands out the target only, never the old plan: the checkout is planned again before it is asked about.
+		std::optional<Core::CheckoutTarget> TakeOnceOnScreen(bool panelOnScreen);
+
+	private:
+		std::optional<Core::CheckoutTarget> m_Target;
+	};
 }

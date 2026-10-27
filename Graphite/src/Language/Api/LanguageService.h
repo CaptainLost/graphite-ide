@@ -119,6 +119,8 @@ namespace Graphite {
 		std::vector<PublishedDiagnostics> Published;
 		std::vector<DocumentVersionNote> Versions;
 		std::vector<std::filesystem::path> Closed;
+
+		std::vector<DocumentVersionNote> Unanswered;
 	};
 
 	enum class DeclarationKind : std::uint8_t

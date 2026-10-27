@@ -2254,7 +2254,7 @@ TEST_CASE("A listing already held is not asked for again")
 	CHECK(port.UntrackedCalls == 1);
 }
 
-TEST_CASE("A listing is dropped when the working tree changes")
+TEST_CASE("A listing is dropped when a status no longer lists its folder")
 {
 	FakePort port;
 	Graphite::GitModel model{port, RunJobsInline()};
@@ -2285,6 +2285,114 @@ TEST_CASE("A failed listing answers null and is not retried on its own")
 
 	CHECK(model.GetUntrackedIn("notes") == nullptr);
 	CHECK(port.UntrackedCalls == 1);
+}
+
+TEST_CASE("A listing stays through a status that still lists its folder, and the next ask reads it again")
+{
+	FakePort port;
+	Core::FileStatus folder;
+	folder.Path = "notes";
+	folder.IsDirectory = true;
+	folder.IsUntracked = true;
+	port.Status.Entries = {folder};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	REQUIRE(model.GetUntrackedIn("notes") != nullptr);
+
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	CHECK(model.GetUntrackedIn("notes") != nullptr);
+	CHECK(port.UntrackedCalls == 1);
+
+	model.RequestUntrackedIn("notes");
+	model.RequestUntrackedIn("notes");
+
+	CHECK(port.UntrackedCalls == 2);
+	CHECK(model.GetUntrackedIn("notes") != nullptr);
+}
+
+namespace {
+
+	void RunHeldJobsAndDeliver(std::vector<std::function<void()>>& heldJobs, Graphite::GitModel& model)
+	{
+		std::vector<std::function<void()>> jobs = std::move(heldJobs);
+		heldJobs.clear();
+
+		for (const std::function<void()>& job : jobs)
+		{
+			job();
+		}
+
+		model.OnUpdate(Core::Timestep{kNoSeconds});
+	}
+}
+
+TEST_CASE("A kept listing is not current from the status that kept it until it has been read again")
+{
+	FakePort port;
+	Core::FileStatus folder;
+	folder.Path = "notes";
+	folder.IsDirectory = true;
+	folder.IsUntracked = true;
+	port.Status.Entries = {folder};
+
+	std::vector<std::function<void()>> heldJobs;
+	Graphite::GitModel model{port, [&heldJobs](std::function<void()> job) { heldJobs.push_back(std::move(job)); }};
+	model.SetRoot("C:/repo");
+
+	CHECK_FALSE(model.IsUntrackedListingCurrent("notes"));
+
+	model.RequestUntrackedIn("notes");
+	RunHeldJobsAndDeliver(heldJobs, model);
+	CHECK(model.IsUntrackedListingCurrent("notes"));
+
+	model.RequestStatus();
+	RunHeldJobsAndDeliver(heldJobs, model);
+	REQUIRE(model.GetUntrackedIn("notes") != nullptr);
+	CHECK_FALSE(model.IsUntrackedListingCurrent("notes"));
+
+	model.RequestUntrackedIn("notes");
+	CHECK_FALSE(model.IsUntrackedListingCurrent("notes"));
+
+	RunHeldJobsAndDeliver(heldJobs, model);
+	CHECK(model.IsUntrackedListingCurrent("notes"));
+}
+
+TEST_CASE("A failed listing gives its reason until a status that still lists the folder lets it be asked again")
+{
+	FakePort port;
+	port.FailUntracked = true;
+	Core::FileStatus folder;
+	folder.Path = "notes";
+	folder.IsDirectory = true;
+	folder.IsUntracked = true;
+	port.Status.Entries = {folder};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	CHECK_FALSE(model.GetUntrackedFailureIn("notes").has_value());
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	CHECK(model.GetUntrackedIn("notes") == nullptr);
+	CHECK(model.GetUntrackedFailureIn("notes").has_value());
+
+	port.FailUntracked = false;
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	CHECK(port.UntrackedCalls == 2);
+	CHECK(model.GetUntrackedIn("notes") != nullptr);
+	CHECK_FALSE(model.GetUntrackedFailureIn("notes").has_value());
 }
 
 TEST_CASE("Clearing the model forgets every listing")

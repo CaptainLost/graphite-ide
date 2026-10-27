@@ -4,6 +4,7 @@
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
+#include "Core/ImGui/DisabledOffer.h"
 
 #include <imgui.h>
 
@@ -131,6 +132,15 @@ namespace Core {
 			if (ImGui::MenuItem(label.c_str(), shortcutOrNothing, checked, enabled))
 			{
 				commands.RunFromMenu(id);
+				return;
+			}
+
+			const bool offersSomethingWhileDisabled = !command->DisabledNote.empty() && command->RunWhileDisabled;
+
+			if (offersSomethingWhileDisabled && OfferWhileDisabled(command->DisabledNote.c_str()))
+			{
+				command->RunWhileDisabled();
+				ImGui::CloseCurrentPopup();
 			}
 		}
 

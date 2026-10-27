@@ -18,7 +18,7 @@ namespace {
 
 	constexpr float kWideWindowWidth = 900.0f;
 	constexpr float kNarrowWindowWidth = 320.0f;
-	constexpr std::size_t kRowCount = 9;
+	constexpr std::size_t kRowCount = 10;
 
 	struct EditorScreen
 	{
@@ -38,7 +38,7 @@ TEST_CASE("The editor page lists its settings under Text, Indentation, Hover and
 	EditorScreen screen;
 
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Text", "Indentation", "Hover", "Git changes"});
-	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Indent with", "Tab width", "Symbol information",
+	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Highlight occurrences", "Indent with", "Tab width", "Symbol information",
 																"Definition preview", "Hover delay", "Markers in the gutter",
 																"Markers on the scrollbar"});
 }
@@ -64,6 +64,16 @@ TEST_CASE("The gutter markers toggle flips the markers")
 	screen.Frames.ClickControl("Markers in the gutter");
 
 	CHECK(screen.Editor.HasGutterChangeMarkers() != shownBefore);
+}
+
+TEST_CASE("The occurrence highlighting toggle flips the highlighting")
+{
+	EditorScreen screen;
+	const bool highlightedBefore = screen.Editor.IsHighlightingOccurrences();
+
+	screen.Frames.ClickControl("Highlight occurrences");
+
+	CHECK(screen.Editor.IsHighlightingOccurrences() != highlightedBefore);
 }
 
 TEST_CASE("The editor page draws wide and narrow without an ImGui assertion")

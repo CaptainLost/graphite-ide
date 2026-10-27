@@ -80,6 +80,9 @@ namespace Graphite {
 		void SetGutterChangeMarkers(bool show);
 		void SetScrollbarChangeMarkers(bool show);
 
+		bool IsHighlightingOccurrences() const { return m_HighlightOccurrences; }
+		void SetHighlightOccurrences(bool highlight);
+
 		HoverSettings GetHoverSettings() const { return m_Hover; }
 
 		void SetHoverInfo(bool show);
@@ -116,6 +119,8 @@ namespace Graphite {
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;
+
+		bool m_HighlightOccurrences = true;
 
 		static constexpr int kMinimumHoverDelayMs = 200;
 		static constexpr int kMaximumHoverDelayMs = 1500;

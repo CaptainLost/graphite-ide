@@ -28,6 +28,8 @@ namespace Graphite {
 			// reader keyed on Answered would call them identical. Generation moves on every one.
 			std::uint64_t Generation = 0;
 
+			DocumentVersion GaveUpOn;
+
 			std::vector<Diagnostic> Items;
 		};
 

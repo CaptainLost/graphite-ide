@@ -9,6 +9,15 @@
 
 namespace Graphite {
 
+	namespace {
+
+		TextsWait FailedWait(const std::optional<Core::Error>& failure)
+		{
+			return TextsWait{.Progress = TextsProgress::Failed,
+							 .Reason = failure.has_value() ? failure->Message : std::string{}};
+		}
+	}
+
 	Core::Result<SideText> ReadSideText(Core::Result<std::string> read)
 	{
 		if (read.HasValue())
@@ -56,6 +65,8 @@ namespace Graphite {
 			Tokens = FileTokens{};
 		}
 
+		Wait = TextsWait{};
+
 		if (file.IsBinary)
 		{
 			// WARNING: A binary file's blobs are never fetched: nothing caps their size, the blob
@@ -69,6 +80,13 @@ namespace Graphite {
 		model.RequestTextsFor(commit, shownPath, file.OldPath, file.NewPath);
 
 		const Core::Ref<const FileTexts> texts = model.GetTextsFor(commit, shownPath);
+
+		if (texts == nullptr)
+		{
+			Wait = model.IsTextsFailed(commit, shownPath) ? FailedWait(model.GetTextsFailure(commit, shownPath))
+														   : TextsWait{.Progress = TextsProgress::Loading};
+		}
+
 		const bool sameTextsObject = texts.get() == Texts.get();
 
 		if (sameTextsObject)
@@ -146,6 +164,8 @@ namespace Graphite {
 			Tokens = FileTokens{};
 		}
 
+		Wait = TextsWait{};
+
 		if (file.IsBinary)
 		{
 			Texts.reset();
@@ -157,6 +177,12 @@ namespace Graphite {
 
 		if (texts == nullptr)
 		{
+			// WARNING: The texts land with the diff they belong to, so beside a diff on screen they are either held or failed.
+			if (const std::optional<Core::Error> failure = model.GetWorkingTreeTextsFailure())
+			{
+				Wait = FailedWait(failure);
+			}
+
 			Texts.reset();
 			Tokens = FileTokens{};
 			return;

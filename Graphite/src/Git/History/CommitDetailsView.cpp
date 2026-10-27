@@ -56,7 +56,7 @@ namespace Graphite {
 	}
 
 	bool RenderCommitDetails(const Core::CommitSummary& commit,
-							 const std::optional<DiffStats>& stats, std::chrono::minutes offset,
+							 const std::optional<DiffStats>& stats, bool diffFailed, std::chrono::minutes offset,
 							 const GitPalette& palette)
 	{
 		const std::chrono::sys_seconds now =
@@ -100,7 +100,7 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::TextDisabled("counting changes…");
+			ImGui::TextDisabled("%s", UncountedChangesText(diffFailed).c_str());
 		}
 
 		ImGui::Separator();

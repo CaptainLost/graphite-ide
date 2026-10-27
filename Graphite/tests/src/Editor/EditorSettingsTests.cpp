@@ -131,6 +131,32 @@ TEST_CASE("EditorSettings turns each kind of change marker off on its own")
 	CHECK(settings.HasScrollbarChangeMarkers());
 }
 
+TEST_CASE("EditorSettings highlights occurrences of the selection by default")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+	settings.Load();
+
+	CHECK(settings.IsHighlightingOccurrences());
+}
+
+TEST_CASE("EditorSettings remembers occurrence highlighting turned off")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.SetHighlightOccurrences(kDisabled);
+
+		CHECK_FALSE(settings.IsHighlightingOccurrences());
+	}
+
+	Graphite::EditorSettings reloaded{store.Get()};
+	reloaded.Load();
+
+	CHECK_FALSE(reloaded.IsHighlightingOccurrences());
+}
+
 TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
 {
 	TempAppSettings store;

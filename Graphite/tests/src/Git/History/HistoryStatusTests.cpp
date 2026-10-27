@@ -170,3 +170,28 @@ TEST_CASE("An empty history without a filter shows no line")
 {
 	CHECK_FALSE(DescribeHistory(HistoryStatusInput{.Shown = 0, .Walked = 0, .Complete = true}).has_value());
 }
+
+TEST_CASE("While a query the reader started runs over a stash's page the line says Loading with nothing to count")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(
+		HistoryStatusInput{.Shown = 1, .Walked = 1, .Complete = true, .Stash = true, .Asking = true});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text.empty());
+	CHECK(status->Busy == "Loading\xE2\x80\xA6");
+	CHECK(status->Actions == HistoryActions::None);
+}
+
+TEST_CASE("While a query the reader started runs over an empty page the line says Loading, or Searching for a filter")
+{
+	const std::optional<HistoryStatus> loading =
+		DescribeHistory(HistoryStatusInput{.Shown = 0, .Walked = 0, .Complete = true, .Asking = true});
+	const std::optional<HistoryStatus> searching = DescribeHistory(
+		HistoryStatusInput{.Shown = 0, .Walked = 0, .Complete = true, .Asking = true, .AskedFiltered = true});
+
+	REQUIRE(loading.has_value());
+	CHECK(loading->Text.empty());
+	CHECK(loading->Busy == "Loading\xE2\x80\xA6");
+	REQUIRE(searching.has_value());
+	CHECK(searching->Busy == "Searching\xE2\x80\xA6");
+}

@@ -509,7 +509,43 @@ TEST_CASE("A collapsed section shows only its heading")
 	CHECK(rows.front().Collapsed);
 }
 
-TEST_CASE("A section whose branches the filter hides says so")
+TEST_CASE("A section whose branches the filter hides says so once the authors are read")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "main", .TipSeconds = kBaseSeconds},
+	});
+
+	const Graphite::BranchAuthors authors;
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "nothing-like-it";
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(KindsOf(rows) ==
+		  std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::NoMatches, BranchRowKind::Section});
+}
+
+TEST_CASE("While the authors are read a filter keeps the branches that match and says more may match")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "login", .TipSeconds = kBaseSeconds},
+		{.Name = "other", .TipSeconds = kBaseSeconds},
+	});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Filter.Text = "login";
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"login"});
+	REQUIRE(KindsOf(rows) == std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::Branch,
+														 BranchRowKind::Loading, BranchRowKind::Section});
+	CHECK(rows[2].Label == "Reading authors \xC2\xB7 more branches may match");
+}
+
+TEST_CASE("While the authors are read a filter that matches nothing yet says so instead of no matching branches")
 {
 	const std::vector<Core::Branch> branches = MakeBranches({
 		{.Name = "main", .TipSeconds = kBaseSeconds},
@@ -520,7 +556,22 @@ TEST_CASE("A section whose branches the filter hides says so")
 
 	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
 
-	CHECK(KindsOf(rows) ==
+	REQUIRE(KindsOf(rows) ==
+			std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::Loading, BranchRowKind::Section});
+	CHECK(rows[1].Label == "No matching branches yet \xC2\xB7 reading authors");
+}
+
+TEST_CASE("A failed author read leaves a filter's no matching branches as it is")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "main", .TipSeconds = kBaseSeconds},
+	});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Filter.Text = "nothing-like-it";
+	input.AuthorsFailure = "the walk stopped";
+
+	CHECK(KindsOf(Graphite::BuildBranchRows(input)) ==
 		  std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::NoMatches, BranchRowKind::Section});
 }
 

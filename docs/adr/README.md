@@ -668,9 +668,15 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0636](0636-run-git-writes-on-a-worker-of-their-own.md) | Run git writes on a worker of their own | proposed | 2026-10-25 |
 | [0637](0637-keep-a-command-terminal-open-after-its-process-exits.md) | Keep a command terminal open after its process exits | proposed | 2026-10-25 |
 | [0638](0638-show-where-a-navigation-command-waits-and-how-it-ended-in-a-bubble-at-the-caret.md) | Show where a navigation command waits and how it ended in a bubble at the caret | proposed | 2026-10-25 |
-| [0639](0639-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) | Add stb as a dependency for decoding and scaling images | proposed | 2026-10-25 |
-| [0640](0640-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md) | Draw pictures through a texture facade over ImGui's user textures | proposed | 2026-10-25 |
-| [0641](0641-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md) | Let the view on screen add its own items to the status bar | proposed | 2026-10-26 |
-| [0642](0642-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) | Let a tab's view put its tools on the right of the path row, and give the row to image tabs | proposed | 2026-10-26 |
-| [0643](0643-open-images-as-views-inside-the-document-tabs.md) | Open images as views inside the document tabs | proposed | 2026-10-26 |
+| [0639](0639-highlight-the-other-occurrences-of-a-selected-word-in-the-text-and-either-side-of-the-scrollbar-s-centre-strip.md) | Highlight the other occurrences of a selected word, in the text and either side of the scrollbar's centre strip | proposed | 2026-10-25 |
+| [0640](0640-read-a-folder-s-entries-and-their-attributes-in-one-pass.md) | Read a folder's entries and their attributes in one pass | proposed | 2026-10-26 |
+| [0641](0641-inherit-the-ignored-state-from-an-ignored-folder-and-keep-known-answers-across-reloads.md) | Inherit the ignored state from an ignored folder and keep known answers across reloads | proposed | 2026-10-26 |
+| [0642](0642-run-explorer-file-operations-and-large-file-loads-on-a-worker-and-show-them-while-they-run.md) | Run Explorer file operations and large file loads on a worker and show them while they run | proposed | 2026-10-26 |
+| [0643](0643-preview-only-files-that-open-without-asking.md) | Preview only files that open without asking | proposed | 2026-10-26 |
+| [0644](0644-read-solutions-off-the-ui-thread.md) | Read solutions off the UI thread | proposed | 2026-10-26 |
+| [0645](0645-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) | Add stb as a dependency for decoding and scaling images | proposed | 2026-10-25 |
+| [0646](0646-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md) | Draw pictures through a texture facade over ImGui's user textures | proposed | 2026-10-25 |
+| [0647](0647-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md) | Let the view on screen add its own items to the status bar | proposed | 2026-10-26 |
+| [0648](0648-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) | Let a tab's view put its tools on the right of the path row, and give the row to image tabs | proposed | 2026-10-26 |
+| [0649](0649-open-images-as-views-inside-the-document-tabs.md) | Open images as views inside the document tabs | proposed | 2026-10-26 |
 <!-- /adr-index -->

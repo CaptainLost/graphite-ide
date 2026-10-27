@@ -307,6 +307,23 @@ namespace Core {
 		return Caret{.Offset = endIncludingLineEnding, .Anchor = lineStart, .DesiredColumn = NoDesiredColumn};
 	}
 
+	Caret ExtendByUnit(const TextBuffer& buffer, OffsetRange origin, std::size_t offset,
+					   SelectionUnit unit)
+	{
+		const std::size_t boundary = CharacterBoundaryAtOrBefore(buffer, offset);
+
+		const Caret unitAtPointer = unit == SelectionUnit::Line
+										? SelectLineAt(buffer, buffer.ToPosition(boundary).Line)
+										: SelectWordAt(buffer, boundary);
+		const OffsetRange reached = SelectionRange(unitAtPointer);
+
+		const bool isBeforeOrigin = reached.From < origin.From;
+
+		return Caret{.Offset = isBeforeOrigin ? reached.From : reached.To,
+					 .Anchor = isBeforeOrigin ? origin.To : origin.From,
+					 .DesiredColumn = NoDesiredColumn};
+	}
+
 	Caret SelectAll(const TextBuffer& buffer)
 	{
 		const std::size_t documentStart = 0;

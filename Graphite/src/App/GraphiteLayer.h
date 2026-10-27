@@ -82,6 +82,7 @@ namespace Graphite {
 	class SearchPanel;
 	class SettingsPanel;
 	class ReferencesPanel;
+	class GitView;
 
 	class GraphiteLayer final : public Core::Layer
 	{
@@ -122,6 +123,10 @@ namespace Graphite {
 
 		// The windows and caches of the folder being left, whether another opens after it or none does.
 		void LetGoOfFolderWindows();
+
+		// WARNING: An idle worker keeps its last folder's packfiles mapped until its next call, which blocks moving
+		// or deleting that folder on Windows.
+		void LetGoOfOldRepositoryOnWriteWorker();
 
 		void OpenStartupFolder();
 
@@ -323,18 +328,21 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these five is deliberate. Every job that GitModel, ChangeMarkersModel and ReviewModel
-		// submit captures `this` and reads m_GitPort, so m_Jobs is declared LAST of the five:
+		// The order among these six is deliberate. Every job that GitModel, ChangeMarkersModel and ReviewModel
+		// submit captures `this` and reads m_GitPort, so the two queues are declared LAST of the six:
 		// members are destroyed in reverse order, which joins every worker before the models and the port go away.
-		// Declaring m_Jobs first compiles and fails only under real threading.
+		// Declaring a queue first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
-		GitModel m_Git{m_GitPort,
-					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		GitModel m_Git{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
+					   [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); }};
 		ChangeMarkersModel m_ChangeMarkers{
 			m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  WatchWithDirectoryWatcher()};
 		Core::JobQueue m_Jobs;
+
+		static constexpr std::size_t kGitWriteWorkers = 1;
+		Core::JobQueue m_GitWrites{kGitWriteWorkers};
 
 		// WARNING: m_Events is destroyed after m_Git although m_Git subscribes handlers into it that capture `this`.
 		// That is unreachable today, because nothing publishes from a destructor and EventBus has no unsubscribe;
@@ -394,6 +402,7 @@ namespace Graphite {
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
 		SettingsPanel* m_SettingsPanel = nullptr;
+		GitView* m_GitView = nullptr;
 
 		StateKeeper m_StateKeeper{
 			[this](const GlobalState& state) { m_AppSettings.SetGlobalState(state); },

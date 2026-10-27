@@ -293,6 +293,29 @@ namespace Graphite {
 			EmitChildren(context, root, depth);
 		}
 
+		void AppendLoadingGroup(const ReviewTreeInput& input, ReviewGroup group, std::vector<ReviewTreeRow>& rows)
+		{
+			std::size_t depth = 0;
+
+			if (input.Headings == GroupHeadings::Shown)
+			{
+				const bool collapsed = input.Groups.Collapsed[IndexOf(group)];
+
+				rows.push_back(ReviewTreeRow{
+					.Kind = TreeRowKind::Heading, .Group = group, .Depth = 0, .Folded = collapsed, .Loading = true});
+
+				if (collapsed)
+				{
+					return;
+				}
+
+				depth = 1;
+			}
+
+			rows.push_back(
+				ReviewTreeRow{.Kind = TreeRowKind::Loading, .Group = group, .Depth = depth, .Label = kLoadingUncommitted});
+		}
+
 		std::vector<ReviewSelection> FileSelectionsOf(const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows)
 		{
 			std::vector<ReviewSelection> selections;
@@ -407,6 +430,10 @@ namespace Graphite {
 		if (input.Groups.Uncommitted != nullptr)
 		{
 			AppendGroup(input, ReviewGroup::Uncommitted, *input.Groups.Uncommitted, rows);
+		}
+		else if (input.UncommittedLoading)
+		{
+			AppendLoadingGroup(input, ReviewGroup::Uncommitted, rows);
 		}
 
 		return rows;

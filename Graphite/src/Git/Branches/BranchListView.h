@@ -6,6 +6,7 @@
 #include "Persistence/PersistedState.h"
 
 #include "Core/Base/Base.h"
+#include "Core/Git/Checkout.h"
 #include "Core/Git/Ref.h"
 
 #include <array>
@@ -28,6 +29,8 @@ namespace Graphite {
 		bool AuthorsInFlight = false;
 
 		std::optional<std::string> SelectedRef;
+
+		std::optional<Core::CheckoutTarget> CheckingOut;
 
 		std::chrono::sys_seconds Now;
 		std::chrono::minutes LocalOffset{0};

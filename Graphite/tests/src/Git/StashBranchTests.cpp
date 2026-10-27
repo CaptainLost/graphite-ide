@@ -118,3 +118,10 @@ TEST_CASE("The drop question cuts a long message on a character boundary")
 
 	CHECK(Graphite::DropStashSubject(0, "On main: abcd", 4) == "\"abcd\" (stash@{0})");
 }
+
+TEST_CASE("The stashes heading counts the list once it has been read, and counts nothing before")
+{
+	CHECK(Graphite::StashSectionCount(std::nullopt).empty());
+	CHECK(Graphite::StashSectionCount(std::optional<std::size_t>{0}) == "(0)");
+	CHECK(Graphite::StashSectionCount(std::optional<std::size_t>{3}) == "(3)");
+}

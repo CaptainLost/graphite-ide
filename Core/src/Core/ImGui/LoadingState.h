@@ -7,7 +7,8 @@ namespace Core {
 	enum class WhileLoaderWaits : std::uint8_t
 	{
 		ShowNothing,
-		ShowText
+		ShowText,
+		TakeNoRoom
 	};
 
 	// WARNING: Each loader waits a fifth of a second before it shows, so a short wait shows nothing at all rather than a
@@ -15,7 +16,9 @@ namespace Core {
 	// does not draw the loader ends its wait, and the next one starts a new one.
 	void LoadingState(const char* text);
 
-	// One row high, for a list that waits on part of its content. The row is taken while the loader waits too, so the
-	// list does not move when it shows.
-	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
+	// WARNING: One row high, taken while the loader waits too unless asked to take no room. Answers whether the loader
+	// shows yet, so a caller can keep what it drew before for the first fifth of a second.
+	bool LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
+
+	float LoadingLineWidth(const char* text);
 }

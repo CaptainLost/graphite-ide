@@ -314,7 +314,9 @@ namespace Graphite {
 
 		Ticket IssueTicket();
 
-		void Fail(Ticket ticket);
+		void Fail(Ticket ticket, ReplyFailure reason, ServerStatus server);
+
+		void FailPending(ManagedServer& server, ReplyFailure reason, LanguageId language);
 
 		Ticket AskVia(const std::filesystem::path& path, LanguageId language,
 					  const std::function<RequestId(LspClient&)>& ask);

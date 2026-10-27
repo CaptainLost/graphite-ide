@@ -268,3 +268,46 @@ TEST_CASE("The detached question names the commit and says it belongs to no bran
 	CHECK(body.find("1a2b3c4") != std::string::npos);
 	CHECK(body.find("no branch") != std::string::npos);
 }
+
+TEST_CASE("A plan that needs the reader's answer while the Git panel is hidden is held, never checked out")
+{
+	const Graphite::CheckoutPlanVerdict verdict =
+		Graphite::DecideOnCheckoutPlan({.Failed = false, .NeedsDialog = true, .PanelOnScreen = false});
+
+	CHECK(verdict == Graphite::CheckoutPlanVerdict::HoldForPanel);
+}
+
+TEST_CASE("A plan is asked about on screen, checked out when it needs no answer, and reported when it failed")
+{
+	CHECK(Graphite::DecideOnCheckoutPlan({.Failed = false, .NeedsDialog = true, .PanelOnScreen = true}) ==
+		  Graphite::CheckoutPlanVerdict::Ask);
+	CHECK(Graphite::DecideOnCheckoutPlan({.Failed = false, .NeedsDialog = false, .PanelOnScreen = false}) ==
+		  Graphite::CheckoutPlanVerdict::CheckOut);
+	CHECK(Graphite::DecideOnCheckoutPlan({.Failed = true, .NeedsDialog = true, .PanelOnScreen = true}) ==
+		  Graphite::CheckoutPlanVerdict::ReportFailure);
+}
+
+TEST_CASE("A held checkout gives nothing back however long the panel stays hidden, then its target once on screen")
+{
+	constexpr bool kHidden = false;
+	constexpr bool kOnScreen = true;
+	constexpr int kFramesHidden = 600;
+	const Core::CheckoutTarget feature{.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature/x"};
+
+	Graphite::HeldCheckout held;
+	held.Hold(feature);
+
+	bool handedOutWhileHidden = false;
+
+	for (int frame = 0; frame < kFramesHidden; ++frame)
+	{
+		handedOutWhileHidden = handedOutWhileHidden || held.TakeOnceOnScreen(kHidden).has_value();
+	}
+
+	CHECK_FALSE(handedOutWhileHidden);
+	CHECK(held.HeldTarget() == feature);
+
+	CHECK(held.TakeOnceOnScreen(kOnScreen) == feature);
+	CHECK_FALSE(held.TakeOnceOnScreen(kOnScreen).has_value());
+	CHECK_FALSE(held.HeldTarget().has_value());
+}

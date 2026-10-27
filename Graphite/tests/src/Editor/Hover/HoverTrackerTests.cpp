@@ -422,13 +422,132 @@ TEST_CASE("Ctrl pressed before the delay asks for the preview exactly once, at t
 	CHECK_FALSE(tracker.Update(ctrl).AskPreview);
 }
 
-TEST_CASE("After the delay, an answer still pending needs no wake-up")
+TEST_CASE("After the delay, an answer still pending wakes the tracker only to show that it is loading")
 {
 	HoverTracker tracker;
 	tracker.Update(InputAt(0.0));
 	REQUIRE(tracker.Update(InputAt(0.6)).AskInfo);
 
-	CHECK_FALSE(tracker.Update(InputAt(0.7)).WakeAt.has_value());
+	const HoverActions pending = tracker.Update(InputAt(0.7));
+
+	CHECK_FALSE(pending.InfoLoading);
+	REQUIRE(pending.WakeAt.has_value());
+	CHECK(*pending.WakeAt == doctest::Approx(0.6 + HoverTracker::kLoadingAfterSeconds));
+
+	const HoverActions loading = tracker.Update(InputAt(0.6 + HoverTracker::kLoadingAfterSeconds));
+
+	CHECK(loading.InfoLoading);
+	CHECK(loading.Visible());
+	CHECK_FALSE(loading.WakeAt.has_value());
+}
+
+TEST_CASE("The loader gives way to the answer when it arrives")
+{
+	HoverTracker tracker;
+	tracker.Update(InputAt(0.0));
+	REQUIRE(tracker.Update(InputAt(0.6)).AskInfo);
+	REQUIRE(tracker.Update(InputAt(1.0)).InfoLoading);
+
+	HoverInput arrived = InputAt(1.1);
+	arrived.InfoArrived = true;
+	const HoverActions shown = tracker.Update(arrived);
+
+	CHECK(shown.ShowInfo);
+	CHECK_FALSE(shown.InfoLoading);
+}
+
+TEST_CASE("A preview still pending shows that it is loading")
+{
+	HoverTracker tracker;
+
+	HoverInput ctrl = InputAt(0.0);
+	ctrl.Ctrl = true;
+	tracker.Update(ctrl);
+	ctrl.Now = 0.6;
+	REQUIRE(tracker.Update(ctrl).AskPreview);
+
+	ctrl.Now = 1.0;
+	const HoverActions loading = tracker.Update(ctrl);
+
+	CHECK(loading.PreviewLoading);
+	CHECK_FALSE(loading.InfoLoading);
+}
+
+TEST_CASE("No loader shows while a failed answer waits for its retry, and the retry failing gives up")
+{
+	HoverTracker tracker;
+	tracker.Update(InputAt(0.0));
+	REQUIRE(tracker.Update(InputAt(0.6)).AskInfo);
+
+	HoverInput failed = InputAt(0.7);
+	failed.InfoFailed = true;
+	failed.InfoFailureSaysWhy = true;
+	const HoverActions waiting = tracker.Update(failed);
+
+	CHECK_FALSE(waiting.InfoLoading);
+	CHECK_FALSE(waiting.InfoGaveUp);
+
+	failed.Now = 0.7 + HoverTracker::kHoverRetrySeconds;
+	const HoverActions retried = tracker.Update(failed);
+
+	REQUIRE(retried.AskInfo);
+	CHECK_FALSE(retried.InfoGaveUp);
+
+	const HoverActions retryPending = tracker.Update(InputAt(1.3));
+
+	CHECK(retryPending.InfoLoading);
+
+	failed.Now = 1.4;
+	const HoverActions gaveUp = tracker.Update(failed);
+
+	CHECK(gaveUp.InfoGaveUp);
+	CHECK_FALSE(gaveUp.InfoLoading);
+	CHECK(gaveUp.Visible());
+}
+
+TEST_CASE("A hover that gave up with nothing to say why shows nothing")
+{
+	HoverTracker tracker;
+	tracker.Update(InputAt(0.0));
+	REQUIRE(tracker.Update(InputAt(0.6)).AskInfo);
+
+	HoverInput failed = InputAt(0.7);
+	failed.InfoFailed = true;
+	tracker.Update(failed);
+
+	failed.Now = 0.7 + HoverTracker::kHoverRetrySeconds;
+	REQUIRE(tracker.Update(failed).AskInfo);
+
+	failed.Now = 1.4;
+	const HoverActions gaveUp = tracker.Update(failed);
+
+	CHECK_FALSE(gaveUp.InfoGaveUp);
+	CHECK_FALSE(gaveUp.Visible());
+}
+
+TEST_CASE("Only a preview asked for by holding Ctrl reads as held by Ctrl")
+{
+	HoverTracker tracker;
+
+	HoverInput ctrl = InputAt(0.0);
+	ctrl.Ctrl = true;
+	ctrl.Settings.Preview = DefinitionPreviewMode::WithCtrl;
+	tracker.Update(ctrl);
+	ctrl.Now = 0.6;
+
+	CHECK(tracker.Update(ctrl).PreviewHeldByCtrl);
+
+	HoverTracker always;
+
+	HoverInput plain = InputAt(0.0);
+	plain.Settings.Preview = DefinitionPreviewMode::Always;
+	always.Update(plain);
+	plain.Now = 0.6;
+
+	const HoverActions asked = always.Update(plain);
+
+	CHECK(asked.AskPreview);
+	CHECK_FALSE(asked.PreviewHeldByCtrl);
 }
 
 TEST_CASE("A failed answer is asked once more after a pause, and only once per rest")

@@ -124,25 +124,43 @@ namespace Core {
 		const float height =
 			(radius + ImGui::GetStyle().FramePadding.y) * kDiametersPerRadius;
 
+		constexpr float kHalf = 0.5f;
 		const ImVec2 start = ImGui::GetCursorPos();
 		ImGui::SetCursorPos(ImVec2(start.x + CentredStart(region.x, radius * kDiametersPerRadius),
-								   start.y + CentredStart(region.y, height)));
+								   start.y + (region.y - height) * kHalf));
+
+		// WARNING: The shine's cell is as tall as its text is wide, so in a low panel it reaches past both edges. It is
+		// centred all the same and the window keeps only the region as content, or the text sits at the bottom of a
+		// panel that suddenly scrolls.
+		ImGuiWindow* const window = ImGui::GetCurrentWindow();
+		const ImVec2 contentReachBefore = window->DC.CursorMaxPos;
+		const ImVec2 idealReachBefore = window->DC.IdealMaxPos;
+		const ImVec2 regionEnd{window->Pos.x - window->Scroll.x + start.x + region.x,
+							   window->Pos.y - window->Scroll.y + start.y + region.y};
 
 		const ImColor ink{ImGui::GetStyleColorVec4(ImGuiCol_Text)};
 		const ImColor paper{ImGui::GetStyleColorVec4(ImGuiCol_WindowBg)};
 		ImSpinner::SpinnerTextShine(kLoaderId, radius, ink, paper, kSweepsPerSecond, text);
 
+		window->DC.CursorMaxPos = ImMax(contentReachBefore, regionEnd);
+		window->DC.IdealMaxPos = ImMax(idealReachBefore, regionEnd);
+
 		Redraw::RequestIn(Redraw::Clock::duration::zero());
 	}
 
-	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting)
+	bool LoadingLine(const char* text, WhileLoaderWaits whileWaiting)
 	{
 		const bool shows = HasWaitedLongEnough(kLineWaitSinceId, kLineLastFrameId);
+
+		if (!shows && whileWaiting == WhileLoaderWaits::TakeNoRoom)
+		{
+			return shows;
+		}
 
 		if (!shows && whileWaiting == WhileLoaderWaits::ShowNothing)
 		{
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
-			return;
+			return shows;
 		}
 
 		constexpr float kDiametersPerRadius = 2.0f;
@@ -168,5 +186,13 @@ namespace Core {
 		{
 			Redraw::RequestIn(Redraw::Clock::duration::zero());
 		}
+
+		return shows;
+	}
+
+	float LoadingLineWidth(const char* text)
+	{
+		constexpr float kDiametersPerRadius = 2.0f;
+		return LineSpinnerRadius() * kDiametersPerRadius + ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize(text).x;
 	}
 }

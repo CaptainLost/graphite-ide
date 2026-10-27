@@ -54,6 +54,7 @@ namespace Graphite {
 		palette.Text = ImU32FromScheme(scheme, EditorColor::Text);
 		palette.Number = ImU32FromScheme(scheme, EditorColor::LineNumber);
 		palette.Selection = ImU32FromScheme(scheme, EditorColor::Selection);
+		palette.SelectionOccurrence = ImU32FromScheme(scheme, EditorColor::SelectionOccurrence);
 		palette.CurrentLine = ImU32FromScheme(scheme, EditorColor::CurrentLine);
 		palette.Guide = ImU32FromScheme(scheme, EditorColor::Guide);
 		palette.GutterFill = ImU32FromScheme(scheme, EditorColor::GutterFill);

@@ -10,6 +10,7 @@
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Navigation/CandidateLine.h"
+#include "Editor/Navigation/NavigationBubble.h"
 #include "Editor/Overlays/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/Overlays/LensModel.h"
@@ -71,6 +72,7 @@ namespace Graphite {
 		unsigned int FallbackDockNode;
 		bool WordWrap;
 		ChangeMarkerDisplay ChangeMarkers;
+		bool HighlightOccurrences;
 		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
@@ -218,6 +220,8 @@ namespace Graphite {
 
 		void RestoreAnalysis(const Core::OpenItem& item, DocumentState& state);
 
+		bool LearnsFromServer(const std::filesystem::path& path);
+
 		static std::optional<std::filesystem::file_time_type> ModifiedTimeOf(
 			const std::filesystem::path& path);
 
@@ -233,9 +237,17 @@ namespace Graphite {
 		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 								 const EditorFrameResult& frame);
 
-		void RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
-								 const FilePosition& where, const std::string& symbol,
+		void RequestReferencesAt(const Core::OpenItem& item, const FilePosition& where, const std::string& symbol,
 								 ReferencesPanel& panel);
+
+		void AskReferencesAndShow(ReferencesQuestion question, ReferencesPanel& panel);
+
+		void FollowReferencesPanel(ReferencesPanel& panel);
+
+		void ShowReferencesAnswer(const ReferencesQuestion& question, const LanguageServices::Answer& answer,
+								  ReferencesPanel& panel);
+
+		void ShowReferencesRefreshing(const ReferencesQuestion& question, ReferencesPanel& panel);
 
 		void RequestReferencesForLens(const Core::OpenItem& item, const LensState& state,
 									  std::size_t documentRow, ReferencesPanel& panel);
@@ -262,6 +274,12 @@ namespace Graphite {
 		static double FrameClock();
 
 		void RenderDefinitionChoices(const ResolvedScheme& scheme, std::size_t tabWidth);
+
+		void FollowNavigationWait();
+
+		void AbandonNavigationIfReaderMovedOn();
+
+		void RenderNavigationBubble();
 
 		void SyncEveryDocument();
 
@@ -338,7 +356,7 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
-								   HoverSettings hoverSettings,
+								   bool highlightOccurrences, HoverSettings hoverSettings,
 								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 								   Core::TabCloseRequests& closeRequests,
 								   const std::filesystem::path& workspaceRoot, EditorSettings& settings);
@@ -459,6 +477,9 @@ namespace Graphite {
 		std::vector<CandidateLine> m_DefinitionChoiceLines;
 		std::size_t m_DefinitionChoiceLinesTabWidth = 0;
 
+		NavigationBubble m_Bubble;
+		ImVec2 m_BubbleSize{};
+
 		struct DocumentState
 		{
 			std::optional<LensState> Lens;
@@ -470,6 +491,8 @@ namespace Graphite {
 			bool CarriedOver = false;
 
 			CaretScreenPosition CaretScreen;
+
+			CaretPlacement Caret;
 
 			EditorWidgetState Widget;
 

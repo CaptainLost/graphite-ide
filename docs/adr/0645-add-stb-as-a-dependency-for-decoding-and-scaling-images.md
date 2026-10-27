@@ -1,4 +1,4 @@
-# 0639. Add stb as a dependency for decoding and scaling images
+# 0645. Add stb as a dependency for decoding and scaling images
 
 Status: proposed
 Date: 2026-10-25

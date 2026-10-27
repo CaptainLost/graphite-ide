@@ -295,6 +295,39 @@ TEST_CASE("The last line has no ending to include")
 	CHECK(SelectionRange(SelectLineAt(buffer, 1)) == OffsetRange{.From = 4, .To = buffer.GetLength()});
 }
 
+TEST_CASE("Dragging on after a double click grows the selection by whole words")
+{
+	const TextBuffer buffer{"one two three four"};
+	const OffsetRange two{.From = 4, .To = 7};
+
+	CHECK(SelectionRange(ExtendByUnit(buffer, two, 10, SelectionUnit::Word)) ==
+		  OffsetRange{.From = 4, .To = 13});
+	CHECK(SelectionRange(ExtendByUnit(buffer, two, 5, SelectionUnit::Word)) == two);
+}
+
+TEST_CASE("Dragging back after a double click keeps the first word selected")
+{
+	const TextBuffer buffer{"one two three four"};
+	const OffsetRange three{.From = 8, .To = 13};
+
+	const Caret backward = ExtendByUnit(buffer, three, 5, SelectionUnit::Word);
+
+	CHECK(SelectionRange(backward) == OffsetRange{.From = 4, .To = 13});
+	CHECK(backward.Anchor == 13);
+	CHECK(backward.Offset == 4);
+}
+
+TEST_CASE("Dragging after a triple click grows the selection by whole lines")
+{
+	const TextBuffer buffer{"one\ntwo\nthree"};
+	const OffsetRange two{.From = 4, .To = 8};
+
+	CHECK(SelectionRange(ExtendByUnit(buffer, two, 10, SelectionUnit::Line)) ==
+		  OffsetRange{.From = 4, .To = buffer.GetLength()});
+	CHECK(SelectionRange(ExtendByUnit(buffer, two, 1, SelectionUnit::Line)) ==
+		  OffsetRange{.From = 0, .To = 8});
+}
+
 TEST_CASE("Select all covers the document")
 {
 	const TextBuffer buffer{"one\ntwo"};

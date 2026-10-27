@@ -84,6 +84,11 @@ namespace Graphite {
 										.Description = "Long lines continue on the next line instead of running off to the side.",
 										.ControlWidth = SettingsLayout::ToggleWidth(),
 										.DrawControl = [this] { DrawWordWrap(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Highlight occurrences",
+										.Description = "Selecting a whole word marks everywhere else it appears in the file, in the text and beside the scrollbar.",
+										.Keywords = {"selection", "word", "matches"},
+										.ControlWidth = SettingsLayout::ToggleWidth(),
+										.DrawControl = [this] { DrawHighlightOccurrences(); }});
 
 		return card;
 	}
@@ -166,6 +171,16 @@ namespace Graphite {
 	void EditorPage::DrawWordWrap()
 	{
 		DrawCommandToggle(m_Commands, "editor.toggleWordWrap");
+	}
+
+	void EditorPage::DrawHighlightOccurrences()
+	{
+		bool highlight = m_Settings.IsHighlightingOccurrences();
+
+		if (Core::Toggle("##highlightOccurrences", &highlight))
+		{
+			m_Settings.SetHighlightOccurrences(highlight);
+		}
 	}
 
 	void EditorPage::DrawIndentWith()

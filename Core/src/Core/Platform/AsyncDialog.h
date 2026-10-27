@@ -31,6 +31,10 @@ namespace Core {
 
 		bool IsOpen() const;
 
+		// WARNING: The dialog has no owner window, so it can fall behind the application. This raises it again, and
+		// does nothing when no dialog is open or its window is not up yet.
+		void BringToFront() const;
+
 		void Poll();
 
 	private:

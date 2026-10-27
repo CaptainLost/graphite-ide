@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Git/StashBranch.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
@@ -58,7 +59,7 @@ namespace Graphite {
 		DialogLayout::Text(DetachedCheckoutBody(commit.ShortHex()));
 		DialogLayout::Gap();
 
-		const bool writable = !m_Model.IsWriteInFlight();
+		const bool writable = !m_Model.IsWriteUnsettled();
 		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
@@ -96,6 +97,13 @@ namespace Graphite {
 		if (current == nullptr)
 		{
 			m_CheckoutDialogOpen = false;
+
+			// WARNING: Escape closes the popup and drops the question without reaching the code below.
+			if (!m_CheckoutQuestion.IsAsked())
+			{
+				m_AskedCheckout.reset();
+			}
+
 			return;
 		}
 
@@ -155,7 +163,7 @@ namespace Graphite {
 		const std::vector<std::filesystem::path> unsaved = current->UnsavedAbsolute;
 		const bool includeUntracked = question.UntrackedForced || m_IncludeUntracked;
 
-		const bool writable = !m_Model.IsWriteInFlight();
+		const bool writable = !m_Model.IsWriteUnsettled();
 
 		// WARNING: Stash is the safe answer, so it is the one Enter gives. Discard loses work for
 		// good, and only a click reaches it.
@@ -204,6 +212,7 @@ namespace Graphite {
 	void GitView::AnswerCheckoutQuestion()
 	{
 		m_CheckoutQuestion.Answer();
+		m_AskedCheckout.reset();
 
 		// WARNING: Reset here as well as when Begin fails: a question queued behind this one opens on
 		// the very next Begin, with no frame between them to reset on.
@@ -275,7 +284,7 @@ namespace Graphite {
 
 		DialogLayout::Gap();
 
-		const bool acceptable = !problem.has_value() && !m_Model.IsWriteInFlight();
+		const bool acceptable = !problem.has_value() && !m_Model.IsWriteUnsettled();
 		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
@@ -336,20 +345,34 @@ namespace Graphite {
 
 		if (current == nullptr)
 		{
+			// WARNING: Escape closes the popup and drops the question without reaching the code below.
+			const bool dismissedByReader = !m_DeleteBranchQuestion.IsAsked() && !m_Deletion.IsHeldForPanel();
+
+			if (dismissedByReader)
+			{
+				m_Deletion.Finish();
+			}
+
 			return;
 		}
 
 		const std::string branch = current->Branch;
-		const std::size_t unmerged = current->Unmerged;
+		const std::optional<std::size_t> unmerged = m_Deletion.UnmergedOf(branch);
+		const bool noCommitsLost = unmerged == std::optional<std::size_t>{0};
 
-		if (unmerged == 0)
+		if (!unmerged.has_value())
+		{
+			DialogLayout::Text("Delete branch " + branch + "?");
+			Core::LoadingLine("Counting commits not merged anywhere else…", Core::WhileLoaderWaits::ShowText);
+		}
+		else if (noCommitsLost)
 		{
 			DialogLayout::Text("Delete branch " + branch + "? It has no commits that other branches lack.");
 		}
 		else
 		{
 			DialogLayout::Text(std::format(
-				"Delete branch {}? {} commit(s) on it are on no other branch and will be lost.", branch, unmerged));
+				"Delete branch {}? {} commit(s) on it are on no other branch and will be lost.", branch, *unmerged));
 		}
 
 		DialogLayout::Gap();
@@ -357,19 +380,22 @@ namespace Graphite {
 		DialogLayout::Gap();
 
 		const DialogLayout::ButtonSpec absentButton{};
+		const bool countKnown = unmerged.has_value();
+		const bool loses = countKnown && !noCommitsLost;
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			absentButton, {.Label = unmerged == 0 ? "Delete" : "Delete anyway", .Enabled = !m_Model.IsWriteInFlight()},
+			absentButton,
+			{.Label = loses ? "Delete anyway" : "Delete", .Enabled = countKnown && !m_Model.IsWriteUnsettled()},
 			DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
 			m_Model.RequestDeleteBranch(branch);
-			m_DeleteBranchQuestion.Answer();
+			FinishDeleteQuestion();
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
 		{
-			m_DeleteBranchQuestion.Answer();
+			FinishDeleteQuestion();
 		}
 
 		m_DeleteBranchQuestion.End();
@@ -401,7 +427,7 @@ namespace Graphite {
 		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			absentButton, {.Label = "Drop", .Enabled = !m_Model.IsWriteInFlight()}, DangerColourOf(m_Scheme.Get()));
+			absentButton, {.Label = "Drop", .Enabled = !m_Model.IsWriteUnsettled()}, DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{

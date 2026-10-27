@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string_view>
@@ -411,6 +412,49 @@ TEST_CASE("A remove question the solution view withdraws gives the modal gate ba
 
 	CHECK_FALSE(screen.Modals.IsBusy());
 	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+}
+
+TEST_CASE("Removing a project reloads the solution at once rather than when the folder watcher notices the save")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	SolutionScreen screen{solution};
+	REQUIRE(screen.Workspace.GetLoadedSolution().has_value());
+	REQUIRE(screen.Workspace.GetLoadedSolution()->ProjectCount == 1);
+	const std::uint64_t loadBeforeTheEdit = screen.Workspace.GetSolutionLoad();
+
+	screen.AskToRemoveTheOnlyProject();
+	REQUIRE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+	screen.Next();
+	screen.Frames.PressKey(ImGuiKey_Enter, [&screen] { screen.Draw(); });
+
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+	CHECK(screen.Workspace.GetSolutionLoad() != loadBeforeTheEdit);
+	REQUIRE(screen.Workspace.GetLoadedSolution().has_value());
+	CHECK(screen.Workspace.GetLoadedSolution()->ProjectCount == 0);
+}
+
+TEST_CASE("A new solution folder is listed at once with its name field open")
+{
+	constexpr int kSolutionRow = 0;
+	constexpr int kSolutionDepth = 0;
+
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	SolutionScreen screen{solution};
+	screen.Frames.Click(SolutionScreen::RowPointCountedFromSolutionRowZero(kSolutionRow, kSolutionDepth),
+						[&screen] { screen.Draw(); }, ImGuiMouseButton_Right);
+	REQUIRE(screen.Frames.ClickMenuItem("New Folder", [&screen] { screen.Draw(); }));
+	screen.Next();
+	screen.Next();
+
+	REQUIRE(screen.Workspace.GetLoadedSolution().has_value());
+	CHECK(screen.Workspace.GetLoadedSolution()->Root.Folders.size() == 1);
+	CHECK(ImGui::GetActiveID() != 0);
 }
 
 TEST_CASE("A remove question on screen when the workspace closes gives the modal gate back")

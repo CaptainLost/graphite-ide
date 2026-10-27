@@ -68,13 +68,15 @@ namespace Graphite {
 	};
 
 	// WARNING: Every job submitted by the model captures `this`. An owner holding both the
-	// model and the queue behind its submitter must declare the model BEFORE the queue, so
-	// the queue is destroyed and its workers joined first. The inline submitter used in tests
+	// model and the queues behind its submitters must declare the model BEFORE the queues, so
+	// the queues are destroyed and their workers joined first. The inline submitter used in tests
 	// does not show a wrong order.
 	class GitModel : Core::NonCopyable
 	{
 	public:
 		GitModel(GitPort& port, JobSubmitter submit);
+
+		GitModel(GitPort& port, JobSubmitter submitRead, JobSubmitter submitWrite);
 
 		void OnUpdate(Core::Timestep timestep);
 
@@ -82,8 +84,16 @@ namespace Graphite {
 
 		void RequestUntrackedIn(std::filesystem::path directory);
 
+		// WARNING: A listing is kept through the status refreshes that still list its folder, and asked for again by
+		// the next RequestUntrackedIn, so the one returned can be a refresh behind while that answer is on its way.
 		Core::Ref<const Core::WorkingTreeStatus> GetUntrackedIn(
 			const std::filesystem::path& directory) const;
+
+		std::optional<Core::Error> GetUntrackedFailureIn(const std::filesystem::path& directory) const;
+
+		// WARNING: False while a kept listing waits to be read again after a status, when its rows may name files
+		// already staged or gone, so their buttons must not act on them.
+		bool IsUntrackedListingCurrent(const std::filesystem::path& directory) const;
 
 		void RequestBranches();
 		void RequestStashes();
@@ -107,6 +117,8 @@ namespace Graphite {
 		void ForgetFailedDiffFor(const Core::Oid& commit);
 		bool IsDiffFailed(const Core::Oid& commit) const;
 
+		std::optional<Core::Error> GetDiffFailure(const Core::Oid& commit) const;
+
 		bool HasOpenFolder() const { return !m_Root.empty(); }
 		Core::Ref<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
 
@@ -125,6 +137,10 @@ namespace Graphite {
 
 		Core::Ref<const FileTexts> GetTextsFor(
 			const Core::Oid& commit, const std::filesystem::path& key) const;
+
+		bool IsTextsFailed(const Core::Oid& commit, const std::filesystem::path& key) const;
+
+		std::optional<Core::Error> GetTextsFailure(const Core::Oid& commit, const std::filesystem::path& key) const;
 
 		static constexpr std::size_t kCachedTexts = 32;
 
@@ -179,9 +195,18 @@ namespace Graphite {
 			return m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled != m_WantedWorkingTreeDiff;
 		}
 
+		std::optional<Core::Error> GetWorkingTreeDiffFailure() const;
+
+		void RetryWorkingTreeDiff();
+
 		Core::Ref<const FileTexts> GetWorkingTreeTexts() const
 		{
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTexts : nullptr;
+		}
+
+		std::optional<Core::Error> GetWorkingTreeTextsFailure() const
+		{
+			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTextsFailure : std::nullopt;
 		}
 
 		const std::optional<Core::Error>& GetStatusError() const { return m_Status.GetError(); }
@@ -279,6 +304,50 @@ namespace Graphite {
 
 		std::optional<WriteFailure> TakeWriteError();
 
+		struct WriteSubject
+		{
+			WriteKind Kind = WriteKind::Stage;
+
+			std::size_t PathCount = 0;
+			std::string OnePathName;
+
+			std::string Name;
+			std::string NewName;
+
+			std::optional<std::size_t> StashIndex;
+
+			std::optional<Core::Oid> Committed;
+			std::string CommitSummary;
+
+			friend bool operator==(const WriteSubject&, const WriteSubject&) = default;
+		};
+
+		enum class WriteProgress
+		{
+			Running,
+
+			Done
+		};
+
+		struct WriteReport
+		{
+			WriteSubject Subject;
+			WriteProgress Progress = WriteProgress::Running;
+		};
+
+		static constexpr float kWriteConfirmationSeconds = 4.0f;
+
+		// WARNING: A failed write leaves no report, since its toast says what happened.
+		std::optional<WriteReport> GetWriteReport() const;
+
+		// WARNING: True until the status read after a write lands, not only while the write runs, since the rows
+		// drawn before that read are out of date.
+		bool IsWriteUnsettled() const;
+
+		bool IsUpdatingWorkingTree() const;
+
+		std::optional<Core::CheckoutTarget> GetCheckoutUnderWay() const;
+
 		const std::optional<Core::Error>& GetInitError() const { return m_InitError; }
 		void DismissInitError() { m_InitError.reset(); }
 
@@ -300,6 +369,13 @@ namespace Graphite {
 		void Deliver(Delivery delivery);
 
 		void MarkDirty();
+
+		void RequestStatusOn(const JobSubmitter& submit);
+		void RequestHeadOn(const JobSubmitter& submit);
+
+		// WARNING: On the write queue, so the read that settles a write never waits behind Load all, the authors walk
+		// or a commit count on the shared one.
+		void ReadStatusAfterWrite();
 
 
 		void PumpWorkingTreeDiff();
@@ -335,7 +411,9 @@ namespace Graphite {
 
 			Core::Ref<const Core::WorkingTreeStatus> Listing;
 
-			bool Failed = false;
+			std::optional<Core::Error> Failure;
+
+			bool Stale = false;
 		};
 
 		using UntrackedByDirectory = std::unordered_map<std::string, CachedUntracked>;
@@ -343,11 +421,15 @@ namespace Graphite {
 		CachedUntracked* FindUntracked(const std::string& directoryKey);
 		const CachedUntracked* FindUntracked(const std::string& directoryKey) const;
 
+		void KeepUntrackedListingsOf(const Core::WorkingTreeStatus& status);
+
 		UntrackedByDirectory m_Untracked;
 
 		// WARNING: Never restarts, not even in Clear(). An entry recreated after a Clear()
 		// would otherwise let a delivery from before the clear outrank one from after it.
 		std::uint64_t m_UntrackedGeneration = 0;
+
+		static constexpr std::uint64_t kNoTicket = 0;
 
 		struct WriteJob
 		{
@@ -367,6 +449,8 @@ namespace Graphite {
 			CheckoutRequest Checkout;
 
 			std::uint64_t Generation = 0;
+
+			std::uint64_t Ticket = kNoTicket;
 		};
 
 		struct WriteOutcome
@@ -389,12 +473,60 @@ namespace Graphite {
 
 		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
 
+		enum class TicketPhase
+		{
+			Queued,
+			Running,
+			Applied
+		};
+
+		struct WriteTicket
+		{
+			std::uint64_t Number = kNoTicket;
+			WriteSubject Subject;
+			std::optional<Core::CheckoutTarget> Checkout;
+
+			TicketPhase Phase = TicketPhase::Queued;
+
+			// WARNING: Never reported, yet a write that changed files before it failed still waits for the status after it.
+			bool Failed = false;
+
+			// WARNING: Only an answer to a later ask than these was read after the write.
+			std::uint64_t StatusAskedWhenApplied = 0;
+			std::uint64_t HeadAskedWhenApplied = 0;
+		};
+
+		WriteSubject DescribeWrite(const WriteJob& job) const;
+
+		std::optional<std::size_t> StashIndexOf(const Core::Oid& stash) const;
+
+		WriteTicket* FindTicket(std::uint64_t number);
+
+		const WriteTicket* RunningTicket() const;
+
+		const WriteTicket* NewestUnfailedTicket() const;
+
+		void ForgetTicket(std::uint64_t number);
+
+		void MarkTicketRunning(std::uint64_t number);
+
+		void AwaitStatusAfter(std::uint64_t number, const std::optional<Core::Oid>& committed);
+
+		void FailTicket(std::uint64_t number, bool changedRepository);
+
+		bool HasSettled(const WriteTicket& ticket) const;
+
+		void SettleTicketsWhoseStatusLanded();
+
+		void CountDownConfirmation(Core::Timestep timestep);
+
 		std::filesystem::path m_Root;
 
 		Debouncer m_Debounce;
 
 		GitPort& m_Port;
 		JobSubmitter m_Submit;
+		JobSubmitter m_SubmitWrite;
 
 		// WARNING: The inbox's mutex covers the inbox and nothing else. Every other member is
 		// touched on the UI thread only, the write queue's state included.
@@ -413,6 +545,12 @@ namespace Graphite {
 		std::optional<CheckoutPlanAnswer> m_CheckoutPlan;
 		std::optional<DeleteCheck> m_DeleteCheck;
 		std::uint64_t m_AppliedWrites = 0;
+
+		std::deque<WriteTicket> m_Tickets;
+		std::uint64_t m_LastTicket = kNoTicket;
+
+		std::optional<WriteSubject> m_Confirmed;
+		float m_ConfirmedSecondsLeft = 0.0f;
 
 		std::optional<std::uint64_t> m_InitSettlesAfter;
 
@@ -458,6 +596,7 @@ namespace Graphite {
 
 		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
 		Core::Ref<const FileTexts> m_WorkingTreeTexts;
+		std::optional<Core::Error> m_WorkingTreeTextsFailure;
 
 		std::optional<Core::DiffRequest> m_WantedWorkingTreeDiff;
 		std::optional<Core::DiffRequest> m_WorkingTreeDiffFor;

@@ -107,6 +107,25 @@ namespace Graphite {
 			return CommitCountLabel(branch.Ahead) + " ahead of " + upstream + " and " +
 				   CommitCountLabel(branch.Behind) + " behind it";
 		}
+
+		void CountChanges(GitStatusSegment& segment, const Core::WorkingTreeStatus* status)
+		{
+			if (status == nullptr || status->Entries.empty())
+			{
+				return;
+			}
+
+			const std::size_t changeCount = status->Entries.size();
+			segment.Changes = std::string{kBullet} + " " + Core::Counted(changeCount, "change");
+			segment.ChangesTooltip =
+				changeCount == 1 ? "1 uncommitted change. Click to show it in Changes."
+								 : std::to_string(changeCount) + " uncommitted changes. Click to show them in Changes.";
+		}
+	}
+
+	std::string CheckingOutText(const std::string& targetLabel)
+	{
+		return "Checking out " + targetLabel + "…";
 	}
 
 	std::optional<GitStatusSegment> GitStatusText(const GitStatusInputs& inputs)
@@ -120,12 +139,32 @@ namespace Graphite {
 		{
 			GitStatusSegment segment;
 			segment.Branch = "No repository";
+			segment.Activity = inputs.Activity;
+			return segment;
+		}
+
+		if (inputs.CheckingOut.has_value())
+		{
+			GitStatusSegment segment;
+			segment.HasRepository = true;
+			segment.BranchBusy = true;
+			segment.Branch = CheckingOutText(*inputs.CheckingOut);
+			segment.BranchTooltip = "Checking out " + *inputs.CheckingOut + ". The branch is named here once it is done.";
+			CountChanges(segment, inputs.Status);
+			segment.Activity = inputs.Activity;
 			return segment;
 		}
 
 		if (inputs.Head == nullptr)
 		{
-			return std::nullopt;
+			if (!inputs.Activity.has_value())
+			{
+				return std::nullopt;
+			}
+
+			GitStatusSegment segment;
+			segment.Activity = inputs.Activity;
+			return segment;
 		}
 
 		const Core::HeadState& head = *inputs.Head;
@@ -177,14 +216,8 @@ namespace Graphite {
 			segment.Branch += operationName;
 		}
 
-		if (inputs.Status != nullptr && !inputs.Status->Entries.empty())
-		{
-			const std::size_t changeCount = inputs.Status->Entries.size();
-			segment.Changes = std::string{kBullet} + " " + Core::Counted(changeCount, "change");
-			segment.ChangesTooltip =
-				changeCount == 1 ? "1 uncommitted change. Click to show it in Changes."
-								 : std::to_string(changeCount) + " uncommitted changes. Click to show them in Changes.";
-		}
+		CountChanges(segment, inputs.Status);
+		segment.Activity = inputs.Activity;
 
 		return segment;
 	}

@@ -5,6 +5,7 @@
 #include "UI/Dialogs/ModalGate.h"
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Git/CheckoutQuestion.h"
+#include "Git/Branches/BranchDeletion.h"
 #include "Git/Branches/BranchListView.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
@@ -14,6 +15,7 @@
 #include "Git/Diff/DiffWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Git/EditorBuffers.h"
+#include "Git/GitActivity.h"
 #include "Git/GitModel.h"
 #include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
@@ -61,6 +63,8 @@ namespace Graphite {
 		void OnImGuiRender() override;
 
 		void Subscribe();
+
+		GitPanelWait CurrentWait() const;
 
 		std::function<ReviewMenu(const Core::Branch& branch)> ReviewMenuOf;
 
@@ -110,9 +114,9 @@ namespace Graphite {
 		{
 			std::string Branch;
 
-			std::size_t Unmerged = 0;
-
 			bool IsSameQuestion(const DeleteBranchPayload& other) const { return Branch == other.Branch; }
+
+			bool IsAbout(const std::string& branch) const { return Branch == branch; }
 		};
 
 		struct DetachPayload
@@ -159,7 +163,20 @@ namespace Graphite {
 
 		void FollowSelectedRef();
 
-		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
+		void ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen);
+		void AskCheckoutQuestion(const CheckoutPlanAnswer& answer, std::vector<std::filesystem::path> unsaved,
+								 const std::vector<std::filesystem::path>& unsavedRelative);
+
+		void BeginDelete(const std::string& branch);
+		void ApplyDeleteCheck(const DeleteCheck& check);
+		void FinishDeleteQuestion();
+
+		GitPanelCheckouts Checkouts() const;
+
+		// WARNING: Called before WithdrawQuestions when the panel is not drawn, which would otherwise drop a question
+		// the reader has not seen yet.
+		void HoldAskedQuestionsForPanel();
+		void AskDeleteHeldForPanel();
 
 		void WithdrawQuestions();
 		void ForgetRepository();
@@ -266,7 +283,10 @@ namespace Graphite {
 
 		std::optional<Core::CheckoutTarget> m_PendingCheckout;
 
-		std::optional<std::string> m_PendingDelete;
+		HeldCheckout m_HeldCheckout;
+		std::optional<Core::CheckoutTarget> m_AskedCheckout;
+
+		BranchDeletion m_Deletion;
 
 		Core::Ref<const std::vector<Core::Branch>> m_RefsOf;
 		CommitRefMap m_CommitRefs;

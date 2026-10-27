@@ -77,7 +77,17 @@ namespace {
 											 m_SpacingInTheDropdown = ImGui::GetStyle().ItemSpacing;
 											 return true;
 										 }});
-			m_Tree.push_back(Core::MenuItem::Submenu(kMenuLabel, {Core::MenuItem::Command("test.open")}));
+			m_Commands.Add(Core::Command{.Id = "test.busy",
+										 .Label = "Busy",
+										 .Run = [this] { ++m_BusyRuns; },
+										 .Enabled = [this] {
+											 m_BusyItemTop = ImGui::GetCursorScreenPos();
+											 return false;
+										 },
+										 .DisabledNote = "Waiting for something else",
+										 .RunWhileDisabled = [this] { ++m_BusyOffersTaken; }});
+			m_Tree.push_back(Core::MenuItem::Submenu(
+				kMenuLabel, {Core::MenuItem::Command("test.open"), Core::MenuItem::Command("test.busy")}));
 		}
 
 		~MenuBarWindow() { ImGui::DestroyContext(m_Context); }
@@ -140,10 +150,28 @@ namespace {
 			return *window->DrawList;
 		}
 
+		void ClickTheBusyItem(const Core::MenuBarHeights& heights)
+		{
+			REQUIRE(m_BusyItemTop.has_value());
+			const ImVec2 intoTheItem(m_BusyItemTop->x + kIntoTheLabel * 4.0f, m_BusyItemTop->y + ImGui::GetFontSize() * kHalf);
+
+			ImGui::GetIO().AddMousePosEvent(intoTheItem.x, intoTheItem.y);
+			Draw(heights);
+			ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+			Draw(heights);
+			ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+			Draw(heights);
+			Draw(heights);
+		}
+
+		static bool IsTheMenuOpen() { return !ImGui::GetCurrentContext()->OpenPopupStack.empty(); }
+
 		ImVec2 GetSpacingInTheBar() const { return m_SpacingInTheBar; }
 		std::optional<ImVec2> GetSpacingInTheDropdown() const { return m_SpacingInTheDropdown; }
 		float GetLabelWidth() const { return m_LabelWidth; }
 		ImU32 GetHoverFill() const { return m_HoverFill; }
+		int GetBusyRuns() const { return m_BusyRuns; }
+		int GetBusyOffersTaken() const { return m_BusyOffersTaken; }
 
 	private:
 		ImGuiContext* m_Context = nullptr;
@@ -156,6 +184,9 @@ namespace {
 		std::optional<ImVec2> m_SpacingInTheDropdown;
 		float m_LabelWidth = 0.0f;
 		ImU32 m_HoverFill = 0;
+		std::optional<ImVec2> m_BusyItemTop;
+		int m_BusyRuns = 0;
+		int m_BusyOffersTaken = 0;
 	};
 }
 
@@ -198,6 +229,21 @@ TEST_CASE("A dropdown keeps the item spacing the bar had before its items were s
 	REQUIRE(window.GetSpacingInTheDropdown().has_value());
 	CHECK(window.GetSpacingInTheDropdown()->x == doctest::Approx(window.GetSpacingInTheBar().x));
 	CHECK(window.GetSpacingInTheDropdown()->y == doctest::Approx(window.GetSpacingInTheBar().y));
+}
+
+TEST_CASE("A disabled command that offers something runs its offer on a click and closes the menu, never Run")
+{
+	MenuBarWindow window;
+	const Core::MenuBarHeights heights{.Row = kRowHeight, .Item = kItemHeight};
+
+	window.OpenTheMenu(heights);
+	REQUIRE(MenuBarWindow::IsTheMenuOpen());
+
+	window.ClickTheBusyItem(heights);
+
+	CHECK(window.GetBusyOffersTaken() == 1);
+	CHECK(window.GetBusyRuns() == 0);
+	CHECK_FALSE(MenuBarWindow::IsTheMenuOpen());
 }
 
 TEST_CASE("With no item height a top-level menu keeps ImGui's fill, a line and the item spacing tall")

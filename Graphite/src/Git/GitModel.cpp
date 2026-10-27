@@ -5,6 +5,8 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Workspace/Workspace.h"
 
+#include <set>
+#include <string>
 #include <utility>
 
 namespace Graphite {
@@ -62,7 +64,12 @@ namespace Graphite {
 	}
 
 	GitModel::GitModel(GitPort& port, JobSubmitter submit)
-		: m_Port(port), m_Submit(std::move(submit))
+		: m_Port(port), m_Submit(submit), m_SubmitWrite(std::move(submit))
+	{
+	}
+
+	GitModel::GitModel(GitPort& port, JobSubmitter submitRead, JobSubmitter submitWrite)
+		: m_Port(port), m_Submit(std::move(submitRead)), m_SubmitWrite(std::move(submitWrite))
 	{
 	}
 
@@ -96,6 +103,7 @@ namespace Graphite {
 		m_OwnLabel.clear();
 		m_WorkingTreeDiff.Clear();
 		m_WorkingTreeTexts.reset();
+		m_WorkingTreeTextsFailure.reset();
 		m_WantedWorkingTreeDiff.reset();
 		m_WorkingTreeDiffFor.reset();
 		m_WorkingTreeDiffSettled.reset();
@@ -120,6 +128,9 @@ namespace Graphite {
 		m_CheckedOut.clear();
 		m_CheckoutPlan.reset();
 		m_DeleteCheck.reset();
+
+		m_Tickets.clear();
+		m_Confirmed.reset();
 
 		m_Debounce.Reset();
 	}
@@ -158,6 +169,9 @@ namespace Graphite {
 
 	void GitModel::OnUpdate(Core::Timestep timestep)
 	{
+		// WARNING: Before the deliveries are drained, so a confirmation settled this frame keeps its full time.
+		CountDownConfirmation(timestep);
+
 		if (m_Debounce.Advance(timestep))
 		{
 			RequestStatus();
@@ -185,13 +199,26 @@ namespace Graphite {
 		}
 
 		m_Inbox.Drain();
+
+		SettleTicketsWhoseStatusLanded();
 	}
 
 	void GitModel::RequestStatus()
 	{
+		RequestStatusOn(m_Submit);
+	}
+
+	void GitModel::ReadStatusAfterWrite()
+	{
+		RequestStatusOn(m_SubmitWrite);
+		RequestHeadOn(m_SubmitWrite);
+	}
+
+	void GitModel::RequestStatusOn(const JobSubmitter& submit)
+	{
 		const std::uint64_t generation = m_Status.Begin();
 
-		m_Submit([this, generation]() {
+		submit([this, generation]() {
 			Core::Result<Core::WorkingTreeStatus> result = m_Port.QueryStatus();
 			Core::Result<std::filesystem::path> workingDirectory = m_Port.GetWorkingDirectory();
 
@@ -202,7 +229,7 @@ namespace Graphite {
 					return;
 				}
 
-				m_Untracked.clear();
+				KeepUntrackedListingsOf(*m_Status.Get());
 
 				if (workingDirectory.HasValue())
 				{
@@ -278,9 +305,14 @@ namespace Graphite {
 
 	void GitModel::RequestHead()
 	{
+		RequestHeadOn(m_Submit);
+	}
+
+	void GitModel::RequestHeadOn(const JobSubmitter& submit)
+	{
 		const std::uint64_t generation = m_Head.Begin();
 
-		m_Submit([this, generation]() {
+		submit([this, generation]() {
 			Core::Result<Core::HeadState> result = m_Port.QueryHead();
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
@@ -449,6 +481,7 @@ namespace Graphite {
 			Core::Result<Core::Diff> result = m_Port.QueryDiff(request);
 
 			std::optional<FileTexts> texts;
+			std::optional<Core::Error> textsFailure;
 
 			if (result.HasValue() && result.GetValue().Files.size() == 1)
 			{
@@ -464,11 +497,15 @@ namespace Graphite {
 						texts = std::move(read).GetValue();
 						texts->Tokens = ColourSides(*texts, file.OldPath, file.NewPath);
 					}
+					else
+					{
+						textsFailure = read.GetError();
+					}
 				}
 			}
 
 			Deliver([this, generation, request = std::move(request), result = std::move(result),
-					 texts = std::move(texts)]() mutable {
+					 texts = std::move(texts), textsFailure = std::move(textsFailure)]() mutable {
 				const SlotLanding landing = m_WorkingTreeDiff.Land(generation, std::move(result));
 
 				if (landing == SlotLanding::Stale)
@@ -489,10 +526,30 @@ namespace Graphite {
 				m_WorkingTreeTexts = texts.has_value()
 										 ? Core::CreateRef<const FileTexts>(std::move(*texts))
 										 : nullptr;
+				m_WorkingTreeTextsFailure = std::move(textsFailure);
 
 				PumpWorkingTreeDiff();
 			});
 		});
+	}
+
+	std::optional<Core::Error> GitModel::GetWorkingTreeDiffFailure() const
+	{
+		const bool wantedAnswerSettled =
+			m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled == m_WantedWorkingTreeDiff;
+
+		if (!wantedAnswerSettled || AnswersWantedWorkingTreeDiff())
+		{
+			return std::nullopt;
+		}
+
+		return m_WorkingTreeDiff.GetError();
+	}
+
+	void GitModel::RetryWorkingTreeDiff()
+	{
+		m_WorkingTreeDiffSettled.reset();
+		PumpWorkingTreeDiff();
 	}
 
 	void GitModel::RequestDiffFor(const Core::Oid& commit)
@@ -522,7 +579,7 @@ namespace Graphite {
 			Deliver([this, commit, generation, result = std::move(result)]() mutable {
 				if (!result.HasValue())
 				{
-					if (m_CommitDiffs.Fail(commit, generation))
+					if (m_CommitDiffs.Fail(commit, generation, result.GetError()))
 					{
 						m_CommitDiffError = result.GetError();
 					}
@@ -551,10 +608,15 @@ namespace Graphite {
 		const std::string directoryKey = Core::ToUtf8(directory);
 		CachedUntracked& entry = m_Untracked[directoryKey];
 
-		if (entry.Listing != nullptr || entry.Failed || entry.Requested > entry.Applied)
+		const bool inFlight = entry.Requested > entry.Applied;
+		const bool answered = entry.Listing != nullptr || entry.Failure.has_value();
+
+		if (inFlight || (answered && !entry.Stale))
 		{
 			return;
 		}
+
+		entry.Stale = false;
 
 		++m_UntrackedGeneration;
 		entry.Requested = m_UntrackedGeneration;
@@ -576,14 +638,44 @@ namespace Graphite {
 
 				if (!listing.HasValue())
 				{
-					held->Failed = true;
+					held->Failure = listing.GetError();
+					held->Listing.reset();
 					return;
 				}
 
+				held->Failure.reset();
 				held->Listing = Core::CreateRef<const Core::WorkingTreeStatus>(
 					std::move(listing).GetValue());
 			});
 		});
+	}
+
+	void GitModel::KeepUntrackedListingsOf(const Core::WorkingTreeStatus& status)
+	{
+		std::set<std::string> listedDirectories;
+
+		for (const Core::FileStatus& entry : status.Entries)
+		{
+			if (entry.IsDirectory)
+			{
+				listedDirectories.insert(Core::ToUtf8(entry.Path));
+			}
+		}
+
+		UntrackedByDirectory kept;
+
+		for (auto& [directoryKey, cached] : m_Untracked)
+		{
+			if (!listedDirectories.contains(directoryKey))
+			{
+				continue;
+			}
+
+			cached.Stale = true;
+			kept.emplace(directoryKey, std::move(cached));
+		}
+
+		m_Untracked = std::move(kept);
 	}
 
 	GitModel::CachedUntracked* GitModel::FindUntracked(const std::string& directoryKey)
@@ -614,6 +706,27 @@ namespace Graphite {
 		return held == nullptr ? nullptr : held->Listing;
 	}
 
+	bool GitModel::IsUntrackedListingCurrent(const std::filesystem::path& directory) const
+	{
+		const CachedUntracked* held = FindUntracked(Core::ToUtf8(directory));
+
+		if (held == nullptr || held->Listing == nullptr)
+		{
+			return false;
+		}
+
+		const bool beingReadAgain = held->Requested > held->Applied;
+
+		return !held->Stale && !beingReadAgain;
+	}
+
+	std::optional<Core::Error> GitModel::GetUntrackedFailureIn(const std::filesystem::path& directory) const
+	{
+		const CachedUntracked* held = FindUntracked(Core::ToUtf8(directory));
+
+		return held == nullptr ? std::nullopt : held->Failure;
+	}
+
 	void GitModel::ForgetFailedDiffFor(const Core::Oid& commit)
 	{
 		if (m_CommitDiffs.ForgetFailed(commit))
@@ -625,6 +738,11 @@ namespace Graphite {
 	bool GitModel::IsDiffFailed(const Core::Oid& commit) const
 	{
 		return m_CommitDiffs.IsFailed(commit);
+	}
+
+	std::optional<Core::Error> GitModel::GetDiffFailure(const Core::Oid& commit) const
+	{
+		return m_CommitDiffs.FailureOf(commit);
 	}
 
 	Core::Ref<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
@@ -664,7 +782,7 @@ namespace Graphite {
 
 				if (!result.HasValue())
 				{
-					if (m_Texts.Fail(textsKey, generation))
+					if (m_Texts.Fail(textsKey, generation, result.GetError()))
 					{
 						m_TextsError = result.GetError();
 					}
@@ -695,5 +813,15 @@ namespace Graphite {
 		const Core::Oid& commit, const std::filesystem::path& key) const
 	{
 		return m_Texts.Get(TextsKey{commit, key});
+	}
+
+	bool GitModel::IsTextsFailed(const Core::Oid& commit, const std::filesystem::path& key) const
+	{
+		return m_Texts.IsFailed(TextsKey{commit, key});
+	}
+
+	std::optional<Core::Error> GitModel::GetTextsFailure(const Core::Oid& commit, const std::filesystem::path& key) const
+	{
+		return m_Texts.FailureOf(TextsKey{commit, key});
 	}
 }

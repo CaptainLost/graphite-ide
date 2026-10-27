@@ -17,7 +17,7 @@
 #include <vector>
 
 // A repository with nothing in it: every query answers empty and every write succeeds, for tests
-// that need a GitModel but none of its answers.
+// that need a GitModel but none of its answers. A diff or a file's texts can be told to fail instead.
 class EmptyGitPort final : public Graphite::GitPort
 {
 public:
@@ -38,15 +38,37 @@ public:
 		return Graphite::CommitCount{};
 	}
 
-	Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override { return Core::Diff{}; }
+	Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override
+	{
+		if (DiffFailure.has_value())
+		{
+			return *DiffFailure;
+		}
+
+		return DiffAnswer;
+	}
+
+	std::optional<Core::Error> DiffFailure;
+	Core::Diff DiffAnswer;
+	std::optional<Core::Error> TextsFailure;
 
 	Core::Result<Graphite::FileTexts> ReadFileTexts(const Core::Oid&, const std::filesystem::path&, const std::filesystem::path&) override
 	{
+		if (TextsFailure.has_value())
+		{
+			return *TextsFailure;
+		}
+
 		return Graphite::FileTexts{};
 	}
 
 	Core::Result<Graphite::FileTexts> ReadWorkingTreeTexts(Core::DiffTarget, const std::filesystem::path&, const std::filesystem::path&) override
 	{
+		if (TextsFailure.has_value())
+		{
+			return *TextsFailure;
+		}
+
 		return Graphite::FileTexts{};
 	}
 

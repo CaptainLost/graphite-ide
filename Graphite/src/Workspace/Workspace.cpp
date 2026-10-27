@@ -2,8 +2,10 @@
 
 #include "Settings/AppSettings.h"
 #include "Solution/SolutionFiles.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/OwnStateChanges.h"
+#include "Workspace/WatcherWarning.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Command/CommandRegistry.h"
@@ -142,12 +144,13 @@ namespace Graphite {
 	{
 		m_Watcher.reset();
 
-		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(root);
+		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = m_StartWatcher(root);
 
 		if (!watcher)
 		{
 			APP_WARN("Cannot watch '{}'{}: {}", Core::ToUtf8(root), failureContext,
 					 watcher.GetError().Message);
+			m_Events.Publish(NotWatchingWarning(root));
 			return;
 		}
 
@@ -431,17 +434,19 @@ namespace Graphite {
 		{
 			APP_WARN("Giving up watching '{}' for changes: it failed twice",
 					 Core::ToUtf8(m_Root));
+			m_Events.Publish(NotWatchingWarning(m_Root));
 			return;
 		}
 
 		m_WatcherResumed = true;
 
-		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(m_Root);
+		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = m_StartWatcher(m_Root);
 
 		if (!watcher)
 		{
 			APP_WARN("Cannot resume watching '{}': {}", Core::ToUtf8(m_Root),
 					 watcher.GetError().Message);
+			m_Events.Publish(NotWatchingWarning(m_Root));
 			return;
 		}
 
@@ -688,17 +693,34 @@ namespace Graphite {
 		LoadSolution();
 	}
 
+	// WARNING: The attempt is forgotten so the solution is read even when its write time did not move on, as a save
+	// within the file system's timestamp step leaves it.
+	void Workspace::ReloadSolution()
+	{
+		if (!IsOpen())
+		{
+			return;
+		}
+
+		ForgetSolutionAttempt();
+		LoadSolution();
+	}
+
 	void Workspace::RegisterCommands(Core::CommandRegistry& commands)
 	{
 		commands.Add({.Id = "workspace.openFolder",
 					  .Label = "Open Folder...",
 					  .Run = [this] { OpenFolderInteractively(*this); },
-					  .Enabled = [this] { return !IsDialogOpen(); }});
+					  .Enabled = [this] { return !IsDialogOpen(); },
+					  .DisabledNote = kFileDialogOpenNote,
+					  .RunWhileDisabled = [this] { m_Dialog.BringToFront(); }});
 
 		commands.Add({.Id = "workspace.openSolution",
 					  .Label = "Open Solution...",
 					  .Run = [this] { OpenSolutionInteractively(*this); },
-					  .Enabled = [this] { return !IsDialogOpen(); }});
+					  .Enabled = [this] { return !IsDialogOpen(); },
+					  .DisabledNote = kFileDialogOpenNote,
+					  .RunWhileDisabled = [this] { m_Dialog.BringToFront(); }});
 	}
 
 	void Workspace::ReportDialogFailure(const Core::Error& error)
@@ -711,6 +733,12 @@ namespace Graphite {
 	// own; the callbacks hold the workspace by reference because the workspace owns the dialog.
 	void OpenFolderInteractively(Workspace& workspace)
 	{
+		if (workspace.IsDialogOpen())
+		{
+			workspace.GetDialog().BringToFront();
+			return;
+		}
+
 		workspace.GetDialog().Start(
 			[] { return Core::FileDialog::PickFolder("Open Folder"); },
 			[&workspace](const std::filesystem::path& picked) {
@@ -722,6 +750,12 @@ namespace Graphite {
 
 	void OpenSolutionInteractively(Workspace& workspace)
 	{
+		if (workspace.IsDialogOpen())
+		{
+			workspace.GetDialog().BringToFront();
+			return;
+		}
+
 		const std::vector<Core::FileDialog::Filter> filters = {
 			{"Visual Studio solutions", "*.sln;*.slnx"},
 			{"All files", "*.*"}};

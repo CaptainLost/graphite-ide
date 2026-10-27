@@ -95,7 +95,7 @@ Date: 2026-10-19
   folder. The read-only warning stays, in the warning colour, where the path
   stood.
 
-Amended by [0642](0642-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md):
+Amended by [0648](0648-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md):
 a tab's view may put tools on the row's right, which take clicks, so the row is
 no longer purely display-only; and image tabs get the row, where this record
 said every image opens as a tab with no row.

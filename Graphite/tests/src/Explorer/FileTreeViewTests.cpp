@@ -482,6 +482,147 @@ TEST_CASE("A read of the folder that takes a while is shown by a moving loader u
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }
 
+TEST_CASE("Focusing the filter starts reading the folder before a letter is typed")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Next();
+
+	CHECK(jobs.Count() == 0);
+
+	screen.Click(kFilterBox);
+	screen.Next();
+
+	CHECK(jobs.Count() == 1);
+}
+
+TEST_CASE("A change on disk is not read again until the filter is focused")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.ClearFilterWithEscape();
+	screen.Click(ImVec2(kExplorerSize.x * 0.5f, kExplorerSize.y - 20.0f));
+	screen.Next();
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Next();
+	screen.Next();
+
+	CHECK(jobs.Count() == 0);
+}
+
+TEST_CASE("Matching files stay where they are through a quick re-read and make room for its loader only once it shows")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.Type("Deep");
+	screen.Next();
+	REQUIRE(FindTreeBody() != nullptr);
+	const float resultsHeight = FindTreeBody()->ContentSize.y;
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Next();
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	CHECK(FindTreeBody()->ContentSize.y == doctest::Approx(resultsHeight));
+
+	const double pastTheWait = 0.25;
+	screen.WaitSeconds(pastTheWait);
+
+	CHECK(FindTreeBody()->ContentSize.y > resultsHeight);
+
+	jobs.RunAll();
+	screen.Next();
+	screen.Next();
+
+	CHECK(FindTreeBody()->ContentSize.y == doctest::Approx(resultsHeight));
+}
+
+TEST_CASE("A filter matching nothing keeps its message for the first fifth of a second of a re-read, then wraps the loader's")
+{
+	TempDirectory folder;
+	folder.MakeFile("README.md");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.Type("nothing-by-this-name");
+	screen.Next();
+
+	const auto messageExtent = [] {
+		const ImGuiWindow* body = FindTreeBody();
+		REQUIRE(body != nullptr);
+		return HorizontalExtentInColour(*body->DrawList, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+	};
+
+	const std::optional<HorizontalExtent> answered = messageExtent();
+	REQUIRE(answered.has_value());
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	const std::optional<HorizontalExtent> rereading = messageExtent();
+	REQUIRE(rereading.has_value());
+	CHECK(rereading->Left == doctest::Approx(answered->Left));
+	CHECK(rereading->Right == doctest::Approx(answered->Right));
+
+	const double pastTheWait = 0.25;
+	screen.WaitSeconds(pastTheWait);
+
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	const std::optional<HorizontalExtent> loader = messageExtent();
+	REQUIRE(loader.has_value());
+	CHECK(loader->Right > answered->Right);
+	CHECK(loader->Right <= body->Pos.x + body->Size.x - Graphite::ListRowEndInset());
+}
+
+TEST_CASE("A filter matching nothing while the folder is read again shows a loader until the read lands")
+{
+	TempDirectory folder;
+	folder.MakeFile("README.md");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.Next();
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Type("Deep");
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	CHECK(Core::Redraw::TakeDeadline().has_value());
+
+	jobs.RunAll();
+	screen.Next();
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
 TEST_CASE("Delete chosen while another question holds the modal gate waits for it, and asks once the gate is free")
 {
 	TempDirectory folder;

@@ -44,6 +44,8 @@ namespace Graphite {
 
 		bool HasListing() const { return m_HasListing; }
 
+		bool IsUpToDate() const { return !m_OutOfDate && !m_Reading; }
+
 		std::uint64_t GetVersion() const { return m_Version; }
 
 		const std::vector<ListedEntry>& GetEntries() const { return m_Entries; }

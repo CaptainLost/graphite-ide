@@ -24,19 +24,6 @@ namespace Graphite {
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 
-		const char* HeadingOf(ReviewGroup group)
-		{
-			switch (group)
-			{
-			case ReviewGroup::Commits:
-				return kCommittedFilesHeading;
-			case ReviewGroup::Uncommitted:
-				return kUncommittedHeading;
-			}
-
-			return kCommittedFilesHeading;
-		}
-
 		ReviewOffer OfferAgainst(const Core::Branch& branch, const Core::Branch& base)
 		{
 			return ReviewOffer{
@@ -153,14 +140,55 @@ namespace Graphite {
 		return std::format("{} +{} -{}", Core::Counted(fileCount, "file"), lines.Added, lines.Removed);
 	}
 
+	const char* GroupName(ReviewGroup group)
+	{
+		switch (group)
+		{
+		case ReviewGroup::Commits:
+			return kCommittedFilesHeading;
+		case ReviewGroup::Uncommitted:
+			return kUncommittedHeading;
+		}
+
+		return kCommittedFilesHeading;
+	}
+
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total)
 	{
 		if (shown == total)
 		{
-			return std::format("{} ({})", HeadingOf(group), total);
+			return std::format("{} ({})", GroupName(group), total);
 		}
 
-		return std::format("{} ({} of {})", HeadingOf(group), shown, total);
+		return std::format("{} ({} of {})", GroupName(group), shown, total);
+	}
+
+	bool IsUpdatingChanges(const ReviewRefresh& refresh)
+	{
+		const bool uncommittedOnScreenIsRefreshed = refresh.UncommittedLoading && refresh.UncommittedShown;
+		return refresh.ShowsEarlierChanges || refresh.RangeLoading || uncommittedOnScreenIsRefreshed;
+	}
+
+	bool IsUncommittedAwaited(const ReviewRefresh& refresh)
+	{
+		const bool nothingOnScreenYet = refresh.UncommittedLoading && !refresh.UncommittedShown;
+		const bool failureStaysWhileReadAgain = refresh.UncommittedFailed && !refresh.UncommittedRetrying;
+		return nothingOnScreenYet && !failureStaysWhileReadAgain;
+	}
+
+	bool ShowsUncommittedFailure(const ReviewRefresh& refresh)
+	{
+		return refresh.UncommittedFailed && !refresh.UncommittedRetrying;
+	}
+
+	DiffPaneWithoutFile DiffPaneWithoutFileFor(std::size_t reviewFileCount, bool uncommittedLoading)
+	{
+		if (reviewFileCount > 0)
+		{
+			return DiffPaneWithoutFile::SelectAFile;
+		}
+
+		return uncommittedLoading ? DiffPaneWithoutFile::LoadingUncommitted : DiffPaneWithoutFile::NothingToReview;
 	}
 
 	const Core::FileDiff* SelectedFile(const ReviewGroups& groups, const ReviewSelection& selection)

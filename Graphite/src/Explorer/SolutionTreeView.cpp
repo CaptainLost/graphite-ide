@@ -15,6 +15,7 @@
 #include "Solution/SolutionEditor.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/FileIcons.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
@@ -714,6 +715,11 @@ namespace Graphite {
 
 		ExplainNotEditable(editable);
 
+		if (editable && OfferOpenFileDialog(m_Workspace.GetDialog()))
+		{
+			ImGui::CloseCurrentPopup();
+		}
+
 		if (ImGui::MenuItem("New Folder", kNoShortcut, kNotSelected, editable))
 		{
 			AddFolderIn(folder, path);
@@ -963,6 +969,8 @@ namespace Graphite {
 
 	void SolutionTreeView::ApplyAndReport(const PendingAction& action)
 	{
+		const std::uint64_t loadBeforeTheEdit = m_Workspace.GetSolutionLoad();
+
 		if (const Core::Result<void> applied = Apply(action); !applied)
 		{
 			ReportEditFailure(applied.GetError());
@@ -971,11 +979,23 @@ namespace Graphite {
 
 		if (action.Action == PendingAction::Kind::AddFolder)
 		{
-			m_RenameWhenListed.Request(action.Folder, m_Workspace.GetSolutionLoad());
+			m_RenameWhenListed.Request(action.Folder, loadBeforeTheEdit);
 		}
 	}
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
+	{
+		Core::Result<void> saved = SaveEdit(action);
+
+		if (saved)
+		{
+			m_Workspace.ReloadSolution();
+		}
+
+		return saved;
+	}
+
+	Core::Result<void> SolutionTreeView::SaveEdit(const PendingAction& action)
 	{
 		if (!m_Workspace.GetLoadedSolution())
 		{

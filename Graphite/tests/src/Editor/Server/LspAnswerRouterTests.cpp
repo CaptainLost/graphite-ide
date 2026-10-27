@@ -41,9 +41,15 @@ namespace {
 
 		ServerStatus StatusFor(const std::filesystem::path&, LanguageId) override
 		{
-			ServerStatus status;
+			ServerStatus status = Detail;
 			status.State = State;
 			return status;
+		}
+
+		void Become(const ServerStatus& status)
+		{
+			State = status.State;
+			Detail = status;
 		}
 
 		bool HasChosenServer(LanguageId language) override { return LanguageHasServers(language); }
@@ -95,11 +101,12 @@ namespace {
 			Recolour.clear();
 		}
 
-		void Reply(Ticket ticket, bool failed = false)
+		void Reply(Ticket ticket, bool failed = false, ReplyFailure reason = ReplyFailure::ServerError)
 		{
 			LanguageServices::Answer answer;
 			answer.For = ticket;
 			answer.Failed = failed;
+			answer.FailedBecause = reason;
 			Queued.push_back(std::move(answer));
 		}
 
@@ -138,6 +145,7 @@ namespace {
 		}
 
 		ServerState State = ServerState::Ready;
+		ServerStatus Detail;
 		std::vector<Asked> Asks;
 		std::vector<Ticket> Cancelled;
 		std::vector<std::filesystem::path> Started;
@@ -164,10 +172,23 @@ namespace {
 			DefinitionFailed.push_back(answer.Failed);
 		}
 
-		void ApplyReferences(const std::string& symbol, const Answer&) override
+		void ApplyReferences(const ReferencesQuestion& question, const Answer&) override
 		{
-			References.push_back(symbol);
+			References.push_back(question.Symbol);
 		}
+
+		void AskedHeldReferences(const ReferencesQuestion& question) override
+		{
+			ReleasedReferences.push_back(question.Symbol);
+		}
+
+		void RefreshingReferences(const ReferencesQuestion& question) override
+		{
+			Refreshed.push_back(question.Symbol);
+		}
+
+		std::vector<std::string> ReleasedReferences;
+		std::vector<std::string> Refreshed;
 
 		void ApplySwitchSourceHeader(const std::filesystem::path& from, const Answer&) override
 		{
@@ -249,6 +270,21 @@ namespace {
 		question.From.Path = kSource;
 		return question;
 	}
+
+	ReferencesQuestion ReferencesAbout(std::string symbol)
+	{
+		return ReferencesQuestion{.Path = kSource, .Where = kUnimportantPosition, .Symbol = std::move(symbol)};
+	}
+
+	ServerStatus IndexingAt(int percent)
+	{
+		return ServerStatus{.State = ServerState::Indexing, .Name = "clangd", .Percent = percent};
+	}
+
+	ServerStatus LoadingProjects()
+	{
+		return ServerStatus{.State = ServerState::Indexing, .Name = "Roslyn", .Loading = "Graphite.csproj"};
+	}
 }
 
 TEST_CASE("A second definition question cancels the first and only its own answer is applied")
@@ -298,10 +334,10 @@ TEST_CASE("A second references question supersedes the first")
 {
 	Harness harness;
 
-	harness.Router.AskReferences(kSource, kUnimportantPosition, "Old");
+	harness.Router.AskReferences(ReferencesAbout("Old"));
 	const Ticket first = harness.Server.LastOf("references");
 
-	harness.Router.AskReferences(kSource, kUnimportantPosition, "New");
+	harness.Router.AskReferences(ReferencesAbout("New"));
 	const Ticket second = harness.Server.LastOf("references");
 
 	CHECK(harness.Server.WasCancelled(first));
@@ -312,6 +348,186 @@ TEST_CASE("A second references question supersedes the first")
 
 	REQUIRE(harness.Target.References.size() == 1);
 	CHECK(harness.Target.References[0] == "New");
+}
+
+TEST_CASE("References asked while the server loads its projects are held and asked once it can answer")
+{
+	Harness harness;
+	harness.Server.Become(LoadingProjects());
+
+	CHECK(harness.Router.AskReferences(ReferencesAbout("Foo")) == QuestionFate::HeldUntilServerIsUp);
+	REQUIRE(harness.Router.HeldReferences() != nullptr);
+	CHECK(harness.Router.HeldReferences()->Symbol == "Foo");
+
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("references") == 0);
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("references") == 1);
+	CHECK(harness.Router.HeldReferences() == nullptr);
+	CHECK(harness.Target.ReleasedReferences == std::vector<std::string>{"Foo"});
+}
+
+TEST_CASE("A definition asked while the server starts is held and asked once it is up")
+{
+	Harness harness;
+	harness.Server.State = ServerState::Starting;
+
+	CHECK(harness.Router.AskDefinition(QuestionAt(4)) == QuestionFate::HeldUntilServerIsUp);
+	CHECK(harness.Router.HoldsDefinition());
+
+	harness.Router.Collect(harness.Target);
+	CHECK(harness.Server.CountOf("definition") == 0);
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("definition") == 1);
+	CHECK_FALSE(harness.Router.HoldsDefinition());
+
+	harness.Server.Reply(harness.Server.LastOf("definition"));
+	harness.Router.Collect(harness.Target);
+
+	REQUIRE(harness.Target.Definitions.size() == 1);
+	CHECK(harness.Target.Definitions[0].CaretOffset == 4);
+}
+
+TEST_CASE("A held definition that is cancelled is never asked")
+{
+	Harness harness;
+	harness.Server.State = ServerState::Starting;
+
+	harness.Router.AskDefinition(QuestionAt(4));
+	harness.Router.CancelDefinition();
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("definition") == 0);
+}
+
+TEST_CASE("A definition asked of a server that answers is asked at once, and cancelling it cancels the ticket")
+{
+	Harness harness;
+
+	CHECK(harness.Router.AskDefinition(QuestionAt(4)) == QuestionFate::Asked);
+	const Ticket asked = harness.Server.LastOf("definition");
+
+	harness.Router.CancelDefinition();
+
+	CHECK(harness.Server.WasCancelled(asked));
+}
+
+TEST_CASE("A switch header/source asked while the server starts is held until it is up")
+{
+	Harness harness;
+	harness.Server.State = ServerState::Starting;
+
+	CHECK(harness.Router.AskSwitchSourceHeader(kSource) == QuestionFate::HeldUntilServerIsUp);
+	CHECK(harness.Router.HoldsSwitchSourceHeader());
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("switch") == 1);
+	CHECK_FALSE(harness.Router.HoldsSwitchSourceHeader());
+}
+
+TEST_CASE("References asked of a server still indexing are asked at once and once more when the index is complete")
+{
+	Harness harness;
+	harness.Server.Become(IndexingAt(40));
+
+	CHECK(harness.Router.AskReferences(ReferencesAbout("Foo")) == QuestionFate::Asked);
+	CHECK(harness.Server.CountOf("references") == 1);
+
+	harness.Server.Reply(harness.Server.LastOf("references"));
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Target.References == std::vector<std::string>{"Foo"});
+	CHECK(harness.Target.Refreshed.empty());
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Target.Refreshed == std::vector<std::string>{"Foo"});
+	CHECK(harness.Server.CountOf("references") == 2);
+
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("references") == 2);
+}
+
+TEST_CASE("References asked of a ready server that answer while it indexes are asked once more when the index is complete")
+{
+	Harness harness;
+
+	CHECK(harness.Router.AskReferences(ReferencesAbout("Foo")) == QuestionFate::Asked);
+
+	harness.Server.Become(IndexingAt(10));
+	harness.Server.Reply(harness.Server.LastOf("references"));
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Target.Refreshed.empty());
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Target.Refreshed == std::vector<std::string>{"Foo"});
+	CHECK(harness.Server.CountOf("references") == 2);
+}
+
+TEST_CASE("References that failed while the server indexed are not asked again when the index is complete")
+{
+	Harness harness;
+	harness.Server.Become(IndexingAt(40));
+
+	harness.Router.AskReferences(ReferencesAbout("Foo"));
+	harness.Server.Reply(harness.Server.LastOf("references"), kFailedAnswer);
+	harness.Router.Collect(harness.Target);
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("references") == 1);
+	CHECK(harness.Target.Refreshed.empty());
+}
+
+TEST_CASE("The last references question is kept so it can be asked again")
+{
+	Harness harness;
+
+	harness.Router.AskReferences(ReferencesAbout("Foo"));
+
+	REQUIRE(harness.Router.LastReferences().has_value());
+	CHECK(harness.Router.LastReferences()->Symbol == "Foo");
+}
+
+TEST_CASE("A hover asked while the server starts is held, and CancelHover drops it")
+{
+	Harness harness;
+	harness.Server.State = ServerState::Starting;
+
+	HoverQuestion question;
+	question.Path = kSource;
+
+	harness.Router.AskHover(question);
+	harness.Router.CancelHover(kSource);
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("hover") == 0);
+
+	harness.Server.State = ServerState::Starting;
+	harness.Router.AskHover(question);
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Server.CountOf("hover") == 1);
 }
 
 TEST_CASE("A followed document is analysing until its declarations and colours have answered")
@@ -383,14 +599,14 @@ TEST_CASE("A colours ticket the server refused at once does not hold analysing")
 	CHECK_FALSE(harness.Router.IsAnalysing(kSource));
 }
 
-TEST_CASE("Failed declarations stay wanted and are asked for again only once the retry clock runs out")
+TEST_CASE("Declarations asked of a server that could not be reached are asked again only once the retry clock runs out")
 {
 	Harness harness;
 
 	harness.Router.Track(kSource);
 	harness.Router.AskSymbolsIfDue(kSource);
 
-	harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer);
+	harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer, ReplyFailure::ServerUnavailable);
 	harness.Router.Collect(harness.Target);
 
 	CHECK(harness.Target.Symbols.empty());
@@ -406,6 +622,35 @@ TEST_CASE("Failed declarations stay wanted and are asked for again only once the
 	harness.Now += kOneHundredthSecond;
 	harness.Router.AskSymbolsIfDue(kSource);
 	CHECK(harness.Server.CountOf("symbols") == 2);
+}
+
+TEST_CASE("Declarations the server failed to give or never gave end the document's analysing")
+{
+	for (const ReplyFailure reason : {ReplyFailure::ServerError, ReplyFailure::TimedOut})
+	{
+		CAPTURE(static_cast<int>(reason));
+
+		Harness harness;
+
+		harness.Router.Track(kSource);
+		harness.Router.AskSymbolsIfDue(kSource);
+
+		harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer, reason);
+		harness.Server.Reply(harness.Server.LastOf("semantic"));
+		harness.Router.Collect(harness.Target);
+
+		CHECK_FALSE(harness.Router.IsAnalysing(kSource));
+
+		harness.Now += kLongIdleSeconds;
+		harness.Router.AskSymbolsIfDue(kSource);
+
+		CHECK(harness.Server.CountOf("symbols") == 1);
+
+		harness.Router.WantSymbolsNow(kSource);
+		harness.Router.AskSymbolsIfDue(kSource);
+
+		CHECK(harness.Server.CountOf("symbols") == 2);
+	}
 }
 
 TEST_CASE("One declarations question is outstanding at a time")

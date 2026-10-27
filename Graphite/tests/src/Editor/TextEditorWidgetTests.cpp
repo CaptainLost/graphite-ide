@@ -22,6 +22,8 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuItem.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/Scrollbar.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
@@ -60,6 +62,7 @@ namespace {
 	constexpr float kJustPast = 1.0f;
 	constexpr float kScanStep = 1.0f;
 	constexpr float kHalf = 0.5f;
+	constexpr float kChangeStripWidth = 4.0f;
 	constexpr std::size_t kFirstRow = 0;
 	constexpr std::size_t kFirstLine = 0;
 	constexpr std::size_t kSecondLine = 1;
@@ -466,6 +469,28 @@ TEST_CASE("A lens label is drawn at 0.78 of the editor size and hit across that 
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Lens rows hidden while no server runs for the file take no room until they are shown")
+{
+	EditorFrames editor("void Draw();\n");
+	editor.Next();
+
+	const ImVec2 withoutLenses = editor.CaretScreenPos();
+
+	Graphite::LensModel lenses;
+	DeclareReferencedFirstLine(lenses, editor.Item);
+	editor.View.Lens = &lenses;
+	editor.View.ShowLensRows = false;
+	editor.Next();
+
+	CHECK(editor.CaretScreenPos().y == doctest::Approx(withoutLenses.y));
+
+	editor.View.ShowLensRows = true;
+	editor.Next();
+
+	CHECK(editor.CaretScreenPos().y == doctest::Approx(withoutLenses.y + kEditorLineHeight));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("A lens with no count yet says what it waits for in the lens colour and takes no click")
 {
 	EditorFrames editor("void Draw();\n");
@@ -630,6 +655,31 @@ TEST_CASE("A click halfway down the second line lands on the second line")
 	editor.Click(ImVec2(firstLine.x + kIntoTheRow, firstLine.y + kEditorLineHeight + kEditorLineHeight * kHalf));
 
 	CHECK(CaretLine(editor.Item) == kSecondLine);
+}
+
+TEST_CASE("A double click on the right half of a word's last character selects the word")
+{
+	constexpr std::size_t kLastCharacter = 5;
+	constexpr std::size_t kWordEnd = 6;
+	constexpr float kIntoTheRightHalf = 0.75f;
+
+	EditorFrames editor("_steam;\n");
+	editor.Next();
+
+	PlaceCaret(editor.Item, kLastCharacter);
+	editor.Next();
+	const ImVec2 lastCharacter = editor.CaretScreenPos();
+
+	PlaceCaret(editor.Item, kWordEnd);
+	editor.Next();
+	const float wordEndX = editor.CaretScreenPos().x;
+
+	const ImVec2 rightHalf(lastCharacter.x + (wordEndX - lastCharacter.x) * kIntoTheRightHalf,
+						   lastCharacter.y + kEditorLineHeight * kHalf);
+	editor.Click(rightHalf);
+	editor.Click(rightHalf);
+
+	CHECK(Core::SelectionRange(editor.Item.Caret) == Core::OffsetRange{.From = 0, .To = kWordEnd});
 }
 
 TEST_CASE("A click a pixel above the next line's top stays on the line above")
@@ -1010,4 +1060,104 @@ TEST_CASE("An edit through the editor moves the declarations it is given with th
 	REQUIRE(declarations.size() == 1);
 	CHECK(declarations[0].Line == 2);
 	CHECK(declarations[0].EndLine == 2);
+}
+
+TEST_CASE("Every other occurrence of a selected word is filled in the occurrence colour")
+{
+	constexpr int kVerticesPerFill = 4;
+	constexpr int kOtherOccurrences = 2;
+
+	EditorFrames editor("alpha beta alpha\nalpha\n");
+	editor.View.HighlightOccurrences = true;
+	editor.Item.Caret = Core::Caret{.Offset = 5, .Anchor = 0};
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	CHECK(VerticesInColour(*surface->DrawList, DarkEditorPalette().SelectionOccurrence) ==
+		  kOtherOccurrences * kVerticesPerFill);
+}
+
+TEST_CASE("No occurrence is marked in the text or on the scrollbar while highlighting is off")
+{
+	EditorFrames editor("alpha beta alpha\nalpha\n");
+	editor.View.HighlightOccurrences = false;
+	editor.Item.Caret = Core::Caret{.Offset = 5, .Anchor = 0};
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const ImU32 fill = DarkEditorPalette().SelectionOccurrence;
+
+	CHECK_FALSE(DrawsInColour(*surface->DrawList, fill));
+	CHECK_FALSE(DrawsInColour(*surface->DrawList, Core::WithOpaqueAlpha(fill)));
+}
+
+TEST_CASE("Occurrences are ticked on the scrollbar either side of its grab, never over it")
+{
+	constexpr std::size_t kLineCount = 200;
+	constexpr std::size_t kSecondOccurrenceLine = 150;
+
+	std::string content;
+
+	for (std::size_t line = 0; line < kLineCount; ++line)
+	{
+		content += line == 0 || line == kSecondOccurrenceLine ? "alpha\n" : "x\n";
+	}
+
+	EditorFrames editor(std::move(content));
+	editor.View.HighlightOccurrences = true;
+	editor.Item.Caret = Core::Caret{.Offset = 5, .Anchor = 0};
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* surface = const_cast<ImGuiWindow*>(EditorSurface());
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->ScrollbarY);
+
+	const ImRect bar = ImGui::GetWindowScrollbarRect(surface, ImGuiAxis_Y);
+	const float inset = Core::ScrollbarGrabInset(ImGui::GetStyle().ScrollbarPadding, bar.GetSize());
+	const float grabLeft = bar.Min.x + inset;
+	const float grabRight = bar.Max.x - inset;
+	const ImU32 tick = Core::WithOpaqueAlpha(DarkEditorPalette().SelectionOccurrence);
+
+	REQUIRE(grabRight - grabLeft > kChangeStripWidth);
+
+	int leftOfGrab = 0;
+	int rightOfGrab = 0;
+	int overGrab = 0;
+
+	for (const ImDrawVert& vertex : surface->DrawList->VtxBuffer)
+	{
+		if (vertex.col != tick)
+		{
+			continue;
+		}
+
+		if (vertex.pos.x < grabLeft)
+		{
+			++leftOfGrab;
+		}
+		else if (vertex.pos.x > grabRight)
+		{
+			++rightOfGrab;
+		}
+		else
+		{
+			++overGrab;
+		}
+	}
+
+	CHECK(leftOfGrab > 0);
+	CHECK(rightOfGrab > 0);
+	CHECK(overGrab == 0);
+
+	const std::optional<VerticalExtent> ticks = VerticalExtentInColour(*surface->DrawList, tick);
+	REQUIRE(ticks.has_value());
+
+	CHECK(ticks->Top >= bar.Min.y);
+	CHECK(ticks->Bottom <= bar.Max.y);
+	CHECK(ticks->Bottom - ticks->Top > bar.GetHeight() * kHalf);
 }

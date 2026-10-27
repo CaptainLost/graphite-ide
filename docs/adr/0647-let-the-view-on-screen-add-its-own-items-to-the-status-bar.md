@@ -1,4 +1,4 @@
-# 0641. Let the view on screen add its own items to the status bar
+# 0647. Let the view on screen add its own items to the status bar
 
 Status: proposed
 Date: 2026-10-26

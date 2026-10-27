@@ -47,7 +47,34 @@ namespace Graphite {
 
 	std::string ChangeSummary(std::size_t fileCount, const Core::LineCounts& lines);
 
+	const char* GroupName(ReviewGroup group);
+
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total);
+
+	struct ReviewRefresh
+	{
+		bool ShowsEarlierChanges = false;
+		bool RangeLoading = false;
+		bool UncommittedLoading = false;
+		bool UncommittedShown = false;
+		bool UncommittedFailed = false;
+		bool UncommittedRetrying = false;
+	};
+
+	bool IsUpdatingChanges(const ReviewRefresh& refresh);
+
+	bool IsUncommittedAwaited(const ReviewRefresh& refresh);
+
+	bool ShowsUncommittedFailure(const ReviewRefresh& refresh);
+
+	enum class DiffPaneWithoutFile
+	{
+		SelectAFile,
+		NothingToReview,
+		LoadingUncommitted
+	};
+
+	DiffPaneWithoutFile DiffPaneWithoutFileFor(std::size_t reviewFileCount, bool uncommittedLoading);
 
 	struct ReviewSelection
 	{

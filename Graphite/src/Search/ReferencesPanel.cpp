@@ -3,10 +3,13 @@
 #include "Editor/Navigation/SelectInDocument.h"
 #include "Search/SearchPreview.h"
 #include "UI/SplitResults.h"
+#include "UI/TypographicMarks.h"
 
 #include "Language/Server/LspProtocol.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
@@ -137,6 +140,108 @@ namespace Graphite {
 		return hits;
 	}
 
+	ReferencesSummary SummariseReferences(ReferencesPhase phase, const std::string& symbol, std::size_t hitCount,
+										  const std::string& note)
+	{
+		const std::string heading = "References to " + symbol;
+
+		switch (phase)
+		{
+		case ReferencesPhase::WaitingForServer:
+			return ReferencesSummary{.Text = heading + std::string{kMiddleDotSeparator} + note, .Waiting = true};
+
+		case ReferencesPhase::Finding:
+			return ReferencesSummary{.Text = "Finding references to " + symbol, .Waiting = true};
+
+		case ReferencesPhase::Found:
+		{
+			std::string found = heading + ": " + Core::Counted(hitCount, "hit");
+			Core::AppendSeparatedIfNotEmpty(found, kMiddleDotSeparator, note);
+
+			return ReferencesSummary{.Text = std::move(found)};
+		}
+
+		case ReferencesPhase::NotAsked:
+		case ReferencesPhase::Failed:
+		case ReferencesPhase::Unavailable:
+			break;
+		}
+
+		return ReferencesSummary{.Text = heading};
+	}
+
+	std::string ReferencesFailureText(const std::string& reason)
+	{
+		return "Couldn't get references: " + reason;
+	}
+
+	std::string RefreshFailureText(const std::string& reason)
+	{
+		return "Couldn't update the list: " + reason;
+	}
+
+	bool AnswersRefreshOf(ReferencesPhase phase, bool refreshing, const std::string& shownSymbol,
+						  const std::string& answeredSymbol)
+	{
+		return phase == ReferencesPhase::Found && refreshing && shownSymbol == answeredSymbol;
+	}
+
+	std::optional<HitPlace> PlaceOfSelectedHit(const std::vector<HitGroup>& groups, const HitSelection& selection)
+	{
+		for (const HitGroup& group : groups)
+		{
+			if (group.Id != selection.Group || selection.Hit >= group.Hits.size())
+			{
+				continue;
+			}
+
+			const SearchHit& selected = group.Hits[selection.Hit];
+			std::size_t ordinalOnLine = 0;
+
+			for (std::size_t hitIndex = 0; hitIndex < selection.Hit; ++hitIndex)
+			{
+				if (group.Hits[hitIndex].Line == selected.Line)
+				{
+					++ordinalOnLine;
+				}
+			}
+
+			return HitPlace{.File = group.File, .Line = selected.Line, .OrdinalOnLine = ordinalOnLine};
+		}
+
+		return std::nullopt;
+	}
+
+	std::optional<HitSelection> SelectionAtPlace(const std::vector<HitGroup>& groups, const HitPlace& place)
+	{
+		for (const HitGroup& group : groups)
+		{
+			if (group.File != place.File)
+			{
+				continue;
+			}
+
+			std::size_t ordinalOnLine = 0;
+
+			for (std::size_t hitIndex = 0; hitIndex < group.Hits.size(); ++hitIndex)
+			{
+				if (group.Hits[hitIndex].Line != place.Line)
+				{
+					continue;
+				}
+
+				if (ordinalOnLine == place.OrdinalOnLine)
+				{
+					return HitSelection{.Group = group.Id, .Hit = hitIndex};
+				}
+
+				++ordinalOnLine;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	ReferencesPanel::ReferencesPanel(Workspace& workspace, Core::DocumentSet& documents,
 									 const ActiveScheme& scheme, const EditorSettings& editor,
 									 PreviewSemantics& semantics)
@@ -148,7 +253,7 @@ namespace Graphite {
 
 	void ReferencesPanel::OnImGuiRender()
 	{
-		if (!m_Asked)
+		if (m_Phase == ReferencesPhase::NotAsked)
 		{
 			const Core::PanelMarginScope margin;
 			Core::EmptyState("Shift+F12, or click a reference count, to list a symbol's references.");
@@ -158,6 +263,30 @@ namespace Graphite {
 		{
 			const Core::PanelMarginScope margin;
 			RenderSummary();
+		}
+
+		if (m_Phase == ReferencesPhase::Failed)
+		{
+			const Core::PanelMarginScope margin;
+
+			if (Core::EmptyState(ReferencesFailureText(m_Note), "Retry"))
+			{
+				m_RetryWanted = true;
+			}
+
+			return;
+		}
+
+		if (m_Phase == ReferencesPhase::Unavailable)
+		{
+			const Core::PanelMarginScope margin;
+			Core::EmptyState(m_Note);
+			return;
+		}
+
+		if (m_Phase != ReferencesPhase::Found)
+		{
+			return;
 		}
 
 		const std::function<void()> drawResults = [this] { RenderResults(); };
@@ -172,24 +301,13 @@ namespace Graphite {
 										   .SplitterId = "##referencesSplit"});
 	}
 
-	void ReferencesPanel::ShowWorking(const std::string& symbol)
+	void ReferencesPanel::BeginShowing(ReferencesPhase phase, const std::string& symbol, std::string note)
 	{
 		m_Symbol = symbol;
-		m_Working = true;
-		m_Asked = true;
-
-		m_Groups.Clear();
-		m_Groups.SetRoot(m_Workspace.GetRoot());
-
-		m_Selected.reset();
-		m_Preview.Clear();
-	}
-
-	void ReferencesPanel::ShowResults(const std::string& symbol, const std::vector<Location>& locations)
-	{
-		m_Symbol = symbol;
-		m_Working = false;
-		m_Asked = true;
+		m_Phase = phase;
+		m_Note = std::move(note);
+		m_Refreshing.reset();
+		m_RefreshFailure.reset();
 
 		m_Groups.Clear();
 		m_Groups.SetRoot(m_Workspace.GetRoot());
@@ -199,7 +317,75 @@ namespace Graphite {
 
 		m_DiskPath.clear();
 		m_DiskBuffer.reset();
+	}
 
+	void ReferencesPanel::ShowWaiting(const std::string& symbol, const std::string& waitingFor)
+	{
+		const bool alreadyWaitingForThis = m_Phase == ReferencesPhase::WaitingForServer && m_Symbol == symbol;
+
+		if (alreadyWaitingForThis)
+		{
+			m_Note = waitingFor;
+			return;
+		}
+
+		BeginShowing(ReferencesPhase::WaitingForServer, symbol, waitingFor);
+	}
+
+	void ReferencesPanel::ShowWorking(const std::string& symbol)
+	{
+		BeginShowing(ReferencesPhase::Finding, symbol, {});
+	}
+
+	void ReferencesPanel::ShowRefreshing(const std::string& refreshingWhy)
+	{
+		if (m_Phase == ReferencesPhase::Found)
+		{
+			m_Refreshing = refreshingWhy;
+			m_RefreshFailure.reset();
+		}
+	}
+
+	bool ReferencesPanel::IsRefreshing(const std::string& symbol) const
+	{
+		return AnswersRefreshOf(m_Phase, m_Refreshing.has_value(), m_Symbol, symbol);
+	}
+
+	void ReferencesPanel::KeepListAfterFailedRefresh(const std::string& reason)
+	{
+		m_Refreshing.reset();
+		m_RefreshFailure = RefreshFailureText(reason);
+	}
+
+	void ReferencesPanel::ShowFailure(const std::string& symbol, const std::string& reason)
+	{
+		if (IsRefreshing(symbol))
+		{
+			KeepListAfterFailedRefresh(reason);
+			return;
+		}
+
+		BeginShowing(ReferencesPhase::Failed, symbol, reason);
+	}
+
+	void ReferencesPanel::ShowUnavailable(const std::string& symbol, const std::string& reason)
+	{
+		if (IsRefreshing(symbol))
+		{
+			KeepListAfterFailedRefresh(reason);
+			return;
+		}
+
+		BeginShowing(ReferencesPhase::Unavailable, symbol, reason);
+	}
+
+	bool ReferencesPanel::TakeRetry()
+	{
+		return std::exchange(m_RetryWanted, false);
+	}
+
+	void ReferencesPanel::FillGroups(const std::string& symbol, const std::vector<Location>& locations)
+	{
 		const LineTextSource lineText = [this](const std::filesystem::path& path, std::size_t line) {
 			return LineTextInOpenDocument(path, line);
 		};
@@ -207,6 +393,35 @@ namespace Graphite {
 		for (SearchHit& hit : AsHits(locations, symbol, lineText))
 		{
 			m_Groups.Add(std::move(hit));
+		}
+	}
+
+	void ReferencesPanel::ShowResults(const std::string& symbol, const std::vector<Location>& locations,
+									  const std::string& incompleteWhy)
+	{
+		if (!IsRefreshing(symbol))
+		{
+			BeginShowing(ReferencesPhase::Found, symbol, incompleteWhy);
+			FillGroups(symbol, locations);
+			return;
+		}
+
+		const std::optional<HitPlace> selectedPlace =
+			m_Selected ? PlaceOfSelectedHit(m_Groups.Get(), *m_Selected) : std::nullopt;
+
+		m_Note = incompleteWhy;
+		m_Refreshing.reset();
+		m_RefreshFailure.reset();
+
+		m_Groups.Clear();
+		m_Groups.SetRoot(m_Workspace.GetRoot());
+		FillGroups(symbol, locations);
+
+		m_Selected = selectedPlace ? SelectionAtPlace(m_Groups.Get(), *selectedPlace) : std::nullopt;
+
+		if (!m_Selected)
+		{
+			m_Preview.Clear();
 		}
 	}
 
@@ -221,18 +436,24 @@ namespace Graphite {
 
 	void ReferencesPanel::RenderSummary()
 	{
-		std::string summary = "References to " + m_Symbol;
+		const ReferencesSummary summary = SummariseReferences(m_Phase, m_Symbol, m_Groups.GetCount(), m_Note);
 
-		if (m_Working)
+		if (summary.Waiting)
 		{
-			summary += "  (working...)";
-		}
-		else
-		{
-			summary += ": " + std::to_string(m_Groups.GetCount()) + " hits";
+			Core::LoadingLine(summary.Text.c_str());
+			return;
 		}
 
-		ImGui::TextUnformatted(summary.c_str());
+		ImGui::TextUnformatted(summary.Text.c_str());
+
+		if (m_Refreshing)
+		{
+			Core::LoadingLine(m_Refreshing->c_str());
+		}
+		else if (m_RefreshFailure)
+		{
+			ImGui::TextDisabled("%s", m_RefreshFailure->c_str());
+		}
 	}
 
 	void ReferencesPanel::RenderResults()

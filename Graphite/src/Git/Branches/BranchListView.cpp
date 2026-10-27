@@ -45,6 +45,14 @@ namespace Graphite {
 		constexpr std::size_t kMostAuthorRowsShown = 10;
 		constexpr bool kHideTextAfterDoubleHash = true;
 
+		constexpr const char* kHeadMark = "* ";
+		constexpr const char* kLoaderWithoutText = "";
+
+		float CheckoutMarkWidth()
+		{
+			return std::max(ImGui::CalcTextSize(kHeadMark).x, Core::LoadingLineWidth(kLoaderWithoutText));
+		}
+
 		template <typename Choice>
 		struct Segment
 		{
@@ -658,10 +666,13 @@ namespace Graphite {
 
 		const float ageRight = ListRowEnd();
 
+		const bool isCheckoutTarget = frame.CheckingOut.has_value() && IsCheckoutTargetOf(*frame.CheckingOut, branch);
+		const float checkoutMarkRoom = isCheckoutTarget ? CheckoutMarkWidth() : 0.0f;
+
 		const float ageRoom = ImGui::CalcTextSize(kWidestAge).x;
 		const float badgeWidth = badge.empty() ? 0.0f : ImGui::CalcTextSize(badge.c_str()).x;
 		const float badgeRoom = badge.empty() ? 0.0f : badgeWidth + spacing;
-		const float labelRoom = ageRight - (rowStart.x + indent) - ageRoom - spacing - badgeRoom;
+		const float labelRoom = ageRight - (rowStart.x + indent) - checkoutMarkRoom - ageRoom - spacing - badgeRoom;
 
 		const std::string label = RefLabel(branch);
 		const std::string fitted = FitToWidth(label, labelRoom);
@@ -674,8 +685,14 @@ namespace Graphite {
 		ImGui::SetCursorScreenPos(ImVec2(rowStart.x, textTop));
 		ImGui::BeginGroup();
 
+		if (isCheckoutTarget)
+		{
+			ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent, textTop));
+			Core::LoadingLine(kLoaderWithoutText);
+		}
+
 		const std::string_view needle = FirstWordInName(branch.Name, m_Words);
-		ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent, textTop));
+		ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent + checkoutMarkRoom, textTop));
 		DrawHighlightedLabel(SplitHighlight(fitted, needle), ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 
 		if (!badge.empty())

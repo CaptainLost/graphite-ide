@@ -13,9 +13,11 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Core {
@@ -74,11 +76,14 @@ namespace Graphite {
 	{
 	};
 
+	using WatcherStart =
+		std::function<Core::Result<Core::Scope<Core::DirectoryWatcher>>(const std::filesystem::path& root)>;
+
 	class Workspace final
 	{
 	public:
-		Workspace(Core::EventBus& events, AppSettings& settings)
-			: m_Events(events), m_AppSettings(settings)
+		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::DirectoryWatcher::Start)
+			: m_Events(events), m_AppSettings(settings), m_StartWatcher(std::move(startWatcher))
 		{
 		}
 
@@ -127,6 +132,8 @@ namespace Graphite {
 
 		void SelectSolution(const std::filesystem::path& path);
 
+		void ReloadSolution();
+
 		WorkspaceSettings& GetFolderSettings() { return m_Settings; }
 		const WorkspaceSettings& GetFolderSettings() const { return m_Settings; }
 
@@ -171,6 +178,7 @@ namespace Graphite {
 
 		Core::EventBus& m_Events;
 		AppSettings& m_AppSettings;
+		WatcherStart m_StartWatcher;
 		std::optional<Core::Repository> m_Repository;
 		Core::FileTree m_Tree;
 		Core::Scope<Core::DirectoryWatcher> m_Watcher;

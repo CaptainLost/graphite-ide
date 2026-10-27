@@ -1,4 +1,4 @@
-# 0640. Draw pictures through a texture facade over ImGui's user textures
+# 0646. Draw pictures through a texture facade over ImGui's user textures
 
 Status: proposed
 Date: 2026-10-25
@@ -96,4 +96,4 @@ upload.
 ## Related
 
 - [0002](0002-keep-core-free-of-ide-knowledge.md)
-- [0639](0639-add-stb-as-a-dependency-for-decoding-and-scaling-images.md)
+- [0645](0645-add-stb-as-a-dependency-for-decoding-and-scaling-images.md)

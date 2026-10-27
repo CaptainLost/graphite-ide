@@ -31,16 +31,20 @@ namespace Graphite {
 
 	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status)
 	{
-		ImGui::TextDisabled("%s", status.Text.c_str());
-
 		if (!status.Busy.empty())
 		{
-			ImGui::SameLine();
+			if (!status.Text.empty())
+			{
+				ImGui::TextDisabled("%s", status.Text.c_str());
+				ImGui::SameLine();
+			}
 
 			Core::LoadingLine(status.Busy.c_str(), Core::WhileLoaderWaits::ShowText);
 
 			return std::nullopt;
 		}
+
+		ImGui::TextDisabled("%s", status.Text.c_str());
 
 		if (status.Actions == HistoryActions::None)
 		{

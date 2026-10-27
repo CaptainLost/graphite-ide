@@ -44,6 +44,7 @@ namespace Graphite {
 		std::string Busy;
 	};
 
-	// The line under the commit list, or none for a stash and for an empty history without a filter.
+	// WARNING: A stash and an empty history without a filter get a line only while a query the reader started runs,
+	// and it holds the loader with no text.
 	std::optional<HistoryStatus> DescribeHistory(const HistoryStatusInput& input);
 }
