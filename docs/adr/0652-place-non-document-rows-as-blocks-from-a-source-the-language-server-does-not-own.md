@@ -1,4 +1,4 @@
-# 0646. Place non-document rows as blocks from a source the language server does not own
+# 0652. Place non-document rows as blocks from a source the language server does not own
 
 Status: proposed
 Date: 2026-10-26
