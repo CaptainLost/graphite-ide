@@ -168,6 +168,10 @@ namespace Graphite {
 
 		std::optional<LinePeekView> Peek;
 
+		// Something in front of the editor, the navigation bubble at the caret, took this frame's Escape, so neither the
+		// peek nor the find bar closes on it.
+		bool EscapeTaken = false;
+
 		ScrollAnchor* Anchor = nullptr;
 
 		EditorWidgetState* Widget = nullptr;

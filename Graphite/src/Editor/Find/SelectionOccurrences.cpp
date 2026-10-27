@@ -110,9 +110,18 @@ namespace Graphite {
 														const std::function<float(std::size_t)>& lineTop,
 														float minFraction)
 	{
+		return BuildOccurrenceOverview(lines, lineTop, [&lineTop](std::size_t line) { return lineTop(line + 1); },
+									   minFraction);
+	}
+
+	std::vector<OccurrenceMark> BuildOccurrenceOverview(const std::vector<std::size_t>& lines,
+														const std::function<float(std::size_t)>& lineTop,
+														const std::function<float(std::size_t)>& lineEnd,
+														float minFraction)
+	{
 		std::vector<OccurrenceMark> marks;
 
-		const auto endOf = [&](std::size_t line) { return std::max(lineTop(line + 1), lineTop(line) + minFraction); };
+		const auto endOf = [&](std::size_t line) { return std::max(lineEnd(line), lineTop(line) + minFraction); };
 		const auto startsPast = [&](float to, std::size_t line) { return to < lineTop(line); };
 
 		std::size_t first = 0;

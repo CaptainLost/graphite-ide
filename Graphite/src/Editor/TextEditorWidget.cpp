@@ -2655,6 +2655,21 @@ namespace Graphite {
 			return track.RowFraction(screenRow, canvas.Metrics.LineHeight);
 		}
 
+		// WARNING: Not the next line's top. Under a line with a peek, the next line's top is the peek's height further
+		// down, and a mark ending there stretched over the whole peek.
+		float OverviewLineEnd(const Core::OpenItem& item, const RowCanvas& canvas,
+							  const ScreenRows& screenRows, const OverviewTrack& track, std::size_t line)
+		{
+			if (line >= item.Rows.GetLineCount())
+			{
+				return OverviewLineTop(item, canvas, screenRows, track, line);
+			}
+
+			const std::size_t lastRow = item.Rows.FirstRowOf(line) + std::max<std::size_t>(item.Rows.RowsOf(line), 1) - 1;
+
+			return track.RowFraction(screenRows.ScreenRowOf(lastRow) + 1, canvas.Metrics.LineHeight);
+		}
+
 		ImU32 OverviewColourOf(HunkKind kind, const EditorPalette& palette)
 		{
 			if (kind == HunkKind::Added)
@@ -2682,9 +2697,10 @@ namespace Graphite {
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
 
 			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, screenRows, track, line); };
+			const auto lineEnd = [&](std::size_t line) { return OverviewLineEnd(item, canvas, screenRows, track, line); };
 
 			const std::vector<OverviewMark> marks = BuildChangeOverview(
-				*changes, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
+				*changes, lineTop, lineEnd, Core::Scaled(kOverviewMinHeight) / track.Height);
 
 			const OverviewStrip strip = CentreStripOf(track);
 
@@ -2717,9 +2733,10 @@ namespace Graphite {
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
 
 			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, screenRows, track, line); };
+			const auto lineEnd = [&](std::size_t line) { return OverviewLineEnd(item, canvas, screenRows, track, line); };
 
 			const std::vector<OccurrenceMark> marks = BuildOccurrenceOverview(
-				occurrences.Lines, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
+				occurrences.Lines, lineTop, lineEnd, Core::Scaled(kOverviewMinHeight) / track.Height);
 
 			const OverviewStrip strip = CentreStripOf(track);
 			const float gap = Core::Scaled(kOccurrenceTickGap);
@@ -3363,9 +3380,11 @@ namespace Graphite {
 		const bool documentHoldsFocus =
 			ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
-		// The peek takes Escape first; the find bar sees it only once the peek has closed.
-		const bool peekTakesEscape =
-			view.Peek.has_value() && documentHoldsFocus && ImGui::IsKeyPressed(ImGuiKey_Escape);
+		// One Escape closes one thing: whatever took it in front of the editor, then the peek, and the find bar only once
+		// neither is left.
+		const bool peekTakesEscape = view.Peek.has_value() && !view.EscapeTaken && documentHoldsFocus &&
+									 ImGui::IsKeyPressed(ImGuiKey_Escape);
+		const bool escapeTakenBeforeFind = view.EscapeTaken || peekTakesEscape;
 
 		if (peekTakesEscape)
 		{
@@ -3653,7 +3672,7 @@ namespace Graphite {
 			// top of, and a nested child window takes the hover from its parent.
 			if (item.Find.Open)
 			{
-				findBar.Draw(item, buffer, documentHoldsFocus, peekTakesEscape);
+				findBar.Draw(item, buffer, documentHoldsFocus, escapeTakenBeforeFind);
 			}
 		}
 

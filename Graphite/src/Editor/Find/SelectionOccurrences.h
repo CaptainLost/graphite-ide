@@ -49,4 +49,11 @@ namespace Graphite {
 	std::vector<OccurrenceMark> BuildOccurrenceOverview(const std::vector<std::size_t>& lines,
 														const std::function<float(std::size_t)>& lineTop,
 														float minFraction);
+
+	// lineEnd(line) is where the line's last row ends on the track, so a mark does not run on over rows drawn between
+	// its line and the next, a peek's or a lens's.
+	std::vector<OccurrenceMark> BuildOccurrenceOverview(const std::vector<std::size_t>& lines,
+														const std::function<float(std::size_t)>& lineTop,
+														const std::function<float(std::size_t)>& lineEnd,
+														float minFraction);
 }

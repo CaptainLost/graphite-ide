@@ -1867,6 +1867,80 @@ TEST_CASE("Peek takes Escape before the find bar")
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Peek leaves an Escape taken in front of the editor to that")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Item.Find.Open = true;
+	ShowPeek(editor, kFirstLine, loading);
+	editor.Next();
+	editor.Next();
+
+	// The navigation bubble at the caret took this one.
+	editor.View.EscapeTaken = true;
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+	editor.Next();
+
+	CHECK_FALSE(editor.Result.PeekAnswer.has_value());
+	CHECK(editor.Item.Find.Open);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+	editor.View.EscapeTaken = false;
+	editor.Next();
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+	editor.Next();
+
+	CHECK(editor.Result.PeekAnswer == Graphite::PeekAction{.Action = Graphite::PeekAction::Kind::Close});
+	CHECK(editor.Item.Find.Open);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+	editor.Next();
+
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek leaves its line's change mark on the scrollbar one line tall")
+{
+	constexpr std::size_t kLineCount = 60;
+	constexpr std::size_t kChangedLine = 10;
+	constexpr float kRowsAtMost = 3.0f;
+
+	EditorFrames editor{LinesOf(kLineCount)};
+	editor.View.ChangeDisplay.Gutter = false;
+
+	Graphite::ChangeMarkers changes;
+	changes.Lines.resize(BufferOf(editor.Item).GetLineCount());
+	changes.Lines[kChangedLine] = Graphite::LineChange{.Kind = Graphite::ChangeKind::Modified};
+	changes.Hunks = {Graphite::ChangeHunk{.Kind = Graphite::HunkKind::Modified,
+										  .FirstLine = kChangedLine,
+										  .LineCount = 1,
+										  .MarkedCount = 1}};
+	editor.View.Changes = &changes;
+
+	const Graphite::LinePeekContent loading;
+	ShowPeek(editor, kChangedLine, loading);
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* const surface = MutableEditorSurface();
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->ScrollbarY);
+
+	const ImRect bar = ImGui::GetWindowScrollbarRect(surface, ImGuiAxis_Y);
+	const std::optional<VerticalExtent> mark =
+		VerticalExtentInColour(*surface->DrawList, DarkEditorPalette().ChangeModified);
+	REQUIRE(mark.has_value());
+
+	// The track stands for the document's rows and the peek's; the mark ends with its line, not past the peek.
+	const float rowsOnTrack = static_cast<float>(BufferOf(editor.Item).GetLineCount() + Graphite::kLinePeekRows);
+	const float rowHeight = bar.GetHeight() / rowsOnTrack;
+
+	CHECK(mark->Bottom - mark->Top < rowHeight * kRowsAtMost);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("Peek reports a selected entry")
 {
 	constexpr std::size_t kSecondEntry = 1;

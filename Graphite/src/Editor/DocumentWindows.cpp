@@ -2800,6 +2800,7 @@ namespace Graphite {
 											 .JustOpened = std::exchange(state.Peek->JustOpened, false)};
 				}
 
+				view.EscapeTaken = m_BubbleTakesEscape;
 				view.Anchor = &state.Anchor;
 				view.Widget = &state.Widget;
 
@@ -3021,6 +3022,11 @@ namespace Graphite {
 		RenderOverwriteConfirm(danger);
 		RenderCloseConfirm(danger);
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
+
+		// WARNING: Read before the documents draw. The bubble at the caret is the most passing thing an Escape closes,
+		// and AbandonNavigationIfReaderMovedOn below closes it on this same Escape, so without this one Escape closed
+		// the bubble and the peek under the line together.
+		m_BubbleTakesEscape = m_Bubble.IsOpen() && ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
 							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.LineAuthor,

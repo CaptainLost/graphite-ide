@@ -503,8 +503,11 @@ namespace Graphite {
 		bool m_WasFocused = true;
 
 		// The Line author setting as of the last frame. With it off, a document's blame is kept only while its peek is
-		// open, so the blame model does not re-blame files nobody is looking at the authors of.
+		// open, so no blame is held for a file nobody is looking at the authors of.
 		bool m_LineAuthor = false;
+
+		// This frame's Escape belongs to the open navigation bubble, so no document's peek or find bar closes on it.
+		bool m_BubbleTakesEscape = false;
 
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
