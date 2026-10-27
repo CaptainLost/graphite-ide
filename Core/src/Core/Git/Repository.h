@@ -9,6 +9,7 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/LineHistory.h"
 #include "Core/Git/OwnAuthors.h"
+#include "Core/Git/PatchMatch.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
@@ -138,6 +139,11 @@ namespace Core {
 		// The main checkout first, then the linked worktrees in name order. Asked from a linked
 		// worktree, the same list.
 		Result<std::vector<WorktreeEntry>> QueryWorktrees() const;
+
+		// Like `git cherry base tip`: a commit of tip's own is in the base when a commit the base has and
+		// tip lacks carries the same patch id. NotFound when either commit is missing. Reads at most
+		// `budget` of the base's commits; Complete says whether that was all of them.
+		Result<PatchMatch> MatchPatches(const Oid& tip, const Oid& base, std::size_t budget, PatchIdCache& cache) const;
 
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
 		Result<HeadState> QueryHead() const;
