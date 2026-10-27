@@ -385,6 +385,31 @@ TEST_CASE("An image tab is kept across a restart")
 	CHECK(after.Documents.At(*restoredPreview).Preview);
 }
 
+TEST_CASE("A hex tab is kept across a restart")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", std::string("MZ\0\0binary", 10));
+
+	Graphite::WorkspaceState state;
+
+	{
+		DrawnDocuments before(folder.GetPath());
+		before.Windows.RequestOpen(program, true);
+
+		state = before.Windows.CaptureState();
+	}
+
+	REQUIRE(state.Tabs.size() == 1);
+	CHECK(state.Tabs[0].Path == program);
+
+	DrawnDocuments after(folder.GetPath());
+	after.Windows.RestoreState(state);
+
+	REQUIRE(after.Documents.GetCount() == 1);
+	CHECK(after.Documents.At(0).View == Core::ItemView::Hex);
+	CHECK(after.Documents.At(0).Failure == Core::OpenFailure::None);
+}
+
 TEST_CASE("Closing an image tab frees its picture")
 {
 	TempDirectory folder;

@@ -1212,10 +1212,10 @@ TEST_CASE("A tab whose file could not be read offers Retry and reports the press
 	CHECK_FALSE(AnyWindowNamedLike(kEditorSurface));
 }
 
-TEST_CASE("A tab refused as binary says why and offers nothing to press")
+TEST_CASE("A tab refused as too large says why and offers nothing to press")
 {
 	EditorFrames frames{""};
-	frames.Item = Core::OpenItem{.Path = "C:/p/tool.exe", .Failure = Core::OpenFailure::Binary, .FileSize = 4096};
+	frames.Item = Core::OpenItem{.Path = "C:/p/huge.log", .Failure = Core::OpenFailure::TooLarge, .FileSize = 600ull * 1024 * 1024};
 
 	const std::vector<HoveredStretch> stretches = HoveredItems::Walk(
 		frames.Frames, HoveredItems::Along::Down, kDocumentWidth * kHalf, 0.0f, kDocumentHeight, [&frames] { frames.Draw(); });

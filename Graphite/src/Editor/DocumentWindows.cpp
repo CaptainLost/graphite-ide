@@ -144,10 +144,10 @@ namespace Graphite {
 			return Core::ToUtf8(path.filename());
 		}
 
-		// A tab shown as text or as a picture comes back after a restart; one whose file could not be read does not.
+		// A tab shown as text, a picture or bytes comes back after a restart; one whose file could not be read does not.
 		bool IsKeptAcrossRestart(const Core::OpenItem& item)
 		{
-			return item.Document != nullptr || Core::IsLoading(item) || item.View == Core::ItemView::Image;
+			return item.Document != nullptr || Core::IsLoading(item) || item.View == Core::ItemView::Image || item.View == Core::ItemView::Hex;
 		}
 
 		// An image item whose file has gone draws the failure message, as a text tab does.

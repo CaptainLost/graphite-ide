@@ -22,17 +22,17 @@ namespace Core {
 	enum class OpenFailure
 	{
 		None,
-		Binary,
 		TooLarge,
 		Missing,
 		ReadFailed
 	};
 
-	// What a tab draws for its item. An Image item has no document: its picture is the file itself.
+	// What a tab draws for its item. An Image or Hex item has no document: its content is the file itself.
 	enum class ItemView
 	{
 		Text,
-		Image
+		Image,
+		Hex
 	};
 
 	inline constexpr std::size_t NoRowAim = static_cast<std::size_t>(-1);
