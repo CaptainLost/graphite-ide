@@ -183,6 +183,50 @@ TEST_CASE("Line author setting is remembered when turned off")
 	CHECK_FALSE(reloaded.HasLineAuthor());
 }
 
+TEST_CASE("Line author delay setting is zero by default")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+	settings.Load();
+
+	CHECK(settings.GetLineAuthorDelayMs() == 0);
+}
+
+TEST_CASE("Line author delay setting is remembered")
+{
+	constexpr int kDelayMs = 700;
+
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.SetLineAuthorDelayMs(kDelayMs);
+
+		CHECK(settings.GetLineAuthorDelayMs() == kDelayMs);
+	}
+
+	Graphite::EditorSettings reloaded{store.Reload()};
+	reloaded.Load();
+
+	CHECK(reloaded.GetLineAuthorDelayMs() == kDelayMs);
+}
+
+TEST_CASE("Line author delay setting is kept within 0 to 2000 ms")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+
+	settings.SetLineAuthorDelayMs(-100);
+	CHECK(settings.GetLineAuthorDelayMs() == 0);
+
+	settings.SetLineAuthorDelayMs(99999);
+	CHECK(settings.GetLineAuthorDelayMs() == 2000);
+
+	store.Get().SetLineAuthorDelayMs(5000);
+	settings.Load();
+	CHECK(settings.GetLineAuthorDelayMs() == 2000);
+}
+
 TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
 {
 	TempAppSettings store;

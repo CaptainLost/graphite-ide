@@ -79,6 +79,7 @@ namespace Graphite {
 		ChangeMarkerDisplay ChangeMarkers;
 		bool HighlightOccurrences;
 		bool LineAuthor;
+		int LineAuthorDelayMs = 0;   // how long the caret rests on a line before its author shows
 		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
@@ -506,6 +507,9 @@ namespace Graphite {
 		// open, so no blame is held for a file nobody is looking at the authors of.
 		bool m_LineAuthor = false;
 
+		// The Line author delay setting as of the last frame.
+		int m_LineAuthorDelayMs = 0;
+
 		// This frame's Escape belongs to the navigation bubble on screen, so no document's peek or find bar closes on it.
 		bool m_BubbleTakesEscape = false;
 
@@ -579,6 +583,11 @@ namespace Graphite {
 
 			// ImGui::GetTime() of the last edit made through the editor; the lowest double when there was none.
 			double LastEditAt = std::numeric_limits<double>::lowest();
+
+			// The caret's line as the line author last saw it, and the ImGui::GetTime() it came to that line, for the
+			// rest the author waits for.
+			std::optional<std::size_t> AuthorCaretLine;
+			double AuthorCaretLineSince = 0.0;
 
 			// At most one peek a view; it survives switching to another tab and back.
 			std::optional<LinePeekState> Peek;

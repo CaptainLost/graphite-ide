@@ -1727,11 +1727,41 @@ TEST_CASE("Line author is hidden while typing")
 	editor.Next();
 	REQUIRE(widget.AuthorTextRect.has_value());
 
-	editor.View.Author.HiddenWhileTyping = true;
+	editor.View.Author.Hidden = true;
 	editor.Next();
 
 	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
 	CHECK_FALSE(widget.AuthorTextRect.has_value());
+}
+
+TEST_CASE("Line author waiting for a rest is not drawn in the frame the caret reaches another line")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Widget = &widget;
+	editor.View.Author.WaitsForRest = true;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	const ImVec2 firstLine = editor.CaretScreenPos();
+	const ImVec2 secondLine(firstLine.x + kIntoTheRow, firstLine.y + kEditorLineHeight + kEditorLineHeight * kHalf);
+
+	ImGui::GetIO().AddMousePosEvent(secondLine.x, secondLine.y);
+	editor.Next();
+	ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	editor.Next();
+
+	REQUIRE(CaretLine(editor.Item) == kSecondLine);
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK_FALSE(widget.AuthorTextRect.has_value());
+
+	ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+	editor.Next();
+	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
 TEST_CASE("Line author draws nothing past a stale table")

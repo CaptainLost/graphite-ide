@@ -27,6 +27,11 @@ namespace Graphite {
 	std::optional<AuthorTextParts> AuthorTextPartsOf(const LineAuthors& authors, std::size_t bufferLine,
 													 std::chrono::sys_seconds now);
 
+	// How much longer the text at the caret line's end stays hidden: until kAuthorQuietSeconds have passed since the
+	// last edit and the caret has rested on its line for `restDelay`, whichever ends later. Empty once it shows; a delay
+	// of 0 shows it on a new line at once.
+	std::optional<double> LineAuthorHiddenFor(double sinceEdit, double sinceCaretLineChanged, double restDelay);
+
 	// The longest of the steps below that measures within available; nothing when not even the name does:
 	// Lead + kBulletSeparator + Title, the same with the title cut and an ellipsis, Lead, Name. An empty title starts at
 	// Lead.

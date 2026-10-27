@@ -26,6 +26,9 @@ namespace Graphite {
 		constexpr int kMaximumTabWidth = 8;
 		constexpr int kMinimumHoverDelayMs = 200;
 		constexpr int kMaximumHoverDelayMs = 1500;
+		constexpr int kMinimumLineAuthorDelayMs = 0;
+		constexpr int kMaximumLineAuthorDelayMs = 2000;
+		constexpr int kLineAuthorDelayStepMs = 100;
 
 		const std::vector<std::string> kIndentOptions{"Spaces", "Tabs"};
 		constexpr std::size_t kSpacesOption = 0;
@@ -37,6 +40,12 @@ namespace Graphite {
 
 		const std::vector<std::string> kGitKeywords{"git", "diff"};
 		const std::vector<std::string> kLineAuthorKeywords{"git", "diff", "blame"};
+		const std::vector<std::string> kLineAuthorDelayKeywords{"git", "diff", "blame", "delay"};
+
+		int ToNearestStep(int value, int step)
+		{
+			return (value + step / 2) / step * step;
+		}
 
 		std::size_t PreviewOptionOf(DefinitionPreviewMode mode)
 		{
@@ -65,6 +74,7 @@ namespace Graphite {
 	{
 		m_FontSizeWhileDragged.reset();
 		m_HoverDelayWhileDragged.reset();
+		m_LineAuthorDelayWhileDragged.reset();
 	}
 
 	std::vector<SettingsCard> EditorPage::Describe()
@@ -154,6 +164,11 @@ namespace Graphite {
 										.Keywords = kLineAuthorKeywords,
 										.ControlWidth = SettingsLayout::ToggleWidth(),
 										.DrawControl = [this] { DrawLineAuthor(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Line author delay",
+										.Description = "How long the caret rests on a line before its author shows. 0 shows it at once.",
+										.Keywords = kLineAuthorDelayKeywords,
+										.ControlWidth = SettingsLayout::SliderWidth(),
+										.DrawControl = [this] { DrawLineAuthorDelay(); }});
 
 		return card;
 	}
@@ -273,5 +288,26 @@ namespace Graphite {
 		{
 			m_Settings.SetLineAuthor(show);
 		}
+	}
+
+	// The slider moves in steps of a tenth of a second, and the value is set once the drag ends, as the hover delay's is.
+	void EditorPage::DrawLineAuthorDelay()
+	{
+		int delay = m_LineAuthorDelayWhileDragged.value_or(m_Settings.GetLineAuthorDelayMs());
+
+		ImGui::BeginDisabled(!m_Settings.HasLineAuthor());
+
+		if (ImGui::SliderInt("##lineAuthorDelay", &delay, kMinimumLineAuthorDelayMs, kMaximumLineAuthorDelayMs, "%d ms"))
+		{
+			m_LineAuthorDelayWhileDragged = ToNearestStep(delay, kLineAuthorDelayStepMs);
+		}
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && m_LineAuthorDelayWhileDragged.has_value())
+		{
+			m_Settings.SetLineAuthorDelayMs(*m_LineAuthorDelayWhileDragged);
+			m_LineAuthorDelayWhileDragged.reset();
+		}
+
+		ImGui::EndDisabled();
 	}
 }

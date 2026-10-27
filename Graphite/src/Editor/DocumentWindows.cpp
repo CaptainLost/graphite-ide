@@ -2771,19 +2771,32 @@ namespace Graphite {
 
 				if (shownAuthors)
 				{
-					const double sinceEdit = ImGui::GetTime() - state.LastEditAt;
+					const double now = ImGui::GetTime();
+					const std::size_t caretLine = item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line;
 
-					view.Author.HiddenWhileTyping = sinceEdit < kAuthorQuietSeconds;
+					if (state.AuthorCaretLine != caretLine)
+					{
+						state.AuthorCaretLine = caretLine;
+						state.AuthorCaretLineSince = now;
+					}
+
+					const double restDelay =
+						std::chrono::duration<double>(std::chrono::milliseconds{m_LineAuthorDelayMs}).count();
+					const std::optional<double> hiddenFor =
+						LineAuthorHiddenFor(now - state.LastEditAt, now - state.AuthorCaretLineSince, restDelay);
+
+					view.Author.Hidden = hiddenFor.has_value();
+					view.Author.WaitsForRest = m_LineAuthorDelayMs > 0;
 					view.Author.Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 					// Only the card turns it into an offset, at the commit's own time, when it shows.
 					view.Author.Zone = ReaderTimeZone();
 
-					// WARNING: The loop idles between frames, so the frame that ends the quiet period has to be
-					// asked for, or the text stays hidden until something else draws.
-					if (view.Author.HiddenWhileTyping)
+					// WARNING: The loop idles between frames, so the frame that ends the quiet period or the rest has
+					// to be asked for, or the text stays hidden until something else draws.
+					if (hiddenFor)
 					{
-						Core::Redraw::RequestIn(std::chrono::duration<double>(kAuthorQuietSeconds - sinceEdit));
+						Core::Redraw::RequestIn(std::chrono::duration<double>(*hiddenFor));
 					}
 				}
 
@@ -2997,6 +3010,7 @@ namespace Graphite {
 	{
 		m_WorkspaceRoot = frame.WorkspaceRoot;
 		m_LineAuthor = frame.LineAuthor;
+		m_LineAuthorDelayMs = frame.LineAuthorDelayMs;
 
 		if (frame.Indent.Width > 0)
 		{

@@ -2897,7 +2897,7 @@ namespace Graphite {
 		{
 			const bool atCaretLineEnd = slice.Line == caret.Line && slice.LastRowOfLine;
 
-			if (author.Authors == nullptr || author.HiddenWhileTyping || !atCaretLineEnd ||
+			if (author.Authors == nullptr || author.Hidden || !atCaretLineEnd ||
 				slice.Line >= author.Authors->Lines.size())
 			{
 				return std::nullopt;
@@ -3375,6 +3375,7 @@ namespace Graphite {
 
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
+		const std::size_t caretLineAtFrameStart = buffer.ToPosition(caretAtFrameStart).Line;
 		const EditorMetrics metrics = MeasureEditor(buffer, view.ChangeDisplay.Gutter);
 
 		const bool documentHoldsFocus =
@@ -3609,8 +3610,11 @@ namespace Graphite {
 
 			// WARNING: An edit made this frame has not reached the caller's quiet period yet, which starts from
 			// the result. Drawn now, the text would jump right with the keystroke for one frame and then vanish.
+			// Nor has a caret moved to another line this frame reached the rest the caller waits for.
+			const bool leftLineThisFrame = buffer.ToPosition(item.Caret.Offset).Line != caretLineAtFrameStart;
+
 			LineAuthorView author = view.Author;
-			author.HiddenWhileTyping = author.HiddenWhileTyping || result.Edited;
+			author.Hidden = author.Hidden || result.Edited || (author.WaitsForRest && leftLineThisFrame);
 
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, rowAreaWidth, view.WordWrap,
 							focused, view.Syntax, scheme, screenRows, drawnLenses, view.Semantic,
