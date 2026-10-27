@@ -3,6 +3,7 @@
 #include "Core/Git/Oid.h"
 #include "Core/Git/Requests.h"
 #include "Core/Platform/WindowPlacement.h"
+#include "Core/Text/Caret.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -33,6 +34,8 @@ namespace Graphite {
 		std::size_t Column = 0;
 
 		std::size_t Top = 0;
+
+		Core::ColumnUnit ColumnIn = Core::ColumnUnit::Byte;
 
 		friend bool operator==(const TabState&, const TabState&) = default;
 	};

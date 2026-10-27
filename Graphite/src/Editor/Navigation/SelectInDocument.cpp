@@ -113,11 +113,12 @@ namespace Graphite {
 
 		if (Core::IsLoading(*item))
 		{
-			const std::size_t columnAsFarAsKnownBeforeTheText = SpansOneLine(line, column, endLine, endColumn) ? endColumn.Value : column.Value;
+			const std::size_t caretColumnInUtf16Units = SpansOneLine(line, column, endLine, endColumn) ? endColumn.Value : column.Value;
 
 			item->CaretOnLoad = Core::CaretWhenLoaded{
 				.Line = line,
-				.Column = columnAsFarAsKnownBeforeTheText,
+				.Column = caretColumnInUtf16Units,
+				.ColumnIn = Core::ColumnUnit::Utf16CodeUnit,
 				.Place = [line, column, endLine, endColumn](Core::OpenItem& loaded) {
 					SelectUtf16ColumnsOfLine(loaded, line, column, endLine, endColumn);
 				}};

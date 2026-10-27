@@ -20,6 +20,12 @@ namespace Core {
 		friend bool operator==(const Caret&, const Caret&) = default;
 	};
 
+	enum class ColumnUnit
+	{
+		Byte,
+		Utf16CodeUnit
+	};
+
 	enum class Motion
 	{
 		Left,

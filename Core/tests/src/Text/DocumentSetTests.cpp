@@ -1317,3 +1317,54 @@ TEST_CASE("A size question answered with no leaves the tab's size as it was")
 	REQUIRE(documents.LoadAgain(0, LargeFileConfirmation::Unconfirmed) == ItemLoad::NeedsConfirmation);
 	CHECK(documents.At(0).FileSize == 0);
 }
+TEST_CASE("A caret asked for while a file is read is placed when the read again after a folder rename happens at once")
+{
+	TempDirectory directory;
+	const std::filesystem::path folder = directory.GetPath() / "logs";
+	std::filesystem::create_directory(folder);
+	const std::filesystem::path path = folder / "big.log";
+	WriteFileBytes(path, TextReadOnAWorker());
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	constexpr std::size_t kAskedOffset = 3;
+	documents.At(0).CaretOnLoad = CaretWhenLoaded{.Place = [](OpenItem& loaded) { loaded.Caret = Caret{.Offset = kAskedOffset, .Anchor = kAskedOffset}; }};
+
+	const std::filesystem::path movedFolder = directory.GetPath() / "moved";
+	std::filesystem::rename(folder, movedFolder);
+	WriteFileBytes(movedFolder / "big.log", "small enough to read at once\n");
+	documents.RewritePaths(folder, movedFolder);
+
+	jobs.RunAll();
+
+	REQUIRE(documents.TakeFinishedLoads() == std::vector<std::size_t>{0});
+	REQUIRE(documents.At(0).Document != nullptr);
+	CHECK(documents.At(0).Caret.Offset == kAskedOffset);
+	CHECK_FALSE(documents.At(0).CaretOnLoad.has_value());
+}
+
+TEST_CASE("A read whose own pane handed it a wrap uses that one rather than the wrap for every load")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+	WriteFileBytes(path, TextReadOnAWorker());
+
+	constexpr std::size_t kWrapOfTheLastDrawnPane = 7;
+	constexpr std::size_t kWrapOfItsOwnPane = 11;
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	documents.SetWrapForLoads([](std::size_t) { return kWrapOfTheLastDrawnPane; });
+	documents.SetWrapForLoad(0, [](std::size_t) { return kWrapOfItsOwnPane; });
+
+	jobs.RunAll();
+	REQUIRE(documents.TakeFinishedLoads().size() == 1);
+
+	CHECK(documents.At(0).Rows.GetColumnsPerRow() == kWrapOfItsOwnPane);
+}

@@ -125,6 +125,21 @@ TEST_CASE("Workspace state survives a write and a read")
 	CHECK(ReadWorkspaceState(file, kRoot) == state);
 }
 
+TEST_CASE("A tab's caret column counted in UTF-16 units keeps its unit through a write and a read")
+{
+	TabState tab{.Path = kRoot / "src" / "Main.cpp", .Line = 3, .Column = 7};
+	tab.ColumnIn = Core::ColumnUnit::Utf16CodeUnit;
+	const WorkspaceState state{.Tabs = {tab, TabState{kRoot / "README.md"}}};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(state, kRoot, file);
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	REQUIRE(read.Tabs.size() == 2);
+	CHECK(read.Tabs[0].ColumnIn == Core::ColumnUnit::Utf16CodeUnit);
+	CHECK(read.Tabs[1].ColumnIn == Core::ColumnUnit::Byte);
+}
+
 TEST_CASE("Paths inside the folder are stored relative to it, so the folder can move")
 {
 	WorkspaceState state;

@@ -298,9 +298,11 @@ namespace Graphite {
 
 		void KeepRestoredTopLine(const Core::OpenItem& item, std::size_t savedTopLine);
 
-		void KeepTopLineAskedForByRestore(std::size_t index);
+		void FinishStateOfRead(std::size_t index);
 
 		void HandWrapToLoads(bool wordWrap);
+
+		void HandWrapOfItsPaneToRead(std::size_t index, bool wordWrap);
 
 		void RetryLoad(std::size_t index);
 
@@ -460,6 +462,14 @@ namespace Graphite {
 		NavigationBubble m_Bubble;
 		ImVec2 m_BubbleSize{};
 
+		struct ReadWrap
+		{
+			std::uint64_t Ticket = 0;
+			std::optional<WrapGeometry> Geometry;
+
+			bool operator==(const ReadWrap&) const = default;
+		};
+
 		struct DocumentState
 		{
 			std::optional<LensState> Lens;
@@ -469,6 +479,10 @@ namespace Graphite {
 			std::optional<PendingTopLine> PendingTop;
 
 			std::optional<std::size_t> TopLineOnLoad;
+
+			std::optional<WrapGeometry> PaneWrapWhileRead;
+
+			std::optional<ReadWrap> WrapHandedToRead;
 
 			bool CarriedOver = false;
 

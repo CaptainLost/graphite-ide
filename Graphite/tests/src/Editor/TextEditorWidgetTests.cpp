@@ -1223,6 +1223,7 @@ TEST_CASE("A tab refused as binary says why and offers nothing to press")
 	CHECK(stretches.empty());
 	CHECK_FALSE(frames.Result.RetryPressed);
 }
+
 TEST_CASE("A pane measures the same wrap before a document's text is there as once it is")
 {
 	EditorFrames frames{"short text\n"};
@@ -1253,4 +1254,33 @@ TEST_CASE("A wrapped row loses a column to each line-number digit and gains the 
 	CHECK(threeDigits == 43);
 	CHECK(fourDigits == threeDigits - 1);
 	CHECK(scrollbarHidden == threeDigits + 2);
+}
+TEST_CASE("A tall wrapped document shows no horizontal scrollbar in the frame its vertical one arrives")
+{
+	std::string tallText;
+
+	for (int line = 0; line < 2000; ++line)
+	{
+		tallText += "words that fill a row of the editor\n";
+	}
+
+	EditorFrames frames{tallText};
+	frames.View.WordWrap = true;
+
+	frames.Next();
+	frames.Next();
+
+	const ImGuiWindow* surface = nullptr;
+
+	for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+	{
+		if (std::string_view{window->Name}.find(kEditorSurface) != std::string_view::npos)
+		{
+			surface = window;
+		}
+	}
+
+	REQUIRE(surface != nullptr);
+	CHECK(surface->ScrollbarY);
+	CHECK_FALSE(surface->ScrollbarX);
 }

@@ -24,6 +24,8 @@ namespace Graphite {
 
 		constexpr std::string_view kTerminalsHidden = "terminals.hidden";
 
+		constexpr std::string_view kUtf16ColumnUnit = "utf16";
+
 		constexpr std::string_view kPanelPrefix = "panel.";
 		constexpr std::string_view kPanelSuffix = ".visible";
 
@@ -350,6 +352,11 @@ namespace Graphite {
 			file.Set(TabKey(tabIndex, "line"), std::to_string(tab.Line));
 			file.Set(TabKey(tabIndex, "column"), std::to_string(tab.Column));
 			file.Set(TabKey(tabIndex, "top"), std::to_string(tab.Top));
+
+			if (tab.ColumnIn == Core::ColumnUnit::Utf16CodeUnit)
+			{
+				file.Set(TabKey(tabIndex, "columnUnit"), std::string{kUtf16ColumnUnit});
+			}
 		}
 
 		if (state.Active)
@@ -433,6 +440,7 @@ namespace Graphite {
 			tab.Line = ReadPosition(file, tabIndex, "line");
 			tab.Column = ReadPosition(file, tabIndex, "column");
 			tab.Top = ReadPosition(file, tabIndex, "top");
+			tab.ColumnIn = file.Get(TabKey(tabIndex, "columnUnit")) == kUtf16ColumnUnit ? Core::ColumnUnit::Utf16CodeUnit : Core::ColumnUnit::Byte;
 
 			state.Tabs.push_back(std::move(tab));
 		}

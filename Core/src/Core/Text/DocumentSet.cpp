@@ -10,6 +10,7 @@
 #include "Core/Text/FileProbe.h"
 
 #include <algorithm>
+#include <map>
 #include <mutex>
 #include <utility>
 
@@ -42,12 +43,10 @@ namespace Core {
 
 			if (probe.Kind == FileKind::LargeText && largeFileConfirmation == LargeFileConfirmation::Unconfirmed)
 			{
-				// WARNING: Nothing is recorded before this return: answering no leaves the tab as it was, and a recorded size above the question was accepted.
+				// WARNING: Nothing is recorded before this return, so a recorded size above the question was accepted.
 				return ProbeVerdict::NeedsConfirmation;
 			}
 
-			// The probe's encoding is not kept: the document sniffs its own, and two fields both meaning
-			// the file's encoding are two answers waiting to differ.
 			item.FileSize = probe.Size;
 			item.Failure = OpenFailure::None;
 			item.FailureDetail.clear();
@@ -66,6 +65,18 @@ namespace Core {
 			}
 
 			return ProbeVerdict::ReadText;
+		}
+
+		void PlacePendingCaret(OpenItem& item)
+		{
+			if (!item.CaretOnLoad)
+			{
+				return;
+			}
+
+			const CaretWhenLoaded pending = std::move(*item.CaretOnLoad);
+			item.CaretOnLoad.reset();
+			pending.Place(item);
 		}
 
 		void RecordReadFailure(OpenItem& item, const Error& readError)
@@ -89,6 +100,7 @@ namespace Core {
 
 			item.Document = std::move(document).GetValue();
 			RecomputeLineCaches(item);
+			PlacePendingCaret(item);
 
 			return ItemLoad::Loaded;
 		}
@@ -126,17 +138,25 @@ namespace Core {
 
 		std::mutex WrapMutex;
 		WrapColumnsForLineCount WrapColumns;
+		std::map<std::uint64_t, WrapColumnsForLineCount> WrapColumnsOfRead;
 
-		std::size_t WrapColumnsFor(std::size_t lineCount)
+		std::size_t WrapColumnsFor(std::uint64_t ticket, std::size_t lineCount)
 		{
 			WrapColumnsForLineCount wrapColumns;
 
 			{
 				const std::lock_guard<std::mutex> lock(WrapMutex);
-				wrapColumns = WrapColumns;
+				const std::map<std::uint64_t, WrapColumnsForLineCount>::const_iterator ownWrap = WrapColumnsOfRead.find(ticket);
+				wrapColumns = ownWrap != WrapColumnsOfRead.end() ? ownWrap->second : WrapColumns;
 			}
 
 			return wrapColumns ? wrapColumns(lineCount) : RowMap::kNoWrap;
+		}
+
+		void ForgetWrapOfRead(std::uint64_t ticket)
+		{
+			const std::lock_guard<std::mutex> lock(WrapMutex);
+			WrapColumnsOfRead.erase(ticket);
 		}
 	};
 
@@ -154,7 +174,7 @@ namespace Core {
 
 			std::shared_ptr<TextDocument> document = std::make_shared<TextDocument>(std::move(loaded).GetValue());
 			const TextBuffer& buffer = document->GetBuffer();
-			const std::size_t columnsPerRow = shared.WrapColumnsFor(buffer.GetLineCount());
+			const std::size_t columnsPerRow = shared.WrapColumnsFor(read.Ticket, buffer.GetLineCount());
 
 			std::optional<LineCaches> caches = ComputeLineCachesUnlessCancelled(buffer, read.TabWidth, columnsPerRow, read.Cancellation);
 
@@ -211,12 +231,7 @@ namespace Core {
 				item.FailureDetail.clear();
 			}
 
-			if (item.CaretOnLoad)
-			{
-				const CaretWhenLoaded pending = std::move(*item.CaretOnLoad);
-				item.CaretOnLoad.reset();
-				pending.Place(item);
-			}
+			PlacePendingCaret(item);
 		}
 	}
 
@@ -342,11 +357,23 @@ namespace Core {
 		m_Shared->WrapColumns = std::move(wrapColumns);
 	}
 
+	void DocumentSet::SetWrapForLoad(std::size_t index, WrapColumnsForLineCount wrapColumns)
+	{
+		if (index >= m_Items.size() || !m_Items[index].LoadTicket)
+		{
+			return;
+		}
+
+		const std::lock_guard<std::mutex> lock(m_Shared->WrapMutex);
+		m_Shared->WrapColumnsOfRead[*m_Items[index].LoadTicket] = std::move(wrapColumns);
+	}
+
 	void DocumentSet::CancelAllReads()
 	{
 		for (const BackgroundLoad& load : m_BackgroundLoads)
 		{
 			load.Cancellation.Cancel();
+			m_Shared->ForgetWrapOfRead(load.Ticket);
 		}
 
 		m_BackgroundLoads.clear();
@@ -409,6 +436,7 @@ namespace Core {
 			if (m_BackgroundLoads[loadIndex].Ticket == *item.LoadTicket)
 			{
 				m_BackgroundLoads[loadIndex].Cancellation.Cancel();
+				m_Shared->ForgetWrapOfRead(*item.LoadTicket);
 				m_BackgroundLoads.erase(m_BackgroundLoads.begin() + static_cast<std::ptrdiff_t>(loadIndex));
 				return;
 			}

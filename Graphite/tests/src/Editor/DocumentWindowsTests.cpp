@@ -41,6 +41,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -138,6 +139,7 @@ namespace {
 		Graphite::ReferencesPanel References{Workspace, Documents, Scheme, Editor, PreviewSemantics};
 		Core::TabCloseRequests CloseRequests;
 		std::filesystem::path NoRoot;
+		std::map<std::filesystem::path, ImVec2> WindowSizes;
 
 		DocumentWindowsWithHeldReads()
 		{
@@ -157,9 +159,12 @@ namespace {
 				{
 					const std::string windowName = Graphite::DocumentWindowName(Documents, index);
 
+					const std::filesystem::path& path = Documents.At(index).Path;
+					const ImVec2 size = WindowSizes.contains(path) ? WindowSizes.at(path) : kDocumentWindowSize;
+
 					if (ImGui::FindWindowByName(windowName.c_str()) != nullptr)
 					{
-						ImGui::SetWindowSize(windowName.c_str(), kDocumentWindowSize);
+						ImGui::SetWindowSize(windowName.c_str(), size);
 					}
 				}
 
@@ -392,6 +397,72 @@ TEST_CASE("A tab whose file is still being read saves the selection asked for wh
 	REQUIRE(tab != nullptr);
 	CHECK(tab->Line == 3);
 	CHECK(tab->Column == 5);
+
+	fixture.FinishReads();
+
+	const Core::OpenItem& item = fixture.Documents.At(0);
+	REQUIRE(item.Document != nullptr);
+	const std::size_t lineStart = item.Document->GetBuffer().LineStart(3);
+	CHECK(item.Caret.Anchor == lineStart + 2);
+	CHECK(item.Caret.Offset == lineStart + 5);
+}
+
+TEST_CASE("A UTF-16 caret asked for while a file loads is saved in its unit and restored on the same character")
+{
+	TempDirectory folder;
+	const std::string firstLine = "\xc4\x85\xc4\x85 target";
+	const std::filesystem::path path = folder.MakeFile("big.log", firstLine + "\n" + NumberedLinesPastBackgroundThreshold());
+
+	DocumentWindowsWithHeldReads fixture;
+	const Graphite::OpenDocument openPermanently = [&fixture](const std::filesystem::path& file) { fixture.Windows.RequestOpen(file, true); };
+
+	constexpr std::size_t kUtf16ColumnOfTarget = 3;
+	constexpr std::size_t kByteOfTarget = 5;
+	REQUIRE(Graphite::SelectInDocument(fixture.Documents, path, 0, Graphite::Utf16Column(kUtf16ColumnOfTarget), 0,
+									   Graphite::Utf16Column(kUtf16ColumnOfTarget), openPermanently));
+
+	const Graphite::WorkspaceState saved = fixture.Windows.CaptureState();
+	const Graphite::TabState* tab = TabFor(saved, path);
+	REQUIRE(tab != nullptr);
+	CHECK(tab->Column == kUtf16ColumnOfTarget);
+	CHECK(tab->ColumnIn == Core::ColumnUnit::Utf16CodeUnit);
+
+	fixture.Documents.CloseAll();
+	fixture.Windows.RestoreState(saved);
+	fixture.FinishReads();
+
+	const Core::OpenItem& item = fixture.Documents.At(0);
+	REQUIRE(item.Document != nullptr);
+	CHECK(item.Caret.Offset == kByteOfTarget);
+}
+
+TEST_CASE("A large file read in a narrow pane while a wide pane draws last is wrapped for its own pane")
+{
+	TempDirectory folder;
+	const std::filesystem::path big = folder.MakeFile("big.log", NumberedLinesPastBackgroundThreshold());
+	const std::filesystem::path small = folder.MakeFile("small.txt", "a short file\n");
+
+	DocumentWindowsWithHeldReads fixture;
+	fixture.WindowSizes[big] = ImVec2(500.0f, 600.0f);
+	fixture.WindowSizes[small] = ImVec2(1100.0f, 600.0f);
+
+	const bool wordWrap = true;
+	fixture.Windows.RequestOpen(big, true);
+	fixture.Windows.RequestOpen(small, true);
+	REQUIRE(Core::IsLoading(fixture.Documents.At(0)));
+
+	fixture.DrawFrame(wordWrap);
+	fixture.DrawFrame(wordWrap);
+	fixture.DrawFrame(wordWrap);
+	fixture.FinishReads();
+
+	const Core::OpenItem& item = fixture.Documents.At(0);
+	REQUIRE(item.Document != nullptr);
+	const std::size_t columnsBuiltOnTheWorker = item.ColumnsPerWrappedRow;
+	REQUIRE(columnsBuiltOnTheWorker != Core::RowMap::kNoWrap);
+
+	fixture.DrawFrame(wordWrap);
+	CHECK(item.ColumnsPerWrappedRow == columnsBuiltOnTheWorker);
 }
 
 TEST_CASE("A large file opened with word wrap on is wrapped on the worker as its pane draws it")

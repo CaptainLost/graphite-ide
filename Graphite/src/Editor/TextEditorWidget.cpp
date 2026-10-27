@@ -283,9 +283,6 @@ namespace Graphite {
 			return ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoNavInputs;
 		}
 
-
-
-
 		void RewrapIfGeometryChanged(Core::OpenItem& item, const Core::TextBuffer& buffer,
 									 std::size_t columnsPerRow)
 		{
@@ -323,6 +320,7 @@ namespace Graphite {
 			return static_cast<float>(lenses.TotalScreenRows(item.Rows.GetTotalRows())) *
 				   metrics.LineHeight;
 		}
+
 		// WARNING: ImGui shows a new surface's scrollbar only from its second frame, so a tall document would be wrapped twice.
 		VerticalScrollbar ScrollbarOfSurface(const Core::OpenItem& item, const EditorMetrics& metrics, const LensRows& lenses)
 		{
@@ -330,6 +328,14 @@ namespace Graphite {
 			const bool documentTallerThanView = DocumentHeightOf(item, metrics, lenses) > ImGui::GetContentRegionAvail().y;
 
 			return scrollbarShown || documentTallerThanView ? VerticalScrollbar::Shown : VerticalScrollbar::Hidden;
+		}
+
+		// WARNING: Rows as wide as a frame without the coming scrollbar would show a horizontal one in the frame it arrives.
+		float RowAreaWidth(float availableNow, VerticalScrollbar scrollbar)
+		{
+			const bool scrollbarStillToCome = scrollbar == VerticalScrollbar::Shown && !ImGui::GetCurrentWindow()->ScrollbarY;
+
+			return scrollbarStillToCome ? availableNow - ImGui::GetStyle().ScrollbarSize : availableNow;
 		}
 
 		// WARNING: Deliberately not translated through LensRows. The count is handed to
@@ -3098,14 +3104,16 @@ namespace Graphite {
 			const WrapGeometry wrap = WrapGeometryOf(metrics.Gutter, metrics.CellWidth, SurfaceWidthWithoutScrollbar());
 			result.Wrap = wrap;
 
+			const VerticalScrollbar scrollbar = ScrollbarOfSurface(item, metrics, lenses);
 			const std::size_t columnsPerRow =
-				view.WordWrap ? WrappedColumns(wrap, buffer.GetLineCount(), ScrollbarOfSurface(item, metrics, lenses))
-							  : Core::RowMap::kNoWrap;
+				view.WordWrap ? WrappedColumns(wrap, buffer.GetLineCount(), scrollbar) : Core::RowMap::kNoWrap;
 
 			RewrapIfGeometryChanged(item, buffer, columnsPerRow);
 
+			const float rowAreaWidth = RowAreaWidth(available, scrollbar);
+
 			const PointerState pointer = AddInteractiveSurface(
-				origin, ContentWidthOf(item, metrics, available, view.WordWrap),
+				origin, ContentWidthOf(item, metrics, rowAreaWidth, view.WordWrap),
 				DocumentHeightOf(item, metrics, lenses));
 
 			ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
@@ -3219,7 +3227,7 @@ namespace Graphite {
 			const ChangeMarkers* const scrollbarChanges =
 				view.ChangeDisplay.Scrollbar ? view.Changes : nullptr;
 
-			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
+			DrawVisibleRows(buffer, item, metrics, origin, scrollX, rowAreaWidth, view.WordWrap,
 							focused, view.Syntax, scheme, drawnLenses, view.Semantic,
 							view.Diagnostics, view.DiagnosticsStale, gutterChanges,
 							scrollbarChanges, occurrences, widget, hoverFrame, pointer, result);

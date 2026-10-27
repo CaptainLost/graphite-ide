@@ -14,6 +14,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/LspClient.h"
+#include "Language/Server/LspProtocol.h"
 #include "Language/Server/ServerWaitingText.h"
 
 #include "Persistence/CaretRestore.h"
@@ -164,9 +165,12 @@ namespace Graphite {
 			return item.Document != nullptr || Core::IsLoading(item);
 		}
 
-		void PlaceRestoredCaret(Core::OpenItem& item, std::size_t line, std::size_t byteColumn)
+		void PlaceRestoredCaret(Core::OpenItem& item, std::size_t line, std::size_t column, Core::ColumnUnit columnIn)
 		{
-			const std::size_t offset = RestoredCaretOffset(item.Document->GetBuffer(), line, byteColumn);
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const std::size_t byteColumn =
+				columnIn == Core::ColumnUnit::Utf16CodeUnit ? FromUtf16Column(buffer.LineText(line), Utf16Column(column)) : column;
+			const std::size_t offset = RestoredCaretOffset(buffer, line, byteColumn);
 
 			item.Caret = Core::Caret{.Offset = offset, .Anchor = offset};
 		}
@@ -179,6 +183,7 @@ namespace Graphite {
 			{
 				tab.Line = item.CaretOnLoad->Line;
 				tab.Column = item.CaretOnLoad->Column;
+				tab.ColumnIn = item.CaretOnLoad->ColumnIn;
 			}
 
 			return tab;
@@ -338,7 +343,10 @@ namespace Graphite {
 				item.CaretOnLoad = Core::CaretWhenLoaded{
 					.Line = tab.Line,
 					.Column = tab.Column,
-					.Place = [line = tab.Line, column = tab.Column](Core::OpenItem& loaded) { PlaceRestoredCaret(loaded, line, column); }};
+					.ColumnIn = tab.ColumnIn,
+					.Place = [line = tab.Line, column = tab.Column, columnIn = tab.ColumnIn](Core::OpenItem& loaded) {
+						PlaceRestoredCaret(loaded, line, column, columnIn);
+					}};
 				StateFor(tab.Path).TopLineOnLoad = tab.Top;
 				continue;
 			}
@@ -348,7 +356,7 @@ namespace Graphite {
 				continue;
 			}
 
-			PlaceRestoredCaret(item, tab.Line, tab.Column);
+			PlaceRestoredCaret(item, tab.Line, tab.Column, tab.ColumnIn);
 			KeepRestoredTopLine(item, tab.Top);
 		}
 
@@ -392,19 +400,27 @@ namespace Graphite {
 
 		for (const std::size_t landedIndex : m_Documents.TakeFinishedLoads())
 		{
-			KeepTopLineAskedForByRestore(landedIndex);
+			FinishStateOfRead(landedIndex);
 			RespondToSync(landedIndex, Core::SyncWithFile(m_Documents, landedIndex), batch);
 		}
 
 		AnnounceExpectedReloads(batch);
 	}
 
-	void DocumentWindows::KeepTopLineAskedForByRestore(std::size_t index)
+	void DocumentWindows::FinishStateOfRead(std::size_t index)
 	{
 		const Core::OpenItem& item = m_Documents.At(index);
 		DocumentState* const state = FindState(item.Path);
 
-		if (state == nullptr || !state->TopLineOnLoad)
+		if (state == nullptr)
+		{
+			return;
+		}
+
+		state->PaneWrapWhileRead.reset();
+		state->WrapHandedToRead.reset();
+
+		if (!state->TopLineOnLoad)
 		{
 			return;
 		}
@@ -415,17 +431,42 @@ namespace Graphite {
 		KeepRestoredTopLine(item, savedTopLine);
 	}
 
+	// WARNING: A read whose own pane has drawn wraps for that pane; the last drawn editor stands in until it has.
 	void DocumentWindows::HandWrapToLoads(bool wordWrap)
 	{
-		const std::optional<WrapGeometry> wanted = wordWrap ? m_WrapOfLastDrawnEditor : std::nullopt;
+		const std::optional<WrapGeometry> wantedByDefault = wordWrap ? m_WrapOfLastDrawnEditor : std::nullopt;
 
-		if (wanted == m_WrapHandedToLoads)
+		if (wantedByDefault != m_WrapHandedToLoads)
+		{
+			m_Documents.SetWrapForLoads(wantedByDefault ? WrapColumnsOfTallDocumentIn(*wantedByDefault) : Core::WrapColumnsForLineCount{});
+			m_WrapHandedToLoads = wantedByDefault;
+		}
+
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			HandWrapOfItsPaneToRead(index, wordWrap);
+		}
+	}
+
+	void DocumentWindows::HandWrapOfItsPaneToRead(std::size_t index, bool wordWrap)
+	{
+		const Core::OpenItem& item = m_Documents.At(index);
+		DocumentState* const state = FindState(item.Path);
+
+		if (!item.LoadTicket || state == nullptr || !state->PaneWrapWhileRead)
 		{
 			return;
 		}
 
-		m_Documents.SetWrapForLoads(wanted ? WrapColumnsOfTallDocumentIn(*wanted) : Core::WrapColumnsForLineCount{});
-		m_WrapHandedToLoads = wanted;
+		const ReadWrap wanted{.Ticket = *item.LoadTicket, .Geometry = wordWrap ? state->PaneWrapWhileRead : std::nullopt};
+
+		if (state->WrapHandedToRead == wanted)
+		{
+			return;
+		}
+
+		m_Documents.SetWrapForLoad(index, wanted.Geometry ? WrapColumnsOfTallDocumentIn(*wanted.Geometry) : Core::WrapColumnsForLineCount{});
+		state->WrapHandedToRead = wanted;
 	}
 
 	void DocumentWindows::RetryLoad(std::size_t index)
@@ -2412,6 +2453,11 @@ namespace Graphite {
 				if (editorResult.Wrap)
 				{
 					m_WrapOfLastDrawnEditor = editorResult.Wrap;
+				}
+
+				if (editorResult.Wrap && Core::IsLoading(item))
+				{
+					state.PaneWrapWhileRead = editorResult.Wrap;
 				}
 
 				if (editorResult.RetryPressed)

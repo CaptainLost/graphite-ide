@@ -63,6 +63,7 @@ namespace Core {
 	{
 		std::size_t Line = 0;
 		std::size_t Column = 0;
+		ColumnUnit ColumnIn = ColumnUnit::Byte;
 		std::function<void(OpenItem&)> Place;
 	};
 
@@ -190,6 +191,8 @@ namespace Core {
 		void SetWrapForLoads(WrapColumnsForLineCount wrapColumns);
 
 		ItemLoad LoadAgain(std::size_t index, LargeFileConfirmation largeFileConfirmation);
+
+		void SetWrapForLoad(std::size_t index, WrapColumnsForLineCount wrapColumns);
 
 		ItemLoad RetryLoad(std::size_t index);
 
