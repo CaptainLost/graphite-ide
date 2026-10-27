@@ -7,6 +7,7 @@
 #include "Editor/Overlays/AnalysisCache.h"
 #include "Editor/Server/DocumentServerPort.h"
 #include "Editor/Server/PreviewSemantics.h"
+#include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeBases.h"
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Image/ImageTabs.h"
@@ -135,6 +136,20 @@ namespace {
 	{
 	public:
 		Core::Result<Graphite::ChangeBases> ReadBases(const std::filesystem::path&) override
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "not in a repository"};
+		}
+	};
+
+	class NoBlame final : public Graphite::BlamePort
+	{
+	public:
+		Core::Result<Graphite::HeadBlame> BlameAtHead(const std::filesystem::path&) override
+		{
+			return Graphite::HeadBlame{};
+		}
+
+		Core::Result<Core::LineHistory> QueryLineHistory(const Core::LineHistoryRequest&) override
 		{
 			return Core::Error{Core::ErrorCode::NotFound, "not in a repository"};
 		}
@@ -315,6 +330,8 @@ namespace {
 		NoBases Bases;
 		DeferredJobs MarkerJobs;
 		Graphite::ChangeMarkersModel ChangeMarkers{Bases, MarkerJobs.Submitter()};
+		NoBlame BlameReader;
+		Graphite::BlameModel Blame{BlameReader, [](std::function<void()>) {}};
 		SilentPreviewPort PreviewPort;
 		Graphite::PreviewSemantics Preview{PreviewPort};
 		Graphite::AnalysisCache Analysis{kAnalysisBudgetBytes};
@@ -326,8 +343,8 @@ namespace {
 		DeferredJobs Jobs;
 		FakeTextureFactory Textures;
 		Graphite::ImageTabs Images{Jobs.Submitter(), Textures};
-		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Preview, Analysis,
-										  AnalysisStore, Pass, Events, ActiveEditor, Images};
+		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Blame, Preview,
+										  Analysis, AnalysisStore, Pass, Events, ActiveEditor, Images};
 		Graphite::EditorSettings Settings{Store.Get()};
 		Graphite::ActiveScheme Scheme;
 		Graphite::ReferencesPanel References{Workspace, Documents, Scheme, Settings, Preview};
@@ -668,6 +685,8 @@ namespace {
 		Graphite::DiagnosticsModel Diagnostics;
 		NoBases Bases;
 		Graphite::ChangeMarkersModel ChangeMarkers{Bases, [](std::function<void()>) {}};
+		NoBlame BlameReader;
+		Graphite::BlameModel Blame{BlameReader, [](std::function<void()>) {}};
 		SilentPreviewPort PreviewServer;
 		Graphite::PreviewSemantics PreviewSemantics{PreviewServer};
 		Graphite::AnalysisCache Analysis{kAnalysisBudgetBytes};
@@ -679,8 +698,9 @@ namespace {
 		Graphite::ActiveEditorTarget ActiveEditor;
 		FakeTextureFactory Textures;
 		Graphite::ImageTabs Images{Jobs.Submitter(), Textures};
-		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, PreviewSemantics,
-										  Analysis, AnalysisStore, WorkspaceAnalysis, Events, ActiveEditor, Images};
+		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Blame,
+										  PreviewSemantics, Analysis, AnalysisStore, WorkspaceAnalysis, Events,
+										  ActiveEditor, Images};
 
 		TempAppSettings Settings;
 		Graphite::Workspace Workspace{Events, Settings.Get()};
