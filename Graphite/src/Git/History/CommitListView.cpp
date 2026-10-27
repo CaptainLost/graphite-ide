@@ -254,14 +254,14 @@ namespace Graphite {
 		}
 
 		std::string FormattedMoment(std::chrono::sys_seconds when, std::chrono::sys_seconds now,
-									std::chrono::minutes offset)
+									const std::chrono::time_zone* zone)
 		{
-			return std::format("{}  ·  {}", FormattedTimestamp(when, offset),
+			return std::format("{}  ·  {}", FormattedTimestamp(when, zone),
 							   RelativeAge(when, now));
 		}
 
 		void CellTooltip(int column, const Core::CommitSummary& commit,
-						 std::chrono::sys_seconds now, std::chrono::minutes offset)
+						 std::chrono::sys_seconds now, const std::chrono::time_zone* zone)
 		{
 			const bool wasCommittedAtAnotherTime = commit.Committer.When != commit.Author.When;
 
@@ -284,11 +284,11 @@ namespace Graphite {
 				break;
 
 			case Column::Date:
-				text = FormattedMoment(commit.Author.When, now, offset);
+				text = FormattedMoment(commit.Author.When, now, zone);
 
 				if (wasCommittedAtAnotherTime)
 				{
-					text += "\ncommitted " + FormattedMoment(commit.Committer.When, now, offset);
+					text += "\ncommitted " + FormattedMoment(commit.Committer.When, now, zone);
 				}
 
 				break;
@@ -435,7 +435,7 @@ namespace Graphite {
 	}
 
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-								const GitPalette& palette, std::chrono::minutes offset,
+								const GitPalette& palette, const std::chrono::time_zone* zone,
 								const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 								const std::function<bool(const Core::Oid&)>& diffFailed,
 								const CommitRefMap& refs, std::string_view highlight,
@@ -560,7 +560,7 @@ namespace Graphite {
 					{
 						const bool isEarlierHistory = separatorRow.has_value() && static_cast<std::size_t>(displayRow) > *separatorRow;
 
-						RenderCommitRow(page, commit, palette, refs, highlight, now, offset, isEarlierHistory);
+						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, isEarlierHistory);
 
 						if (scrollRow == displayRow)
 						{
@@ -595,7 +595,7 @@ namespace Graphite {
 	void CommitListView::RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 										 const GitPalette& palette, const CommitRefMap& refs,
 										 std::string_view highlight, std::chrono::sys_seconds now,
-										 std::chrono::minutes offset, bool isEarlierHistory)
+										 const std::chrono::time_zone* zone, bool isEarlierHistory)
 	{
 		const bool expanded = IsExpanded(commit.Id);
 		const bool isSelectedCommit = m_SelectedCommit == commit.Id;
@@ -690,7 +690,7 @@ namespace Graphite {
 
 		if (selectableHoveredForTooltip)
 		{
-			CellTooltip(ImGui::TableGetHoveredColumn(), commit, now, offset);
+			CellTooltip(ImGui::TableGetHoveredColumn(), commit, now, zone);
 		}
 
 		if (!selectableClicked)

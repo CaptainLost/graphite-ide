@@ -1709,7 +1709,7 @@ namespace Graphite {
 
 	LinePeekContent DocumentWindows::LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
 														const Core::Ref<const LineAuthors>& authors,
-														std::chrono::minutes offset)
+														const std::chrono::time_zone* zone)
 	{
 		if (authors != nullptr && authors != peek.AskedFrom)
 		{
@@ -1731,7 +1731,7 @@ namespace Graphite {
 						  .BufferLine = lineText,
 						  .History = &history,
 						  .Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()),
-						  .Offset = offset});
+						  .Zone = zone});
 	}
 
 	void DocumentWindows::SettleLinePeek(const Core::OpenItem& item, DocumentState& state,
@@ -2614,9 +2614,6 @@ namespace Graphite {
 		std::optional<std::filesystem::path> focusedPicture;
 		bool documentFocused = false;
 
-		// Resolved at most once a frame, and only for a tab that shows an author, because each lookup asks ICU.
-		std::optional<std::chrono::minutes> clockOffset;
-
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
 			Core::OpenItem& item = m_Documents.At(index);
@@ -2768,12 +2765,8 @@ namespace Graphite {
 					view.Author.HiddenWhileTyping = sinceEdit < kAuthorQuietSeconds;
 					view.Author.Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
-					if (!clockOffset)
-					{
-						clockOffset = LocalClockOffset();
-					}
-
-					view.Author.Offset = *clockOffset;
+					// Only the card turns it into an offset, at the commit's own time, when it shows.
+					view.Author.Zone = ReaderTimeZone();
 
 					// WARNING: The loop idles between frames, so the frame that ends the quiet period has to be
 					// asked for, or the text stays hidden until something else draws.
@@ -2788,12 +2781,7 @@ namespace Graphite {
 
 				if (state.Peek && item.Document)
 				{
-					if (!clockOffset)
-					{
-						clockOffset = LocalClockOffset();
-					}
-
-					peekContent = LinePeekContentFor(item, *state.Peek, authors, *clockOffset);
+					peekContent = LinePeekContentFor(item, *state.Peek, authors, ReaderTimeZone());
 
 					view.Peek = LinePeekView{.Line = state.Peek->Line,
 											 .Content = &*peekContent,

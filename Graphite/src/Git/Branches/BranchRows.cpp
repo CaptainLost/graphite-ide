@@ -667,7 +667,7 @@ namespace Graphite {
 	}
 
 	std::string BranchTooltipText(const Core::Branch& branch, std::string_view label,
-								  const std::vector<BranchAuthor>& authors, std::chrono::minutes localOffset)
+								  const std::vector<BranchAuthor>& authors, const std::chrono::time_zone* zone)
 	{
 		std::string text{label};
 
@@ -695,7 +695,7 @@ namespace Graphite {
 
 		if (branch.TipCommit.has_value())
 		{
-			text += "\n" + FormattedTimestamp(branch.TipCommit->Committer.When, localOffset);
+			text += "\n" + FormattedTimestamp(branch.TipCommit->Committer.When, zone);
 		}
 
 		return text;

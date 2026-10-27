@@ -59,7 +59,7 @@ namespace {
 			frames.Next([&] {
 				ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
 				ImGui::Begin("history");
-				view.Render(page, graph, palette, std::chrono::minutes{0},
+				view.Render(page, graph, palette, nullptr,
 							[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
 							[](const Core::Oid&) { return false; }, refs);
 				expectedPitch = Graphite::ListRowPitch();
@@ -116,7 +116,7 @@ TEST_CASE("A commit row under the pointer is highlighted once across the history
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
 		ImGui::Begin("history");
-		view.Render(page, graph, palette, std::chrono::minutes{0},
+		view.Render(page, graph, palette, nullptr,
 					[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
 					[](const Core::Oid&) { return false; }, refs);
 		ImGui::End();
@@ -214,7 +214,7 @@ TEST_CASE("Commit reveal scrolls the history to a commit far down the page")
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
 		ImGui::Begin("history");
-		view.Render(page, graph, palette, std::chrono::minutes{0},
+		view.Render(page, graph, palette, nullptr,
 					[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
 					[](const Core::Oid&) { return false; }, refs);
 		pitch = Graphite::ListRowPitch();

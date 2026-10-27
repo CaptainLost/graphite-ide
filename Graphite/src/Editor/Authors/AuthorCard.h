@@ -70,7 +70,7 @@ namespace Graphite {
 	{
 		std::string Name;
 		std::string Email;
-		std::string When;   // the age and the reader's local time, joined by kMiddleDotSeparator
+		std::string When;   // the age and the reader's local time at that moment, joined by kMiddleDotSeparator
 		std::string Title;
 		std::string Body;
 		std::string ShortHash;
@@ -80,7 +80,7 @@ namespace Graphite {
 
 	// Empty for an Unknown line, a line past the table, or when the blame or the line's commit is missing.
 	std::optional<AuthorCardContent> BuildAuthorCard(const LineAuthors& authors, std::size_t bufferLine,
-													 std::chrono::sys_seconds now, std::chrono::minutes offset);
+													 std::chrono::sys_seconds now, const std::chrono::time_zone* zone);
 
 	// The blame hunk a committed buffer line came from; null for any other line.
 	const Core::BlameHunk* CommittedHunkOf(const LineAuthors& authors, std::size_t bufferLine);

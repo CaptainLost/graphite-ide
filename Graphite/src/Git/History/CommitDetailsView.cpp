@@ -38,10 +38,10 @@ namespace Graphite {
 		}
 
 		void SignatureRow(const char* prefix, const Core::Signature& signature,
-						  std::chrono::sys_seconds now, std::chrono::minutes offset)
+						  std::chrono::sys_seconds now, const std::chrono::time_zone* zone)
 		{
 			const std::string age = std::format("{}  ·  {}", RelativeAge(signature.When, now),
-												FormattedTimestamp(signature.When, offset));
+												FormattedTimestamp(signature.When, zone));
 
 			if (prefix != nullptr)
 			{
@@ -56,7 +56,7 @@ namespace Graphite {
 	}
 
 	bool RenderCommitDetails(const Core::CommitSummary& commit,
-							 const std::optional<DiffStats>& stats, bool diffFailed, std::chrono::minutes offset,
+							 const std::optional<DiffStats>& stats, bool diffFailed, const std::chrono::time_zone* zone,
 							 const GitPalette& palette)
 	{
 		const std::chrono::sys_seconds now =
@@ -66,11 +66,11 @@ namespace Graphite {
 
 		const bool closed = DrawPaneClose();
 
-		SignatureRow(kNoPrefix, commit.Author, now, offset);
+		SignatureRow(kNoPrefix, commit.Author, now, zone);
 
 		if (ShowsCommitter(commit))
 		{
-			SignatureRow("committed by", commit.Committer, now, offset);
+			SignatureRow("committed by", commit.Committer, now, zone);
 		}
 
 		if (!commit.Parents.empty())

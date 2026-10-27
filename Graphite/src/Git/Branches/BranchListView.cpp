@@ -717,7 +717,7 @@ namespace Graphite {
 			const std::string whole = badge.empty() ? label : std::format("{}  {}", label, badge);
 
 			ImGui::SetTooltip("%s",
-							  BranchTooltipText(branch, whole, AuthorsOfBranch(branch, authors), frame.LocalOffset).c_str());
+							  BranchTooltipText(branch, whole, AuthorsOfBranch(branch, authors), frame.Zone).c_str());
 		}
 
 		if (DrawBranchMenu)

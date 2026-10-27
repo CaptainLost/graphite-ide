@@ -56,7 +56,7 @@ namespace Graphite {
 	{
 	public:
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-					const GitPalette& palette, std::chrono::minutes offset,
+					const GitPalette& palette, const std::chrono::time_zone* zone,
 					const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 					const std::function<bool(const Core::Oid&)>& diffFailed, const CommitRefMap& refs,
 					std::string_view highlight = {},
@@ -107,7 +107,7 @@ namespace Graphite {
 		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 							 const GitPalette& palette, const CommitRefMap& refs,
 							 std::string_view highlight, std::chrono::sys_seconds now,
-							 std::chrono::minutes offset, bool isEarlierHistory);
+							 const std::chrono::time_zone* zone, bool isEarlierHistory);
 
 		void RenderSeparatorRow(const std::string& text);
 

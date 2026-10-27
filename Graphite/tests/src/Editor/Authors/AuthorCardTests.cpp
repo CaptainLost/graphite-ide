@@ -28,8 +28,14 @@ namespace {
 	constexpr std::size_t kOtherLine = 7;
 	constexpr std::uint8_t kCommitByte = 0xE5;
 	constexpr std::chrono::sys_seconds kNow{std::chrono::seconds{1'800'000'000}};
-	constexpr std::chrono::sys_seconds kCommittedAt = kNow - std::chrono::days{90};
-	constexpr std::chrono::minutes kOffset{120};
+	constexpr std::chrono::sys_seconds kCommittedAt = kNow - std::chrono::days{90};   // 2026-10-17 08:00 UTC
+	constexpr const std::chrono::time_zone* kUtc = nullptr;
+
+	// A function rather than a constant: the lookup throws on a machine without time zone data.
+	const std::chrono::time_zone* Warsaw()
+	{
+		return std::chrono::locate_zone("Europe/Warsaw");
+	}
 
 	AuthorCardInput OverText(float seconds, std::size_t line = kLine)
 	{
@@ -244,13 +250,14 @@ TEST_CASE("Author card content names the commit")
 {
 	const Graphite::LineAuthors authors = AuthorsOfThreeLines();
 
-	const std::optional<Graphite::AuthorCardContent> content = Graphite::BuildAuthorCard(authors, 0, kNow, kOffset);
+	const std::optional<Graphite::AuthorCardContent> content = Graphite::BuildAuthorCard(authors, 0, kNow, Warsaw());
 
+	// Summer time on the day of the commit, though the card is read in winter.
 	REQUIRE(content.has_value());
 	CHECK(content->Name == "Anna Kowalczyk");
 	CHECK(content->Email == "anna.kowalczyk@studio.dev");
 	CHECK(content->When == Graphite::RelativeAge(kCommittedAt, kNow) + std::string{Graphite::kMiddleDotSeparator} +
-							   Graphite::FormattedTimestamp(kCommittedAt, kOffset));
+							   "2026-10-17 10:00");
 	CHECK(content->Title == "Iterate a copy so handlers can unsubscribe while publishing");
 	CHECK(content->Body == "A handler that unsubscribed itself during Publish threw.");
 	CHECK(content->ShortHash == "e5e5e5e");
@@ -262,7 +269,7 @@ TEST_CASE("Author card content for an uncommitted line says You")
 {
 	const Graphite::LineAuthors authors = AuthorsOfThreeLines();
 
-	const std::optional<Graphite::AuthorCardContent> content = Graphite::BuildAuthorCard(authors, 1, kNow, kOffset);
+	const std::optional<Graphite::AuthorCardContent> content = Graphite::BuildAuthorCard(authors, 1, kNow, kUtc);
 
 	REQUIRE(content.has_value());
 	CHECK(content->Name == "You");
@@ -277,6 +284,6 @@ TEST_CASE("Author card content is empty for a line with no author or past the ta
 {
 	const Graphite::LineAuthors authors = AuthorsOfThreeLines();
 
-	CHECK_FALSE(Graphite::BuildAuthorCard(authors, 2, kNow, kOffset).has_value());
-	CHECK_FALSE(Graphite::BuildAuthorCard(authors, 3, kNow, kOffset).has_value());
+	CHECK_FALSE(Graphite::BuildAuthorCard(authors, 2, kNow, kUtc).has_value());
+	CHECK_FALSE(Graphite::BuildAuthorCard(authors, 3, kNow, kUtc).has_value());
 }

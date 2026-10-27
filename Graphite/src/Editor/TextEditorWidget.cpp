@@ -2324,7 +2324,7 @@ namespace Graphite {
 			// The card hangs off the text drawn this frame, so it is not drawn for a line the caret has left.
 			if (line && *line == caretLine && widget.AuthorTextRect && author.Authors != nullptr)
 			{
-				content = BuildAuthorCard(*author.Authors, *line, author.Now, author.Offset);
+				content = BuildAuthorCard(*author.Authors, *line, author.Now, author.Zone);
 			}
 
 			if (content)

@@ -79,7 +79,7 @@ namespace Graphite {
 			entry.Meta = author + std::string{kDot} + RelativeAge(change.Commit.Author.When, input.Now) +
 						 std::string{kDot} + change.Commit.Id.ShortHex();
 			entry.Byline = author + std::string{kDot} +
-						   FormattedTimestamp(change.Commit.Author.When, input.Offset);
+						   FormattedTimestamp(change.Commit.Author.When, input.Zone);
 			entry.Commit = change.Commit.Id;
 			entry.Path = change.Path;
 

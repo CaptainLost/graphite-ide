@@ -262,7 +262,7 @@ namespace Graphite {
 
 		// Asks for the line's history from each authors table the blame gives, and builds what the peek shows.
 		LinePeekContent LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
-										   const Core::Ref<const LineAuthors>& authors, std::chrono::minutes offset);
+										   const Core::Ref<const LineAuthors>& authors, const std::chrono::time_zone* zone);
 
 		// Closes the peek on the caret leaving its line, an edit or a close request, or follows what was clicked in it.
 		void SettleLinePeek(const Core::OpenItem& item, DocumentState& state, const EditorFrameResult& frame,

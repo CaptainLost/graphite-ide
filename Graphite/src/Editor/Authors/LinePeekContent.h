@@ -57,7 +57,7 @@ namespace Graphite {
 		std::string_view BufferLine;
 		const LineHistoryState* History = nullptr;
 		std::chrono::sys_seconds Now{};
-		std::chrono::minutes Offset{};
+		const std::chrono::time_zone* Zone = nullptr;   // the reader's; null reads as UTC
 	};
 
 	LinePeekContent BuildLinePeekContent(const LinePeekInput& input);

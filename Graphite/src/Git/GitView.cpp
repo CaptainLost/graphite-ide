@@ -568,7 +568,7 @@ namespace Graphite {
 		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
 		frame.CheckingOut = CheckoutMarkedOnRows(Checkouts());
 		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-		frame.LocalOffset = LocalClockOffset();
+		frame.Zone = ReaderTimeZone();
 
 		return frame;
 	}
@@ -911,7 +911,7 @@ namespace Graphite {
 			m_Commits.SetRoomBelow(status.has_value() ? HistoryStatusLineHeight() : 0.0f);
 			m_Commits.SetEmptyText(IsShownLogNarrowed() ? "No matching commits." : "No commits yet.");
 
-			m_Commits.Render(*page, m_Graph, palette, LocalClockOffset(), diffOf, diffFailed, m_CommitRefs,
+			m_Commits.Render(*page, m_Graph, palette, ReaderTimeZone(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
 
 			// WARNING: Drawn straight after the list, before anything else moves the cursor, so it sits
@@ -1045,7 +1045,7 @@ namespace Graphite {
 
 		const bool diffFailed = m_Model.IsDiffFailed(commit.Id);
 
-		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, LocalClockOffset(), palette))
+		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, ReaderTimeZone(), palette))
 		{
 			m_Commits.ClearCommitSelection();
 		}

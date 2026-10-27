@@ -33,7 +33,7 @@ namespace Graphite {
 		std::optional<Core::CheckoutTarget> CheckingOut;
 
 		std::chrono::sys_seconds Now;
-		std::chrono::minutes LocalOffset{0};
+		const std::chrono::time_zone* Zone = nullptr;
 	};
 
 	class BranchListView

@@ -8,6 +8,8 @@ namespace Core {
 	// and a search of every zone, so a caller asking every frame keeps what this returns.
 	const std::chrono::time_zone* LocalTimeZone();
 
-	// Zero, so a time reads as UTC, when there is no zone or ICU cannot give the zone's offset at that moment.
+	// The zone's offset at that moment, which differs from today's across a daylight-saving change. Zero, so a time
+	// reads as UTC, when there is no zone or ICU cannot give the zone's offset at that moment. Each span between two of
+	// the zone's transitions is read from ICU once a thread, so a list may ask once a row every frame.
 	std::chrono::minutes OffsetAt(const std::chrono::time_zone* zone, std::chrono::sys_seconds instant);
 }

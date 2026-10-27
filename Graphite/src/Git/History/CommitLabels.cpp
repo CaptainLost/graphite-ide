@@ -71,11 +71,11 @@ namespace Graphite {
 		return AgeText(seconds / kSecondsPerYear, "year");
 	}
 
-	std::chrono::minutes LocalClockOffset()
+	const std::chrono::time_zone* ReaderTimeZone()
 	{
-		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+		static const std::chrono::time_zone* const zone = Core::LocalTimeZone();
 
-		return Core::OffsetAt(Core::LocalTimeZone(), now);
+		return zone;
 	}
 
 	std::string AuthorInitials(const Core::Signature& signature)

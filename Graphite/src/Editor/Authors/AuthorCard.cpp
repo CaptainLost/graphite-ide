@@ -237,7 +237,7 @@ namespace Graphite {
 	}
 
 	std::optional<AuthorCardContent> BuildAuthorCard(const LineAuthors& authors, std::size_t bufferLine,
-													 std::chrono::sys_seconds now, std::chrono::minutes offset)
+													 std::chrono::sys_seconds now, const std::chrono::time_zone* zone)
 	{
 		if (bufferLine < authors.Lines.size() && authors.Lines[bufferLine].Kind == LineAuthorKind::Uncommitted)
 		{
@@ -266,7 +266,7 @@ namespace Graphite {
 		AuthorCardContent content;
 		content.Name = AuthorName(author);
 		content.Email = author.Email;
-		content.When = RelativeAge(author.When, now) + std::string{kMiddleDotSeparator} + FormattedTimestamp(author.When, offset);
+		content.When = RelativeAge(author.When, now) + std::string{kMiddleDotSeparator} + FormattedTimestamp(author.When, zone);
 		content.Title = commit->second.Summary;
 		content.Body = commit->second.Body;
 		content.ShortHash = hunk->Commit.ShortHex();

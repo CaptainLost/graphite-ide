@@ -1,5 +1,7 @@
 #include "Git/History/CommitDetails.h"
 
+#include "Core/Time/TimeZone.h"
+
 #include <format>
 
 namespace Graphite {
@@ -28,6 +30,11 @@ namespace Graphite {
 	std::string FormattedTimestamp(std::chrono::sys_seconds instant, std::chrono::minutes offset)
 	{
 		return std::format("{:%Y-%m-%d %H:%M}", instant + offset);
+	}
+
+	std::string FormattedTimestamp(std::chrono::sys_seconds instant, const std::chrono::time_zone* zone)
+	{
+		return FormattedTimestamp(instant, Core::OffsetAt(zone, instant));
 	}
 
 	std::string CommitMessageText(const Core::CommitSummary& commit)
