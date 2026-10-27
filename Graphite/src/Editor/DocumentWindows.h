@@ -223,6 +223,9 @@ namespace Graphite {
 			// The buffer's change sequence when the peek opened: an edit made through another view of the document
 			// closes the peek as an edit through this one does.
 			std::uint64_t ChangeSequence = 0;
+
+			// What the peek shows, built again only when the authors, the history, the line or the entry changes.
+			LinePeekCache Cache;
 		};
 
 		struct DocumentState;
@@ -260,9 +263,11 @@ namespace Graphite {
 		// scrolls it into view again.
 		void OpenLinePeek(const Core::OpenItem& item, std::size_t line);
 
-		// Asks for the line's history from each authors table the blame gives, and builds what the peek shows.
-		LinePeekContent LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
-										   const Core::Ref<const LineAuthors>& authors, const std::chrono::time_zone* zone);
+		// Asks for the line's history from each authors table the blame gives, and gives what the peek shows, held in
+		// the peek until what it is built from changes.
+		const LinePeekContent& LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
+												  const Core::Ref<const LineAuthors>& authors,
+												  const std::chrono::time_zone* zone);
 
 		// Closes the peek on the caret leaving its line, an edit or a close request, or follows what was clicked in it.
 		void SettleLinePeek(const Core::OpenItem& item, DocumentState& state, const EditorFrameResult& frame,

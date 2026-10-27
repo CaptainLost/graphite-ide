@@ -171,7 +171,7 @@ namespace Graphite {
 		}
 
 		// A band in the Git diff's colours as wide as the view or the text, whichever is wider, with the accent bar on
-		// the line the peek follows.
+		// the line the peek follows. A row standing for lines left out is its ellipsis alone, muted.
 		void DrawDiffLine(const PeekDiffLine& line, const PeekColours& colours)
 		{
 			const ImVec2 corner = ImGui::GetCursorScreenPos();
@@ -179,6 +179,15 @@ namespace Graphite {
 			const float barWidth = Core::Scaled(kAccentBarWidth);
 			const float textLeft = corner.x + barWidth + Core::Scaled(kDiffTextInset);
 			const char* const textEnd = line.Text.data() + line.Text.size();
+
+			if (line.Omitted)
+			{
+				ImGui::GetWindowDrawList()->AddText(ImVec2(textLeft, corner.y), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+													line.Text.data(), textEnd);
+				ImGui::Dummy(ImVec2(textLeft - corner.x + ImGui::CalcTextSize(line.Text.data(), textEnd).x, lineHeight));
+				return;
+			}
+
 			const float textRight = textLeft + ImGui::CalcTextSize(line.Text.data(), textEnd).x;
 			const float right = std::max(corner.x + ImGui::GetContentRegionAvail().x, textRight);
 
@@ -202,14 +211,29 @@ namespace Graphite {
 			ImGui::Dummy(ImVec2(right - corner.x, lineHeight));
 		}
 
-		// True when Show commit was clicked.
+		// The title, the byline with Show commit at its end, then the diff. True when Show commit was clicked.
 		bool DrawEntryDetail(const PeekEntry& entry, float codeSize, const PeekColours& colours)
 		{
 			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 			ImGui::TextUnformatted(entry.Title.c_str());
 			ImGui::PopFont();
 
+			// WARNING: Beside the byline, not under the diff. Under it the button sat below the fold of every entry with
+			// more than a few lines, reachable only by scrolling.
+			bool showCommit = false;
+
+			if (entry.Commit.has_value())
+			{
+				ImGui::AlignTextToFramePadding();
+			}
+
 			ImGui::TextDisabled("%s", entry.Byline.c_str());
+
+			if (entry.Commit.has_value())
+			{
+				ImGui::SameLine();
+				showCommit = Core::TextButton(kShowCommit);
+			}
 
 			// The bands of a hunk touch, as they do in the Git diff.
 			const float spacingX = ImGui::GetStyle().ItemSpacing.x;
@@ -225,14 +249,7 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 			ImGui::PopFont();
 
-			if (!entry.Commit.has_value())
-			{
-				return false;
-			}
-
-			ImGui::Spacing();
-
-			return Core::TextButton(kShowCommit);
+			return showCommit;
 		}
 	}
 

@@ -1707,9 +1707,9 @@ namespace Graphite {
 		state.Peek = LinePeekState{.Line = line, .ChangeSequence = item.Document->GetBuffer().GetChangeSequence()};
 	}
 
-	LinePeekContent DocumentWindows::LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
-														const Core::Ref<const LineAuthors>& authors,
-														const std::chrono::time_zone* zone)
+	const LinePeekContent& DocumentWindows::LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
+															   const Core::Ref<const LineAuthors>& authors,
+															   const std::chrono::time_zone* zone)
 	{
 		if (authors != nullptr && authors != peek.AskedFrom)
 		{
@@ -1721,17 +1721,28 @@ namespace Graphite {
 			peek.AskedFrom = authors;
 		}
 
-		const Core::TextBuffer& buffer = item.Document->GetBuffer();
-		const std::string lineText = peek.Line < buffer.GetLineCount() ? buffer.LineText(peek.Line) : std::string{};
 		const LineHistoryState history = m_Blame.GetLineHistory(item.Path);
+		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
-		return BuildLinePeekContent(
-			LinePeekInput{.Line = peek.Line,
-						  .Authors = authors.get(),
-						  .BufferLine = lineText,
-						  .History = &history,
-						  .Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()),
-						  .Zone = zone});
+		const LinePeekSource source{.Authors = authors,
+									.History = history.History,
+									.HistoryError = history.Error ? std::optional<std::string>{history.Error->Message}
+																  : std::nullopt,
+									.Line = peek.Line,
+									.Selected = peek.Selected};
+
+		return peek.Cache.Get(source, now, [&item, &peek, &authors, &history, now, zone] {
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const std::string lineText = peek.Line < buffer.GetLineCount() ? buffer.LineText(peek.Line) : std::string{};
+
+			return BuildLinePeekContent(LinePeekInput{.Line = peek.Line,
+													  .Selected = peek.Selected,
+													  .Authors = authors.get(),
+													  .BufferLine = lineText,
+													  .History = &history,
+													  .Now = now,
+													  .Zone = zone});
+		});
 	}
 
 	void DocumentWindows::SettleLinePeek(const Core::OpenItem& item, DocumentState& state,
@@ -2776,15 +2787,15 @@ namespace Graphite {
 					}
 				}
 
-				// Built each frame the tab draws; the peek's answer after DrawEditor indexes this frame's entries.
-				std::optional<LinePeekContent> peekContent;
+				// Held in the peek's state; the peek's answer after DrawEditor indexes the entries drawn this frame.
+				const LinePeekContent* peekContent = nullptr;
 
 				if (state.Peek && item.Document)
 				{
-					peekContent = LinePeekContentFor(item, *state.Peek, authors, ReaderTimeZone());
+					peekContent = &LinePeekContentFor(item, *state.Peek, authors, ReaderTimeZone());
 
 					view.Peek = LinePeekView{.Line = state.Peek->Line,
-											 .Content = &*peekContent,
+											 .Content = peekContent,
 											 .Selected = state.Peek->Selected,
 											 .JustOpened = std::exchange(state.Peek->JustOpened, false)};
 				}
@@ -2919,7 +2930,7 @@ namespace Graphite {
 				}
 
 				// The peek drawn this frame is settled before the card's answer, which may open another in its place.
-				SettleLinePeek(item, state, editorResult, peekContent ? &*peekContent : nullptr);
+				SettleLinePeek(item, state, editorResult, peekContent);
 
 				if (editorResult.CardAction && authors)
 				{

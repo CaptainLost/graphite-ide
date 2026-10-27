@@ -1888,6 +1888,51 @@ TEST_CASE("Peek reports a selected entry")
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Peek offers Show commit beside the byline above a long diff")
+{
+	constexpr int kDiffLines = 30;
+	constexpr float kStep = 4.0f;
+
+	EditorFrames editor{LinesOf(kDiffLines)};
+
+	Graphite::LinePeekContent content;
+	content.State = Graphite::PeekState::Ready;
+	content.Header = "History of line 1";
+
+	Graphite::PeekEntry entry{.Title = "Add", .Meta = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
+
+	for (int line = 0; line < kDiffLines; ++line)
+	{
+		entry.Lines.push_back({Core::DiffLineKind::Added, "line", line == kDiffLines - 1});
+	}
+
+	content.Entries = {entry};
+
+	ShowPeek(editor, kFirstLine, content);
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* const detail = ActiveWindowNamedWith("/##LinePeekDiff_");
+	REQUIRE(detail != nullptr);
+	REQUIRE(detail->Scroll.y == 0.0f);
+
+	const ImGuiID showCommit = detail->GetID("Show commit");
+	const ImRect shown = detail->InnerClipRect;
+	bool found = false;
+
+	for (float y = shown.Min.y + kStep; y < shown.Max.y && !found; y += kStep)
+	{
+		for (float x = shown.Min.x + kStep; x < shown.Max.x && !found; x += kStep)
+		{
+			editor.HoverAt(ImVec2(x, y));
+			found = ImGui::GetCurrentContext()->HoveredId == showCommit;
+		}
+	}
+
+	CHECK(found);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("Peek scrolls into view when it opens")
 {
 	constexpr std::size_t kLineCount = 60;
