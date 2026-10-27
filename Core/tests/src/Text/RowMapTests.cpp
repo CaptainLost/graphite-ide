@@ -200,13 +200,47 @@ TEST_CASE("A caret on a visible line maps correctly around a zero-row line")
 	CHECK(VisualToCaret(buffer, rows, after, kTabWidth) == secondCharacterOfThirdLine);
 }
 
-TEST_CASE("A rebuild given up stops and says so")
+TEST_CASE("A rebuild cancelled partway through many short lines stops")
 {
-	const TextBuffer buffer = BufferOf("one\ntwo\nthree\n");
-	CancellationToken cancellation;
-	cancellation.Cancel();
+	const TextBuffer buffer = BufferOf(std::string(20000, '\n'));
+	constexpr std::size_t kSecondAsk = 2;
 
 	RowMap rows;
 
-	CHECK_FALSE(rows.RebuildUnlessCancelled(buffer, kFourColumnsPerRow, kTabWidth, cancellation));
+	CHECK_FALSE(rows.RebuildUnlessCancelled(buffer, RowMap::kNoWrap, kTabWidth, CancellationToken::CancelledAtCheck(kSecondAsk)));
+}
+
+TEST_CASE("A rebuild cancelled partway through a few long lines stops")
+{
+	const std::string longLine(700 * 1024, 'a');
+	const TextBuffer buffer = BufferOf(longLine + "\n" + longLine + "\n" + longLine);
+	constexpr std::size_t kSecondAsk = 2;
+
+	RowMap rows;
+
+	CHECK_FALSE(rows.RebuildUnlessCancelled(buffer, RowMap::kNoWrap, kTabWidth, CancellationToken::CancelledAtCheck(kSecondAsk)));
+}
+
+TEST_CASE("A rebuild cancelled while it wraps one giant line stops inside the line")
+{
+	const TextBuffer buffer = BufferOf(std::string(3 * 1024 * 1024, 'a'));
+	constexpr std::size_t kAskPastTheLinesFirstSlice = 3;
+
+	RowMap rows;
+
+	CHECK_FALSE(rows.RebuildUnlessCancelled(buffer, kWideEnoughNotToWrap, kTabWidth,
+											 CancellationToken::CancelledAtCheck(kAskPastTheLinesFirstSlice)));
+}
+
+TEST_CASE("A rebuild that is not cancelled matches an ordinary one")
+{
+	const TextBuffer buffer = BufferOf("a long line that wraps\n\tand a tab\nshort\n");
+	const CancellationToken keptGoing;
+
+	RowMap rows;
+	RowMap expected;
+	expected.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
+
+	REQUIRE(rows.RebuildUnlessCancelled(buffer, kFourColumnsPerRow, kTabWidth, keptGoing));
+	CHECK(rows.GetTotalRows() == expected.GetTotalRows());
 }

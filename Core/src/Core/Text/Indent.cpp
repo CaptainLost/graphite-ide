@@ -3,7 +3,7 @@
 #include "Core/Text/Indent.h"
 
 #include "Core/Base/Ascii.h"
-#include "Core/Jobs/CancellationToken.h"
+#include "Core/Jobs/CancellationPacing.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 
@@ -14,7 +14,6 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kDepthOfMissingNeighbour = 0;
-		constexpr std::size_t kLinesBetweenCancellationChecks = 16384;
 
 		bool IsIndentWhitespace(char character)
 		{
@@ -153,11 +152,11 @@ namespace Core {
 		std::vector<std::size_t> depths(rangeLineCount);
 		std::vector<bool> isBlankLine(rangeLineCount);
 
+		CancellationPacing pacing{cancellation};
+
 		for (std::size_t lineIndex = firstLine; lineIndex <= lastLine; ++lineIndex)
 		{
-			const bool reachedCancellationCheck = (lineIndex - firstLine) % kLinesBetweenCancellationChecks == 0;
-
-			if (reachedCancellationCheck && cancellation.IsCancelled())
+			if (pacing.CancelledBefore(buffer.LineLength(lineIndex)))
 			{
 				return std::nullopt;
 			}

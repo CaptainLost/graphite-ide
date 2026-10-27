@@ -2,10 +2,12 @@
 
 #include "Core/Text/Codec.h"
 
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Utf8.h"
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace Core {
 
@@ -31,6 +33,8 @@ namespace Core {
 		constexpr unsigned char kLastC1ControlTrailByte = 0x9Fu;
 
 		constexpr std::size_t kFewestNulsForUtf16 = 2;
+
+		constexpr std::size_t kBytesBetweenCancellationChecks = 1024 * 1024;
 
 		// Nine tenths rather than all of them: U+0100 and its neighbours put a NUL at the other
 		// parity, and a file may legitimately contain a few.
@@ -76,8 +80,7 @@ namespace Core {
 			utf16.push_back(isLittleEndian ? highByte : lowByte);
 		}
 
-		Result<std::string> DecodeUtf16(std::string_view bytes,
-										ByteOrder byteOrder)
+		Result<std::string> DecodeUtf16(std::string_view bytes, ByteOrder byteOrder, const CancellationToken& cancellation)
 		{
 			if (bytes.size() % kUtf16UnitBytes != 0)
 			{
@@ -88,9 +91,20 @@ namespace Core {
 			utf8.reserve(bytes.size());
 
 			std::size_t unitStart = 0;
+			std::size_t nextCancellationCheck = 0;
 
 			while (unitStart < bytes.size())
 			{
+				if (unitStart >= nextCancellationCheck)
+				{
+					if (cancellation.IsCancelled())
+					{
+						return Error{.Code = ErrorCode::Cancelled, .Message = "Decoding UTF-16 was given up"};
+					}
+
+					nextCancellationCheck = unitStart + kBytesBetweenCancellationChecks;
+				}
+
 				const std::uint32_t unit = ReadUnit(bytes, unitStart, byteOrder);
 
 				if (IsLowSurrogate(unit))
@@ -236,12 +250,19 @@ namespace Core {
 
 	Result<std::string> Decode(std::string_view bytes, Encoding encoding)
 	{
+		const CancellationToken neverCancelled;
+
+		return DecodeUnlessCancelled(bytes, encoding, neverCancelled);
+	}
+
+	Result<std::string> DecodeUnlessCancelled(std::string_view bytes, Encoding encoding, const CancellationToken& cancellation)
+	{
 		switch (TransformFor(encoding))
 		{
 		case Transform::Utf16LittleEndian:
-			return DecodeUtf16(bytes, ByteOrder::LittleEndian);
+			return DecodeUtf16(bytes, ByteOrder::LittleEndian, cancellation);
 		case Transform::Utf16BigEndian:
-			return DecodeUtf16(bytes, ByteOrder::BigEndian);
+			return DecodeUtf16(bytes, ByteOrder::BigEndian, cancellation);
 		case Transform::PassThrough:
 			break;
 		}
@@ -249,10 +270,18 @@ namespace Core {
 		return std::string{bytes};
 	}
 
+	Result<std::string> DecodeWithoutByteOrderMark(std::string bytes, Encoding encoding)
+	{
+		const CancellationToken neverCancelled;
+
+		return DecodeWithoutByteOrderMarkUnlessCancelled(std::move(bytes), encoding, neverCancelled);
+	}
+
 	// The mark is measured on the bytes, never taken from the encoding: unmarked bytes can be
 	// sniffed as UTF-16 and must then lose nothing. A pass-through encoding is erased in place
 	// because Decode would return a second whole copy of the file.
-	Result<std::string> DecodeWithoutByteOrderMark(std::string bytes, Encoding encoding)
+	Result<std::string> DecodeWithoutByteOrderMarkUnlessCancelled(std::string bytes, Encoding encoding,
+																  const CancellationToken& cancellation)
 	{
 		const std::size_t markLength = LeadingByteOrderMarkLength(bytes);
 
@@ -262,7 +291,7 @@ namespace Core {
 			return bytes;
 		}
 
-		return Decode(std::string_view{bytes}.substr(markLength), encoding);
+		return DecodeUnlessCancelled(std::string_view{bytes}.substr(markLength), encoding, cancellation);
 	}
 
 	std::string Encode(std::string_view utf8, Encoding encoding)

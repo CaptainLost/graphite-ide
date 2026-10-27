@@ -188,11 +188,19 @@ TEST_CASE("OpenItem defaults its tab width to the shared default")
 	CHECK(item.TabWidth == DefaultTabWidth);
 }
 
-TEST_CASE("Indent depths given up answer nothing")
+TEST_CASE("Indent depths cancelled partway through many lines answer nothing")
 {
-	const Core::TextBuffer buffer{"if (x)\n    return;\n"};
-	Core::CancellationToken cancellation;
-	cancellation.Cancel();
+	const Core::TextBuffer buffer{std::string(20000, '\n')};
+	constexpr std::size_t kSecondAsk = 2;
 
-	CHECK_FALSE(Core::IndentDepthsUnlessCancelled(buffer, kTabWidth, cancellation).has_value());
+	CHECK_FALSE(Core::IndentDepthsUnlessCancelled(buffer, kTabWidth, Core::CancellationToken::CancelledAtCheck(kSecondAsk)).has_value());
+}
+
+TEST_CASE("Indent depths cancelled partway through a few long lines answer nothing")
+{
+	const std::string longLine(700 * 1024, 'a');
+	const Core::TextBuffer buffer{longLine + "\n" + longLine + "\n" + longLine};
+	constexpr std::size_t kSecondAsk = 2;
+
+	CHECK_FALSE(Core::IndentDepthsUnlessCancelled(buffer, kTabWidth, Core::CancellationToken::CancelledAtCheck(kSecondAsk)).has_value());
 }

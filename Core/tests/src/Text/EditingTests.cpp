@@ -840,15 +840,24 @@ TEST_CASE("Typing above and below the widest line over and over leaves the wides
 	CheckLineCachesAreCorrect(item);
 }
 
-TEST_CASE("Line caches given up answer nothing, and measured to the end match the ones an item computes")
+TEST_CASE("Line caches cancelled partway through measuring the widest line answer nothing")
+{
+	const Core::TextBuffer buffer{std::string(20000, '\n')};
+	constexpr std::size_t kTabWidth = 4;
+	constexpr std::size_t kSecondAskOfTheWidestLinePass = 4;
+	const std::size_t unwrapped = Core::RowMap::kNoWrap;
+
+	CHECK_FALSE(Core::ComputeLineCachesUnlessCancelled(buffer, kTabWidth, unwrapped,
+														Core::CancellationToken::CancelledAtCheck(kSecondAskOfTheWidestLinePass))
+					.has_value());
+}
+
+
+TEST_CASE("Line caches measured to the end match the ones an item computes")
 {
 	const Core::TextBuffer buffer{"if (x)\n\treturn widest;\n"};
 	constexpr std::size_t kTabWidth = 4;
 	const std::size_t unwrapped = Core::RowMap::kNoWrap;
-
-	Core::CancellationToken givenUp;
-	givenUp.Cancel();
-	CHECK_FALSE(Core::ComputeLineCachesUnlessCancelled(buffer, kTabWidth, unwrapped, givenUp).has_value());
 
 	const Core::CancellationToken keptGoing;
 	const std::optional<Core::LineCaches> caches = Core::ComputeLineCachesUnlessCancelled(buffer, kTabWidth, unwrapped, keptGoing);

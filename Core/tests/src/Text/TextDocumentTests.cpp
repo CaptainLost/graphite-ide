@@ -713,17 +713,28 @@ TEST_CASE("A load already given up answers so before it looks for the file")
 TEST_CASE("A load that is not given up reads the file as an ordinary load does")
 {
 	TempDirectory directory;
-	const std::filesystem::path path = directory.GetPath() / "a.txt";
-	WriteFileBytes(path, "one\r\ntwo\r\n");
 
-	const CancellationToken keptGoing;
-	const Result<TextDocument> loaded = TextDocument::Load(path, keptGoing);
+	for (const std::string& bytes : {std::string{"one\r\ntwo\r\n"}, std::string{"\xEF\xBB\xBFmixed\nends\r\n"},
+									 std::string{"\xFF\xFEh\0i\0\n\0", 8}, std::string{"bad \xC3 byte\n"}})
+	{
+		const std::filesystem::path path = directory.GetPath() / "a.txt";
+		WriteFileBytes(path, bytes);
 
-	REQUIRE(loaded.HasValue());
-	CHECK(loaded.GetValue().GetBuffer().Materialize() == "one\ntwo\n");
-	CHECK(loaded.GetValue().GetBuffer().GetLineCount() == 3);
-	CHECK(loaded.GetValue().GetBuffer().LineIndexMatchesRebuild());
-	CHECK(loaded.GetValue().GetDocumentLineEnding() == LineEnding::Crlf);
+		const CancellationToken keptGoing;
+		const Result<TextDocument> loaded = TextDocument::Load(path, keptGoing);
+		const Result<TextDocument> ordinary = TextDocument::Load(path);
+
+		REQUIRE(loaded.HasValue());
+		REQUIRE(ordinary.HasValue());
+		CHECK(loaded.GetValue().GetBuffer().Materialize() == ordinary.GetValue().GetBuffer().Materialize());
+		CHECK(loaded.GetValue().GetBuffer().GetLineCount() == ordinary.GetValue().GetBuffer().GetLineCount());
+		CHECK(loaded.GetValue().GetBuffer().LineIndexMatchesRebuild());
+		CHECK(loaded.GetValue().GetFileEncoding() == ordinary.GetValue().GetFileEncoding());
+		CHECK(loaded.GetValue().GetDocumentLineEnding() == ordinary.GetValue().GetDocumentLineEnding());
+		CHECK(loaded.GetValue().HasMixedLineEndings() == ordinary.GetValue().HasMixedLineEndings());
+		CHECK(loaded.GetValue().IsReadOnly() == ordinary.GetValue().IsReadOnly());
+		CHECK(loaded.GetValue().EncodeToBytes() == ordinary.GetValue().EncodeToBytes());
+	}
 }
 
 TEST_CASE("Text checked for UTF-8 in slices is judged as the whole text is wherever a slice ends")

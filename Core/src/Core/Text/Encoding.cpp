@@ -139,6 +139,20 @@ namespace Core {
 		return boundary;
 	}
 
+	std::size_t SliceEndAtCharacterBoundary(std::string_view bytes, std::size_t sliceStart, std::size_t sliceBytes)
+	{
+		const std::size_t wantedEnd = std::min(sliceStart + sliceBytes, bytes.size());
+
+		if (wantedEnd == bytes.size())
+		{
+			return wantedEnd;
+		}
+
+		const std::size_t boundary = CharacterBoundaryAtOrBefore(bytes, wantedEnd);
+
+		return boundary > sliceStart ? boundary : wantedEnd;
+	}
+
 	std::size_t CharacterBoundaryAtOrAfter(std::string_view bytes, std::size_t offset)
 	{
 		std::size_t boundary = offset;

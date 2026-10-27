@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Codec.h"
 
 #include <string>
@@ -266,4 +267,31 @@ TEST_CASE("DecodeWithoutByteOrderMark strips the mark the bytes carry, whatever 
 	CHECK(DecodeWithoutByteOrderMark(std::string{"H\0i\0", 4}, Encoding::Utf16Le).GetValue() == "Hi");
 	CHECK(DecodeWithoutByteOrderMark("", Encoding::Utf8).GetValue().empty());
 	CHECK_FALSE(DecodeWithoutByteOrderMark("\xFF\xFEH", Encoding::Utf16Le).HasValue());
+}
+
+TEST_CASE("Decoding UTF-16 cancelled partway through gives up and says so")
+{
+	std::string bytes;
+	constexpr std::size_t kUnits = 2 * 1024 * 1024;
+	bytes.reserve(kUnits * 2);
+
+	for (std::size_t unit = 0; unit < kUnits; ++unit)
+	{
+		bytes += kHiLittleEndian.substr(0, 2);
+	}
+
+	constexpr std::size_t kSecondAsk = 2;
+	const Result<std::string> decoded = DecodeUnlessCancelled(bytes, Encoding::Utf16Le, CancellationToken::CancelledAtCheck(kSecondAsk));
+
+	REQUIRE_FALSE(decoded.HasValue());
+	CHECK(decoded.GetError().Code == ErrorCode::Cancelled);
+}
+
+TEST_CASE("Decoding UTF-16 that is not cancelled gives what an ordinary decode gives")
+{
+	const CancellationToken keptGoing;
+	const Result<std::string> decoded = DecodeUnlessCancelled(kHiBigEndian, Encoding::Utf16Be, keptGoing);
+
+	REQUIRE(decoded.HasValue());
+	CHECK(decoded.GetValue() == "Hi");
 }

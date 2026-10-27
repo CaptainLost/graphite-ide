@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
 namespace Core {
 
+	class CancellationToken;
 	class TextBuffer;
 
 	inline constexpr std::size_t DefaultTabWidth = 4;
@@ -19,6 +21,10 @@ namespace Core {
 							 std::size_t tabWidth);
 
 	std::size_t ColumnCount(std::string_view lineText, std::size_t tabWidth);
+
+	std::size_t ColumnAfterText(std::string_view text, std::size_t startColumn, std::size_t tabWidth);
+
+	std::optional<std::size_t> ColumnCountUnlessCancelled(std::string_view lineText, std::size_t tabWidth, const CancellationToken& cancellation);
 
 	std::string ExpandTabs(std::string_view lineText, std::size_t tabWidth);
 

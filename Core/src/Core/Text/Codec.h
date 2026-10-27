@@ -8,9 +8,16 @@
 
 namespace Core {
 
+	class CancellationToken;
+
 	Result<std::string> Decode(std::string_view bytes, Encoding encoding);
 
+	Result<std::string> DecodeUnlessCancelled(std::string_view bytes, Encoding encoding, const CancellationToken& cancellation);
+
 	Result<std::string> DecodeWithoutByteOrderMark(std::string bytes, Encoding encoding);
+
+	Result<std::string> DecodeWithoutByteOrderMarkUnlessCancelled(std::string bytes, Encoding encoding,
+																  const CancellationToken& cancellation);
 
 	std::string Encode(std::string_view utf8, Encoding encoding);
 

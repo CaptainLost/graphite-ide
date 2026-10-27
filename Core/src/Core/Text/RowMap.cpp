@@ -2,18 +2,19 @@
 
 #include "Core/Text/RowMap.h"
 
+#include "Core/Jobs/CancellationPacing.h"
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/WrapLayout.h"
 
 #include <algorithm>
+#include <optional>
+#include <utility>
 
 namespace Core {
 
 	namespace {
 		const std::vector<std::size_t> kNoBreaks;
-
-		constexpr std::size_t kLinesBetweenCancellationChecks = 16384;
 
 		constexpr std::size_t LowestSetBit(std::size_t value)
 		{
@@ -62,18 +63,26 @@ namespace Core {
 
 		// The counts are filled in directly and the tree built once from them: SetRowCount per line
 		// would be a logarithmic update each time into a tree about to be thrown away.
+		CancellationPacing pacing{cancellation};
+
 		for (std::size_t line = 0; line < lineCount; ++line)
 		{
-			const bool reachedCancellationCheck = line % kLinesBetweenCancellationChecks == 0;
-
-			if (reachedCancellationCheck && cancellation.IsCancelled())
+			if (pacing.CancelledBefore(buffer.LineLength(line)))
 			{
 				return false;
 			}
 
 			if (columnsPerRow != kNoWrap)
 			{
-				m_Breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
+				std::optional<std::vector<std::size_t>> breaks =
+					WrapColumnsUnlessCancelled(buffer.LineText(line), columnsPerRow, tabWidth, cancellation);
+
+				if (!breaks)
+				{
+					return false;
+				}
+
+				m_Breaks[line] = std::move(*breaks);
 			}
 
 			m_RowsPerLine[line] = RowsOfLineWithBreaks(m_Breaks[line]);

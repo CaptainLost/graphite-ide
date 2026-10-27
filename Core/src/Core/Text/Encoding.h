@@ -81,6 +81,9 @@ namespace Core {
 
 	std::size_t CharacterBoundaryAtOrAfter(std::string_view bytes, std::size_t offset);
 
+	// WARNING: Always past sliceStart, so a walk in slices advances even over a run of stray continuation bytes.
+	std::size_t SliceEndAtCharacterBoundary(std::string_view bytes, std::size_t sliceStart, std::size_t sliceBytes);
+
 	std::size_t CharacterCount(std::string_view bytes);
 
 	// From 0 to the end, both included, so a prefix of any whole number of characters is bytes.substr(0, boundaries[n]).

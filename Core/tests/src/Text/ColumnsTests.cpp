@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/Columns.h"
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
@@ -270,4 +271,26 @@ TEST_CASE("A byte's offset in expanded text accounts for tabs but not for charac
 
 	CHECK(ExpandedOffsetOfByte("ab", pastTheEnd, kTabWidth) == 2);
 	CHECK(ExpandedOffsetOfByte("", 0, kTabWidth) == 0);
+}
+
+TEST_CASE("Counting the columns of one giant line can be cancelled partway through it")
+{
+	const std::string giantLine(3 * 1024 * 1024, 'a');
+	constexpr std::size_t kSecondSlice = 2;
+
+	CHECK_FALSE(Core::ColumnCountUnlessCancelled(giantLine, kTabWidth, Core::CancellationToken::CancelledAtCheck(kSecondSlice)).has_value());
+}
+
+TEST_CASE("Counting columns in slices gives what an ordinary count gives, tabs and wide characters included")
+{
+	std::string line;
+
+	while (line.size() < 3 * 1024 * 1024)
+	{
+		line += "\t\xc4\x85x\xe2\x82\xac y";
+	}
+
+	const Core::CancellationToken keptGoing;
+
+	CHECK(Core::ColumnCountUnlessCancelled(line, kTabWidth, keptGoing) == Core::ColumnCount(line, kTabWidth));
 }

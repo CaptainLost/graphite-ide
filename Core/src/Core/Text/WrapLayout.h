@@ -1,12 +1,18 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string_view>
 #include <vector>
 
 namespace Core {
 
+	class CancellationToken;
+
 	std::vector<std::size_t> WrapColumns(std::string_view lineText, std::size_t columnsPerRow, std::size_t tabWidth);
+
+	std::optional<std::vector<std::size_t>> WrapColumnsUnlessCancelled(std::string_view lineText, std::size_t columnsPerRow,
+														   std::size_t tabWidth, const CancellationToken& cancellation);
 
 	class TextBuffer;
 	class RowMap;

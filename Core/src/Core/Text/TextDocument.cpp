@@ -21,10 +21,7 @@ namespace Core {
 	namespace {
 		constexpr std::size_t kReadChunkBytes = 1024 * 1024;
 		constexpr std::size_t kBytesBetweenCancellationChecks = 1024 * 1024;
-		constexpr std::size_t kUtf8SliceBytes = 4 * 1024 * 1024;
-		constexpr std::size_t kLongestRunOfContinuationBytes = 3;
-		constexpr unsigned char kContinuationByteMask = 0xC0;
-		constexpr unsigned char kContinuationBytePattern = 0x80;
+		constexpr std::size_t kTextCheckSliceBytes = 4 * 1024 * 1024;
 		constexpr std::size_t kCrlfLength = 2;
 
 		Error ReadGivenUp(const std::filesystem::path& path)
@@ -62,9 +59,36 @@ namespace Core {
 			return message;
 		}
 
+		// WARNING: Slices end where a character starts, so no character is split and the answer is the whole text's.
+		std::optional<bool> HoldsInEverySliceUnlessCancelled(std::string_view content, bool (*holdsIn)(std::string_view),
+															   const CancellationToken& cancellation)
+		{
+			std::size_t sliceStart = 0;
+
+			while (sliceStart < content.size())
+			{
+				if (cancellation.IsCancelled())
+				{
+					return std::nullopt;
+				}
+
+				const std::size_t sliceEnd = SliceEndAtCharacterBoundary(content, sliceStart, kTextCheckSliceBytes);
+
+				if (!holdsIn(content.substr(sliceStart, sliceEnd - sliceStart)))
+				{
+					return false;
+				}
+
+				sliceStart = sliceEnd;
+			}
+
+			return true;
+		}
+
 		// A NUL is the one thing a mark cannot vouch for: the UTF-32 LE mark FF FE 00 00 begins with
 		// the UTF-16 LE mark, so a UTF-32 file arrives here decoded as UTF-16 and full of NULs.
-		bool DecodedContentIsText(std::string_view content, bool hasByteOrderMark)
+		std::optional<bool> DecodedContentIsTextUnlessCancelled(std::string_view content, bool hasByteOrderMark,
+																const CancellationToken& cancellation)
 		{
 			if (hasByteOrderMark)
 			{
@@ -72,11 +96,10 @@ namespace Core {
 				return !containsNul;
 			}
 
-			return LooksLikeText(content);
+			return HoldsInEverySliceUnlessCancelled(content, &LooksLikeText, cancellation);
 		}
 
-		// WARNING: Reads until the file runs dry, not for `reportedSize` bytes: a file still being appended to grows
-		// between the stat and this read, and stopping at the earlier size would truncate the document silently.
+		// WARNING: Reads until the file runs dry, so a file still being appended to after the stat is not cut short.
 		Result<std::string> ReadWholeFile(const std::filesystem::path& path, std::uintmax_t reportedSize,
 										  const CancellationToken& cancellation)
 		{
@@ -125,54 +148,6 @@ namespace Core {
 			return fileBytes;
 		}
 
-		bool IsContinuationByte(char byte)
-		{
-			return (static_cast<unsigned char>(byte) & kContinuationByteMask) == kContinuationBytePattern;
-		}
-
-		std::size_t SliceEndAtCharacterStart(std::string_view content, std::size_t wantedEnd)
-		{
-			if (wantedEnd >= content.size())
-			{
-				return content.size();
-			}
-
-			std::size_t sliceEnd = wantedEnd;
-
-			for (std::size_t steppedBack = 0; steppedBack < kLongestRunOfContinuationBytes && IsContinuationByte(content[sliceEnd]); ++steppedBack)
-			{
-				--sliceEnd;
-			}
-
-			return sliceEnd;
-		}
-
-		// WARNING: Slices end where a character starts, so a character is never split and the answer is the whole text's.
-		std::optional<bool> IsValidUtf8UnlessCancelled(std::string_view content, const CancellationToken& cancellation)
-		{
-			std::size_t sliceStart = 0;
-
-			while (sliceStart < content.size())
-			{
-				if (cancellation.IsCancelled())
-				{
-					return std::nullopt;
-				}
-
-				const std::size_t sliceEnd = SliceEndAtCharacterStart(content, sliceStart + kUtf8SliceBytes);
-
-				if (!IsValidUtf8(content.substr(sliceStart, sliceEnd - sliceStart)))
-				{
-					return false;
-				}
-
-				sliceStart = sliceEnd;
-			}
-
-			return true;
-		}
-
-		// A lone '\r' stays: taken for a classic Mac line end, it would split a line at a stray byte.
 		bool NormaliseUnlessCancelled(std::string_view text, NormalisedLineEndings& normalised, const CancellationToken& cancellation)
 		{
 			normalised.Content.reserve(text.size());
@@ -241,30 +216,35 @@ namespace Core {
 		// for bytes that carry no mark at all.
 		const bool hasByteOrderMark = LeadingByteOrderMarkLength(bytes) > 0;
 
-		Result<std::string> decoded = DecodeWithoutByteOrderMark(std::move(bytes), sniffedEncoding);
+		Result<std::string> decoded = DecodeWithoutByteOrderMarkUnlessCancelled(std::move(bytes), sniffedEncoding, cancellation);
 
 		if (!decoded)
 		{
 			return decoded.GetError();
 		}
 
-		if (cancellation.IsCancelled())
-		{
-			return ReadGivenUp(path);
-		}
-
 		const std::string content = std::move(decoded).GetValue();
 		const bool contentWasDecoded = TransformsContent(sniffedEncoding);
 
-		if (contentWasDecoded && !DecodedContentIsText(content, hasByteOrderMark))
+		if (contentWasDecoded)
 		{
-			return Error{.Code = ErrorCode::InvalidArgument,
-						 .Message = NotTextMessage(sniffedEncoding, hasByteOrderMark, content, path)};
+			const std::optional<bool> decodedIsText = DecodedContentIsTextUnlessCancelled(content, hasByteOrderMark, cancellation);
+
+			if (!decodedIsText)
+			{
+				return ReadGivenUp(path);
+			}
+
+			if (!*decodedIsText)
+			{
+				return Error{.Code = ErrorCode::InvalidArgument,
+							 .Message = NotTextMessage(sniffedEncoding, hasByteOrderMark, content, path)};
+			}
 		}
 
 		const bool decodedContentIsValid = true;
 		const std::optional<bool> contentIsValidUtf8 =
-			contentWasDecoded ? decodedContentIsValid : IsValidUtf8UnlessCancelled(content, cancellation);
+			contentWasDecoded ? decodedContentIsValid : HoldsInEverySliceUnlessCancelled(content, &IsValidUtf8, cancellation);
 
 		if (!contentIsValidUtf8)
 		{

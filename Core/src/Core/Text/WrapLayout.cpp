@@ -2,6 +2,7 @@
 
 #include "Core/Text/WrapLayout.h"
 
+#include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 #include "Core/Text/RowMap.h"
@@ -14,6 +15,7 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kNarrowestRowThatStillAdvances = 1;
+		constexpr std::size_t kRowsBetweenCancellationChecks = 4096;
 		constexpr std::size_t kLineStartColumn = 0;
 
 		struct RowScan
@@ -117,70 +119,109 @@ namespace Core {
 
 			return wrappedRow;
 		}
+
+		std::optional<std::size_t> ColumnCountAskingIfGiven(std::string_view lineText, std::size_t tabWidth,
+															  const CancellationToken* cancellation)
+		{
+			if (cancellation == nullptr)
+			{
+				return ColumnCount(lineText, tabWidth);
+			}
+
+			return ColumnCountUnlessCancelled(lineText, tabWidth, *cancellation);
+		}
+
+		std::optional<std::vector<std::size_t>> WrapColumnsAskingIfGiven(std::string_view lineText, std::size_t columnsPerRow,
+																		   std::size_t tabWidth, const CancellationToken* cancellation)
+		{
+			std::vector<std::size_t> breaks;
+
+			const std::size_t rowWidth = std::max(columnsPerRow, kNarrowestRowThatStillAdvances);
+			const std::optional<std::size_t> countedColumns = ColumnCountAskingIfGiven(lineText, tabWidth, cancellation);
+
+			if (!countedColumns)
+			{
+				return std::nullopt;
+			}
+
+			const std::size_t lineColumnCount = *countedColumns;
+
+			std::size_t byteOffset = 0;
+			std::size_t column = 0;
+			std::size_t rowStartColumn = 0;
+
+			while (lineColumnCount - rowStartColumn > rowWidth)
+			{
+				const bool reachedCancellationCheck = breaks.size() % kRowsBetweenCancellationChecks == 0;
+
+				if (cancellation != nullptr && reachedCancellationCheck && breaks.size() > 0 && cancellation->IsCancelled())
+				{
+					return std::nullopt;
+				}
+
+				const std::size_t limitColumn = rowStartColumn + rowWidth;
+				const RowScan scan = ScanToLimit(lineText, tabWidth, limitColumn, byteOffset, column);
+
+				byteOffset = scan.EndByte;
+				column = scan.EndColumn;
+
+				// The loop condition means the scan always reaches the row's last cell. Stopping when it
+				// somehow does not, rather than guessing a break, keeps this loop from standing still.
+				if (!scan.FoundLastCellCharacter)
+				{
+					break;
+				}
+
+				const bool tabCoveringLastCellCanMoveToNextRow = scan.LastCellCharacterIsTab && scan.LastCellCharacterColumn != rowStartColumn;
+				std::size_t breakColumn = 0;
+
+				if (scan.FoundSpace)
+				{
+					byteOffset = scan.LastSpaceByte + 1;
+					column = scan.LastSpaceColumn + 1;
+
+					SkipWholeSpaceRun(lineText, lineColumnCount, byteOffset, column);
+
+					breakColumn = column;
+				}
+				else if (tabCoveringLastCellCanMoveToNextRow)
+				{
+					byteOffset = scan.LastCellCharacterByte;
+					column = scan.LastCellCharacterColumn;
+					breakColumn = scan.LastCellCharacterColumn;
+				}
+				else
+				{
+					byteOffset = scan.ByteAfterLastCellCharacter;
+					column = scan.ColumnAfterLastCellCharacter;
+					breakColumn = scan.ColumnAfterLastCellCharacter;
+				}
+
+				const bool breakWouldStartEmptyRow = breakColumn >= lineColumnCount;
+				if (breakWouldStartEmptyRow)
+				{
+					break;
+				}
+
+				breaks.push_back(breakColumn);
+				rowStartColumn = breakColumn;
+			}
+
+			return breaks;
+		}
 	}
 
 	std::vector<std::size_t> WrapColumns(std::string_view lineText, std::size_t columnsPerRow, std::size_t tabWidth)
 	{
-		std::vector<std::size_t> breaks;
+		const CancellationToken* const noCancellation = nullptr;
 
-		const std::size_t rowWidth = std::max(columnsPerRow, kNarrowestRowThatStillAdvances);
-		const std::size_t lineColumnCount = ColumnCount(lineText, tabWidth);
+		return *WrapColumnsAskingIfGiven(lineText, columnsPerRow, tabWidth, noCancellation);
+	}
 
-		std::size_t byteOffset = 0;
-		std::size_t column = 0;
-		std::size_t rowStartColumn = 0;
-
-		while (lineColumnCount - rowStartColumn > rowWidth)
-		{
-			const std::size_t limitColumn = rowStartColumn + rowWidth;
-			const RowScan scan = ScanToLimit(lineText, tabWidth, limitColumn, byteOffset, column);
-
-			byteOffset = scan.EndByte;
-			column = scan.EndColumn;
-
-			// The loop condition means the scan always reaches the row's last cell. Stopping when it
-			// somehow does not, rather than guessing a break, keeps this loop from standing still.
-			if (!scan.FoundLastCellCharacter)
-			{
-				break;
-			}
-
-			const bool tabCoveringLastCellCanMoveToNextRow = scan.LastCellCharacterIsTab && scan.LastCellCharacterColumn != rowStartColumn;
-			std::size_t breakColumn = 0;
-
-			if (scan.FoundSpace)
-			{
-				byteOffset = scan.LastSpaceByte + 1;
-				column = scan.LastSpaceColumn + 1;
-
-				SkipWholeSpaceRun(lineText, lineColumnCount, byteOffset, column);
-
-				breakColumn = column;
-			}
-			else if (tabCoveringLastCellCanMoveToNextRow)
-			{
-				byteOffset = scan.LastCellCharacterByte;
-				column = scan.LastCellCharacterColumn;
-				breakColumn = scan.LastCellCharacterColumn;
-			}
-			else
-			{
-				byteOffset = scan.ByteAfterLastCellCharacter;
-				column = scan.ColumnAfterLastCellCharacter;
-				breakColumn = scan.ColumnAfterLastCellCharacter;
-			}
-
-			const bool breakWouldStartEmptyRow = breakColumn >= lineColumnCount;
-			if (breakWouldStartEmptyRow)
-			{
-				break;
-			}
-
-			breaks.push_back(breakColumn);
-			rowStartColumn = breakColumn;
-		}
-
-		return breaks;
+	std::optional<std::vector<std::size_t>> WrapColumnsUnlessCancelled(std::string_view lineText, std::size_t columnsPerRow,
+																	   std::size_t tabWidth, const CancellationToken& cancellation)
+	{
+		return WrapColumnsAskingIfGiven(lineText, columnsPerRow, tabWidth, &cancellation);
 	}
 
 	VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows, std::size_t offset, std::size_t tabWidth)

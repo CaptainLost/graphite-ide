@@ -3,7 +3,7 @@
 #include "Core/Text/Editing.h"
 
 #include "Core/Base/Ascii.h"
-#include "Core/Jobs/CancellationToken.h"
+#include "Core/Jobs/CancellationPacing.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -20,7 +20,6 @@ namespace Core {
 
 	namespace {
 		constexpr std::size_t kPlaceholderIndentDepth = 0;
-		constexpr std::size_t kLinesBetweenCancellationChecks = 16384;
 
 		struct LineBlock
 		{
@@ -198,16 +197,23 @@ namespace Core {
 		caches.TabWidth = tabWidth;
 		caches.IndentDepths = std::move(*depths);
 
+		CancellationPacing pacing{cancellation};
+
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
-			const bool reachedCancellationCheck = line % kLinesBetweenCancellationChecks == 0;
-
-			if (reachedCancellationCheck && cancellation.IsCancelled())
+			if (pacing.CancelledBefore(buffer.LineLength(line)))
 			{
 				return std::nullopt;
 			}
 
-			const std::size_t width = ColumnCount(buffer.LineText(line), tabWidth);
+			const std::optional<std::size_t> countedWidth = ColumnCountUnlessCancelled(buffer.LineText(line), tabWidth, cancellation);
+
+			if (!countedWidth)
+			{
+				return std::nullopt;
+			}
+
+			const std::size_t width = *countedWidth;
 
 			if (width > caches.WidestColumn)
 			{
