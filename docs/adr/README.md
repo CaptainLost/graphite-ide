@@ -659,10 +659,8 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0627](0627-draw-fields-as-the-mockup-s-bordered-faint-filled-boxes.md) | Draw fields as the mockup's bordered, faint-filled boxes | proposed | 2026-10-19 |
 | [0628](0628-make-dock-tab-bars-thirty-two-pixels-with-the-padding-agreed-in-five-places.md) | Make dock tab bars thirty-two pixels with the padding agreed in five places | proposed | 2026-10-19 |
 | [0629](0629-let-a-colour-scheme-set-the-interface-s-measurements-as-well-as-its-colours.md) | Let a colour scheme set the interface's measurements as well as its colours | proposed | 2026-10-20 |
-| [0630](0630-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
 | [0630](0630-leave-the-branch-out-of-the-title-bar-since-the-status-bar-shows-it.md) | Leave the branch out of the title bar, since the status bar shows it | proposed | 2026-10-21 |
 | [0631](0631-draw-every-diff-with-one-set-of-options-kept-in-the-settings.md) | Draw every diff with one set of options kept in the settings | proposed | 2026-10-21 |
-| [0631](0631-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md) | Place non-document rows as blocks from a source the language server does not own | proposed | 2026-10-26 |
 | [0632](0632-keep-a-short-history-of-each-language-server-and-show-it-in-the-status-bar-s-tooltip.md) | Keep a short history of each language server and show it in the status bar's tooltip | proposed | 2026-10-21 |
 | [0633](0633-show-every-wait-with-the-core-loader-and-say-nothing-is-there-only-after-an-answer-said-so.md) | Show every wait with the Core loader and say nothing is there only after an answer said so | proposed | 2026-10-25 |
 | [0634](0634-give-every-language-server-request-a-deadline.md) | Give every language-server request a deadline | proposed | 2026-10-25 |
@@ -677,7 +675,9 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0643](0643-preview-only-files-that-open-without-asking.md) | Preview only files that open without asking | proposed | 2026-10-26 |
 | [0644](0644-read-solutions-off-the-ui-thread.md) | Read solutions off the UI thread | proposed | 2026-10-26 |
 | [0645](0645-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) | Add stb as a dependency for decoding and scaling images | proposed | 2026-10-25 |
+| [0645](0645-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
 | [0646](0646-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md) | Draw pictures through a texture facade over ImGui's user textures | proposed | 2026-10-25 |
+| [0646](0646-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md) | Place non-document rows as blocks from a source the language server does not own | proposed | 2026-10-26 |
 | [0647](0647-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md) | Let the view on screen add its own items to the status bar | proposed | 2026-10-26 |
 | [0648](0648-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) | Let a tab's view put its tools on the right of the path row, and give the row to image tabs | proposed | 2026-10-26 |
 | [0649](0649-open-images-as-views-inside-the-document-tabs.md) | Open images as views inside the document tabs | proposed | 2026-10-26 |

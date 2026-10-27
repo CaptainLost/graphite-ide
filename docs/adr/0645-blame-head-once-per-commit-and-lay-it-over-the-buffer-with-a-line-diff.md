@@ -1,4 +1,4 @@
-# 0630. Blame HEAD once per commit and lay it over the buffer with a line diff
+# 0645. Blame HEAD once per commit and lay it over the buffer with a line diff
 
 Status: proposed
 Date: 2026-10-25
