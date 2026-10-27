@@ -267,7 +267,7 @@ TEST_CASE("An image past the pixel limit fails as too large to preview")
 	DeferredJobs jobs;
 	FakeTextureFactory textures;
 	ImageTab tab(WriteFile(directory.GetPath() / "huge.png", Bytes(ImageFixtures::kPngHeader20000x12000)), jobs.Submitter(),
-	             textures);
+				 textures);
 
 	LoadAndLand(tab, jobs);
 
@@ -411,7 +411,7 @@ TEST_CASE("A gif shows its next frame once its delay has passed")
 	DeferredJobs jobs;
 	FakeTextureFactory textures;
 	ImageTab tab(WriteFile(directory.GetPath() / "spinner.gif", Bytes(ImageFixtures::kGif2Frames2x2)), jobs.Submitter(),
-	             textures);
+				 textures);
 	tab.Load();
 	jobs.RunAll();
 
@@ -462,7 +462,7 @@ TEST_CASE("A gif in a tab that is not shown asks for no frames")
 	DeferredJobs jobs;
 	FakeTextureFactory textures;
 	ImageTab tab(WriteFile(directory.GetPath() / "spinner.gif", Bytes(ImageFixtures::kGif2Frames2x2)), jobs.Submitter(),
-	             textures);
+				 textures);
 	tab.Load();
 	jobs.RunAll();
 

@@ -21,18 +21,18 @@ namespace Graphite {
 		{
 			switch (error.Code)
 			{
-				case Core::ErrorCode::NotFound:
-					return Core::Error{error.Code, "the file was not found"};
-				case Core::ErrorCode::AccessDenied:
-					return Core::Error{error.Code, "the file cannot be opened"};
-				case Core::ErrorCode::TooLarge:
-					return Core::Error{error.Code, "Image file is too large to preview"};
-				case Core::ErrorCode::None:
-				case Core::ErrorCode::InvalidArgument:
-				case Core::ErrorCode::IoFailure:
-				case Core::ErrorCode::Unsupported:
-				case Core::ErrorCode::Cancelled:
-					break;
+			case Core::ErrorCode::NotFound:
+				return Core::Error{error.Code, "the file was not found"};
+			case Core::ErrorCode::AccessDenied:
+				return Core::Error{error.Code, "the file cannot be opened"};
+			case Core::ErrorCode::TooLarge:
+				return Core::Error{error.Code, "Image file is too large to preview"};
+			case Core::ErrorCode::None:
+			case Core::ErrorCode::InvalidArgument:
+			case Core::ErrorCode::IoFailure:
+			case Core::ErrorCode::Unsupported:
+			case Core::ErrorCode::Cancelled:
+				break;
 			}
 
 			return Core::Error{error.Code, "reading the file failed"};
@@ -228,7 +228,7 @@ namespace Graphite {
 	}
 
 	ImageTab::LoadedPicture ImageTab::ReadAndDecode(const std::filesystem::path& path, std::uint64_t generation,
-	                                                const Core::DecodeLimits& limits)
+													const Core::DecodeLimits& limits)
 	{
 		// Taken before the read, so a change during it shows as a newer stamp at the next check.
 		const std::optional<DiskStamp> stamp = ReadStamp(path);

@@ -258,10 +258,10 @@ namespace Graphite {
 			};
 
 			constexpr std::array<Swatch, kSwatchCount> swatches = {{{"##imageCheckerboard",
-																	  PictureBackground::Checkerboard,
-																	  "Checkerboard background"},
-																	 {"##imageDark", PictureBackground::Dark, "Dark background"},
-																	 {"##imageLight", PictureBackground::Light, "Light background"}}};
+																	 PictureBackground::Checkerboard,
+																	 "Checkerboard background"},
+																	{"##imageDark", PictureBackground::Dark, "Dark background"},
+																	{"##imageLight", PictureBackground::Light, "Light background"}}};
 
 			ImageToolResult result;
 

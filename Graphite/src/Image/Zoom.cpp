@@ -36,8 +36,10 @@ namespace Graphite {
 
 	float StepIn(float zoom)
 	{
-		for (const float step : kZoomSteps) {
-			if (step > zoom * (1.0f + kStepTolerance)) {
+		for (const float step : kZoomSteps)
+		{
+			if (step > zoom * (1.0f + kStepTolerance))
+			{
 				return step;
 			}
 		}
@@ -46,8 +48,10 @@ namespace Graphite {
 
 	float StepOut(float zoom)
 	{
-		for (auto it = kZoomSteps.rbegin(); it != kZoomSteps.rend(); ++it) {
-			if (*it < zoom * (1.0f - kStepTolerance)) {
+		for (auto it = kZoomSteps.rbegin(); it != kZoomSteps.rend(); ++it)
+		{
+			if (*it < zoom * (1.0f - kStepTolerance))
+			{
 				return *it;
 			}
 		}
@@ -99,7 +103,8 @@ namespace Graphite {
 	std::optional<PixelPoint> PixelUnder(ImVec2 point, const ZoomState& state, ImVec2 picture, const ImRect& area)
 	{
 		const ImRect placed = PlacePicture(state, picture, area);
-		if (point.x < placed.Min.x || point.y < placed.Min.y || point.x >= placed.Max.x || point.y >= placed.Max.y) {
+		if (point.x < placed.Min.x || point.y < placed.Min.y || point.x >= placed.Max.x || point.y >= placed.Max.y)
+		{
 			return std::nullopt;
 		}
 
@@ -117,7 +122,8 @@ namespace Graphite {
 		const double doubled = percent * 2.0;
 		const long long doubledWhole = std::llround(doubled);
 		const bool isHalf = std::abs(doubled - static_cast<double>(doubledWhole)) < 1e-3 && doubledWhole % 2 != 0;
-		if (isHalf) {
+		if (isHalf)
+		{
 			return std::format("{:.1f}%", static_cast<double>(doubledWhole) / 2.0);
 		}
 		return std::format("{}%", std::llround(percent));

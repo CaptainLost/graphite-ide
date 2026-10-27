@@ -28,7 +28,9 @@ namespace Core {
 	{
 		const int longest = std::max(image.Width, image.Height);
 		if (maximumSide <= 0 || longest <= maximumSide || image.Width <= 0 || image.Height <= 0)
+		{
 			return image;
+		}
 
 		RgbaImage scaled;
 		scaled.Width = ScaledSide(image.Width, longest, maximumSide);
@@ -36,9 +38,11 @@ namespace Core {
 		scaled.Pixels.resize(static_cast<std::size_t>(scaled.Width) * static_cast<std::size_t>(scaled.Height) * kChannels);
 
 		const unsigned char* resized = stbir_resize_uint8_srgb(image.Pixels.data(), image.Width, image.Height, 0, scaled.Pixels.data(), scaled.Width,
-			scaled.Height, 0, STBIR_RGBA);
+															   scaled.Height, 0, STBIR_RGBA);
 		if (resized == nullptr)
+		{
 			return image;
+		}
 		return scaled;
 	}
 }

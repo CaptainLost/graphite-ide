@@ -989,8 +989,8 @@ namespace Graphite {
 	}
 
 	DocumentWindows::ShownPicture DocumentWindows::RenderImageTab(const Core::OpenItem& item, EditorSettings& settings,
-																	const std::filesystem::path& workspaceRoot,
-																	bool updatedAsShown)
+																  const std::filesystem::path& workspaceRoot,
+																  bool updatedAsShown)
 	{
 		const ImageTabFrame frame = DrawImageTab(m_Images.For(item.Path),
 												 BuildBreadcrumb(workspaceRoot, item.Path, {}, 0), settings);

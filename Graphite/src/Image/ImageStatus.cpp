@@ -11,21 +11,29 @@ namespace Graphite {
 	{
 		std::vector<ViewStatusItem> items;
 
-		if (hovered) {
+		if (hovered)
+		{
 			items.push_back({std::format("{}, {}", hovered->At.X, hovered->At.Y), false,
-			                 IM_COL32(hovered->R, hovered->G, hovered->B, hovered->A)});
+							 IM_COL32(hovered->R, hovered->G, hovered->B, hovered->A)});
 			items.push_back({std::format("#{:02X}{:02X}{:02X}{:02X}", hovered->R, hovered->G, hovered->B, hovered->A), true,
-			                 std::nullopt});
+							 std::nullopt});
 		}
 
 		std::string text = std::format("{} × {} · {}", facts.Width, facts.Height, Core::ImageFormatName(facts.Format));
 		if (facts.EntryCount > 1)
+		{
 			text += std::format(" · {} sizes", facts.EntryCount);
-		if (facts.FileFrameCount > 1) {
+		}
+		if (facts.FileFrameCount > 1)
+		{
 			if (facts.ShownFrameCount < facts.FileFrameCount)
+			{
 				text += std::format(" · first of {} frames", facts.FileFrameCount);
+			}
 			else
+			{
 				text += std::format(" · {} frames", facts.FileFrameCount);
+			}
 		}
 		text += " · " + Core::FormatByteSize(facts.FileSize);
 

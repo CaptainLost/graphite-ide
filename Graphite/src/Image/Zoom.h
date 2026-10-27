@@ -26,13 +26,15 @@ namespace Graphite {
 		Fit
 	};
 
-	struct ZoomState {
+	struct ZoomState
+	{
 		float Zoom = 1.0f;
 		ImVec2 Pan{0.0f, 0.0f};
 		bool Opened = false;
 	};
 
-	struct PixelPoint {
+	struct PixelPoint
+	{
 		int X = 0;
 		int Y = 0;
 

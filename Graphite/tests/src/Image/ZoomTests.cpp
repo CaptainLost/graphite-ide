@@ -57,7 +57,8 @@ TEST_CASE("Zooming around a point keeps that point over the same pixel")
 	const auto pixelBefore = Graphite::PixelUnder(point, before, picture, kArea);
 	REQUIRE(pixelBefore.has_value());
 
-	for (const float zoom : {2.0f, 4.0f, 8.0f}) {
+	for (const float zoom : {2.0f, 4.0f, 8.0f})
+	{
 		const Graphite::ZoomState after = Graphite::ZoomAround(before, zoom, point, picture, kArea);
 		CHECK(after.Zoom == zoom);
 		CHECK(Graphite::PixelUnder(point, after, picture, kArea) == pixelBefore);

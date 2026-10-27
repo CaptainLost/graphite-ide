@@ -11,7 +11,8 @@
 
 namespace Graphite {
 
-	struct ImageFacts {
+	struct ImageFacts
+	{
 		Core::ImageFormat Format{};
 		int Width = 0;
 		int Height = 0;
@@ -21,7 +22,8 @@ namespace Graphite {
 		std::size_t ShownFrameCount = 1;
 	};
 
-	struct HoveredPixel {
+	struct HoveredPixel
+	{
 		PixelPoint At;
 		std::uint8_t R = 0, G = 0, B = 0, A = 0;
 	};

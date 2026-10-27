@@ -89,7 +89,7 @@ namespace Graphite {
 
 		static std::optional<DiskStamp> ReadStamp(const std::filesystem::path& path);
 		static LoadedPicture ReadAndDecode(const std::filesystem::path& path, std::uint64_t generation,
-		                                   const Core::DecodeLimits& limits);
+										   const Core::DecodeLimits& limits);
 
 		void TakeLanded();
 		void Apply(LoadedPicture picture);
