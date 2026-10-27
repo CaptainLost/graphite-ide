@@ -8,6 +8,8 @@ namespace Graphite {
 
 	inline constexpr std::string_view kBullet = "\xE2\x80\xA2";
 
+	inline constexpr std::string_view kBulletSeparator = " \xE2\x80\xA2 ";
+
 	inline constexpr std::string_view kMiddleDotSeparator = " \xC2\xB7 ";
 
 	inline constexpr std::string_view kEmDashSeparator = " \xE2\x80\x94 ";

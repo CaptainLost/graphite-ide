@@ -76,26 +76,48 @@ namespace Graphite {
 	std::optional<std::string> FitAuthorText(const AuthorTextParts& parts, float available,
 											 const std::function<float(std::string_view)>& measure)
 	{
-		const std::string head = parts.Lead + std::string{kAuthorSeparator};
-
-		std::string full = head + parts.Title;
-
-		if (measure(full) <= available)
+		// A commit with no title would leave the separator hanging at the end.
+		if (!parts.Title.empty())
 		{
-			return full;
-		}
+			const std::string head = parts.Lead + std::string{kBulletSeparator};
 
-		const std::vector<std::size_t> offsets = CodePointOffsets(parts.Title);
-		const std::size_t titleCharacters = offsets.size() - 1;
+			std::string full = head + parts.Title;
 
-		// Largest cut first; every candidate ends on a code point boundary.
-		for (std::size_t n = titleCharacters; n >= kMinimumTitleCharacters && n > 0; --n)
-		{
-			std::string cut = head + parts.Title.substr(0, offsets[n]) + std::string{kEllipsis};
-
-			if (measure(cut) <= available)
+			if (measure(full) <= available)
 			{
-				return cut;
+				return full;
+			}
+
+			const std::vector<std::size_t> offsets = CodePointOffsets(parts.Title);
+			const std::size_t titleCharacters = offsets.size() - 1;
+
+			const auto cutAt = [&](std::size_t characters) {
+				return head + parts.Title.substr(0, offsets[characters]) + std::string{kEllipsis};
+			};
+
+			// WARNING: The longest cut that fits is found by halving, not by trying each from the longest down: this
+			// runs every frame the caret line's author is drawn, and a long title cost a measure a character. Every
+			// candidate ends on a code point boundary.
+			if (titleCharacters >= kMinimumTitleCharacters && measure(cutAt(kMinimumTitleCharacters)) <= available)
+			{
+				std::size_t fitting = kMinimumTitleCharacters;
+				std::size_t tooLong = titleCharacters + 1;
+
+				while (tooLong - fitting > 1)
+				{
+					const std::size_t middle = fitting + (tooLong - fitting) / 2;
+
+					if (measure(cutAt(middle)) <= available)
+					{
+						fitting = middle;
+					}
+					else
+					{
+						tooLong = middle;
+					}
+				}
+
+				return cutAt(fitting);
 			}
 		}
 

@@ -145,6 +145,40 @@ TEST_CASE("Author text shortens an uncommitted line to You")
 	CHECK_FALSE(Fit(parts, 2.0f).has_value());
 }
 
+TEST_CASE("Author text measures a long title a few times only")
+{
+	constexpr int kTitleWords = 100;
+	constexpr int kMostMeasures = 16;
+
+	AuthorTextParts parts{"Anna", "Anna", ""};
+
+	for (int word = 0; word < kTitleWords; ++word)
+	{
+		parts.Title += "word ";
+	}
+
+	int measures = 0;
+	const auto measure = [&measures](std::string_view text) {
+		++measures;
+		return CountCodePoints(text);
+	};
+
+	const std::optional<std::string> text = FitAuthorText(parts, 40.0f, measure);
+
+	REQUIRE(text.has_value());
+	CHECK(CountCodePoints(*text) <= 40.0f);
+	CHECK(CountCodePoints(*text) >= 39.0f);
+	CHECK(measures <= kMostMeasures);
+}
+
+TEST_CASE("Author text shows the lead alone for a commit with no title")
+{
+	const AuthorTextParts parts{"Anna Kowalczyk, 3 months ago", "Anna Kowalczyk", ""};
+
+	CHECK(Fit(parts, 100.0f) == "Anna Kowalczyk, 3 months ago");
+	CHECK(Fit(parts, 20.0f) == "Anna Kowalczyk");
+}
+
 TEST_CASE("Author text cuts a title on a code point boundary")
 {
 	const AuthorTextParts parts{"Anna", "Anna", "Za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87 g\xC4\x99\xC5\x9Bl\xC4\x85 ja\xC5\xBA\xC5\x84"};
