@@ -20,9 +20,6 @@
 namespace Graphite {
 
 	namespace {
-		constexpr ImU32 kDarkSwatch = IM_COL32(13, 14, 16, 255);
-		constexpr ImU32 kLightSwatch = IM_COL32(243, 244, 246, 255);
-		constexpr ImU32 kSwatchBorder = IM_COL32(255, 255, 255, 64);
 		constexpr float kToolHeight = 22.0f;
 		constexpr float kSegmentPadding = 2.0f;
 		constexpr float kSegmentGap = 2.0f;
@@ -32,8 +29,6 @@ namespace Graphite {
 		constexpr float kSwatchButtonRounding = 4.0f;
 		constexpr float kSwatchSide = 10.0f;
 		constexpr float kSwatchRounding = 2.0f;
-		constexpr float kCheckerNearShare = 0.06f;
-		constexpr float kCheckerFarShare = 0.14f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kSameZoom = 0.0001f;
 		constexpr std::size_t kSwatchCount = 3;
@@ -193,17 +188,14 @@ namespace Graphite {
 
 		void DrawCheckerSwatch(ImDrawList& drawList, const ImRect& rect)
 		{
-			const ImVec4 content = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
-			const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-			const ImU32 nearColour = ImGui::GetColorU32(ImLerp(content, text, kCheckerNearShare));
-			const ImU32 farColour = ImGui::GetColorU32(ImLerp(content, text, kCheckerFarShare));
+			const CheckerboardColours colours = ThemeCheckerboardColours();
 			const ImVec2 middle(std::floor(rect.Min.x + rect.GetWidth() * kHalf),
 								std::floor(rect.Min.y + rect.GetHeight() * kHalf));
 
-			drawList.AddRectFilled(rect.Min, middle, nearColour);
-			drawList.AddRectFilled(middle, rect.Max, nearColour);
-			drawList.AddRectFilled(ImVec2(middle.x, rect.Min.y), ImVec2(rect.Max.x, middle.y), farColour);
-			drawList.AddRectFilled(ImVec2(rect.Min.x, middle.y), ImVec2(middle.x, rect.Max.y), farColour);
+			drawList.AddRectFilled(rect.Min, middle, colours.Near);
+			drawList.AddRectFilled(middle, rect.Max, colours.Near);
+			drawList.AddRectFilled(ImVec2(middle.x, rect.Min.y), ImVec2(rect.Max.x, middle.y), colours.Far);
+			drawList.AddRectFilled(ImVec2(rect.Min.x, middle.y), ImVec2(middle.x, rect.Max.y), colours.Far);
 		}
 
 		void DrawSwatch(ImDrawList& drawList, PictureBackground kind, const ImRect& cell)
@@ -220,14 +212,14 @@ namespace Graphite {
 				DrawCheckerSwatch(drawList, swatch);
 				break;
 			case PictureBackground::Dark:
-				drawList.AddRectFilled(swatch.Min, swatch.Max, kDarkSwatch, rounding);
+				drawList.AddRectFilled(swatch.Min, swatch.Max, kDarkPictureBackground, rounding);
 				break;
 			case PictureBackground::Light:
-				drawList.AddRectFilled(swatch.Min, swatch.Max, kLightSwatch, rounding);
+				drawList.AddRectFilled(swatch.Min, swatch.Max, kLightPictureBackground, rounding);
 				break;
 			}
 
-			drawList.AddRect(swatch.Min, swatch.Max, kSwatchBorder, rounding);
+			drawList.AddRect(swatch.Min, swatch.Max, ImGui::GetColorU32(ImGuiCol_Border), rounding);
 		}
 
 		bool DrawSwatchButton(const char* id, PictureBackground kind, bool current, const char* tooltip, ImVec2 size)

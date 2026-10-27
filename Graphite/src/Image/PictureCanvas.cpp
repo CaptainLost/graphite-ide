@@ -12,13 +12,9 @@
 namespace Graphite {
 
 	namespace {
-		constexpr ImU32 kDarkBackground = IM_COL32(13, 14, 16, 255);
-		constexpr ImU32 kLightBackground = IM_COL32(243, 244, 246, 255);
 		constexpr ImU32 kGridColour = IM_COL32(0, 0, 0, 128);
 		constexpr float kGridLineWidth = 1.0f;
 		constexpr float kCheckerSide = 8.0f;
-		constexpr float kCheckerNearShare = 0.06f;
-		constexpr float kCheckerFarShare = 0.14f;
 		constexpr float kSmallestItemSide = 1.0f;
 
 		// A touchpad reports a fraction of a notch, which still counts as one, as the terminal counts it.
@@ -72,14 +68,11 @@ namespace Graphite {
 		// Squares fixed in screen pixels from the picture's top-left corner, drawn only where the picture is seen.
 		void DrawCheckerboard(ImDrawList& drawList, const ImRect& placed, const ImRect& visible)
 		{
-			const ImVec4 content = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
-			const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-			const ImU32 nearColour = ImGui::GetColorU32(ImLerp(content, text, kCheckerNearShare));
-			const ImU32 farColour = ImGui::GetColorU32(ImLerp(content, text, kCheckerFarShare));
+			const CheckerboardColours colours = ThemeCheckerboardColours();
 			const float side = Core::Scaled(kCheckerSide);
 			const auto edge = [side](float start, int square) { return start + static_cast<float>(square) * side; };
 
-			drawList.AddRectFilled(visible.Min, visible.Max, nearColour);
+			drawList.AddRectFilled(visible.Min, visible.Max, colours.Near);
 
 			const int firstColumn = static_cast<int>(std::floor((visible.Min.x - placed.Min.x) / side));
 			const int firstRow = static_cast<int>(std::floor((visible.Min.y - placed.Min.y) / side));
@@ -94,7 +87,7 @@ namespace Graphite {
 					const float left = edge(placed.Min.x, column);
 					ImRect square(left, top, left + side, top + side);
 					square.ClipWithFull(visible);
-					drawList.AddRectFilled(square.Min, square.Max, farColour);
+					drawList.AddRectFilled(square.Min, square.Max, colours.Far);
 				}
 			}
 		}
@@ -108,10 +101,10 @@ namespace Graphite {
 				DrawCheckerboard(drawList, placed, visible);
 				return;
 			case PictureBackground::Dark:
-				drawList.AddRectFilled(visible.Min, visible.Max, kDarkBackground);
+				drawList.AddRectFilled(visible.Min, visible.Max, kDarkPictureBackground);
 				return;
 			case PictureBackground::Light:
-				drawList.AddRectFilled(visible.Min, visible.Max, kLightBackground);
+				drawList.AddRectFilled(visible.Min, visible.Max, kLightPictureBackground);
 				return;
 			}
 		}

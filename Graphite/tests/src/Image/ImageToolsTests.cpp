@@ -12,6 +12,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <functional>
 #include <vector>
 
@@ -263,4 +264,39 @@ TEST_CASE("The image tools take the width they report")
 		CHECK(reported > 0.0f);
 		CHECK(screen.LastItemRight == doctest::Approx(reported).epsilon(0.001));
 	});
+}
+
+TEST_CASE("The background swatches are outlined in the theme's border colour")
+{
+	constexpr ImU32 kThemeBorder = IM_COL32(10, 200, 30, 255);
+	constexpr float kNearSwatch = 7.0f;
+
+	ImGuiFrames frames;
+	ToolsScreen screen;
+	frames.Next(screen.Drawer());
+
+	const std::vector<float> centres = ButtonCentres(frames, screen);
+	REQUIRE(centres.size() == kButtonCount);
+
+	ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+	frames.Next([&screen] {
+		ImGui::PushStyleColor(ImGuiCol_Border, kThemeBorder);
+		screen.Draw();
+		ImGui::PopStyleColor();
+	});
+
+	const ImDrawList& drawing = *ImGui::FindWindowByName(kWindow)->DrawList;
+
+	for (const std::size_t swatch : {kCheckerboardIndex, kDarkIndex, kLightIndex})
+	{
+		CAPTURE(swatch);
+		const ImRect around(ImVec2(centres[swatch] - kNearSwatch, kRowMiddle - kNearSwatch),
+							ImVec2(centres[swatch] + kNearSwatch, kRowMiddle + kNearSwatch));
+
+		const bool outlined = std::ranges::any_of(drawing.VtxBuffer, [&around](const ImDrawVert& vertex) {
+			return vertex.col == kThemeBorder && around.Contains(vertex.pos);
+		});
+
+		CHECK(outlined);
+	}
 }
