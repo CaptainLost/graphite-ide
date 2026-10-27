@@ -346,11 +346,18 @@ namespace Graphite {
 			m_FrameShownAt = now;
 		}
 
-		if (now - *m_FrameShownAt >= m_Frames[m_FrameIndex].Delay)
+		const std::chrono::steady_clock::time_point due = *m_FrameShownAt + m_Frames[m_FrameIndex].Delay;
+
+		if (now >= due)
 		{
 			m_FrameIndex = (m_FrameIndex + 1) % m_Frames.size();
-			m_FrameShownAt = now;
 			m_Texture.reset();
+
+			// WARNING: Timed from when the frame was due, not from the late wake-up that showed it, or every frame
+			// runs long by that lateness. Woken so late that the new frame would be due already, as after a long
+			// pause, the timing starts again from now, so the frames it missed are skipped rather than played at once.
+			const bool newFrameAlreadyDue = now - due >= m_Frames[m_FrameIndex].Delay;
+			m_FrameShownAt = newFrameAlreadyDue ? now : due;
 		}
 
 		Core::Redraw::RequestIn(*m_FrameShownAt + m_Frames[m_FrameIndex].Delay - now);

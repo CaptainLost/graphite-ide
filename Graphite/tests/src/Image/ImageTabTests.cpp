@@ -454,6 +454,73 @@ TEST_CASE("A gif shows its next frame once its delay has passed")
 	static_cast<void>(Core::Redraw::TakeDeadline());
 }
 
+TEST_CASE("A gif woken late times its next frame from when the frame was due")
+{
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	TempDirectory directory;
+	DeferredJobs jobs;
+	FakeTextureFactory textures;
+	ImageTab tab(WriteFile(directory.GetPath() / "spinner.gif", Bytes(ImageFixtures::kGif2Frames2x2)), jobs.Submitter(),
+				 textures);
+	tab.Load();
+	jobs.RunAll();
+
+	const Clock::time_point start = Clock::now();
+	tab.Update(start, true);
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	// The first frame was due at 50 ms, so the second frame's 100 ms end at 150 ms, not at 160 ms.
+	const Clock::time_point beforeLateUpdate = Clock::now();
+	tab.Update(start + 60ms, true);
+	const Clock::time_point afterLateUpdate = Clock::now();
+	CheckColour(tab, {0, 0}, 0, 0, 255, 255);
+
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+	REQUIRE(deadline.has_value());
+	CHECK(*deadline >= beforeLateUpdate + 90ms);
+	CHECK(*deadline <= afterLateUpdate + 90ms);
+
+	tab.Update(start + 149ms, true);
+	CheckColour(tab, {0, 0}, 0, 0, 255, 255);
+
+	tab.Update(start + 150ms, true);
+	CheckColour(tab, {0, 0}, 255, 0, 0, 255);
+
+	static_cast<void>(Core::Redraw::TakeDeadline());
+}
+
+TEST_CASE("A gif woken after a long pause shows one frame on and none of the frames it missed")
+{
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	TempDirectory directory;
+	DeferredJobs jobs;
+	FakeTextureFactory textures;
+	ImageTab tab(WriteFile(directory.GetPath() / "spinner.gif", Bytes(ImageFixtures::kGif2Frames2x2)), jobs.Submitter(),
+				 textures);
+	tab.Load();
+	jobs.RunAll();
+
+	const Clock::time_point start = Clock::now();
+	tab.Update(start, true);
+
+	tab.Update(start + 5s, true);
+	CheckColour(tab, {0, 0}, 0, 0, 255, 255);
+
+	tab.Update(start + 5s, true);
+	CheckColour(tab, {0, 0}, 0, 0, 255, 255);
+
+	// The frame shown after the pause gets its whole 100 ms from then.
+	tab.Update(start + 5s + 99ms, true);
+	CheckColour(tab, {0, 0}, 0, 0, 255, 255);
+
+	tab.Update(start + 5s + 100ms, true);
+	CheckColour(tab, {0, 0}, 255, 0, 0, 255);
+
+	static_cast<void>(Core::Redraw::TakeDeadline());
+}
+
 TEST_CASE("A gif in a tab that is not shown asks for no frames")
 {
 	static_cast<void>(Core::Redraw::TakeDeadline());
