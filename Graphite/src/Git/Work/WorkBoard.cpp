@@ -14,11 +14,24 @@ namespace Graphite {
 			return branch.Kind == Core::RefKind::Local && !branch.IsHead && &branch != trunk;
 		}
 
-		const WorktreeFacts* MainWorktree(const WorkFacts* facts)
+		const WorktreeFacts* WorkingCopyWorktree(const WorkFacts* facts, const std::filesystem::path& workingDirectory)
 		{
 			if (facts == nullptr)
 			{
 				return nullptr;
+			}
+
+			if (!workingDirectory.empty())
+			{
+				const Core::PathKeyText key = Core::PathKey(workingDirectory);
+
+				for (const WorktreeFacts& worktree : facts->Worktrees)
+				{
+					if (Core::PathKey(worktree.Entry.Path) == key)
+					{
+						return &worktree;
+					}
+				}
 			}
 
 			for (const WorktreeFacts& worktree : facts->Worktrees)
@@ -32,7 +45,7 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const WorktreeFacts* LinkedWorktreeOf(const WorkFacts* facts, const std::string& branchFullName)
+		const WorktreeFacts* WorktreeHolding(const WorkFacts* facts, const std::string& branchFullName)
 		{
 			if (facts == nullptr)
 			{
@@ -43,7 +56,8 @@ namespace Graphite {
 			{
 				const Core::WorktreeEntry& entry = worktree.Entry;
 
-				if (!entry.IsMain && !entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch &&
+				// The main worktree counts too: open in a linked worktree, it holds a branch that is not HEAD's.
+				if (!entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch &&
 					Core::LocalBranchReference(entry.Head.BranchName) == branchFullName)
 				{
 					return &worktree;
@@ -108,24 +122,24 @@ namespace Graphite {
 			}
 		}
 
-		WorkCard WorkingCopyCard(const WorkBoardInput& input, const Core::Branch* head, const WorktreeFacts* main)
+		WorkCard WorkingCopyCard(const WorkBoardInput& input, const Core::Branch* head, const WorktreeFacts* own)
 		{
 			WorkCard card;
 			card.Kind = WorkCardKind::WorkingCopy;
 			card.Branch = head != nullptr ? head->FullName : "HEAD";
 			card.Uncommitted = input.WorkingCopyChanges;
 
-			if (main != nullptr)
+			if (own != nullptr)
 			{
-				card.Worktree = main->Entry.Path;
-				card.Operation = main->Entry.Head.Operation;
+				card.Worktree = own->Entry.Path;
+				card.Operation = own->Entry.Head.Operation;
 			}
 
 			std::optional<std::string> title;
 
-			if (main != nullptr)
+			if (own != nullptr)
 			{
-				title = TitleFor(input, main->Entry.Path);
+				title = TitleFor(input, own->Entry.Path);
 			}
 
 			card.Title = title.value_or(head != nullptr ? head->Name : "HEAD");
@@ -194,7 +208,8 @@ namespace Graphite {
 		}
 
 		board.FactsPending = facts == nullptr || facts->Answers != WorkFactsRequestFor(branches, facts->Answers.PatchBudget);
-		board.Cards.push_back(WorkingCopyCard(input, head, MainWorktree(facts)));
+		const WorktreeFacts* const own = WorkingCopyWorktree(facts, input.WorkingDirectory);
+		board.Cards.push_back(WorkingCopyCard(input, head, own));
 
 		if (facts != nullptr)
 		{
@@ -222,7 +237,7 @@ namespace Graphite {
 				{
 					branchFacts = nullptr;
 				}
-			const WorktreeFacts* worktree = LinkedWorktreeOf(facts, branch.FullName);
+			const WorktreeFacts* worktree = WorktreeHolding(facts, branch.FullName);
 			const Core::PatchMatch* match = branchFacts != nullptr && branchFacts->Match.has_value() ? &*branchFacts->Match : nullptr;
 
 			const bool unchecked = match == nullptr || !match->Complete;
@@ -304,7 +319,8 @@ namespace Graphite {
 			{
 				const Core::WorktreeEntry& entry = worktree.Entry;
 
-				if (entry.IsMain)
+				// The open folder's own worktree is the working copy's card.
+				if (&worktree == own)
 				{
 					continue;
 				}

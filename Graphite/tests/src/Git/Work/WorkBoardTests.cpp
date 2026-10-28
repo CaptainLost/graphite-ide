@@ -44,6 +44,7 @@ namespace {
 		std::vector<std::string> Failed;
 		std::vector<Graphite::WorktreeFacts> Linked;
 		std::optional<std::size_t> WorkingCopyChanges = 0;
+		std::filesystem::path WorkingDirectory;
 		std::map<std::filesystem::path, std::string> Titles;
 		bool HaveFacts = true;
 		bool StaleFacts = false;
@@ -164,6 +165,7 @@ namespace {
 			input.Branches = &current;
 			input.Facts = HaveFacts ? &facts : nullptr;
 			input.WorkingCopyChanges = WorkingCopyChanges;
+			input.WorkingDirectory = WorkingDirectory;
 			input.TitleOf = [this](const std::filesystem::path& worktree) -> std::optional<std::string> {
 				const auto found = Titles.find(worktree);
 				return found != Titles.end() ? std::optional<std::string>{found->second} : std::nullopt;
@@ -644,6 +646,43 @@ TEST_CASE("The facts request names the trunk and every other local branch but HE
 	CHECK(empty.TrunkFullName.empty());
 	CHECK(empty.TrunkTip.IsZero());
 	CHECK(empty.Branches.empty());
+}
+
+TEST_CASE("Open in a linked worktree, the working copy card is that worktree's, with its own session's title")
+{
+	Scene scene;
+	scene.MainHead = Core::HeadState{.Kind = Core::HeadKind::Branch, .BranchName = "main"};
+	scene.Worktree("feature", 0);
+	scene.WorkingDirectory = std::filesystem::path("C:/wt/feature/");
+	scene.Titles[kMainPath] = "The main checkout's session";
+	scene.Titles[scene.PathOf("feature")] = "The feature's session";
+
+	const Graphite::WorkBoard board = scene.Build();
+
+	REQUIRE(!board.Cards.empty());
+	const Graphite::WorkCard& workingCopy = board.Cards.front();
+	CHECK(workingCopy.Kind == Graphite::WorkCardKind::WorkingCopy);
+	CHECK(workingCopy.Branch == "refs/heads/feature");
+	CHECK(workingCopy.Worktree == scene.PathOf("feature"));
+	CHECK(workingCopy.Title == "The feature's session");
+	CHECK(workingCopy.FromSession);
+	CHECK(board.Cards.size() == 1);
+}
+
+TEST_CASE("A branch checked out in the main worktree while a linked one is open gets that worktree on its card")
+{
+	Scene scene;
+	scene.MainHead = Core::HeadState{.Kind = Core::HeadKind::Branch, .BranchName = "side"};
+	scene.Add("side", 10);
+	scene.Matches["refs/heads/side"] = Match(1, 0, 1, 0);
+	scene.Worktree("feature", 0);
+	scene.WorkingDirectory = scene.PathOf("feature");
+
+	const Graphite::WorkBoard board = scene.Build();
+	const Graphite::WorkCard* side = CardFor(board, "side");
+
+	REQUIRE(side != nullptr);
+	CHECK(side->Worktree == kMainPath);
 }
 
 TEST_CASE("The board counts every worktree of the repository once the facts land, and none before")

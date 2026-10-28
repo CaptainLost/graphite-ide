@@ -276,7 +276,8 @@ namespace Graphite {
 			.Branches = inputs.Branches.get(),
 			.Facts = inputs.Facts.get(),
 			.WorkingCopyChanges = ChangeCountOf(inputs.Status),
-			.TitleOf = [&titles](const std::filesystem::path& worktree) -> std::optional<std::string> {
+			.WorkingDirectory = m_Model.GetWorkingDirectory(),
+			.TitleOf =[&titles](const std::filesystem::path& worktree) -> std::optional<std::string> {
 				return titles ? SessionTitleFor(*titles, worktree) : std::nullopt;
 			}});
 

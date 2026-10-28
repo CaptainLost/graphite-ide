@@ -117,6 +117,11 @@ namespace Graphite {
 
 		// GitModel's status entry count.
 		std::optional<std::size_t> WorkingCopyChanges;
+
+		// The open folder's working directory: the working copy is the worktree there, which is a linked one when a
+		// linked worktree is open. Empty takes the main worktree.
+		std::filesystem::path WorkingDirectory;
+
 		std::function<std::optional<std::string>(const std::filesystem::path& worktree)> TitleOf;
 	};
 
