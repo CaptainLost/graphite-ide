@@ -12,9 +12,11 @@
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/Theme.h"
+#include "Core/Text/Encoding.h"
 
 #include <IconsLucide.h>
 
@@ -31,7 +33,10 @@ namespace Graphite {
 
 		// A card is this many font sizes wide at least; narrower windows drop columns.
 		constexpr float kCardWidthInFontSizes = 17.0f;
-		constexpr float kCodeLineScale = 1.1f;
+		// The branch line is in the code face a step smaller than the interface's, as the mockup sets it.
+		constexpr float kCodeLineScale = 0.9f;
+		constexpr float kKeepFontSize = 0.0f;
+		constexpr float kCardRoundingStep = 2.0f;
 		constexpr int kSubjectLines = 2;
 		constexpr int kChipLines = 2;
 		constexpr float kProgressBarHeight = 4.0f;
@@ -245,38 +250,28 @@ namespace Graphite {
 	{
 		constexpr ImGuiWindowFlags kCardFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-		if (!ImGui::BeginChild("##card", ImVec2(width, height), ImGuiChildFlags_Borders, kCardFlags))
+		// The card is lifted off the window as a field is, and rounded a step more than a control.
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_FrameBg));
+		ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, ImGui::GetStyle().FrameRounding + kCardRoundingStep);
+		const bool open = ImGui::BeginChild("##card", ImVec2(width, height), ImGuiChildFlags_Borders, kCardFlags);
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor();
+
+		if (!open)
 		{
 			ImGui::EndChild();
 			return;
 		}
 
-		const float room = ImGui::GetContentRegionAvail().x;
-
-		// Title.
-		const bool fromSession = card.FromSession;
-		const std::string title = FitToWidth(card.Title, room - (fromSession ? ImGui::GetFontSize() * 1.5f : 0.0f));
-		ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
-		ImGui::TextUnformatted((fromSession ? std::string(ICON_LC_BOT " ") + title : title).c_str());
-		ImGui::PopStyleColor();
+		DrawTitle(card);
 
 		// Branch and folder.
+		const float room = ImGui::GetContentRegionAvail().x;
 		Core::PushCodeFont(ImGui::GetFontSize() * kCodeLineScale);
 		ImGui::TextDisabled("%s", FitToWidth(CardBranchLine(card), room).c_str());
 		ImGui::PopFont();
 
-		// Tip subject, two lines at most.
-		const float line = ImGui::GetTextLineHeight();
-		if (ImGui::BeginChild("##subject", ImVec2(0.0f, static_cast<float>(kSubjectLines) * line), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
-								  ImGuiWindowFlags_NoBackground))
-		{
-			ImGui::PushTextWrapPos(0.0f);
-			ImGui::TextUnformatted(card.TipSubject.c_str());
-			ImGui::PopTextWrapPos();
-		}
-		ImGui::EndChild();
-
+		DrawSubject(card.TipSubject);
 		DrawChips(card, TrunkName(board));
 		DrawProgress(card);
 		DrawButtons(card, now);
@@ -289,6 +284,61 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
+	}
+
+	void WorkView::DrawTitle(const WorkCard& card)
+	{
+		// The session's bot, a folder for a worktree, a branch for a branch alone; the working copy says so in a chip.
+		const char* const icon = card.FromSession ? ICON_LC_BOT
+								 : card.Worktree.has_value() || card.Kind == WorkCardKind::WorkingCopy ? ICON_LC_FOLDER
+																										 : ICON_LC_GIT_BRANCH;
+		const Chip workingCopy{"working copy"};
+		const bool isWorkingCopy = card.Kind == WorkCardKind::WorkingCopy;
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+
+		ImGui::TextUnformatted(icon);
+		ImGui::SameLine();
+
+		const float chipRoom = isWorkingCopy ? ChipWidthOf(workingCopy.Text) + spacing : 0.0f;
+
+		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+		ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
+		ImGui::TextUnformatted(FitToWidth(card.Title, ImGui::GetContentRegionAvail().x - chipRoom).c_str());
+		ImGui::PopStyleColor();
+		ImGui::PopFont();
+
+		if (isWorkingCopy)
+		{
+			ImGui::SameLine();
+			DrawChipRow({workingCopy}, m_ChipColours);
+		}
+	}
+
+	void WorkView::DrawSubject(const std::string& subject)
+	{
+		// Two lines at most, the second cut with an ellipsis where the subject runs on.
+		const float room = ImGui::GetContentRegionAvail().x;
+		const char* const begin = subject.c_str();
+		const char* const end = begin + subject.size();
+		const char* firstEnd = ImGui::GetFont()->CalcWordWrapPosition(ImGui::GetFontSize(), begin, end, room);
+
+		// WARNING: A word wider than the line leaves no break before it; the line is then cut at the first character.
+		if (firstEnd == begin && begin != end)
+		{
+			firstEnd = begin + Core::NextCharacter(subject, 0);
+		}
+
+		const char* rest = firstEnd;
+
+		while (rest != end && (*rest == ' ' || *rest == '\n'))
+		{
+			++rest;
+		}
+
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+		ImGui::TextUnformatted(begin, firstEnd);
+		ImGui::TextUnformatted(FitToWidth(std::string_view(rest, static_cast<std::size_t>(end - rest)), room).c_str());
+		ImGui::PopStyleColor();
 	}
 
 	void WorkView::DrawChips(const WorkCard& card, const std::string& trunk)
@@ -365,7 +415,7 @@ namespace Graphite {
 		{
 			place();
 
-			if (Core::TextButton("Review") && OnReview)
+			if (Core::TextButton(ICON_LC_EYE " Review") && OnReview)
 			{
 				OnReview(card);
 			}
@@ -385,7 +435,7 @@ namespace Graphite {
 		{
 			place();
 
-			if (Core::TextButton("Changes") && OnChanges)
+			if (Core::TextButton(ICON_LC_FILE_DIFF " Changes") && OnChanges)
 			{
 				OnChanges();
 			}

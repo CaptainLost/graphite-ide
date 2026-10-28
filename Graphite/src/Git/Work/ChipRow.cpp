@@ -109,6 +109,15 @@ namespace Graphite {
 		return ImGui::GetFontSize() * kChipFontScale + 2.0f * kChipPaddingY;
 	}
 
+	float ChipWidthOf(const std::string& text)
+	{
+		Core::PushInterfaceFont(ImGui::GetFontSize() * kChipFontScale);
+		const float width = ChipWidth(text);
+		ImGui::PopFont();
+
+		return width;
+	}
+
 	std::size_t ChipsShown(const std::vector<float>& widths, float room, float spacing, int maxLines,
 						   const std::function<float(std::size_t hidden)>& plusWidth)
 	{

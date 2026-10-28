@@ -47,6 +47,8 @@ namespace Graphite {
 		void DrawCards(const WorkBoard& board, std::chrono::sys_seconds now);
 		void DrawCard(const WorkBoard& board, const WorkCard& card, float width, float height,
 					  std::chrono::sys_seconds now);
+		void DrawTitle(const WorkCard& card);
+		void DrawSubject(const std::string& subject);
 		void DrawChips(const WorkCard& card, const std::string& trunk);
 		void DrawProgress(const WorkCard& card);
 		void DrawButtons(const WorkCard& card, std::chrono::sys_seconds now);

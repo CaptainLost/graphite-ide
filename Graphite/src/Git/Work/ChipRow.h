@@ -51,6 +51,9 @@ namespace Graphite {
 	// One line of the chips' smaller text and a little padding: the height of every chip.
 	float ChipHeight();
 
+	// The width of a chip of `text`, in the chips' smaller text.
+	float ChipWidthOf(const std::string& text);
+
 	// How many chips fit in `maxLines` lines of `room`, laid left to right and wrapped where one would pass the edge,
 	// with room left on the last line for a chip of `plusWidth(hidden)` that counts the ones cut. All of them when
 	// they fit, or when `maxLines` is 0.

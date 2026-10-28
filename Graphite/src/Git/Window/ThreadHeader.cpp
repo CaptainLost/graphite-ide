@@ -24,7 +24,7 @@ namespace Graphite {
 		constexpr const char* kOpenInOwnTab = "Open in own tab";
 
 		// As on the card.
-		constexpr float kCodeLineScale = 1.1f;
+		constexpr float kCodeLineScale = 0.9f;
 		constexpr float kBotRoomInFontSizes = 1.5f;
 
 		std::string BranchAndFolder(const ThreadHeaderInput& input)
