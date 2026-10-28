@@ -685,4 +685,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0653](0653-count-a-branch-as-holding-work-while-a-commit-of-its-own-has-no-patch-twin-in-the-trunk-or-its-worktree-has-changes.md) | Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes | proposed | 2026-10-28 |
 | [0654](0654-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md) | Start a branch review on its first viewed mark and keep drafts out of reviews.json | proposed | 2026-10-28 |
 | [0655](0655-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md) | Draw Changes as one view hosted by the side panel and the Git window, sharing one commit draft | proposed | 2026-10-28 |
+| [0656](0656-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md) | Browse every branch in a table in the Git window's main area | proposed | 2026-10-28 |
 <!-- /adr-index -->
