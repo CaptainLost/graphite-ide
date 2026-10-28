@@ -133,6 +133,37 @@ TEST_CASE("A menu opened on a branch card still names that branch after the card
 	CHECK(menuOf == std::optional<std::string>{"refs/heads/feature"});
 }
 
+TEST_CASE("A detached working copy's card opens no menu")
+{
+	ImGuiFrames frames;
+	const Graphite::ActiveScheme scheme;
+	Graphite::WorkView view(scheme);
+	Graphite::WorkBoard board;
+	Graphite::WorkCard workingCopy;
+	workingCopy.Kind = Graphite::WorkCardKind::WorkingCopy;
+	workingCopy.Branch = "HEAD";
+	workingCopy.Title = "HEAD";
+	board.Cards.push_back(workingCopy);
+
+	bool menuDrawn = false;
+	view.DrawBranchMenu = [&](const std::string&) { menuDrawn = true; };
+
+	const auto draw = [&] { DrawIn(view, board); };
+	frames.Next(draw);
+	frames.Next(draw);
+
+	bool popupOpened = false;
+
+	for (float y = 5.0f; y < kWindowHeight; y += kSweepStep)
+	{
+		frames.Click(ImVec2(50.0f, y), draw, ImGuiMouseButton_Right);
+		popupOpened = popupOpened || ImGui::GetCurrentContext()->OpenPopupStack.Size > 0;
+	}
+
+	CHECK_FALSE(popupOpened);
+	CHECK_FALSE(menuDrawn);
+}
+
 TEST_CASE("Review on a branch card opens its thread")
 {
 	ImGuiFrames frames;

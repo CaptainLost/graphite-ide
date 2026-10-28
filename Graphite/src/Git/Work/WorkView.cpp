@@ -302,8 +302,7 @@ namespace Graphite {
 		DrawProgress(card);
 		DrawButtons(card, now);
 
-		if (DrawBranchMenu && card.Kind != WorkCardKind::DetachedWorktree && !card.Branch.empty() &&
-			ImGui::BeginPopupContextWindow("##cardMenu"))
+		if (DrawBranchMenu && CardNamesBranch(card) && ImGui::BeginPopupContextWindow("##cardMenu"))
 		{
 			DrawBranchMenu(card.Branch);
 			ImGui::EndPopup();

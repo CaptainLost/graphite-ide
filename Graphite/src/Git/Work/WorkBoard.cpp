@@ -9,6 +9,9 @@ namespace Graphite {
 
 	namespace {
 
+		// What the working copy's card names while HEAD is on no branch.
+		constexpr const char* kDetachedHead = "HEAD";
+
 		bool IsWorkBranch(const Core::Branch& branch, const Core::Branch* trunk)
 		{
 			return branch.Kind == Core::RefKind::Local && !branch.IsHead && &branch != trunk;
@@ -126,7 +129,7 @@ namespace Graphite {
 		{
 			WorkCard card;
 			card.Kind = WorkCardKind::WorkingCopy;
-			card.Branch = head != nullptr ? head->FullName : "HEAD";
+			card.Branch = head != nullptr ? head->FullName : kDetachedHead;
 			card.Uncommitted = input.WorkingCopyChanges;
 
 			if (own != nullptr)
@@ -142,7 +145,7 @@ namespace Graphite {
 				title = TitleFor(input, own->Entry.Path);
 			}
 
-			card.Title = title.value_or(head != nullptr ? head->Name : "HEAD");
+			card.Title = title.value_or(head != nullptr ? head->Name : kDetachedHead);
 			card.FromSession = title.has_value();
 
 			if (head != nullptr)
@@ -370,6 +373,11 @@ namespace Graphite {
 		}
 
 		return board;
+	}
+
+	bool CardNamesBranch(const WorkCard& card)
+	{
+		return card.Kind != WorkCardKind::DetachedWorktree && !card.Branch.empty() && card.Branch != kDetachedHead;
 	}
 
 	std::string ReadySummary(const WorkBoard& board)

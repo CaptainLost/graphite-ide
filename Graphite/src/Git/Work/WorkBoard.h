@@ -129,6 +129,9 @@ namespace Graphite {
 	// board has no budget of its own to compare.
 	WorkBoard BuildWorkBoard(const WorkBoardInput& input);
 
+	// The card stands for a branch, whose menu it offers: not a detached worktree's card, nor a detached working copy's.
+	bool CardNamesBranch(const WorkCard& card);
+
 	// The trunk and every local branch but the trunk and HEAD's. With no trunk, no branches and a zero tip.
 	WorkFactsRequest WorkFactsRequestFor(const std::vector<Core::Branch>& branches, std::size_t patchBudget);
 

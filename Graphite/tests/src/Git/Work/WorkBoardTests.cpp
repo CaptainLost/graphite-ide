@@ -607,6 +607,36 @@ TEST_CASE("Without a trunk only the working copy is shown")
 	CHECK(board.Ready.empty());
 }
 
+TEST_CASE("A card names a branch unless it is a detached working copy's or a detached worktree's")
+{
+	Scene scene;
+	scene.Add("side");
+	scene.Matches["refs/heads/side"] = Match(1, 0, 1, 0);
+	Graphite::WorktreeFacts scratch;
+	scratch.Entry.Path = "C:/wt/scratch";
+	scratch.Entry.Head = {.Kind = Core::HeadKind::Detached, .Commit = OidOf(77)};
+	scratch.Uncommitted = 1;
+	scene.Linked.push_back(scratch);
+
+	const Graphite::WorkBoard onBranch = scene.Build();
+
+	REQUIRE(onBranch.Cards.size() == 3);
+	CHECK(Graphite::CardNamesBranch(onBranch.Cards[0]));
+	CHECK(Graphite::CardNamesBranch(onBranch.Cards[1]));
+	CHECK_FALSE(Graphite::CardNamesBranch(onBranch.Cards[2]));
+
+	for (Core::Branch& branch : scene.Branches)
+	{
+		branch.IsHead = false;
+	}
+
+	const Graphite::WorkBoard detached = scene.Build();
+
+	REQUIRE(!detached.Cards.empty());
+	CHECK(detached.Cards[0].Branch == "HEAD");
+	CHECK_FALSE(Graphite::CardNamesBranch(detached.Cards[0]));
+}
+
 TEST_CASE("The ready summary counts merged, same change and locked")
 {
 	Scene scene;
