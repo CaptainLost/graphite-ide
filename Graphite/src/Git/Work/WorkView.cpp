@@ -339,21 +339,20 @@ namespace Graphite {
 
 		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_TextDisabled));
 		ImGui::TextUnformatted(begin, firstEnd);
-		ImGui::TextUnformatted(FitToWidth(std::string_view(rest, static_cast<std::size_t>(end - rest)), room).c_str());
+
+		if (rest != end)
+		{
+			ImGui::TextUnformatted(FitToWidth(std::string_view(rest, static_cast<std::size_t>(end - rest)), room).c_str());
+		}
+
 		ImGui::PopStyleColor();
 	}
 
 	void WorkView::DrawChips(const WorkCard& card, const std::string& trunk)
 	{
-		const float chipsHeight = static_cast<float>(kChipLines) * ChipHeight() + ImGui::GetStyle().ItemSpacing.y;
-
-		if (ImGui::BeginChild("##chips", ImVec2(0.0f, chipsHeight), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
-								  ImGuiWindowFlags_NoBackground))
-		{
-			DrawChipRow(CardChips(card, trunk), m_ChipColours, kChipLines);
-		}
-		ImGui::EndChild();
+		// The chips take the lines they need, two at most, and what follows comes straight after, as in the mockup:
+		// a card is as tall as the fullest one, and the room a shorter one leaves is at its foot.
+		DrawChipRow(CardChips(card, trunk), m_ChipColours, kChipLines);
 	}
 
 	void WorkView::DrawProgress(const WorkCard& card)
