@@ -39,15 +39,6 @@ TEST_CASE("Printable bytes show as themselves and others as dots")
 	CHECK(Graphite::AsciiOf(0xC4) == '.');
 }
 
-TEST_CASE("Zero bytes and dot stand-ins are dim")
-{
-	CHECK(Graphite::IsDim(0));
-	CHECK_FALSE(Graphite::IsDim('A'));
-	CHECK_FALSE(Graphite::IsDim(0x20));
-	CHECK(Graphite::IsDim(0x7F));
-	CHECK(Graphite::IsDim(0xFF));
-}
-
 TEST_CASE("Copied bytes are hex pairs separated by spaces")
 {
 	const std::array<std::uint8_t, 4> bytes{0x4D, 0x5A, 0x90, 0x00};

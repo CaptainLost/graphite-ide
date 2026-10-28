@@ -25,9 +25,6 @@ namespace Graphite {
 	// The character for 0x20-0x7E, a dot for every other byte.
 	char AsciiOf(std::uint8_t b);
 
-	// Zero and the bytes drawn as a dot.
-	bool IsDim(std::uint8_t b);
-
 	std::string CopyText(std::span<const std::uint8_t> bytes);
 
 	// `fromFirst` holds up to four bytes starting at `first`; a value is shown only when it has enough of them.

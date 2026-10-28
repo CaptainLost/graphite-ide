@@ -550,6 +550,7 @@ TEST_CASE("Quarter wheel notches zoom one step after four")
 
 	CHECK(screen.Zoom.Zoom == doctest::Approx(1.5f));
 }
+
 TEST_CASE("At 150% interface scale the fit margin is 36 px")
 {
 	CanvasScreen screen(kTooLargeToFit);

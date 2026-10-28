@@ -67,11 +67,6 @@ namespace Graphite {
 		return b >= 0x20 && b <= 0x7E ? static_cast<char>(b) : '.';
 	}
 
-	bool IsDim(std::uint8_t b)
-	{
-		return b == 0 || AsciiOf(b) == '.';
-	}
-
 	std::string CopyText(std::span<const std::uint8_t> bytes)
 	{
 		std::string text;
