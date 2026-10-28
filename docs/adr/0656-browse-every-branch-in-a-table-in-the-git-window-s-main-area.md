@@ -41,7 +41,7 @@ The navigator beside the Git window lists the newest branches and no more. A rep
 
 ### Neutral
 
-- The scope, the sort and the filter are not saved.
+- The scope, the sort and the filter are not saved. ImGui keeps no settings for the table either: sorted and never resized, the vendored ImGui saves the sorted column alone and on the next start draws it first.
 
 ## Alternatives Considered
 

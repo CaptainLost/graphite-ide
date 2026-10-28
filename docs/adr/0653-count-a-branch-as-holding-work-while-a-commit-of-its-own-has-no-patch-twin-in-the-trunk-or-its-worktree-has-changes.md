@@ -38,7 +38,9 @@ not), otherwise as SameChangeInTrunk. A branch in a locked worktree is never
 offered for removal: it becomes an information row carrying the lock reason.
 
 The trunk and HEAD's branch get no card and no ready entry of their own;
-HEAD's branch is shown by the working copy's card, which is always first. A
+HEAD's branch is shown by the working copy's card, which is always first. That
+card is the open folder's own worktree, a linked one when a linked worktree is
+open; any other worktree, the main one included, holds its branch's card. A
 detached linked worktree is a card when it has changes, an unknown count or an
 operation in progress, and an information row otherwise. A worktree whose
 folder is gone is an information row. Facts count as current only when they
