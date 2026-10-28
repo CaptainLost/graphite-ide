@@ -87,7 +87,23 @@ Date: 2026-10-28
 
 ### Images that cannot be shown
 
-A later change fills this section.
+An image tab remembers why its load failed: the file could not be read, its bytes
+are not a picture this program shows, or the file or its pixels are past the
+preview limit.
+
+- **Not a picture, or too large.** The tab draws the hex view of the same path, with
+  the line the image tab would have shown as its notice, `Could not read this image:
+  <reason>` or `Image is too large to preview (W × H)`. Its path row has no image
+  tools and its status items are the hex ones.
+- **Could not be read.** The tab keeps the failure message with Retry, since bytes
+  that cannot be read cannot be shown either.
+- **By what was drawn.** Which commands a tab takes is decided by what it drew this
+  frame, not by the kind of its item. An image shown as bytes takes Copy and Select
+  All as a hex tab does, and the zoom chords and View → Zoom In change the font, as
+  there is no picture to zoom.
+- **Back to a picture.** The bytes are read through the same per-path entries a hex
+  tab uses. When the file is mended on disk and decodes, the tab draws the picture
+  again and those entries are dropped.
 
 ## Rationale
 

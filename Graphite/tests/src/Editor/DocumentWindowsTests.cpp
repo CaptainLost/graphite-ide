@@ -1194,6 +1194,139 @@ namespace {
 	}
 }
 
+namespace {
+
+	// The image tab's load fails, then the hex view of the same file asks for its first rows.
+	void ShowFailedImage(DrawnDocuments& drawn)
+	{
+		drawn.ShowLanded();
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+	}
+}
+
+TEST_CASE("An image that cannot be decoded is shown as hex under the reason")
+{
+	TempDirectory folder;
+	// A NUL makes it binary, which is what sends a file named .png to an image tab rather than a text one.
+	const std::filesystem::path broken = folder.MakeFile("broken.png", std::string("this\0is not a picture", 21));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(broken, true);
+	ShowFailedImage(drawn);
+
+	REQUIRE(drawn.Documents.At(*drawn.Documents.Find(broken)).View == Core::ItemView::Image);
+	REQUIRE(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Failed);
+
+	const std::string notice = drawn.Picture(broken).GetFailure();
+	REQUIRE(notice.starts_with("Could not read this image: "));
+
+	CHECK(drawn.TabDraws(broken, "broken.png", Face::Interface));
+	CHECK(drawn.TabDraws(broken, notice, Face::Interface));
+	CHECK(drawn.TabDraws(broken, "Offset", Face::Code));
+	CHECK(drawn.TabDraws(broken, "74 68 69 73", Face::Code));
+	CHECK_FALSE(drawn.TabDraws(broken, "Retry", Face::Interface));
+
+	using Graphite::ViewStatusItem;
+
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+															 {"1 byte", false, std::nullopt},
+															 {"u8 116  u16 26740  u32 1936287860", true, std::nullopt},
+															 {"21 B", false, std::nullopt}});
+
+	SUBCASE("The zoom chords and the menu zoom go to the font")
+	{
+		drawn.Focus(broken);
+		const float font = drawn.Settings.GetFontSize();
+
+		drawn.Press(Core::KeyCode::Equal, Core::KeyModifier::Control);
+		CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+
+		CHECK(drawn.RunFromMenu("editor.zoomIn"));
+		CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 2.0f));
+	}
+
+	SUBCASE("Copy and Select All work on its bytes")
+	{
+		drawn.Focus(broken);
+
+		CHECK(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
+		CHECK(drawn.Windows.CanRun(Graphite::EditorAction::SelectAll));
+
+		drawn.ShiftRight(3);
+		drawn.Press(Core::KeyCode::C, Core::KeyModifier::Control);
+		CHECK(drawn.Clipboard == "74 68 69 73");
+
+		drawn.Press(Core::KeyCode::A, Core::KeyModifier::Control);
+		REQUIRE(drawn.StatusItems().size() > 1);
+		CHECK(drawn.StatusItems()[1].Text == "21 bytes");
+	}
+
+	SUBCASE("The file mended on disk comes back as a picture")
+	{
+		Rewrite(broken, Contents(ImageFixtures::kPng2x2));
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+		drawn.Focus(broken);
+
+		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Ready);
+		CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"2 × 2 · PNG · 77 B", false, std::nullopt}});
+		CHECK_FALSE(drawn.TabDraws(broken, "Offset", Face::Code));
+
+		const float font = drawn.Settings.GetFontSize();
+		drawn.Press(Core::KeyCode::Equal, Core::KeyModifier::Control);
+		CHECK(drawn.Picture(broken).GetZoom().Zoom == 1.5f);
+		CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font));
+		CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
+	}
+}
+
+TEST_CASE("An image past the pixel limit is shown as hex under its size")
+{
+	TempDirectory folder;
+	const std::filesystem::path huge = folder.MakeFile("huge.png", Contents(ImageFixtures::kPngHeader20000x12000));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(huge, true);
+	ShowFailedImage(drawn);
+
+	REQUIRE(drawn.Picture(huge).GetState() == Graphite::ImageTabState::Failed);
+
+	CHECK(drawn.TabDraws(huge, "Image is too large to preview (20000 × 12000)", Face::Interface));
+	CHECK(drawn.TabDraws(huge, "89 50 4E 47", Face::Code));
+	CHECK_FALSE(drawn.TabDraws(huge, "Retry", Face::Interface));
+	REQUIRE_FALSE(drawn.StatusItems().empty());
+	CHECK(drawn.StatusItems().front().Text == "Offset 0x00000000");
+}
+
+TEST_CASE("An image that cannot be read keeps its failure with Retry")
+{
+	TempDirectory folder;
+	const std::filesystem::path picture = folder.MakeFile("logo.png", Contents(ImageFixtures::kPng2x2));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(picture, true);
+	drawn.Frame();
+	std::filesystem::remove(picture);
+	ShowFailedImage(drawn);
+
+	REQUIRE(drawn.Picture(picture).GetState() == Graphite::ImageTabState::Failed);
+	REQUIRE(drawn.Picture(picture).GetFailureKind() == Graphite::ImageFailure::Read);
+
+	CHECK(drawn.TabDraws(picture, drawn.Picture(picture).GetFailure(), Face::Interface));
+	CHECK(drawn.TabDraws(picture, "Retry", Face::Interface));
+	CHECK_FALSE(drawn.TabDraws(picture, "Offset", Face::Code));
+	CHECK(drawn.StatusItems().empty());
+	CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
+}
+
 TEST_CASE("A tab whose large file is still being read is remembered as open and active")
 {
 	TempDirectory folder;

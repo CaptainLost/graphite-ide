@@ -18,6 +18,11 @@ namespace Graphite {
 		std::erase_if(m_Files, [&open](const auto& entry) { return !open.contains(entry.first); });
 	}
 
+	void HexFiles::Forget(const std::filesystem::path& path)
+	{
+		m_Files.erase(path);
+	}
+
 	void HexFiles::CheckDisk(const std::filesystem::path& path)
 	{
 		if (const auto entry = m_Files.find(path); entry != m_Files.end())

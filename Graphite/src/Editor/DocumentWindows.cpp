@@ -165,6 +165,14 @@ namespace Graphite {
 			return item.View == Core::ItemView::Hex && item.Failure == Core::OpenFailure::None;
 		}
 
+		// An image that is not a picture this program shows is drawn as its bytes; one that could not be read is not,
+		// since its bytes cannot be read either.
+		bool FallsBackToBytes(const ImageTab& tab)
+		{
+			return tab.GetState() == ImageTabState::Failed && (tab.GetFailureKind() == ImageFailure::Decode ||
+															   tab.GetFailureKind() == ImageFailure::TooLarge);
+		}
+
 		std::string SavedCount(std::size_t saved)
 		{
 			if (saved == 0)
@@ -1013,12 +1021,14 @@ namespace Graphite {
 	{
 		const std::optional<std::size_t> index = m_Documents.GetActiveIndex();
 
-		if (!index || !ShowsBytes(m_Documents.At(*index)))
+		if (!index)
 		{
 			return std::nullopt;
 		}
 
-		return m_Documents.At(*index).Path;
+		const Core::OpenItem& item = m_Documents.At(*index);
+
+		return ShowsBytes(item) || DrewBytes(item.Path) ? std::optional(item.Path) : std::nullopt;
 	}
 
 	// A hex tab runs its command at once rather than when it next draws: it has no editor to hand it to, and a menu
@@ -1194,32 +1204,44 @@ namespace Graphite {
 			return false;
 		}
 
-		const std::optional<std::filesystem::path> picture = PictureTakingTheZoom();
+		const std::optional<std::filesystem::path> view = ViewTakingTheZoom();
 
-		if (!picture)
+		// What the tab drew decides, not what its item is: an image shown as bytes has no picture to zoom.
+		if (!view || !DrewPicture(*view))
 		{
 			return false;
 		}
 
-		const std::optional<std::size_t> index = m_Documents.Find(*picture);
+		const std::optional<std::size_t> index = m_Documents.Find(*view);
 
 		if (!index || !ShowsPicture(m_Documents.At(*index)))
 		{
 			return false;
 		}
 
-		if (const auto shown = m_ShownViews.find(*picture); shown != m_ShownViews.end())
-		{
-			ZoomImageTab(m_Images.For(*picture), zoom, shown->second.Area);
-			Core::Redraw::Request();
-		}
+		ZoomImageTab(m_Images.For(*view), zoom, m_ShownViews.at(*view).Area);
+		Core::Redraw::Request();
 
 		return true;
 	}
 
+	bool DocumentWindows::DrewPicture(const std::filesystem::path& path) const
+	{
+		const auto shown = m_ShownViews.find(path);
+
+		return shown != m_ShownViews.end() && !shown->second.Bytes;
+	}
+
+	bool DocumentWindows::DrewBytes(const std::filesystem::path& path) const
+	{
+		const auto shown = m_ShownViews.find(path);
+
+		return shown != m_ShownViews.end() && shown->second.Bytes;
+	}
+
 	// WARNING: With the focus outside every document tab, as in a menu or a popup, the zoom is meant for the active tab:
 	// a menu takes the focus before its item runs, so no tab holds it at that moment.
-	std::optional<std::filesystem::path> DocumentWindows::PictureTakingTheZoom() const
+	std::optional<std::filesystem::path> DocumentWindows::ViewTakingTheZoom() const
 	{
 		if (m_FocusedView)
 		{
@@ -1250,10 +1272,19 @@ namespace Graphite {
 	}
 
 	DocumentWindows::ShownView DocumentWindows::RenderImageTab(const CommandContext& context, const Core::OpenItem& item,
-															   EditorSettings& settings,
+															   EditorSettings& settings, float fontSize,
+															   const ResolvedScheme& scheme,
 															   const std::filesystem::path& workspaceRoot,
 															   bool updatedAsShown)
 	{
+		const ImageTab& tab = m_Images.For(item.Path);
+
+		// The bytes of an image that cannot be shown are the hex tab's, under the line that says why.
+		if (FallsBackToBytes(tab))
+		{
+			return RenderHexTab(context, item, fontSize, scheme, workspaceRoot, tab.GetFailure());
+		}
+
 		// WARNING: A popup does not count: with the zoom menu open, a stroke belongs to the menu, not to the tab behind it.
 		const bool holdsKeyboard =
 			ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows | ImGuiFocusedFlags_NoPopupHierarchy);
@@ -1280,7 +1311,8 @@ namespace Graphite {
 
 	DocumentWindows::ShownView DocumentWindows::RenderHexTab(const CommandContext& context, const Core::OpenItem& item,
 															 float fontSize, const ResolvedScheme& scheme,
-															 const std::filesystem::path& workspaceRoot)
+															 const std::filesystem::path& workspaceRoot,
+															 std::string_view notice)
 	{
 		// WARNING: Routed before the bytes are drawn, so a move or a Select All pressed this frame is drawn this frame.
 		// A popup does not count, as for a picture.
@@ -1297,9 +1329,34 @@ namespace Graphite {
 		const EditorPalette palette = ReadEditorPalette(scheme);
 		const HexViewFrame frame =
 			DrawHexView(m_Hex.For(item.Path), m_HexViews[item.Path],
-						HexViewInput{.Path = &path, .Palette = &palette, .FontSize = fontSize, .Keys = &keys});
+						HexViewInput{.Path = &path, .Palette = &palette, .FontSize = fontSize, .Keys = &keys, .Notice = notice});
 
-		return ShownView{.Status = frame.Status, .Focused = frame.Focused};
+		return ShownView{.Status = frame.Status, .Focused = frame.Focused, .Bytes = true};
+	}
+
+	void DocumentWindows::PrepareImageFallbacks()
+	{
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			const Core::OpenItem& item = m_Documents.At(index);
+
+			if (!ShowsPicture(item))
+			{
+				continue;
+			}
+
+			const ImageTab* const tab = m_Images.Find(item.Path);
+
+			if (tab != nullptr && FallsBackToBytes(*tab))
+			{
+				static_cast<void>(m_Hex.For(item.Path));
+			}
+			else
+			{
+				m_Hex.Forget(item.Path);
+				m_HexViews.erase(item.Path);
+			}
+		}
 	}
 
 	// Bytes are asked about for every tab: only one that has shown them has any to check.
@@ -2518,6 +2575,7 @@ namespace Graphite {
 		m_Images.Update(std::chrono::steady_clock::now(), updatedAsShown);
 
 		// Once, before any hex view draws and asks for the rows it shows.
+		PrepareImageFallbacks();
 		m_Hex.Update();
 
 		std::map<std::filesystem::path, ShownView> shownViews;
@@ -2596,7 +2654,7 @@ namespace Graphite {
 
 			if (visible && (ShowsPicture(item) || ShowsBytes(item)))
 			{
-				ShownView view = ShowsPicture(item) ? RenderImageTab(context, item, settings, workspaceRoot,
+				ShownView view = ShowsPicture(item) ? RenderImageTab(context, item, settings, fontSize, scheme, workspaceRoot,
 																	 updatedAsShown.contains(item.Path))
 													: RenderHexTab(context, item, fontSize, scheme, workspaceRoot);
 

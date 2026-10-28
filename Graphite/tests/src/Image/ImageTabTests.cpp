@@ -22,6 +22,7 @@
 #include <string_view>
 #include <vector>
 
+using Graphite::ImageFailure;
 using Graphite::ImageTab;
 using Graphite::ImageTabState;
 using Graphite::PixelPoint;
@@ -278,6 +279,82 @@ TEST_CASE("An image past the pixel limit fails as too large to preview")
 	CHECK(tab.GetFacts() == nullptr);
 	CHECK(tab.GetTexture() == nullptr);
 	CHECK_FALSE(tab.CanRetry());
+}
+
+TEST_CASE("An image tab names the kind of its failure")
+{
+	TempDirectory directory;
+	DeferredJobs jobs;
+	FakeTextureFactory textures;
+
+	SUBCASE("A tab that has not failed names none")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "fine.png", Bytes(ImageFixtures::kPng2x2)), jobs.Submitter(), textures);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+
+		LoadAndLand(tab, jobs);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+	}
+
+	SUBCASE("Bytes that do not decode are a decode failure")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "broken.png", Bytes(kNotAPicture)), jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::Decode);
+	}
+
+	SUBCASE("An extension that names no image format is a decode failure")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "picture.xyz", Bytes(ImageFixtures::kPng2x2)), jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::Decode);
+	}
+
+	SUBCASE("A picture past the pixel limit is too large")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "huge.png", Bytes(ImageFixtures::kPngHeader20000x12000)), jobs.Submitter(),
+					 textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::TooLarge);
+	}
+
+	SUBCASE("A file that is not there is a read failure")
+	{
+		ImageTab tab(directory.GetPath() / "missing.png", jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::Read);
+	}
+
+	SUBCASE("A fixed file clears the kind")
+	{
+		const std::filesystem::path path = WriteFile(directory.GetPath() / "broken.png", Bytes(kNotAPicture));
+		ImageTab tab(path, jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+		REQUIRE(tab.GetFailureKind() == ImageFailure::Decode);
+
+		Rewrite(path, Bytes(ImageFixtures::kPng2x2));
+		ReloadAndLand(tab, jobs);
+
+		CHECK(tab.GetState() == ImageTabState::Ready);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+	}
+
+	SUBCASE("A reload that fails while a picture is shown keeps no failure")
+	{
+		const std::filesystem::path path = WriteFile(directory.GetPath() / "picture.png", Bytes(ImageFixtures::kPng2x2));
+		ImageTab tab(path, jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		Rewrite(path, Bytes(kNotAPicture));
+		ReloadAndLand(tab, jobs);
+
+		CHECK(tab.GetState() == ImageTabState::Ready);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+	}
 }
 
 TEST_CASE("A changed file reloads and keeps the old picture until the new one is ready")

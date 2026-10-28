@@ -23,6 +23,13 @@ namespace Graphite {
 		return entry->second.Tab;
 	}
 
+	const ImageTab* ImageTabs::Find(const std::filesystem::path& path) const
+	{
+		const auto entry = m_Tabs.find(path);
+
+		return entry != m_Tabs.end() ? &entry->second.Tab : nullptr;
+	}
+
 	void ImageTabs::Prune(const std::set<std::filesystem::path>& open)
 	{
 		for (auto entry = m_Tabs.begin(); entry != m_Tabs.end();)

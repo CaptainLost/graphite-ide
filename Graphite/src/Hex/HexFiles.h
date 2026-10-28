@@ -22,6 +22,9 @@ namespace Graphite {
 		// Drops the bytes of every tab not in `open`.
 		void Prune(const std::set<std::filesystem::path>& open);
 
+		// Drops the bytes of one tab that stays open, such as an image that shows as a picture again.
+		void Forget(const std::filesystem::path& path);
+
 		void CheckDisk(const std::filesystem::path& path);
 
 		// Once a frame, before any hex view is drawn.

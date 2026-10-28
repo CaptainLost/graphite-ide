@@ -388,15 +388,28 @@ namespace Graphite {
 			// Where a picture is laid out; empty for bytes.
 			ImRect Area;
 			bool Focused = false;
+
+			// True when the tab drew bytes: a hex tab, or an image that cannot be shown.
+			bool Bytes = false;
 		};
 
 		ShownView RenderImageTab(const CommandContext& context, const Core::OpenItem& item, EditorSettings& settings,
-								 const std::filesystem::path& workspaceRoot, bool updatedAsShown);
+								 float fontSize, const ResolvedScheme& scheme, const std::filesystem::path& workspaceRoot,
+								 bool updatedAsShown);
 
 		ShownView RenderHexTab(const CommandContext& context, const Core::OpenItem& item, float fontSize,
-							   const ResolvedScheme& scheme, const std::filesystem::path& workspaceRoot);
+							   const ResolvedScheme& scheme, const std::filesystem::path& workspaceRoot,
+							   std::string_view notice = {});
 
-		std::optional<std::filesystem::path> PictureTakingTheZoom() const;
+		// Readies the bytes of every image that cannot be shown, before the frame's hex files are updated, and lets go of
+		// those of an image that can.
+		void PrepareImageFallbacks();
+
+		bool DrewPicture(const std::filesystem::path& path) const;
+
+		bool DrewBytes(const std::filesystem::path& path) const;
+
+		std::optional<std::filesystem::path> ViewTakingTheZoom() const;
 
 		void CheckViewOnDisk(std::size_t index);
 
