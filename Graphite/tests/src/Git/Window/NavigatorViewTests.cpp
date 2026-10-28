@@ -137,6 +137,48 @@ TEST_CASE("A menu opened on a branch row still names that branch after the rows 
 	CHECK(menuOf == std::optional<std::string>{"refs/heads/first"});
 }
 
+TEST_CASE("A thread row of a branch has the branch's menu and a detached worktree's thread row has none")
+{
+	ImGuiFrames frames;
+	const ActiveScheme scheme;
+	NavigatorView view(scheme);
+
+	std::optional<std::string> menuOf;
+	int menusOpened = 0;
+	view.DrawBranchMenu = [&](const Core::Branch& branch) {
+		if (Core::BeginRightClickPopup("ref-menu"))
+		{
+			menuOf = branch.FullName;
+			++menusOpened;
+			ImGui::EndPopup();
+		}
+	};
+
+	Core::Branch topic;
+	topic.Name = "topic";
+	topic.FullName = "refs/heads/topic";
+	const std::vector<Core::Branch> branches = {topic};
+
+	const std::vector<NavigatorRow> rows = {
+		{.Kind = NavigatorRowKind::Thread, .Label = "scratch", .Index = 1, .Worktree = "C:/wt/scratch"},
+		{.Kind = NavigatorRowKind::Thread, .Label = "topic", .Index = 2, .Branch = "refs/heads/topic"},
+	};
+
+	ImVec2 listTop;
+	const auto draw = [&] { listTop = DrawWindow(view, rows, branches); };
+
+	frames.Next(draw);
+	frames.Next(draw);
+	frames.Click(RowCentre(listTop, 0), draw, ImGuiMouseButton_Right);
+
+	CHECK(menusOpened == 0);
+	CHECK(ImGui::GetCurrentContext()->OpenPopupStack.Size == 0);
+
+	frames.Click(RowCentre(listTop, 1), draw, ImGuiMouseButton_Right);
+
+	CHECK(menuOf == std::optional<std::string>{"refs/heads/topic"});
+}
+
 TEST_CASE("Clicking a branch row opens its history")
 {
 	ImGuiFrames frames;

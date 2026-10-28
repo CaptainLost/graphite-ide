@@ -1,5 +1,6 @@
 #include "Git/Window/NavigatorView.h"
 
+#include "Git/DefaultBranch.h"
 #include "Theme/ActiveScheme.h"
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"
@@ -132,6 +133,11 @@ namespace Graphite {
 			const bool dim = IsDimRow(row.Kind);
 			const Core::Branch* const branch =
 				row.Kind == NavigatorRowKind::Branch && row.Index < branches.size() ? &branches[row.Index] : nullptr;
+
+			// A thread's branch has the same menu as the branch's own row.
+			const Core::Branch* const menuBranch = row.Kind == NavigatorRowKind::Thread && !row.Branch.empty()
+													   ? BranchWithFullName(branches, row.Branch)
+													   : branch;
 			bool clicked = false;
 
 			ImGui::PushID(RowId(row).c_str());
@@ -144,9 +150,9 @@ namespace Graphite {
 				clicked = ListRowSelectable("##row", row.Selected, ImGuiSelectableFlags_AllowOverlap);
 
 				// The whole row answers the right click, not only its text.
-				if (branch != nullptr && DrawBranchMenu)
+				if (menuBranch != nullptr && DrawBranchMenu)
 				{
-					DrawBranchMenu(*branch);
+					DrawBranchMenu(*menuBranch);
 				}
 			}
 

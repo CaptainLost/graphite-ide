@@ -673,12 +673,30 @@ namespace Graphite {
 	void GitView::RenderHistoryHeader()
 	{
 		// A branch's history is named in the code face after the branch icon, a stash's after the archive's.
+		ImGui::BeginGroup();
 		ImGui::TextUnformatted(m_SelectedStash.has_value() ? ICON_LC_ARCHIVE : ICON_LC_GIT_BRANCH);
 		ImGui::SameLine();
 
 		Core::PushCodeFont(ImGui::GetFontSize() * kHistoryTitleScale);
 		EmphasisedLine(FitToWidth(HistoryTitle(), ImGui::GetContentRegionAvail().x));
 		ImGui::PopFont();
+		ImGui::EndGroup();
+
+		if (m_SelectedStash.has_value())
+		{
+			return;
+		}
+
+		// The branch the header names has its menu here too: the selected ref's, or HEAD's for HEAD's history.
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const std::vector<Core::Branch>& listed = BranchesOrNone(branches);
+		const Core::Branch* const named =
+			m_SelectedRef.has_value() ? BranchWithFullName(listed, *m_SelectedRef) : CheckedOutBranch(listed);
+
+		if (named != nullptr)
+		{
+			RenderRefMenu(*named);
+		}
 	}
 
 	void GitView::RenderBranchTable()
