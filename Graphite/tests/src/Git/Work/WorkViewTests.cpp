@@ -4,8 +4,10 @@
 #include "Git/Work/WorkView.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <chrono>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -58,6 +60,41 @@ TEST_CASE("The ready group starts collapsed and ExpandReady opens it")
 	view.ExpandReady();
 	frames.Next([&] { DrawIn(view, board); });
 	CHECK(view.IsReadyExpanded());
+}
+
+TEST_CASE("The expanded ready group lays a list row out for each entry")
+{
+	ImGuiFrames frames;
+	Graphite::WorkView view;
+	Graphite::WorkBoard board = BoardWithOneBranch();
+
+	for (int entry = 0; entry < 3; ++entry)
+	{
+		board.Ready.push_back(Graphite::ReadyEntry{.Branch = "refs/heads/done" + std::to_string(entry),
+												   .Worktree = std::filesystem::path("C:/wt/done" + std::to_string(entry)),
+												   .TipTime = std::chrono::sys_seconds{std::chrono::seconds{1699990000}}});
+	}
+
+	std::optional<float> collapsedBottom;
+	std::optional<float> expandedBottom;
+
+	const auto draw = [&](std::optional<float>& bottom) {
+		DrawIn(view, board);
+		ImGui::Begin("WorkViewTest");
+		bottom = ImGui::GetCurrentWindow()->DC.CursorMaxPos.y;
+		ImGui::End();
+	};
+
+	frames.Next([&] { draw(collapsedBottom); });
+	view.ExpandReady();
+	frames.Next([&] { draw(expandedBottom); });
+	frames.Next([&] { draw(expandedBottom); });
+
+	REQUIRE(collapsedBottom.has_value());
+	REQUIRE(expandedBottom.has_value());
+
+	// The collapsed group's summary line gives way to the three rows.
+	CHECK(*expandedBottom - *collapsedBottom >= 2.0f * ImGui::GetTextLineHeight());
 }
 
 TEST_CASE("Review on a branch card opens its thread")

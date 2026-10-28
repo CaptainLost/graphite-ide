@@ -3,6 +3,7 @@
 #include "Git/Work/CardText.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -187,6 +188,50 @@ TEST_CASE("The Work summary counts the worktrees, reads as waiting until they ar
 	board.Cards.front().Ahead = 13;
 	board.Cards.front().DistanceKnown = true;
 	CHECK(Graphite::WorkSummaryText(board) == "33 worktrees \xC2\xB7 main \xE2\x86\x91" "13 to push");
+}
+
+TEST_CASE("A ready row names the branch, its worktree folder, why it is ready and when it last moved")
+{
+	Graphite::WorkBoard board;
+	board.Trunk = "refs/heads/main";
+
+	const std::chrono::sys_seconds tip{std::chrono::seconds{1700000000}};
+	board.Ready.push_back(Graphite::ReadyEntry{.Branch = "refs/heads/worktree-calm-fox",
+											   .Worktree = std::filesystem::path("D:/Repos/IDE/.claude/worktrees/calm-fox"),
+											   .Reason = Graphite::ReadyReason::SameChangeInTrunk,
+											   .TipTime = tip});
+	board.Ready.push_back(Graphite::ReadyEntry{.Branch = "refs/heads/old", .Reason = Graphite::ReadyReason::Merged});
+	board.Info.push_back(Graphite::WorkInfo{.Kind = Graphite::WorkInfoKind::Locked,
+											.Worktree = std::filesystem::path("D:/wt/busy"),
+											.Branch = "refs/heads/busy",
+											.Detail = "claude session"});
+	board.Info.push_back(Graphite::WorkInfo{.Kind = Graphite::WorkInfoKind::DetachedClean,
+											.Worktree = std::filesystem::path("D:/Temp/wt")});
+
+	REQUIRE(Graphite::ReadyLineCount(board) == 4);
+
+	const Graphite::ReadyLine twin = Graphite::ReadyLineAt(board, 0);
+	CHECK(twin.Name == "worktree-calm-fox");
+	CHECK(twin.Folder == "calm-fox");
+	CHECK(twin.Reason == "same change already in main");
+	CHECK(twin.TipTime == std::optional<std::chrono::sys_seconds>{tip});
+	CHECK_FALSE(twin.Locked);
+
+	const Graphite::ReadyLine merged = Graphite::ReadyLineAt(board, 1);
+	CHECK(merged.Name == "old");
+	CHECK(merged.Folder.empty());
+	CHECK(merged.Reason == "merged into main");
+
+	const Graphite::ReadyLine locked = Graphite::ReadyLineAt(board, 2);
+	CHECK(locked.Name == "busy");
+	CHECK(locked.Folder == "busy");
+	CHECK(locked.Reason == "locked: claude session");
+	CHECK(locked.Locked);
+
+	const Graphite::ReadyLine detached = Graphite::ReadyLineAt(board, 3);
+	CHECK(detached.Name == "wt");
+	CHECK(detached.Folder.empty());
+	CHECK(detached.Reason == "detached, nothing to keep");
 }
 
 TEST_CASE("Review progress reads as waiting until it is known")

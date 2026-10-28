@@ -5,6 +5,7 @@
 #include "Git/Work/ChipRow.h"
 #include "UI/FittedText.h"
 #include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/EmptyState.h"
@@ -58,28 +59,66 @@ namespace Graphite {
 			return board.Trunk.has_value() ? Core::ShortBranchName(*board.Trunk) : "the trunk";
 		}
 
-		std::string InfoText(const WorkInfo& info)
+		// The name and folder at the left, the reason and the age at the right edge, the name cut first when they
+		// do not fit.
+		void DrawReadyLine(const ReadyLine& line, std::chrono::sys_seconds now)
 		{
-			const std::string name =
-				info.Branch.empty() ? WorktreeFolderName(info.Worktree) : Core::ShortBranchName(info.Branch);
+			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+			const float width = ImGui::GetContentRegionAvail().x;
+			const float textTop = ListRowTextTop(rowStart.y);
+			const float spacing = ImGui::GetStyle().ItemSpacing.x;
+			const float right = rowStart.x + width;
 
-			switch (info.Kind)
+			const std::string age = line.TipTime.has_value() ? FormatBranchAge(*line.TipTime, now) : std::string();
+			const float ageWidth = age.empty() ? 0.0f : ImGui::CalcTextSize(age.c_str()).x;
+			const float ageLeft = right - ageWidth;
+			const float reasonWidth = ImGui::CalcTextSize(line.Reason.c_str()).x;
+			const float reasonLeft = ageLeft - (age.empty() ? 0.0f : spacing * 2.0f) - reasonWidth;
+
+			float left = rowStart.x;
+
+			if (line.Locked)
 			{
-			case WorkInfoKind::Locked:
-				return std::string(ICON_LC_LOCK) + " " + name + " is locked" +
-					(info.Detail.empty() ? "" : ": " + info.Detail);
-			case WorkInfoKind::FolderMissing:
-				return name + " \xC2\xB7 folder is gone";
-			case WorkInfoKind::DetachedClean:
-				return name + " \xC2\xB7 detached, nothing to keep";
+				ImGui::SetCursorScreenPos(ImVec2(left, textTop));
+				ImGui::TextDisabled("%s", ICON_LC_LOCK);
+				left = ImGui::GetItemRectMax().x + spacing;
 			}
 
-			return name;
-		}
+			const float nameRoom = std::max(0.0f, reasonLeft - spacing * 2.0f - left);
+			const std::string name = FitToWidth(line.Name, nameRoom);
 
-		std::string ReasonText(ReadyReason reason, const std::string& trunk)
-		{
-			return reason == ReadyReason::Merged ? "merged into " + trunk : "same change already in " + trunk;
+			ImGui::SetCursorScreenPos(ImVec2(left, textTop));
+
+			if (line.Locked)
+			{
+				ImGui::TextDisabled("%s", name.c_str());
+			}
+			else
+			{
+				ImGui::TextUnformatted(name.c_str());
+			}
+
+			const float folderLeft = ImGui::GetItemRectMax().x + spacing;
+			const float folderRoom = reasonLeft - spacing * 2.0f - folderLeft;
+
+			if (!line.Folder.empty() && folderRoom > 0.0f)
+			{
+				ImGui::SetCursorScreenPos(ImVec2(folderLeft, textTop));
+				ImGui::TextDisabled("%s", FitToWidth(line.Folder, folderRoom).c_str());
+			}
+
+			ImGui::SetCursorScreenPos(ImVec2(std::max(left, reasonLeft), textTop));
+			ImGui::TextDisabled("%s", line.Reason.c_str());
+
+			if (!age.empty())
+			{
+				ImGui::SetCursorScreenPos(ImVec2(ageLeft, textTop));
+				ImGui::TextDisabled("%s", age.c_str());
+			}
+
+			// WARNING: A row laid out by hand ends on an item the size of the row.
+			ImGui::SetCursorScreenPos(rowStart);
+			ImGui::Dummy(ImVec2(width, ListRowLineHeight()));
 		}
 
 		bool ShowsBoardLoader(const WorkBoard& board, bool reading)
@@ -353,6 +392,9 @@ namespace Graphite {
 
 		ImGui::Spacing();
 
+		// WARNING: The group's heading is a list row, which stands in the middle of its row only inside a list body.
+		const ListBodyScope listBody;
+
 		ImGui::SetNextItemOpen(m_ReadyExpanded, ImGuiCond_Always);
 		m_ReadyExpanded = ChevronTreeNode("##readyGroup", ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_NoTreePushOnOpen,
 										  "Ready to remove", ReadySummary(board).c_str());
@@ -362,34 +404,24 @@ namespace Graphite {
 			return;
 		}
 
-		const std::string trunk = TrunkName(board);
-		const std::size_t total = board.Ready.size() + board.Info.size();
+		// The rows line up with the group's label.
+		const float indent = TreeRowLabelOffset();
+		ImGui::Indent(indent);
 
-		// Only the rows on screen are drawn: a repository can hold thousands of merged branches.
+		// Only the rows on screen are built and drawn: a repository can hold thousands of merged branches.
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(total), ImGui::GetTextLineHeightWithSpacing());
+		clipper.Begin(static_cast<int>(ReadyLineCount(board)), ListRowPitch());
 
 		while (clipper.Step())
 		{
 			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 			{
-				const std::size_t index = static_cast<std::size_t>(row);
-
-				if (index < board.Ready.size())
-				{
-					const ReadyEntry& entry = board.Ready[index];
-					const std::string age = entry.TipTime.has_value() ? FormatBranchAge(*entry.TipTime, now) : std::string();
-
-					ImGui::TextUnformatted(Core::ShortBranchName(entry.Branch).c_str());
-					ImGui::SameLine();
-					ImGui::TextDisabled("%s%s%s", ReasonText(entry.Reason, trunk).c_str(), age.empty() ? "" : " \xC2\xB7 ",
-										age.c_str());
-				}
-				else
-				{
-					ImGui::TextDisabled("%s", InfoText(board.Info[index - board.Ready.size()]).c_str());
-				}
+				ImGui::PushID(row);
+				DrawReadyLine(ReadyLineAt(board, static_cast<std::size_t>(row)), now);
+				ImGui::PopID();
 			}
 		}
+
+		ImGui::Unindent(indent);
 	}
 }

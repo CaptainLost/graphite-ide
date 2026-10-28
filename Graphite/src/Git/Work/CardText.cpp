@@ -139,6 +139,47 @@ namespace Graphite {
 		return line;
 	}
 
+	std::size_t ReadyLineCount(const WorkBoard& board)
+	{
+		return board.Ready.size() + board.Info.size();
+	}
+
+	ReadyLine ReadyLineAt(const WorkBoard& board, std::size_t index)
+	{
+		if (index < board.Ready.size())
+		{
+			const ReadyEntry& entry = board.Ready[index];
+			const std::string trunk = board.Trunk.has_value() ? Core::ShortBranchName(*board.Trunk) : "the trunk";
+
+			return ReadyLine{
+				.Name = Core::ShortBranchName(entry.Branch),
+				.Folder = entry.Worktree.has_value() ? WorktreeFolderName(*entry.Worktree) : std::string(),
+				.Reason = entry.Reason == ReadyReason::Merged ? "merged into " + trunk : "same change already in " + trunk,
+				.TipTime = entry.TipTime};
+		}
+
+		const WorkInfo& info = board.Info[index - board.Ready.size()];
+		const std::string folder = WorktreeFolderName(info.Worktree);
+		ReadyLine line{.Name = info.Branch.empty() ? folder : Core::ShortBranchName(info.Branch),
+					   .Folder = info.Branch.empty() ? std::string() : folder};
+
+		switch (info.Kind)
+		{
+		case WorkInfoKind::Locked:
+			line.Reason = info.Detail.empty() ? std::string("locked") : "locked: " + info.Detail;
+			line.Locked = true;
+			break;
+		case WorkInfoKind::FolderMissing:
+			line.Reason = "folder is gone";
+			break;
+		case WorkInfoKind::DetachedClean:
+			line.Reason = "detached, nothing to keep";
+			break;
+		}
+
+		return line;
+	}
+
 	std::string WorkSummaryText(const WorkBoard& board)
 	{
 		std::string summary = !board.Worktrees.has_value() ? std::string("counting worktrees") + kEllipsis
