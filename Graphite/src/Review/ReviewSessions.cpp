@@ -233,7 +233,11 @@ namespace Graphite {
 
 	void ReviewSessions::Start(const std::string& branch, const std::string& base)
 	{
-		const auto [entry, inserted] = m_Sessions.try_emplace(branch, ReviewSession{.Base = base});
+		// The thread shows a branch's uncommitted group by default, whichever way its review began.
+		ReviewSession started{.Base = base};
+		started.Settings.IncludeUncommitted = true;
+
+		const auto [entry, inserted] = m_Sessions.try_emplace(branch, std::move(started));
 
 		if (inserted)
 		{

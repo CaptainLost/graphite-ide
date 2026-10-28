@@ -87,7 +87,8 @@ TEST_CASE("Open review tabs come back as they were captured")
 
 TEST_CASE("A restored selection among uncommitted files is dropped when the session leaves them out")
 {
-	const ReviewSessions sessions = SessionsOf({kSide});
+	ReviewSessions sessions = SessionsOf({kSide});
+	sessions.SetSettings(kSide, Graphite::SessionSettings{.IncludeUncommitted = false});
 	Graphite::ModalGate modals;
 	ReviewWindows windows{modals};
 

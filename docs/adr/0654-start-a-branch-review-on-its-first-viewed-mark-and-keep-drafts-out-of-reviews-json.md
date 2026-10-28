@@ -14,7 +14,7 @@ The Git window now shows a branch's changes in a thread view. That view needs a 
 A branch that is only looked at holds its base and settings in a draft: a session with `Draft` set.
 
 - `OpenDraft` creates a draft for a branch that has neither a draft nor a session. It opens with uncommitted work included. A branch that already has either is left alone.
-- A draft becomes a kept session on the first viewed mark (`Mark`), on `Keep`, or on `Start`. `Start` over a draft takes the new base and keeps the draft's settings. `Start` over a kept session still changes nothing.
+- A draft becomes a kept session on the first viewed mark (`Mark`), on `Keep`, or on `Start`. `Start` over a draft takes the new base and keeps the draft's settings. `Start` on a branch with neither opens a session with uncommitted work included, as a draft opens, which amends [0581](0581-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md)'s default. `Start` over a kept session still changes nothing.
 - A draft is not written to `reviews.json` and shows no badge. `IsKept` tells a kept session from a draft; `Find` answers for both, so the view reads its settings the same way.
 - `Prune` and `Rename` treat a draft like a session, so a draft follows a renamed branch and goes with a deleted one.
 - The branch menu offers "Review" for a branch without a kept session, opening its thread against the default base, and a "Review against" submenu with every other local branch. A kept session offers "Open review" and "End review…" as before.

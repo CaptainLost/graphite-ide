@@ -269,7 +269,7 @@ TEST_CASE("Sessions are written in the version 2 shape")
 								 "      \"flat\": false,\n" +
 								 "      \"hideViewed\": false,\n" +
 								 "      \"hideWhitespace\": false,\n" +
-								 "      \"includeUncommitted\": false,\n" +
+								 "      \"includeUncommitted\": true,\n" +
 								 "      \"marks\": [\n" +
 								 "        {\n" +
 								 "          \"group\": \"uncommitted\",\n" +
@@ -346,10 +346,11 @@ TEST_CASE("A session's settings change only when they differ")
 	sessions.Start(kBranch, kBase);
 	const std::uint64_t before = sessions.GetVersion();
 
-	sessions.SetSettings(kBranch, Graphite::SessionSettings{});
+	const Graphite::SessionSettings started = sessions.Find(kBranch)->Settings;
+	sessions.SetSettings(kBranch, started);
 	CHECK(sessions.GetVersion() == before);
 
-	Graphite::SessionSettings flat;
+	Graphite::SessionSettings flat = started;
 	flat.Shape = Graphite::ListShape::Flat;
 	sessions.SetSettings(kBranch, flat);
 
@@ -524,6 +525,16 @@ TEST_CASE("A draft opens with uncommitted work included")
 	sessions.OpenDraft(kBranch, kBase);
 
 	CHECK(sessions.Find(kBranch)->Settings.IncludeUncommitted);
+}
+
+TEST_CASE("A review started on a branch with no draft includes uncommitted work, as a draft does")
+{
+	ReviewSessions sessions;
+	sessions.Start(kBranch, kBase);
+
+	REQUIRE(sessions.Find(kBranch) != nullptr);
+	CHECK(sessions.Find(kBranch)->Settings.IncludeUncommitted);
+	CHECK(sessions.IsKept(kBranch));
 }
 
 TEST_CASE("The first mark keeps a draft")

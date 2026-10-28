@@ -55,6 +55,7 @@ namespace Graphite {
 
 		const ReviewSession* Find(const std::string& branch) const;
 
+		// A new session opens with IncludeUncommitted on, as a draft does; over a draft it keeps the draft's settings.
 		void Start(const std::string& branch, const std::string& base);
 		void End(const std::string& branch);
 

@@ -58,3 +58,5 @@ When a refresh arrives and the selected file's pair of blob ids is unchanged, it
 - [0504](0504-treat-an-untracked-file-as-an-added-file-in-a-working-tree-diff.md): how an untracked file is shown.
 - [0530](0530-draw-a-frame-only-when-there-is-reason-to.md): why a hidden tab stays quiet.
 - [0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md): marks per group.
+
+Amended by [0654](0654-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md): uncommitted work is no longer off by default. A draft, and a session started on a branch that had neither, open with it on, since the Git window's thread shows the uncommitted group by default; the toggle still turns it off, and the worktree is still watched only while it is on and the review is drawn.
