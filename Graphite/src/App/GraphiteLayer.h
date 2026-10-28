@@ -16,6 +16,7 @@
 #include "App/TitleBar.h"
 #include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeMarkersModel.h"
+#include "Git/Changes/ChangesShared.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
@@ -360,6 +361,9 @@ namespace Graphite {
 
 		// WARNING: Declared before m_Panels, where GitView, which takes a DiffWindows&, is constructed.
 		DiffWindows m_DiffWindows;
+
+		// WARNING: Declared before m_Panels, because ChangesPanel holds it by reference.
+		ChangesShared m_ChangesShared;
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;

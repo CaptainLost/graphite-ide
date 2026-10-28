@@ -17,8 +17,9 @@
 #include <vector>
 
 // A repository with nothing in it: every query answers empty and every write succeeds, for tests
-// that need a GitModel but none of its answers. A diff or a file's texts can be told to fail instead.
-class EmptyGitPort final : public Graphite::GitPort
+// that need a GitModel but none of its answers. A diff or a file's texts can be told to fail instead, and a
+// test that needs one answer of its own derives and overrides that query.
+class EmptyGitPort : public Graphite::GitPort
 {
 public:
 	using Paths = std::vector<std::filesystem::path>;

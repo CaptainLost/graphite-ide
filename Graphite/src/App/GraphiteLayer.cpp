@@ -223,7 +223,7 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
 													 m_DocumentWindows, m_ActiveScheme,
-													 m_DiffWindows, m_Events));
+													 m_DiffWindows, m_Events, m_ChangesShared));
 
 		m_ClaudeSettings.Load();
 
