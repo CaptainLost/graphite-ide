@@ -63,6 +63,10 @@ namespace Graphite {
 		// pointers to know whether to rebuild what it derived.
 		Core::Ref<const SessionTitles> GetTitles() const { return m_Titles; }
 
+		// The panel indexes the sessions once it is first shown; a caller that reads the titles while it has not been
+		// asks for the index with this.
+		void WantTitles() { m_TitlesWanted = true; }
+
 	private:
 		struct VisibleRow
 		{
@@ -116,6 +120,7 @@ namespace Graphite {
 		bool m_WorkspaceOnly = true;
 		std::string m_Filter;
 		bool m_Started = false;
+		bool m_TitlesWanted = false;
 		bool m_Indexing = false;
 
 		bool m_InitialScan = false;

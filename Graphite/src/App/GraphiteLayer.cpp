@@ -249,6 +249,7 @@ namespace Graphite {
 			}));
 
 		gitView->TitlesNow = [this] { return m_SessionsPanel->GetTitles(); };
+		gitView->WantTitles = [this] { m_SessionsPanel->WantTitles(); };
 
 		// Until a tab takes the keyboard, editor commands act on the active tab, as they always did.
 		m_ActiveEditor.Set(m_DocumentWindows);

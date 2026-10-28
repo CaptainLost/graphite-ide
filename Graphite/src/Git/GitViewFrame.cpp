@@ -247,6 +247,13 @@ namespace Graphite {
 			m_Work.FollowBranches(*branches);
 		}
 
+		// WARNING: The sessions are indexed only once something asks: the cards' titles come from them, and the
+		// Sessions panel may never have been shown.
+		if (panelOnScreen && WantTitles)
+		{
+			WantTitles();
+		}
+
 		RebuildBoardWhenOutOfDate();
 		m_Work.SetPolled(m_CardWorktrees, panelOnScreen && m_Selection.View == GitWindowView::Work);
 	}

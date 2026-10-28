@@ -98,6 +98,9 @@ namespace Graphite {
 		// Every hook below may be left unset: the window then draws without what it would bring.
 		std::function<Core::Ref<const SessionTitles>()> TitlesNow;
 
+		// Asks for the titles to be read, while the window is on screen.
+		std::function<void()> WantTitles;
+
 		// Draws the embedded review of the thread's branch.
 		std::function<void(const std::string& branch)> DrawReview;
 		std::function<bool()> TakeReviewClosed;

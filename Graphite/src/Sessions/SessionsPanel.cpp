@@ -270,7 +270,7 @@ namespace Graphite {
 	{
 		if (!m_Started)
 		{
-			if (!HasBeenDrawnOnLatestFrame() && !m_Windows.IsLookingForSessions())
+			if (!HasBeenDrawnOnLatestFrame() && !m_Windows.IsLookingForSessions() && !m_TitlesWanted)
 			{
 				return;
 			}
