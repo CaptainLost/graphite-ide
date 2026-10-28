@@ -200,7 +200,6 @@ namespace Graphite {
 
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
 		void ApplyReviewMenuItem(const ReviewMenuItem& item);
-		std::string ReviewBadgeOfBranch(const Core::Branch& branch);
 
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
@@ -375,7 +374,6 @@ namespace Graphite {
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
-		ReviewBadges m_ReviewBadges;
 
 		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
 

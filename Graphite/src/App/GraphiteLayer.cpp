@@ -534,7 +534,6 @@ namespace Graphite {
 		m_DiffWindows.CloseAll();
 
 		m_ReviewWindows.CloseAll(m_Reviews);
-		m_ReviewBadges.Clear();
 		m_ReviewStore.Close();
 		m_ReviewedBranches.reset();
 
@@ -682,40 +681,6 @@ namespace Graphite {
 			m_ReviewWindows.AskToEnd(item.Branch);
 			break;
 		}
-	}
-
-	std::string GraphiteLayer::ReviewBadgeOfBranch(const Core::Branch& branch)
-	{
-		const ReviewSessions& sessions = m_ReviewStore.GetSessions();
-		const ReviewSession* session = sessions.Find(branch.FullName);
-
-		if (session == nullptr || session->Draft)
-		{
-			return std::string{};
-		}
-
-		const ReviewKey key{.Branch = branch.FullName, .Base = session->Base};
-		m_Reviews.RequestRange(key);
-		const Core::Ref<const ReviewRange> range = m_Reviews.GetRange(key);
-
-		// WARNING: Asking for a diff on every frame keeps it among the model's few held diffs, so badges that kept asking for theirs would push each other's diffs out and have them read again.
-		const std::optional<std::string> held = m_ReviewBadges.HeldFor(sessions, branch.FullName, range);
-
-		if (held.has_value())
-		{
-			return *held;
-		}
-
-		Core::Ref<const Core::Diff> committed;
-
-		if (range != nullptr && range->Problem == RangeProblem::None)
-		{
-			const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = session->Settings.Whitespace};
-			m_Reviews.RequestCommittedDiff(diffKey);
-			committed = m_Reviews.GetCommittedDiff(diffKey);
-		}
-
-		return m_ReviewBadges.TextFor(sessions, branch.FullName, range, m_Reviews.GetRangeError(key), committed);
 	}
 
 	GlobalState GraphiteLayer::CaptureGlobalState()
