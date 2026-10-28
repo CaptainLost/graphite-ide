@@ -183,6 +183,7 @@ namespace Graphite {
 								.Count = ThreadDistanceText(card),
 								.Index = cardIndex,
 								.Branch = card.Kind == WorkCardKind::Branch ? card.Branch : std::string{},
+								.Worktree = card.Worktree.value_or(std::filesystem::path{}),
 								.State = card.State,
 								.Selected = selected});
 			}

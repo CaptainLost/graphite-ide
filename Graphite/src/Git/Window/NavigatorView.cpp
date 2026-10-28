@@ -6,11 +6,14 @@
 #include "UI/FittedText.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/Theme.h"
 
 #include <IconsLucide.h>
 
 #include <imgui.h>
+
+#include <string>
 
 namespace Graphite {
 
@@ -76,6 +79,24 @@ namespace Graphite {
 		{
 			return kind != NavigatorRowKind::BranchesHeading;
 		}
+
+		// WARNING: Keyed by what the row names, not by its place: the rows above a branch come and go as the facts land,
+		// and a menu open on the branch would otherwise go on to name whichever branch moved into its place.
+		std::string RowId(const NavigatorRow& row)
+		{
+			std::string id = std::to_string(static_cast<int>(row.Kind));
+
+			if (!row.Branch.empty())
+			{
+				id += ":" + row.Branch;
+			}
+			else if (!row.Worktree.empty())
+			{
+				id += ":" + Core::ToUtf8(row.Worktree);
+			}
+
+			return id;
+		}
 	}
 
 	ImU32 WorkStateDotColour(WorkState state, const ResolvedScheme& scheme)
@@ -106,15 +127,14 @@ namespace Graphite {
 		const float lineMiddle = ImGui::GetTextLineHeight() * kHalf;
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 
-		for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+		for (const NavigatorRow& row : rows)
 		{
-			const NavigatorRow& row = rows[rowIndex];
 			const bool dim = IsDimRow(row.Kind);
 			const Core::Branch* const branch =
 				row.Kind == NavigatorRowKind::Branch && row.Index < branches.size() ? &branches[row.Index] : nullptr;
 			bool clicked = false;
 
-			ImGui::PushID(static_cast<int>(rowIndex));
+			ImGui::PushID(RowId(row).c_str());
 
 			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 			const float textTop = ListRowTextTop(rowStart.y);

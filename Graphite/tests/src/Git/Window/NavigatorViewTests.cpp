@@ -7,10 +7,13 @@
 #include "Theme/Palettes.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/ImGui/ContextMenu.h"
+
 #include <imgui.h>
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -88,6 +91,50 @@ TEST_CASE("Clicking a thread row selects its thread")
 
 	REQUIRE(selected.has_value());
 	CHECK(selected->View == GitWindowView::Changes);
+}
+
+TEST_CASE("A menu opened on a branch row still names that branch after the rows reorder")
+{
+	ImGuiFrames frames;
+	const ActiveScheme scheme;
+	NavigatorView view(scheme);
+
+	std::optional<std::string> menuOf;
+	view.DrawBranchMenu = [&](const Core::Branch& branch) {
+		if (Core::BeginRightClickPopup("ref-menu"))
+		{
+			menuOf = branch.FullName;
+			ImGui::EndPopup();
+		}
+	};
+
+	Core::Branch first;
+	first.Name = "first";
+	first.FullName = "refs/heads/first";
+	Core::Branch second;
+	second.Name = "second";
+	second.FullName = "refs/heads/second";
+	const std::vector<Core::Branch> branches = {first, second};
+
+	std::vector<NavigatorRow> rows = {
+		{.Kind = NavigatorRowKind::Branch, .Label = "first", .Index = 0, .Branch = "refs/heads/first"},
+		{.Kind = NavigatorRowKind::Branch, .Label = "second", .Index = 1, .Branch = "refs/heads/second"},
+	};
+
+	ImVec2 listTop;
+	const auto draw = [&] { listTop = DrawWindow(view, rows, branches); };
+
+	frames.Next(draw);
+	frames.Next(draw);
+	frames.Click(RowCentre(listTop, 0), draw, ImGuiMouseButton_Right);
+
+	REQUIRE(menuOf == std::optional<std::string>{"refs/heads/first"});
+
+	std::swap(rows[0], rows[1]);
+	menuOf.reset();
+	frames.Next(draw);
+
+	CHECK(menuOf == std::optional<std::string>{"refs/heads/first"});
 }
 
 TEST_CASE("Clicking a branch row opens its history")

@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,6 +42,9 @@ namespace Graphite {
 
 		// Thread: the card's branch, empty for a detached worktree, which has none to review. Branch: its full name.
 		std::string Branch;
+
+		// Thread: the card's worktree, empty for a branch no worktree holds.
+		std::filesystem::path Worktree;
 
 		WorkState State = WorkState::Other;
 		bool Selected = false;

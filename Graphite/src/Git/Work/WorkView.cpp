@@ -8,6 +8,7 @@
 #include "UI/Lists/ListRow.h"
 #include "Theme/ActiveScheme.h"
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
@@ -133,6 +134,23 @@ namespace Graphite {
 		{
 			return board.FactsPending && reading && board.Cards.size() <= 1;
 		}
+
+		// WARNING: Keyed by what the card stands for, not by its place: cards come and go as the facts land and the
+		// worktrees are polled, and a menu open on a card would otherwise go on to name the branch moved into its place.
+		std::string CardId(const WorkCard& card)
+		{
+			switch (card.Kind)
+			{
+			case WorkCardKind::WorkingCopy:
+				return "working copy";
+			case WorkCardKind::Branch:
+				return "branch:" + card.Branch;
+			case WorkCardKind::DetachedWorktree:
+				break;
+			}
+
+			return "detached:" + (card.Worktree.has_value() ? Core::ToUtf8(*card.Worktree) : std::string{});
+		}
 	}
 
 	WorkView::WorkView(const ActiveScheme& scheme) : m_Scheme(scheme)
@@ -245,7 +263,7 @@ namespace Graphite {
 						ImGui::SameLine();
 					}
 
-					ImGui::PushID(static_cast<int>(index));
+					ImGui::PushID(CardId(board.Cards[index]).c_str());
 					DrawCard(board, board.Cards[index], width, height, now);
 					ImGui::PopID();
 				}

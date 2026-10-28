@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -98,6 +99,38 @@ TEST_CASE("The expanded ready group lays a list row out for each entry")
 
 	// The collapsed group's summary line gives way to the three rows.
 	CHECK(*expandedBottom - *collapsedBottom >= 2.0f * ImGui::GetTextLineHeight());
+}
+
+TEST_CASE("A menu opened on a branch card still names that branch after the cards reorder")
+{
+	ImGuiFrames frames;
+	const Graphite::ActiveScheme scheme;
+	Graphite::WorkView view(scheme);
+	Graphite::WorkBoard board = BoardWithOneBranch();
+	Graphite::WorkCard other = board.Cards[0];
+	other.Branch = "refs/heads/other";
+	other.Title = "Other";
+	board.Cards.push_back(other);
+
+	std::optional<std::string> menuOf;
+	view.DrawBranchMenu = [&](const std::string& branchFullName) { menuOf = branchFullName; };
+
+	const auto draw = [&] { DrawIn(view, board); };
+	frames.Next(draw);
+	frames.Next(draw);
+
+	for (float y = 5.0f; y < kWindowHeight && !menuOf.has_value(); y += kSweepStep)
+	{
+		frames.Click(ImVec2(50.0f, y), draw, ImGuiMouseButton_Right);
+	}
+
+	REQUIRE(menuOf == std::optional<std::string>{"refs/heads/feature"});
+
+	std::swap(board.Cards[0], board.Cards[1]);
+	menuOf.reset();
+	frames.Next(draw);
+
+	CHECK(menuOf == std::optional<std::string>{"refs/heads/feature"});
 }
 
 TEST_CASE("Review on a branch card opens its thread")
