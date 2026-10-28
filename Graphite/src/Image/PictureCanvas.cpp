@@ -17,10 +17,13 @@ namespace Graphite {
 		constexpr float kCheckerSide = 8.0f;
 		constexpr float kSmallestItemSide = 1.0f;
 
-		// A touchpad reports a fraction of a notch, which still counts as one, as the terminal counts it.
-		int WholeNotches(float wheel)
+		// A touchpad reports a fraction of a notch at a time; the fractions add up and a step comes with each whole notch.
+		int TakeWholeNotches(float& pending, float wheel)
 		{
-			return static_cast<int>(wheel > 0.0f ? std::ceil(wheel) : std::floor(wheel));
+			pending += wheel;
+			const int notches = static_cast<int>(std::trunc(pending));
+			pending -= static_cast<float>(notches);
+			return notches;
 		}
 
 		float SteppedZoom(float zoom, int notches)
@@ -46,6 +49,7 @@ namespace Graphite {
 
 			if (!hovered)
 			{
+				zoom.WheelPending = 0.0f;
 				return;
 			}
 
@@ -53,7 +57,7 @@ namespace Graphite {
 			// wheel to the window's own scroll at the start of the next frame and tests the ownership set during this one.
 			ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGui::GetItemID());
 
-			if (const int notches = WholeNotches(io.MouseWheel); notches != 0)
+			if (const int notches = TakeWholeNotches(zoom.WheelPending, io.MouseWheel); notches != 0)
 			{
 				zoom = ZoomAround(zoom, SteppedZoom(zoom.Zoom, notches), io.MousePos, picture, area);
 			}

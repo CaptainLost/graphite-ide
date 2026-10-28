@@ -31,6 +31,8 @@ namespace Graphite {
 		float Zoom = 1.0f;
 		ImVec2 Pan{0.0f, 0.0f};
 		bool Opened = false;
+		// The part of a wheel notch not yet taken as a step.
+		float WheelPending = 0.0f;
 	};
 
 	struct PixelPoint

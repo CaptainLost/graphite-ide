@@ -531,3 +531,22 @@ TEST_CASE("The canvas reports the pixel under the pointer")
 
 	CHECK_FALSE(screen.Result.Hovered.has_value());
 }
+
+TEST_CASE("Quarter wheel notches zoom one step after four")
+{
+	CanvasScreen screen(kFitsAtFullSize);
+	screen.Draw();
+	screen.MoveTo(screen.Placed().GetCenter());
+
+	for (int quarter = 0; quarter < 3; ++quarter)
+	{
+		ImGui::GetIO().AddMouseWheelEvent(0.0f, 0.25f);
+		screen.Draw();
+		CHECK(screen.Zoom.Zoom == doctest::Approx(1.0f));
+	}
+
+	ImGui::GetIO().AddMouseWheelEvent(0.0f, 0.25f);
+	screen.Draw();
+
+	CHECK(screen.Zoom.Zoom == doctest::Approx(1.5f));
+}
