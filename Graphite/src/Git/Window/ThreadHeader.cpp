@@ -14,6 +14,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -78,7 +79,10 @@ namespace Graphite {
 		ImGui::TextUnformatted((fromSession ? std::string(ICON_LC_BOT " ") + fitted : fitted).c_str());
 		ImGui::PopStyleColor();
 
-		ImGui::SameLine(ImGui::GetContentRegionMax().x - buttonWidth);
+		// WARNING: Placed from the cursor, not with SameLine's offset: drawn straight into a table column, the header
+		// would have the offset counted from the column's left edge and GetContentRegionMax from the window's.
+		ImGui::SameLine();
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - buttonWidth));
 		const bool openInOwnTab = Core::TextButton(kOpenInOwnTab);
 
 		Core::PushCodeFont(ImGui::GetFontSize() * kCodeLineScale);

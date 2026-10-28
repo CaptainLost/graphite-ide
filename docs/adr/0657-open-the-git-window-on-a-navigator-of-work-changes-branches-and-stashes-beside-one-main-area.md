@@ -14,7 +14,7 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
 `GitView` keeps its panel identity, `git`, and draws a navigator column beside one main area.
 
 - **Navigator.** 15 font sizes wide to start, resizable. From the top:
-  - the repository folder's name and path, then HEAD's branch and its distance to its upstream as the status bar shows them (`GitStatusText`);
+  - the repository folder's name and path, then HEAD's branch and its distance to its upstream as the status bar shows them (`GitStatusText`). While a checkout runs, the line names it with the Core loader beside it, in place of the loader [0635](0635-report-each-git-write-in-the-status-bar-from-the-click-until-the-status-after-it-lands.md) put on the target's branch row, which no list draws any more;
   - `NavigatorView`'s rows: Work with up to six threads, "Show all", the ready and locked counts; Changes with its count; Branches with the six newest local branches and "Show all";
   - the stashes, with their menu, as before.
 - **Main area.** One of five views, `GitWindowView`:
@@ -69,4 +69,5 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
 - [0493](0493-draw-the-git-view-as-a-centrally-docked-panel.md): the panel the frame is drawn in.
 - [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md): the menus every branch and stash keeps.
 - [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md): the branch list this replaces, whose way of building rows the table keeps.
+- [0635](0635-report-each-git-write-in-the-status-bar-from-the-click-until-the-status-after-it-lands.md): the checkout's loader, moved from the branch row to the navigator header.
 - [0653](0653-count-a-branch-as-holding-work-while-a-commit-of-its-own-has-no-patch-twin-in-the-trunk-or-its-worktree-has-changes.md), [0654](0654-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md), [0655](0655-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md), [0656](0656-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md): the views the frame hosts.
