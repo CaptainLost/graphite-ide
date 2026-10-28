@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DrawnGlyphs.h"
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "Git/Branches/BranchTableView.h"
@@ -53,6 +54,32 @@ namespace {
 
 		ImGui::End();
 	}
+}
+
+TEST_CASE("A table with no row leaves room under its header for the empty state")
+{
+	ImGuiFrames frames;
+
+	const std::vector<Core::Branch> none;
+	Graphite::BranchTableView view;
+	const std::function<void()> draw = [&] { DrawTableWindow(view, none); };
+
+	frames.Next(draw);
+	frames.Next(draw);
+
+	const ImGuiWindow* const window = ImGui::FindWindowByName("BranchTable");
+	REQUIRE(window != nullptr);
+
+	// The message sits in the middle of what the header leaves, well below the filter, the scopes and the header.
+	const float belowTheHeader = kWindowHeight * 0.4f;
+	std::size_t inView = 0;
+
+	for (const DrawnGlyph& glyph : DrawnGlyphs(*window->DrawList))
+	{
+		inView += glyph.Box.Min.y > belowTheHeader && glyph.Box.Max.y < kWindowHeight ? 1 : 0;
+	}
+
+	CHECK(inView > 0);
 }
 
 TEST_CASE("Clicking a row opens that branch")

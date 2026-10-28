@@ -170,7 +170,12 @@ namespace Graphite {
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
 
-		if (!ImGui::BeginTableEx("##branchTable", kTableId, kColumnCount, kTableFlags))
+		// WARNING: A scrolling table fills the height it is not given, so with no row it is given its header's alone and
+		// the empty state below it stays in view.
+		const float headerOnly = ListRowPitch() + ImGui::GetStyle().ItemSpacing.y;
+		const ImVec2 outerSize(0.0f, m_Rows.empty() ? headerOnly : 0.0f);
+
+		if (!ImGui::BeginTableEx("##branchTable", kTableId, kColumnCount, kTableFlags, outerSize))
 		{
 			ImGui::PopStyleVar();
 			return;
