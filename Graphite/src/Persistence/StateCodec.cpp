@@ -63,6 +63,17 @@ namespace Graphite {
 			{BranchGrouping::Author, "author"},
 		};
 
+		constexpr std::string_view kGitWindowView = "restore.gitWindow.view";
+		constexpr std::string_view kGitWindowBranch = "restore.gitWindow.branch";
+
+		constexpr std::pair<GitWindowView, std::string_view> kGitWindowViewNames[] = {
+			{GitWindowView::Work, "work"},
+			{GitWindowView::Thread, "thread"},
+			{GitWindowView::Changes, "changes"},
+			{GitWindowView::History, "history"},
+			{GitWindowView::Branches, "branches"},
+		};
+
 		constexpr std::pair<Core::DiffTarget, std::string_view> kDiffTargetNames[] = {
 			{Core::DiffTarget::WorkTreeToIndex, "unstaged"},
 			{Core::DiffTarget::IndexToHead, "staged"},
@@ -415,6 +426,9 @@ namespace Graphite {
 
 		file.Set(kBranchListSort, std::string{NameFromTable(kBranchSortNames, state.BranchList.Sort)});
 		file.Set(kBranchListGroup, std::string{NameFromTable(kBranchGroupingNames, state.BranchList.Group)});
+
+		file.Set(kGitWindowView, std::string{NameFromTable(kGitWindowViewNames, state.GitWindow.View)});
+		file.Set(kGitWindowBranch, state.GitWindow.Branch);
 	}
 
 	WorkspaceState ReadWorkspaceState(const Core::JsonFile& file, const std::filesystem::path& root)
@@ -524,6 +538,13 @@ namespace Graphite {
 		state.BranchList.Sort = ValueNamed(kBranchSortNames, file.Get(kBranchListSort)).value_or(branchListByDefault.Sort);
 		state.BranchList.Group =
 			ValueNamed(kBranchGroupingNames, file.Get(kBranchListGroup)).value_or(branchListByDefault.Group);
+
+		// WARNING: An unknown view drops the branch kept with it: the branch means something only to its own view.
+		if (const std::optional<GitWindowView> view = ValueNamed(kGitWindowViewNames, file.Get(kGitWindowView)))
+		{
+			state.GitWindow.View = *view;
+			state.GitWindow.Branch = file.Get(kGitWindowBranch);
+		}
 
 		return state;
 	}

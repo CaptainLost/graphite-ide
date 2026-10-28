@@ -110,6 +110,16 @@ namespace Graphite {
 		Branches
 	};
 
+	struct GitWindowState
+	{
+		GitWindowView View = GitWindowView::Work;
+
+		// Thread: its branch. History: its ref, empty for HEAD's.
+		std::string Branch;
+
+		friend bool operator==(const GitWindowState&, const GitWindowState&) = default;
+	};
+
 	struct BranchListState
 	{
 		BranchSort Sort = BranchSort::Newest;
@@ -128,6 +138,7 @@ namespace Graphite {
 
 		std::optional<std::vector<TerminalTabState>> Terminals;
 		BranchListState BranchList;
+		GitWindowState GitWindow;
 
 		friend bool operator==(const WorkspaceState&, const WorkspaceState&) = default;
 	};

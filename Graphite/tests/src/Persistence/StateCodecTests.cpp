@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Graphite;
@@ -623,6 +624,42 @@ TEST_CASE("A stored review without a branch is dropped")
 
 	REQUIRE(reviews.size() == 1);
 	CHECK(reviews.front().Branch == "refs/heads/side");
+}
+
+TEST_CASE("The Git window's view and branch are kept and read back")
+{
+	const std::vector<std::pair<GitWindowState, std::string>> cases = {
+		{GitWindowState{.View = GitWindowView::Work}, "work"},
+		{GitWindowState{.View = GitWindowView::Thread, .Branch = "refs/heads/feature/x"}, "thread"},
+		{GitWindowState{.View = GitWindowView::Changes}, "changes"},
+		{GitWindowState{.View = GitWindowView::History, .Branch = "refs/remotes/origin/side"}, "history"},
+		{GitWindowState{.View = GitWindowView::Branches}, "branches"},
+	};
+
+	for (const auto& [kept, name] : cases)
+	{
+		CAPTURE(name);
+
+		WorkspaceState state;
+		state.GitWindow = kept;
+
+		Core::JsonFile file;
+		WriteWorkspaceState(state, kRoot, file);
+
+		CHECK(file.Get("restore.gitWindow.view") == name);
+		CHECK(file.Get("restore.gitWindow.branch") == kept.Branch);
+		CHECK(ReadWorkspaceState(file, kRoot).GitWindow == kept);
+	}
+}
+
+TEST_CASE("An unknown Git window view reads back as Work")
+{
+	Core::JsonFile file;
+	file.Set("restore.gitWindow.view", "sideways");
+	file.Set("restore.gitWindow.branch", "refs/heads/side");
+
+	CHECK(ReadWorkspaceState(file, kRoot).GitWindow == GitWindowState{});
+	CHECK(ReadWorkspaceState(Core::JsonFile{}, kRoot).GitWindow == GitWindowState{});
 }
 
 TEST_CASE("The branch list's sort and grouping survive a write and a read")
