@@ -3,6 +3,9 @@
 #include "Core/Git/Ref.h"
 #include "Git/Window/GitWindowSelection.h"
 #include "Git/Window/NavigatorRows.h"
+#include "Theme/ColorScheme.h"
+
+#include <imgui.h>
 
 #include <functional>
 #include <vector>
@@ -10,6 +13,9 @@
 namespace Graphite {
 
 	class ActiveScheme;
+
+	// The state dot: green for a branch that could be fast-forwarded, amber for one behind the trunk, grey otherwise.
+	ImU32 WorkStateDotColour(WorkState state, const ResolvedScheme& scheme);
 
 	class NavigatorView
 	{

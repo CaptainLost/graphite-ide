@@ -3,6 +3,8 @@
 #include "ImGuiFrames.h"
 #include "Git/Window/NavigatorView.h"
 #include "Theme/ActiveScheme.h"
+#include "Theme/GitPalette.h"
+#include "Theme/Palettes.h"
 #include "UI/Lists/ListRow.h"
 
 #include <imgui.h>
@@ -41,6 +43,17 @@ namespace {
 
 		ImGui::End();
 		return listTop;
+	}
+}
+
+TEST_CASE("The state dot is green to fast-forward, amber behind the trunk and grey otherwise, in the dark and the light scheme")
+{
+	for (const ResolvedScheme& scheme : {DarkScheme(), LightScheme()})
+	{
+		CHECK(WorkStateDotColour(WorkState::CanFastForward, scheme) == ReadGitPalette(scheme).GutterAdded);
+		CHECK(WorkStateDotColour(WorkState::BehindTrunk, scheme) == ReadEditorPalette(scheme).DiagnosticWarning);
+		CHECK(WorkStateDotColour(WorkState::BehindTrunk, scheme) != ReadGitPalette(scheme).GutterModified);
+		CHECK(WorkStateDotColour(WorkState::Other, scheme) == ReadGitPalette(scheme).LineNumber);
 	}
 }
 

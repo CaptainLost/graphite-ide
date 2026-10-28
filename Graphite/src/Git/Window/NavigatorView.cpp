@@ -2,6 +2,7 @@
 
 #include "Theme/ActiveScheme.h"
 #include "Theme/GitPalette.h"
+#include "Theme/Palettes.h"
 #include "UI/FittedText.h"
 #include "UI/Lists/ListRow.h"
 
@@ -13,21 +14,6 @@ namespace Graphite {
 
 		constexpr float kDotRadiusInFontSizes = 0.2f;
 		constexpr float kHalf = 0.5f;
-
-		ImU32 DotColour(WorkState state, const GitPalette& palette)
-		{
-			switch (state)
-			{
-			case WorkState::CanFastForward:
-				return palette.GutterAdded;
-			case WorkState::BehindTrunk:
-				return palette.GutterModified;
-			case WorkState::Other:
-				break;
-			}
-
-			return palette.LineNumber;
-		}
 
 		bool IsActionRow(NavigatorRowKind kind)
 		{
@@ -60,13 +46,29 @@ namespace Graphite {
 		}
 	}
 
+	ImU32 WorkStateDotColour(WorkState state, const ResolvedScheme& scheme)
+	{
+		switch (state)
+		{
+		case WorkState::CanFastForward:
+			return ReadGitPalette(scheme).GutterAdded;
+		case WorkState::BehindTrunk:
+			// WARNING: Not the gutter's modified colour, which is blue in the dark schemes.
+			return ReadEditorPalette(scheme).DiagnosticWarning;
+		case WorkState::Other:
+			break;
+		}
+
+		return ReadGitPalette(scheme).LineNumber;
+	}
+
 	NavigatorView::NavigatorView(const ActiveScheme& scheme) : m_Scheme(scheme)
 	{
 	}
 
 	void NavigatorView::Draw(const std::vector<NavigatorRow>& rows, const std::vector<Core::Branch>& branches)
 	{
-		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
+		const ResolvedScheme& scheme = m_Scheme.Get();
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
 
 		for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
@@ -95,7 +97,7 @@ namespace Graphite {
 				const float radius = ImGui::GetFontSize() * kDotRadiusInFontSizes;
 				const ImVec2 centre(rowStart.x + radius + spacing * kHalf, textTop + ImGui::GetTextLineHeight() * kHalf);
 
-				ImGui::GetWindowDrawList()->AddCircleFilled(centre, radius, DotColour(row.State, palette));
+				ImGui::GetWindowDrawList()->AddCircleFilled(centre, radius, WorkStateDotColour(row.State, scheme));
 				labelLeft = centre.x + radius + spacing;
 			}
 
