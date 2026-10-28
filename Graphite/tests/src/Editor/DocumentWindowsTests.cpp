@@ -58,11 +58,13 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <map>
 #include <optional>
+#include <share.h>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1357,6 +1359,49 @@ TEST_CASE("A broken image shown as hex keeps its rows, scroll and selection whil
 		CHECK(drawn.StatusItems().front().Text == "Offset 0x000007CF");
 		CHECK(drawn.StatusItems().back().Text == "2.0 KB");
 		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+	}
+
+	SUBCASE("A rewrite read while a writer still holds the file, then one read once it lets go")
+	{
+		// As a writer that keeps the file to itself while it writes: the change is seen, but neither read can open it.
+		Rewrite(broken, contents + "tail");
+		std::FILE* const held = ::_wfsopen(broken.c_str(), L"rb", _SH_DENYRW);
+		REQUIRE(held != nullptr);
+
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		const bool failedToRead = drawn.Picture(broken).GetFailureKind() == Graphite::ImageFailure::Read;
+		const bool stillShowsBytes = showsBytes();
+		const std::vector<Graphite::ViewStatusItem> whileHeld = drawn.StatusItems();
+		const bool drawsHeader = drawn.TabDraws(broken, "Offset", Face::Code);
+		const bool drawsReason = drawn.TabDraws(broken, "the file cannot be opened", Face::Interface);
+		std::fclose(held);
+
+		REQUIRE(failedToRead);
+		CHECK(stillShowsBytes);
+		REQUIRE_FALSE(whileHeld.empty());
+		CHECK(whileHeld.front() == before.front());
+		CHECK(drawsHeader);
+		CHECK(drawsReason);
+
+		Rewrite(broken, contents + "tail, still broken");
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		CHECK(drawn.Picture(broken).GetFailureKind() == Graphite::ImageFailure::Decode);
+		CHECK(showsBytes());
+		CHECK(drawn.StatusItems().front() == before.front());
+		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+		CHECK_FALSE(drawn.TabDraws(broken, "the file cannot be opened", Face::Interface));
 	}
 
 	SUBCASE("A rewrite that is a picture")

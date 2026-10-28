@@ -19,6 +19,9 @@ namespace Graphite {
 		// Made on first use; it reads nothing until its rows are wanted.
 		HexFile& For(const std::filesystem::path& path);
 
+		// Whether the bytes of `path` are kept, which For makes them; nothing is made by asking.
+		bool Has(const std::filesystem::path& path) const;
+
 		// Drops the bytes of every tab not in `open`.
 		void Prune(const std::set<std::filesystem::path>& open);
 

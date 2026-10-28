@@ -61,7 +61,8 @@ namespace Graphite {
 
 		ImageTabState GetState() const;
 
-		// The whole line shown in place of the picture.
+		// The whole line shown in place of the picture, or as the notice above its bytes when they are shown instead. Kept
+		// while the file is read again, until the new result lands.
 		const std::string& GetFailure() const;
 
 		// None unless the tab is Failed or is loading again after a failure, whose kind it keeps until the new result lands.

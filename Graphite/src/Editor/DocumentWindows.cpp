@@ -168,11 +168,19 @@ namespace Graphite {
 		}
 
 		// An image that is not a picture this program shows is drawn as its bytes, also while its file is read again, so
-		// the bytes do not blank; one that could not be read is not, since its bytes cannot be read either.
-		bool FallsBackToBytes(const ImageTab& tab)
+		// the bytes do not blank. One that could not be read is drawn as bytes only if it `showedBytes`, as when a writer
+		// holds the file mid-write, and the hex view's own read says why; one that never showed them is not, since its
+		// bytes cannot be read either. Only a picture that decodes leaves the bytes.
+		bool FallsBackToBytes(const ImageTab& tab, bool showedBytes)
 		{
-			return tab.GetState() != ImageTabState::Ready && (tab.GetFailureKind() == ImageFailure::Decode ||
-															  tab.GetFailureKind() == ImageFailure::TooLarge);
+			if (tab.GetState() == ImageTabState::Ready)
+			{
+				return false;
+			}
+
+			const ImageFailure kind = tab.GetFailureKind();
+			return kind == ImageFailure::Decode || kind == ImageFailure::TooLarge ||
+				   (kind == ImageFailure::Read && showedBytes);
 		}
 
 		std::string SavedCount(std::size_t saved)
@@ -1282,7 +1290,7 @@ namespace Graphite {
 		const ImageTab& tab = m_Images.For(item.Path);
 
 		// The bytes of an image that cannot be shown are the hex tab's, under the line that says why.
-		if (FallsBackToBytes(tab))
+		if (FallsBackToBytes(tab, m_Hex.Has(item.Path)))
 		{
 			return RenderHexTab(context, item, fontSize, scheme, workspaceRoot, tab.GetFailure());
 		}
@@ -1363,7 +1371,7 @@ namespace Graphite {
 
 			const ImageTab* const tab = m_Images.Find(item.Path);
 
-			if (tab != nullptr && FallsBackToBytes(*tab))
+			if (tab != nullptr && FallsBackToBytes(*tab, m_Hex.Has(item.Path)))
 			{
 				static_cast<void>(m_Hex.For(item.Path));
 			}

@@ -52,7 +52,10 @@ namespace {
 TEST_CASE("Hex files keep one model per open path and drop the closed ones")
 {
 	OpenFiles open;
+	CHECK_FALSE(open.Files.Has(open.First));
+
 	Graphite::HexFile& first = open.Files.For(open.First);
+	CHECK(open.Files.Has(open.First));
 	CHECK(&open.Files.For(open.First) == &first);
 	CHECK(&open.Files.For(open.Second) != &first);
 
@@ -61,6 +64,7 @@ TEST_CASE("Hex files keep one model per open path and drop the closed ones")
 	CHECK(open.Files.For(open.Second).ByteAt(0) == 'B');
 
 	open.Files.Prune({open.Second});
+	CHECK_FALSE(open.Files.Has(open.First));
 	CHECK(open.Files.For(open.Second).ByteAt(0) == 'B');
 
 	// Opened again, the closed file starts with nothing read.

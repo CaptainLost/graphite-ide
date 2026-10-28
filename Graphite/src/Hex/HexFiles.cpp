@@ -13,6 +13,11 @@ namespace Graphite {
 		return m_Files.try_emplace(path, path, m_Submit).first->second;
 	}
 
+	bool HexFiles::Has(const std::filesystem::path& path) const
+	{
+		return m_Files.contains(path);
+	}
+
 	void HexFiles::Prune(const std::set<std::filesystem::path>& open)
 	{
 		std::erase_if(m_Files, [&open](const auto& entry) { return !open.contains(entry.first); });
