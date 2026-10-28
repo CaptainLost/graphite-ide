@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Diff/DiffBody.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/GitModel.h"
 #include "Theme/GitPalette.h"
@@ -22,15 +23,6 @@
 
 namespace Graphite {
 
-	struct OpenDiff
-	{
-		std::optional<Core::Oid> Commit;
-		Core::DiffTarget Target = Core::DiffTarget::CommitToParent;
-		std::filesystem::path Path;
-
-		friend bool operator==(const OpenDiff&, const OpenDiff&) = default;
-	};
-
 	// WARNING: ImGui keys the window by this string, and a window's dock position and imgui.ini
 	// entry hang off it, so it must stay stable across frames and releases.
 	std::string DiffWindowIdentity(const OpenDiff& diff);
@@ -45,13 +37,6 @@ namespace Graphite {
 	std::optional<Core::DiffTarget> TargetHolding(const Core::WorkingTreeStatus& status,
 												  const std::filesystem::path& path,
 												  Core::DiffTarget current);
-
-	std::string EmptyDiffMessage(const OpenDiff& diff);
-
-	std::optional<std::string> DiffFailureOf(const OpenDiff& diff, const GitModel& model);
-
-	// WARNING: Forgets the failure before asking again, or the old failure stays on screen until the new answer lands.
-	void RetryDiff(const OpenDiff& diff, GitModel& model);
 
 	class DiffWindows
 	{
@@ -93,8 +78,7 @@ namespace Graphite {
 
 		struct Entry
 		{
-			OpenDiff Diff;
-			DiffView View;
+			DiffBody Body;
 
 			TabWindowState Window;
 
@@ -102,8 +86,6 @@ namespace Graphite {
 			// branch, and its tab would only say its diff is no longer loaded. So the first
 			// answer decides: a diff clears this, a failure closes the tab.
 			bool AwaitingFirstAnswer = false;
-
-			FileTextsBinding Texts;
 		};
 
 		std::vector<Entry> m_Open;

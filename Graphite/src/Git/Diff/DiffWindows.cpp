@@ -22,8 +22,6 @@
 
 namespace {
 
-	constexpr const char* kRetry = "Retry";
-
 	// WARNING: These words are part of the window identity that imgui.ini keys a dock position
 	// by, so changing one moves every open tab of that kind back to the default.
 	const char* NameOfTarget(Core::DiffTarget target)
@@ -244,21 +242,21 @@ namespace Graphite {
 	{
 		for (Entry& entry : m_Open)
 		{
-			if (entry.Diff == diff)
+			if (entry.Body.Diff == diff)
 			{
 				entry.Window.Focus = true;
 				return;
 			}
 		}
 
-		m_Open.push_back(Entry{.Diff = diff, .Window = {.Fresh = true, .Focus = true}});
+		m_Open.push_back(Entry{.Body = {.Diff = diff}, .Window = {.Fresh = true, .Focus = true}});
 	}
 
 	bool DiffWindows::IsOpen(const OpenDiff& diff) const
 	{
 		for (const Entry& entry : m_Open)
 		{
-			if (entry.Diff == diff)
+			if (entry.Body.Diff == diff)
 			{
 				return true;
 			}
@@ -274,7 +272,7 @@ namespace Graphite {
 
 	void DiffWindows::CloseWorkingTree()
 	{
-		std::erase_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Diff); });
+		std::erase_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Body.Diff); });
 	}
 
 	std::vector<DiffTabState> DiffWindows::CaptureState() const
@@ -284,7 +282,7 @@ namespace Graphite {
 
 		for (const Entry& entry : m_Open)
 		{
-			diffs.push_back(DiffTabState{entry.Diff.Commit, entry.Diff.Target, entry.Diff.Path});
+			diffs.push_back(DiffTabState{entry.Body.Diff.Commit, entry.Body.Diff.Target, entry.Body.Diff.Path});
 		}
 
 		return diffs;
@@ -296,7 +294,7 @@ namespace Graphite {
 
 		for (const Entry& entry : m_Open)
 		{
-			if (IsWorkingTreeDiff(entry.Diff))
+			if (IsWorkingTreeDiff(entry.Body.Diff))
 			{
 				workingTreeOpen = true;
 				break;
@@ -322,7 +320,7 @@ namespace Graphite {
 				workingTreeOpen = true;
 			}
 
-			m_Open.push_back(Entry{.Diff = diff,
+			m_Open.push_back(Entry{.Body = {.Diff = diff},
 								   .Window = {.Fresh = true, .Restored = true},
 								   .AwaitingFirstAnswer = diff.Commit.has_value()});
 		}
@@ -346,7 +344,7 @@ namespace Graphite {
 
 	void DiffWindows::FollowFile(Entry& entry, const GitModel& model)
 	{
-		if (entry.Diff.Commit.has_value())
+		if (entry.Body.Diff.Commit.has_value())
 		{
 			return;
 		}
@@ -359,14 +357,14 @@ namespace Graphite {
 		}
 
 		const std::optional<Core::DiffTarget> target =
-			TargetHolding(*status, entry.Diff.Path, entry.Diff.Target);
+			TargetHolding(*status, entry.Body.Diff.Path, entry.Body.Diff.Target);
 
 		if (!target.has_value())
 		{
 			return;
 		}
 
-		entry.Diff.Target = *target;
+		entry.Body.Diff.Target = *target;
 
 		// WARNING: A new target is a new identity ImGui has no dock position for, so the tab is
 		// docked again and raised, or it would float loose and lose the reader's place.
@@ -387,13 +385,13 @@ namespace Graphite {
 			// commit that is gone would never close.
 			if (entry.AwaitingFirstAnswer)
 			{
-				const Core::Oid& commit = *entry.Diff.Commit;
+				const Core::Oid& commit = *entry.Body.Diff.Commit;
 				model.RequestDiffFor(commit);
 
 				if (model.IsDiffFailed(commit))
 				{
 					APP_INFO("Not reopening the diff of '{}' in {}: that commit could not be read",
-							 Core::ToUtf8(entry.Diff.Path), commit.ShortHex());
+							 Core::ToUtf8(entry.Body.Diff.Path), commit.ShortHex());
 
 					model.ForgetFailedDiffFor(commit);
 					m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(tabIndex));
@@ -410,11 +408,11 @@ namespace Graphite {
 			// window: a tab that moves to the other side is a different window from this frame on.
 			FollowFile(entry, model);
 
-			const std::string windowName = DiffWindowName(entry.Diff);
+			const std::string windowName = DiffWindowName(entry.Body.Diff);
 
 			Core::PushContentWindowColours();
 
-			const FileTab tab{.Path = entry.Diff.Path, .Title = DiffWindowTitle(entry.Diff)};
+			const FileTab tab{.Path = entry.Body.Diff.Path, .Title = DiffWindowTitle(entry.Body.Diff)};
 			const TabWindowFrame frame = BeginTabWindow(windowName, entry.Window, DockInto(centreNode), closeRequests,
 														ImGuiWindowFlags_None, FileTabLook(tab, nullptr));
 
@@ -422,66 +420,15 @@ namespace Graphite {
 
 			if (frame.Visible)
 			{
-				Core::Ref<const Core::Diff> loadedDiff;
+				const DiffBodyStyle style{.Palette = palette,
+										  .Syntax = syntax,
+										  .Selection = selection,
+										  .Options = options,
+										  .OpenFile = OpenFileIn(model),
+										  .OnCopied = OnCopied,
+										  .OnSetOptions = OnSetOptions};
 
-				if (entry.Diff.Commit.has_value())
-				{
-					model.RequestDiffFor(*entry.Diff.Commit);
-					loadedDiff = model.GetDiffFor(*entry.Diff.Commit);
-				}
-				else
-				{
-					// WARNING: The working-tree diff is not cached by key like a commit's: it
-					// changes on every keystroke, so the model holds exactly one and replaces it.
-					model.RequestWorkingTreeDiff({.Target = entry.Diff.Target, .File = entry.Diff.Path});
-					loadedDiff = model.GetWorkingTreeDiff();
-				}
-
-				if (!loadedDiff)
-				{
-					if (const std::optional<std::string> failure = DiffFailureOf(entry.Diff, model))
-					{
-						if (Core::EmptyState(*failure, kRetry))
-						{
-							RetryDiff(entry.Diff, model);
-						}
-					}
-					else
-					{
-						Core::LoadingState("Loading the diff");
-					}
-				}
-				else
-				{
-					const std::optional<std::size_t> fileIndex =
-						IndexOfFile(*loadedDiff, entry.Diff.Path);
-
-					if (!fileIndex.has_value())
-					{
-						Core::EmptyState(EmptyDiffMessage(entry.Diff));
-					}
-					else
-					{
-						const Core::FileDiff& file = loadedDiff->Files[*fileIndex];
-
-						if (entry.Diff.Commit.has_value())
-						{
-							entry.Texts.Update(model, *entry.Diff.Commit, file);
-						}
-						else
-						{
-							entry.Texts.UpdateFromWorkingTree(model, file);
-						}
-
-						entry.View.OnOpenFile = OpenFileIn(model);
-						entry.View.OnCopied = OnCopied;
-						entry.View.OnSetOptions = OnSetOptions;
-						entry.View.SetTextsWait(entry.Texts.Wait);
-
-						entry.View.Render(file, palette, syntax, selection, entry.Texts.Texts,
-										  entry.Texts.Tokens, options);
-					}
-				}
+				DrawDiffBody(entry.Body, model, style);
 			}
 
 			ImGui::End();
@@ -491,7 +438,7 @@ namespace Graphite {
 
 			if (!frame.Open)
 			{
-				entry.Texts.ForgetFailure(model);
+				entry.Body.Texts.ForgetFailure(model);
 
 				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(tabIndex));
 				continue;
