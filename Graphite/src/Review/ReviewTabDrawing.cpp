@@ -773,6 +773,14 @@ namespace Graphite {
 				return;
 			}
 
+			// WARNING: A draft holds nothing worth ending, and ending it would only have the next frame draft the branch
+			// again with the same problem.
+			if (!input.Sessions.IsKept(tab.Branch))
+			{
+				Core::EmptyState(problem);
+				return;
+			}
+
 			if (Core::EmptyState(problem, "End review"))
 			{
 				AskToEnd(tab.Branch);

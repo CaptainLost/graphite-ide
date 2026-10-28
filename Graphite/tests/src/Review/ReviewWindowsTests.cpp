@@ -366,6 +366,49 @@ TEST_CASE("An embedded review of a branch that is gone asks to be closed")
 	CHECK_FALSE(host.Windows.TakeEmbeddedClosed());
 }
 
+TEST_CASE("Only a kept session whose range has a problem offers End review, a draft has nothing to end")
+{
+	constexpr float kStepDown = 4.0f;
+	constexpr float kBelowTheTitleBar = 40.0f;
+
+	for (const bool kept : {false, true})
+	{
+		EmbeddedHost host;
+		host.Port.Range.Problem = Graphite::RangeProblem::NoCommonAncestor;
+
+		if (kept)
+		{
+			host.Sessions.Start(kSide, kMain);
+		}
+		else
+		{
+			host.Sessions.OpenDraft(kSide, kMain);
+		}
+
+		host.Draw(kSide);
+
+		const Graphite::ReviewRenderInput input = host.Input();
+		const auto draw = [&] {
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(kHostWidth, kHostHeight));
+			ImGui::Begin("Git", nullptr, ImGuiWindowFlags_NoSavedSettings);
+			host.Windows.RenderEmbedded(kSide, input);
+			ImGui::End();
+		};
+
+		// The problem and its button stand in the middle of the window, so the pointer goes down its middle, from below
+		// the title bar: a click there would start a move of the window and leave every later click to it.
+		for (float y = kBelowTheTitleBar; y < kHostHeight && !host.Windows.IsAskingToEnd(); y += kStepDown)
+		{
+			host.Frames.Click(ImVec2(kHostWidth * 0.5f, y), draw);
+		}
+
+		CAPTURE(kept);
+		CHECK(host.Windows.IsAskingToEnd() == kept);
+		CHECK(host.Sessions.Find(kSide) != nullptr);
+	}
+}
+
 TEST_CASE("Switching the embedded review to another branch asks that branch's range")
 {
 	EmbeddedHost host;
