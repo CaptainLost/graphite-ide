@@ -29,6 +29,11 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
 - Every branch has `RenderRefMenu`'s menu wherever it is shown: the navigator's branch and thread rows, the table, a card, and the header of its history, HEAD's branch on HEAD's. Rows and cards are keyed by what they name, so a menu stays with its branch when the rows or cards around it move.
 - **Which view opens.** Work, the first time. After that the view last selected, kept with the folder's state as `restore.gitWindow.view` (a word: `work`, `thread`, `changes`, `history`, `branches`) and `restore.gitWindow.branch`. An unknown word reads as Work. A restored thread or history waits for the branches, then `SelectionToRestore` applies it: a thread of a branch that is gone opens Work, a history of a ref that is gone shows HEAD's.
 - **Cost.** The work facts are asked for only while the window is on screen; a branch snapshot it missed is asked for once it is. The card worktrees' changes are polled only while Work is shown. The Claude sessions, whose titles the cards take, are indexed once the window is on screen, also when the Sessions panel was never shown. The board, the navigator rows and the table's rows are rebuilt only when their inputs change, and the snapshots they were built from are held, so a freed snapshot can never pass for a new one at the same address.
+- **The ready group only reads.** Nothing in this window removes a branch or a worktree. Before a later stage acts on the ready group, it must:
+  - act only while the facts are not pending;
+  - add the trunk's tip to the check of what moved since the facts were read, which compares branch tips only, so a trunk reset or force-moved keeps showing entries read against the old trunk until the next read lands;
+  - read the worktree list again when it acts, not trust the one the facts were read with;
+  - weigh locks and live sessions: a worktree locked by another session, or one a Claude session is still running in, is not removed on the facts alone.
 - **One working-tree diff.** A pick in the window's Changes closes a working-tree diff tab of another diff, and a working-tree tab opened after the pick takes the slot back, as the side panel's tabs do ([0538](0538-refresh-the-working-tree-diff-when-the-repository-changes-not-when-it-is-asked-for.md)).
 - The sectioned branch list (`BranchListView`, the row building in `BranchRows`) and its saved sort and grouping are deleted. The table's columns, scopes and filter take their place.
 
@@ -53,6 +58,7 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
 - History no longer sits beside a full branch list. Only the six newest local branches are one click away; any other is two, through "Show all" and the table.
 - The branch list's saved sort and grouping are dropped from the folder's state, and nothing carries them into the table, whose own sort, scope and filter are not saved.
 - A window brought back after commits elsewhere shows its facts as pending until the read it then asks for lands.
+- A change to the worktree list that moves no branch is seen only on the next branch move or Refresh: removing a worktree but keeping its branch, locking or unlocking one, `git worktree prune`. Meanwhile a card can keep "Open folder" for a folder that is gone, since a count that fails to poll leaves the one held.
 - A card whose review cannot be counted says why only in the tooltip of its "—"; the thread says it in full.
 - Every card on screen costs a range and a diff on first sight, with a session or without one, and its range is read again after every branch snapshot while it is drawn.
 - `GitView` owns the state of five views. It is split across files by part (`GitView.cpp`, `GitViewFrame.cpp`, the dialogs, the stashes, the reveal), but it is one class.
