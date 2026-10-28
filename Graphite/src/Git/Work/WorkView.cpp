@@ -6,6 +6,7 @@
 #include "UI/FittedText.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
+#include "Theme/ActiveScheme.h"
 
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/EmptyState.h"
@@ -127,6 +128,10 @@ namespace Graphite {
 		}
 	}
 
+	WorkView::WorkView(const ActiveScheme& scheme) : m_Scheme(scheme)
+	{
+	}
+
 	void WorkView::ExpandReady()
 	{
 		m_ReadyExpanded = true;
@@ -135,6 +140,8 @@ namespace Graphite {
 	void WorkView::Draw(const WorkBoard& board, bool reading, const std::optional<Core::Error>& error,
 						std::chrono::sys_seconds now)
 	{
+		m_ChipColours = ReadChipColours(m_Scheme.Get());
+
 		DrawBar(board, reading);
 
 		// WARNING: Without facts the board has only the working copy, so a failure of the read is the whole answer.
@@ -290,7 +297,7 @@ namespace Graphite {
 							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
 								  ImGuiWindowFlags_NoBackground))
 		{
-			DrawChipRow(CardChips(card, trunk));
+			DrawChipRow(CardChips(card, trunk), m_ChipColours, kChipLines);
 		}
 		ImGui::EndChild();
 	}

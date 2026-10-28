@@ -479,7 +479,8 @@ namespace Graphite {
 			.TrunkName = trunkName,
 			.AgainstBase = againstTrunk ? std::nullopt : std::optional<std::string>{Core::ShortBranchName(*base)},
 			.Branch = branch,
-			.Viewed = ReviewProgressOf ? ReviewProgressOf(branch) : std::nullopt};
+			.Viewed = ReviewProgressOf ? ReviewProgressOf(branch) : std::nullopt,
+			.Colours = ReadChipColours(m_Scheme.Get())};
 
 		if (DrawThreadHeader(header) && OpenReviewTab)
 		{

@@ -2,6 +2,7 @@
 
 #include "ImGuiFrames.h"
 #include "Git/Work/WorkView.h"
+#include "Theme/ActiveScheme.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -51,7 +52,8 @@ namespace {
 TEST_CASE("The ready group starts collapsed and ExpandReady opens it")
 {
 	ImGuiFrames frames;
-	Graphite::WorkView view;
+	const Graphite::ActiveScheme scheme;
+	Graphite::WorkView view(scheme);
 	const Graphite::WorkBoard board = BoardWithOneBranch();
 
 	frames.Next([&] { DrawIn(view, board); });
@@ -65,7 +67,8 @@ TEST_CASE("The ready group starts collapsed and ExpandReady opens it")
 TEST_CASE("The expanded ready group lays a list row out for each entry")
 {
 	ImGuiFrames frames;
-	Graphite::WorkView view;
+	const Graphite::ActiveScheme scheme;
+	Graphite::WorkView view(scheme);
 	Graphite::WorkBoard board = BoardWithOneBranch();
 
 	for (int entry = 0; entry < 3; ++entry)
@@ -100,7 +103,8 @@ TEST_CASE("The expanded ready group lays a list row out for each entry")
 TEST_CASE("Review on a branch card opens its thread")
 {
 	ImGuiFrames frames;
-	Graphite::WorkView view;
+	const Graphite::ActiveScheme scheme;
+	Graphite::WorkView view(scheme);
 	const Graphite::WorkBoard board = BoardWithOneBranch();
 
 	std::optional<std::string> reviewed;

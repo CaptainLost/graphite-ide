@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Work/ChipRow.h"
 #include "Git/Work/WorkBoard.h"
 #include "Review/ReviewFiles.h"
 
@@ -13,8 +14,8 @@
 
 namespace Graphite {
 
-	// Chip texts in order: distance, uncommitted, twins, check, lock, detached, operation.
-	std::vector<std::string> CardChips(const WorkCard& card, std::string_view trunkName);
+	// Chips in order: distance, uncommitted, twins, check, lock, detached, operation.
+	std::vector<Chip> CardChips(const WorkCard& card, std::string_view trunkName);
 
 	// The folder's own name, also for a path that ends in a separator, as libgit2 hands the main worktree's back.
 	std::string WorktreeFolderName(const std::filesystem::path& worktree);

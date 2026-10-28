@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Work/ChipRow.h"
 #include "Git/Work/WorkBoard.h"
 #include "Review/ReviewFiles.h"
 
@@ -23,6 +24,8 @@ namespace Graphite {
 
 		// Empty while the count is unknown.
 		std::optional<ViewedCount> Viewed;
+
+		ChipColours Colours;
 	};
 
 	// Title, branch and folder, the card chips, "against {base}" when the session's base is not the trunk, and

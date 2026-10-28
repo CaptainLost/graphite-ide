@@ -37,22 +37,28 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		void AddDistanceChips(const WorkCard& card, std::vector<std::string>& chips)
+		void AddDistanceChips(const WorkCard& card, std::vector<Chip>& chips)
 		{
 			if (card.Kind == WorkCardKind::WorkingCopy)
 			{
-				chips.push_back(card.Uncommitted.has_value()
-									? std::to_string(*card.Uncommitted) + (*card.Uncommitted == 1 ? " change" : " changes")
-									: std::string("counting changes") + kEllipsis);
+				if (card.Uncommitted.has_value())
+				{
+					chips.push_back({std::to_string(*card.Uncommitted) + (*card.Uncommitted == 1 ? " change" : " changes"),
+									 *card.Uncommitted > 0 ? ChipTone::Info : ChipTone::Plain});
+				}
+				else
+				{
+					chips.push_back({std::string("counting changes") + kEllipsis});
+				}
 
 				if (card.DistanceKnown && card.Ahead > 0)
 				{
-					chips.push_back(std::string(kUpArrow) + std::to_string(card.Ahead) + " to push");
+					chips.push_back({std::string(kUpArrow) + std::to_string(card.Ahead) + " to push"});
 				}
 
 				if (card.DistanceKnown && card.Behind > 0)
 				{
-					chips.push_back(std::string(kDownArrow) + std::to_string(card.Behind) + " to pull");
+					chips.push_back({std::string(kDownArrow) + std::to_string(card.Behind) + " to pull"});
 				}
 
 				return;
@@ -60,15 +66,21 @@ namespace Graphite {
 
 			if (card.DistanceKnown)
 			{
-				chips.push_back(std::to_string(card.Ahead) + " ahead " + kMiddleDot + " " + std::to_string(card.Behind) +
-								" behind");
+				// Ahead and not behind could go into the trunk as it is; behind needs bringing up to it first.
+				const ChipTone tone = card.Behind > 0 ? ChipTone::Warning
+									  : card.Ahead > 0 ? ChipTone::Good
+													   : ChipTone::Plain;
+
+				chips.push_back({std::to_string(card.Ahead) + " ahead " + kMiddleDot + " " + std::to_string(card.Behind) +
+									 " behind",
+								 tone});
 			}
 		}
 	}
 
-	std::vector<std::string> CardChips(const WorkCard& card, std::string_view trunkName)
+	std::vector<Chip> CardChips(const WorkCard& card, std::string_view trunkName)
 	{
-		std::vector<std::string> chips;
+		std::vector<Chip> chips;
 		const std::string trunk(trunkName);
 
 		AddDistanceChips(card, chips);
@@ -78,39 +90,40 @@ namespace Graphite {
 		{
 			if (!card.Uncommitted.has_value())
 			{
-				chips.push_back(std::string("counting changes") + kEllipsis);
+				chips.push_back({std::string("counting changes") + kEllipsis});
 			}
 			else if (*card.Uncommitted > 0)
 			{
-				chips.push_back(std::to_string(*card.Uncommitted) + " uncommitted");
+				chips.push_back({std::to_string(*card.Uncommitted) + " uncommitted", ChipTone::Info});
 			}
 		}
 
 		if (card.InTrunk > 0)
 		{
-			chips.push_back(std::to_string(card.InTrunk) + " of " + std::to_string(card.OwnChanges) + " already in " +
-							trunk);
+			chips.push_back(
+				{std::to_string(card.InTrunk) + " of " + std::to_string(card.OwnChanges) + " already in " + trunk,
+				 ChipTone::Info});
 		}
 
 		// Only a branch's commits are matched against the trunk's.
 		if (card.Kind == WorkCardKind::Branch && !card.Checked)
 		{
-			chips.push_back("not checked against " + trunk);
+			chips.push_back({"not checked against " + trunk});
 		}
 
 		if (card.Locked)
 		{
-			chips.push_back("locked");
+			chips.push_back({"locked"});
 		}
 
 		if (card.DetachedAt.has_value())
 		{
-			chips.push_back("detached at " + card.DetachedAt->ShortHex());
+			chips.push_back({"detached at " + card.DetachedAt->ShortHex()});
 		}
 
 		if (const char* const operation = OperationText(card.Operation); operation != nullptr)
 		{
-			chips.emplace_back(operation);
+			chips.push_back({operation, ChipTone::Warning});
 		}
 
 		return chips;

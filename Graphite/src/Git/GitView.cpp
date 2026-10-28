@@ -84,7 +84,7 @@ namespace Graphite {
 					 Core::EventBus& events)
 		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Work(work),
 		  m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
-		  m_Buffers(buffers), m_Events(events), m_Navigator(scheme), m_DetachQuestion(modals, "###GitDetach"),
+		  m_Buffers(buffers), m_Events(events), m_Navigator(scheme), m_WorkView(scheme), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")

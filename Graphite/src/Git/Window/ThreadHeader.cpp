@@ -32,20 +32,20 @@ namespace Graphite {
 			return input.Card != nullptr ? CardBranchLine(*input.Card) : Core::ShortBranchName(std::string(input.Branch));
 		}
 
-		std::vector<std::string> HeaderChips(const ThreadHeaderInput& input)
+		std::vector<Chip> HeaderChips(const ThreadHeaderInput& input)
 		{
-			std::vector<std::string> chips;
+			std::vector<Chip> chips;
 
 			if (input.Card != nullptr)
 			{
 				chips = CardChips(*input.Card, input.TrunkName);
 			}
 
-			chips.push_back(ReviewProgressText(input.Viewed));
+			chips.push_back({ReviewProgressText(input.Viewed)});
 
 			if (input.AgainstBase.has_value())
 			{
-				chips.push_back("against " + *input.AgainstBase);
+				chips.push_back({"against " + *input.AgainstBase});
 			}
 
 			return chips;
@@ -80,7 +80,7 @@ namespace Graphite {
 		ImGui::TextDisabled("%s", FitToWidth(BranchAndFolder(input), ImGui::GetContentRegionAvail().x).c_str());
 		ImGui::PopFont();
 
-		DrawChipRow(HeaderChips(input));
+		DrawChipRow(HeaderChips(input), input.Colours);
 		ImGui::Separator();
 
 		return openInOwnTab;

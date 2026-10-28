@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Work/ChipRow.h"
 #include "Git/Work/WorkBoard.h"
 #include "Review/ReviewFiles.h"
 
@@ -13,11 +14,15 @@
 
 namespace Graphite {
 
+	class ActiveScheme;
+
 	// The Git window's first view: cards for the work not yet in the trunk, above a read-only group of what is ready to
 	// remove. The caller opens the window these scroll in.
 	class WorkView
 	{
 	public:
+		explicit WorkView(const ActiveScheme& scheme);
+
 		std::function<void(const WorkCard& card)> OnReview;
 		std::function<void()> OnChanges;
 
@@ -47,6 +52,10 @@ namespace Graphite {
 		void DrawButtons(const WorkCard& card, std::chrono::sys_seconds now);
 		void DrawReady(const WorkBoard& board, std::chrono::sys_seconds now);
 
+		const ActiveScheme& m_Scheme;
+
+		// Read once a frame, before the cards.
+		ChipColours m_ChipColours;
 		bool m_ReadyExpanded = false;
 	};
 }

@@ -11,9 +11,15 @@
 
 namespace {
 
-	bool Has(const std::vector<std::string>& chips, const std::string& text)
+	bool Has(const std::vector<Graphite::Chip>& chips, const std::string& text)
 	{
-		return std::find(chips.begin(), chips.end(), text) != chips.end();
+		return std::ranges::find(chips, text, &Graphite::Chip::Text) != chips.end();
+	}
+
+	std::optional<Graphite::ChipTone> ToneOf(const std::vector<Graphite::Chip>& chips, const std::string& text)
+	{
+		const auto found = std::ranges::find(chips, text, &Graphite::Chip::Text);
+		return found != chips.end() ? std::optional<Graphite::ChipTone>{found->Tone} : std::nullopt;
 	}
 
 	Graphite::WorkCard BranchCard()
@@ -31,10 +37,10 @@ namespace {
 
 TEST_CASE("A branch card says how far it is from the trunk")
 {
-	const std::vector<std::string> chips = Graphite::CardChips(BranchCard(), "main");
+	const std::vector<Graphite::Chip> chips = Graphite::CardChips(BranchCard(), "main");
 
 	REQUIRE(!chips.empty());
-	CHECK(chips.front() == "3 ahead \xC2\xB7 7 behind");
+	CHECK(chips.front().Text == "3 ahead \xC2\xB7 7 behind");
 }
 
 TEST_CASE("The working copy card says its changes and what is left to push")
@@ -49,11 +55,42 @@ TEST_CASE("The working copy card says its changes and what is left to push")
 	card.DistanceKnown = true;
 	card.Checked = true;
 
-	const std::vector<std::string> chips = Graphite::CardChips(card, "main");
+	const std::vector<Graphite::Chip> chips = Graphite::CardChips(card, "main");
 
 	CHECK(Has(chips, "5 changes"));
 	CHECK(Has(chips, "\xE2\x86\x91" "2 to push"));
 	CHECK_FALSE(Has(chips, "\xE2\x86\x93" "0 to pull"));
+}
+
+TEST_CASE("A card's chips are toned: green ahead only, amber behind, blue for uncommitted work and twins")
+{
+	Graphite::WorkCard card = BranchCard();
+	card.Behind = 0;
+	CHECK(ToneOf(Graphite::CardChips(card, "main"), "3 ahead \xC2\xB7 0 behind") == Graphite::ChipTone::Good);
+
+	card.Behind = 7;
+	card.Worktree = "C:/repo-feature";
+	card.Uncommitted = 2;
+	card.OwnChanges = 5;
+	card.InTrunk = 1;
+	card.Operation = Core::RepositoryOperation::Rebase;
+	card.Checked = false;
+
+	const std::vector<Graphite::Chip> chips = Graphite::CardChips(card, "main");
+	CHECK(ToneOf(chips, "3 ahead \xC2\xB7 7 behind") == Graphite::ChipTone::Warning);
+	CHECK(ToneOf(chips, "2 uncommitted") == Graphite::ChipTone::Info);
+	CHECK(ToneOf(chips, "1 of 5 already in main") == Graphite::ChipTone::Info);
+	CHECK(ToneOf(chips, "rebase in progress") == Graphite::ChipTone::Warning);
+	CHECK(ToneOf(chips, "not checked against main") == Graphite::ChipTone::Plain);
+
+	Graphite::WorkCard workingCopy;
+	workingCopy.Kind = Graphite::WorkCardKind::WorkingCopy;
+	workingCopy.Branch = "refs/heads/main";
+	workingCopy.Uncommitted = 4;
+	CHECK(ToneOf(Graphite::CardChips(workingCopy, "main"), "4 changes") == Graphite::ChipTone::Info);
+
+	workingCopy.Uncommitted = 0;
+	CHECK(ToneOf(Graphite::CardChips(workingCopy, "main"), "0 changes") == Graphite::ChipTone::Plain);
 }
 
 TEST_CASE("The working copy card counts one change in the singular")
@@ -63,7 +100,7 @@ TEST_CASE("The working copy card counts one change in the singular")
 	card.Branch = "refs/heads/main";
 	card.Uncommitted = 1;
 
-	const std::vector<std::string> chips = Graphite::CardChips(card, "main");
+	const std::vector<Graphite::Chip> chips = Graphite::CardChips(card, "main");
 
 	CHECK(Has(chips, "1 change"));
 	CHECK_FALSE(Has(chips, "1 changes"));
@@ -78,14 +115,14 @@ TEST_CASE("Uncounted uncommitted files read as waiting, not as zero")
 	CHECK(Has(Graphite::CardChips(card, "main"), "counting changes\xE2\x80\xA6"));
 
 	card.Uncommitted = 4;
-	const std::vector<std::string> counted = Graphite::CardChips(card, "main");
+	const std::vector<Graphite::Chip> counted = Graphite::CardChips(card, "main");
 	CHECK(Has(counted, "4 uncommitted"));
 	CHECK_FALSE(Has(counted, "counting changes\xE2\x80\xA6"));
 
 	card.Uncommitted = 0;
-	for (const std::string& chip : Graphite::CardChips(card, "main"))
+	for (const Graphite::Chip& chip : Graphite::CardChips(card, "main"))
 	{
-		CHECK(chip.find("uncommitted") == std::string::npos);
+		CHECK(chip.Text.find("uncommitted") == std::string::npos);
 	}
 }
 
@@ -98,9 +135,9 @@ TEST_CASE("A card with twins in the trunk says how many are already there")
 	CHECK(Has(Graphite::CardChips(card, "main"), "2 of 5 already in main"));
 
 	card.InTrunk = 0;
-	for (const std::string& chip : Graphite::CardChips(card, "main"))
+	for (const Graphite::Chip& chip : Graphite::CardChips(card, "main"))
 	{
-		CHECK(chip.find("already in") == std::string::npos);
+		CHECK(chip.Text.find("already in") == std::string::npos);
 	}
 }
 
@@ -126,9 +163,9 @@ TEST_CASE("Only a branch card says it was not checked: the working copy and a de
 
 	for (const Graphite::WorkCard& card : {workingCopy, detached})
 	{
-		for (const std::string& chip : Graphite::CardChips(card, "main"))
+		for (const Graphite::Chip& chip : Graphite::CardChips(card, "main"))
 		{
-			CHECK(chip.find("not checked") == std::string::npos);
+			CHECK(chip.Text.find("not checked") == std::string::npos);
 		}
 	}
 }
@@ -143,7 +180,7 @@ TEST_CASE("A detached card names its commit and the operation in progress")
 	card.DetachedAt = id;
 	card.Operation = Core::RepositoryOperation::CherryPick;
 
-	const std::vector<std::string> chips = Graphite::CardChips(card, "main");
+	const std::vector<Graphite::Chip> chips = Graphite::CardChips(card, "main");
 
 	CHECK(Has(chips, "locked"));
 	CHECK(Has(chips, "detached at " + id.ShortHex()));
