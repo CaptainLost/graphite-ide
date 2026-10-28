@@ -222,9 +222,10 @@ TEST_CASE("A ready row names the branch, its worktree folder, why it is ready an
 	CHECK(merged.Folder.empty());
 	CHECK(merged.Reason == "merged into main");
 
+	// The folder is named as the branch, so it is said once.
 	const Graphite::ReadyLine locked = Graphite::ReadyLineAt(board, 2);
 	CHECK(locked.Name == "busy");
-	CHECK(locked.Folder == "busy");
+	CHECK(locked.Folder.empty());
 	CHECK(locked.Reason == "locked: claude session");
 	CHECK(locked.Locked);
 

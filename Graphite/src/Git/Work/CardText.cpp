@@ -146,22 +146,28 @@ namespace Graphite {
 
 	ReadyLine ReadyLineAt(const WorkBoard& board, std::size_t index)
 	{
+		// A folder named as its branch is said once.
+		const auto besideName = [](const std::string& name, std::string folder) {
+			return folder == name ? std::string() : folder;
+		};
+
 		if (index < board.Ready.size())
 		{
 			const ReadyEntry& entry = board.Ready[index];
 			const std::string trunk = board.Trunk.has_value() ? Core::ShortBranchName(*board.Trunk) : "the trunk";
+			const std::string name = Core::ShortBranchName(entry.Branch);
 
 			return ReadyLine{
-				.Name = Core::ShortBranchName(entry.Branch),
-				.Folder = entry.Worktree.has_value() ? WorktreeFolderName(*entry.Worktree) : std::string(),
+				.Name = name,
+				.Folder = entry.Worktree.has_value() ? besideName(name, WorktreeFolderName(*entry.Worktree)) : std::string(),
 				.Reason = entry.Reason == ReadyReason::Merged ? "merged into " + trunk : "same change already in " + trunk,
 				.TipTime = entry.TipTime};
 		}
 
 		const WorkInfo& info = board.Info[index - board.Ready.size()];
 		const std::string folder = WorktreeFolderName(info.Worktree);
-		ReadyLine line{.Name = info.Branch.empty() ? folder : Core::ShortBranchName(info.Branch),
-					   .Folder = info.Branch.empty() ? std::string() : folder};
+		const std::string name = info.Branch.empty() ? folder : Core::ShortBranchName(info.Branch);
+		ReadyLine line{.Name = name, .Folder = besideName(name, folder)};
 
 		switch (info.Kind)
 		{
