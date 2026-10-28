@@ -187,6 +187,13 @@ namespace Graphite {
 			Core::LoadingState("Reading worktrees and branches");
 		}
 
+		// With no trunk the board holds the working copy alone, and says why no branch is shown.
+		if (const std::optional<std::string> note = NoTrunkNote(board); note.has_value())
+		{
+			Core::EmptyState(*note);
+			return;
+		}
+
 		DrawReady(board, now);
 	}
 

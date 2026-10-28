@@ -2,6 +2,8 @@
 
 #include "Git/Work/WorkBoard.h"
 
+#include "Git/Work/CardText.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -605,6 +607,23 @@ TEST_CASE("Without a trunk only the working copy is shown")
 	CHECK(board.Cards[0].Kind == Graphite::WorkCardKind::WorkingCopy);
 	CHECK(board.Cards[0].Branch == "HEAD");
 	CHECK(board.Ready.empty());
+}
+
+TEST_CASE("Without a trunk the answered board waits on nothing and says there is no trunk")
+{
+	Scene scene;
+	scene.Branches.clear();
+	scene.Add("side");
+	scene.MainHead = {.Kind = Core::HeadKind::Detached, .Commit = OidOf(9)};
+
+	const Graphite::WorkBoard answered = scene.Build();
+
+	CHECK_FALSE(answered.FactsPending);
+	CHECK(Graphite::NoTrunkNote(answered).has_value());
+
+	scene.HaveFacts = false;
+
+	CHECK_FALSE(Graphite::NoTrunkNote(scene.Build()).has_value());
 }
 
 TEST_CASE("A card names a branch unless it is a detached working copy's or a detached worktree's")

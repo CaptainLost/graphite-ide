@@ -272,6 +272,22 @@ TEST_CASE("A ready row names the branch, its worktree folder, why it is ready an
 	CHECK(detached.Reason == "detached, nothing to keep");
 }
 
+TEST_CASE("Work says there is no trunk only once the facts say so")
+{
+	Graphite::WorkBoard board;
+	board.FactsPending = true;
+
+	CHECK_FALSE(Graphite::NoTrunkNote(board).has_value());
+
+	board.FactsPending = false;
+
+	CHECK(Graphite::NoTrunkNote(board) == std::optional<std::string>{"There is no trunk to compare against."});
+
+	board.Trunk = "refs/heads/main";
+
+	CHECK_FALSE(Graphite::NoTrunkNote(board).has_value());
+}
+
 TEST_CASE("Review progress reads as waiting until it is known")
 {
 	CHECK(Graphite::ReviewProgressText(std::nullopt) == "counting viewed files\xE2\x80\xA6");

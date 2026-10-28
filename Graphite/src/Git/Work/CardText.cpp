@@ -219,6 +219,17 @@ namespace Graphite {
 		return summary;
 	}
 
+	std::optional<std::string> NoTrunkNote(const WorkBoard& board)
+	{
+		// WARNING: Only an answer says there is no trunk: before the facts land the branches may still be unread.
+		if (board.Trunk.has_value() || board.FactsPending)
+		{
+			return std::nullopt;
+		}
+
+		return std::string("There is no trunk to compare against.");
+	}
+
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed)
 	{
 		if (!viewed.has_value())

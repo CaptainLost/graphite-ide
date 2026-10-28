@@ -52,6 +52,10 @@ namespace Graphite {
 	// "33 worktrees · main ↑13 to push" over the cards; the count reads as waiting until the facts land, never as 0.
 	std::string WorkSummaryText(const WorkBoard& board);
 
+	// "There is no trunk to compare against." once the facts say the repository has neither origin's default branch
+	// nor a branch checked out; empty while they are read and whenever there is a trunk.
+	std::optional<std::string> NoTrunkNote(const WorkBoard& board);
+
 	// "3 of 10 viewed" in the thread's header; "counting viewed files…" while the count is unknown, never a zero.
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed);
 
