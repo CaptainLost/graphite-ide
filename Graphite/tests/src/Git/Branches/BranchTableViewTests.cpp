@@ -10,6 +10,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <format>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -80,6 +82,44 @@ TEST_CASE("A table with no row leaves room under its header for the empty state"
 	}
 
 	CHECK(inView > 0);
+}
+
+TEST_CASE("A sort saved by an earlier run moves no column: the table keeps its columns in their order")
+{
+	ImGuiFrames frames;
+
+	// What an earlier run saved once the table was sorted by its age and never resized: the sorted column alone.
+	const std::string saved = std::format("[Table][0x{:08X},6]\nColumn 3  Sort=0^ ID=0x{:08X}\n\n",
+										  ImHashStr("BranchTableView.Table"), ImHashStr("Age"));
+	ImGui::LoadIniSettingsFromMemory(saved.c_str(), saved.size());
+
+	const std::vector<Core::Branch> branches = {LocalBranch("side", 1)};
+	Graphite::BranchTableView view;
+
+	// In a window that keeps its settings, as the Git window does: one that does not keeps none for its tables either.
+	const std::function<void()> draw = [&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(kWindowWidth, kWindowHeight));
+		ImGui::Begin("SavedBranchTable", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove);
+
+		Graphite::BranchTableInput input;
+		input.Branches = &branches;
+		input.Now = SystemSecondsAt(kNowSeconds);
+		view.Draw(std::move(input), std::chrono::locate_zone("UTC"));
+
+		ImGui::End();
+	};
+
+	frames.Next(draw);
+	frames.Next(draw);
+
+	const ImGuiTable* const table = ImGui::TableFindByID(ImHashStr("BranchTableView.Table"));
+	REQUIRE(table != nullptr);
+
+	for (int column = 0; column < table->ColumnsCount; ++column)
+	{
+		CHECK(table->Columns[column].DisplayOrder == column);
+	}
 }
 
 TEST_CASE("Clicking a row opens that branch")

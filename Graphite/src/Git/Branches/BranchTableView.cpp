@@ -20,12 +20,13 @@ namespace Graphite {
 
 	namespace {
 
+		// WARNING: The table keeps no settings. Sorted and never resized, ImGui saves the sorted column alone, and on
+		// the next start it matches the columns saved with nothing to the others in turn and draws the sorted one first.
 		constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY |
 												ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV |
-												ImGuiTableFlags_SizingStretchProp;
+												ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
 
-		// WARNING: The table id is a constant, not BeginTable's hash of the label under the window, because ImGui
-		// saves the columns' widths and sort under it.
+		// The table id is a constant, not BeginTable's hash of the label under the window, so a test can find it.
 		constexpr const char* kTableName = "BranchTableView.Table";
 
 		constexpr const char* kFilterId = "##branchTableFilter";
