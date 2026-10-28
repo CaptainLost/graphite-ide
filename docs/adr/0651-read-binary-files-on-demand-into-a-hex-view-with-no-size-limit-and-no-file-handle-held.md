@@ -46,8 +46,9 @@ Date: 2026-10-28
   blocks, one job a block, into a cache of the 64 blocks most recently asked for.
   `HexFiles::Update` takes the blocks that landed once a frame, before any tab
   draws. Rows not read yet show their offset and dim placeholders, a read still
-  waiting after 0.2 s shows the loader at the header's right end, and a failed
-  read shows its reason with Retry
+  waiting after 0.2 s shows the loader at the header's right end, after the
+  `ASCII` heading, and leaves it out where it does not fit there, since the
+  placeholders show the wait too, and a failed read shows its reason with Retry
   ([0633](0633-show-every-wait-with-the-core-loader-and-say-nothing-is-there-only-after-an-answer-said-so.md)).
 - **No handle held.** Each read opens the file through `Core::ReadFileRange`,
   sharing read, write and delete with everyone else, and closes it before
@@ -77,10 +78,13 @@ Date: 2026-10-28
     warning toast `Select at most 1 MB to copy`.
   - In an empty file both are disabled. Cut, Paste, Toggle Line Comment, Undo and
     Redo are always disabled.
-- **Status bar.** The items the view drew last frame, `Offset 0x…`, the count of
-  bytes selected, the little-endian `u8`, `u16` and `u32` values and the file's
-  size, are what `GetViewStatusItems` hands the bar while the tab is active, as a
-  picture's are.
+- **Status bar.** The items the view drew last frame, `Offset 0x…` with the
+  number in the code face, the count of bytes selected grouped in thousands
+  (`4,382,720 bytes`, `1 byte`), the little-endian `u8`, `u16` and `u32` values
+  and the file's size, are what `GetViewStatusItems` hands the bar while the tab
+  is active, as a picture's are. A view's item may carry a label, words in the
+  interface face drawn right before its text, which is how one item mixes the
+  two faces.
 - **Restart.** `CaptureState` keeps a hex tab as `TabState{Path, Preview}` and may
   name it the active tab; `RestoreState` reopens it through the ordinary open
   path. The selection and the scroll are not kept.
@@ -95,15 +99,19 @@ preview limit.
   the line the image tab would have shown as its notice, `Could not read this image:
   <reason>` or `Image is too large to preview (W × H)`. Its path row has no image
   tools and its status items are the hex ones.
-- **Could not be read.** The tab keeps the failure message with Retry, since bytes
-  that cannot be read cannot be shown either.
+- **Could not be read.** A tab that showed nothing yet keeps the failure message
+  with Retry, since bytes that cannot be read cannot be shown either. A tab
+  already showing the bytes whose file then cannot be read, as when a writer holds
+  it while it writes, keeps showing them, with its selection and scroll, under the
+  line saying the image could not be read; the hex view's own read reports the
+  same and offers Retry.
 - **By what was drawn.** Which commands a tab takes is decided by what it drew this
   frame, not by the kind of its item. An image shown as bytes takes Copy and Select
   All as a hex tab does, and the zoom chords and View → Zoom In change the font, as
   there is no picture to zoom.
 - **Back to a picture.** The bytes are read through the same per-path entries a hex
-  tab uses. When the file is mended on disk and decodes, the tab draws the picture
-  again and those entries are dropped.
+  tab uses. Only when the file is mended on disk and decodes does the tab draw the
+  picture again and drop those entries.
 
 ## Rationale
 
@@ -141,8 +149,10 @@ take.
 
 - The zoom chords and View → Zoom In change the editor's font in a hex tab, since
   the rows are drawn in it.
-- The wheel over the rows scrolls them, with Ctrl held too, since the view takes
-  the wheel and no text editor routes it.
+- A notch of the wheel over the rows scrolls them three rows, and the fractions
+  of a notch a touchpad reports add up until they make one. Ctrl+wheel over the
+  rows does not scroll them: it is routed as over a text editor, so it changes the
+  editor's font, as the zoom chords do.
 - A hex tab whose file is missing draws the failure message and routes no strokes,
   so Ctrl+W does not close it, as for an image tab; File → Close Tab does.
 
