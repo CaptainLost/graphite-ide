@@ -25,7 +25,7 @@ namespace Graphite {
 	{
 		std::string TrunkFullName;
 		Core::Oid TrunkTip;
-		std::vector<BranchTip> Branches; // local branches other than the trunk and HEAD's
+		std::vector<BranchTip> Branches; // local branches other than the trunk, HEAD's included
 		std::size_t PatchBudget = 0;
 
 		friend bool operator==(const WorkFactsRequest&, const WorkFactsRequest&) = default;

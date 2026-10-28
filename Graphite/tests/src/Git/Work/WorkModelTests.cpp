@@ -25,7 +25,7 @@ namespace {
 		return id;
 	}
 
-	// main is the trunk through origin/main, feature is HEAD's, and side is the one branch the facts are asked about.
+	// main is the trunk through origin/main, feature is HEAD's, and side is the last branch the facts are asked about.
 	std::vector<Core::Branch> BranchesWithSideAt(std::uint8_t sideTip)
 	{
 		Core::Branch remote;
@@ -103,7 +103,7 @@ TEST_CASE("Branches whose tips moved ask the facts again")
 	Settle(model, jobs);
 
 	CHECK(port.FactsReads == 2);
-	CHECK(port.LastRequest.Branches.at(0).Tip == OidOf(11));
+	CHECK(port.LastRequest.Branches.back().Tip == OidOf(11));
 }
 
 TEST_CASE("A request made while a read is in flight waits for it and only the newest is asked after")
@@ -122,7 +122,7 @@ TEST_CASE("A request made while a read is in flight waits for it and only the ne
 	Settle(model, jobs);
 
 	CHECK(port.FactsReads == 2);
-	CHECK(port.LastRequest.Branches.at(0).Tip == OidOf(12));
+	CHECK(port.LastRequest.Branches.back().Tip == OidOf(12));
 	CHECK_FALSE(model.IsReading());
 }
 
@@ -205,7 +205,7 @@ TEST_CASE("Refresh asks the facts again for the same branches")
 	Settle(model, jobs);
 
 	CHECK(port.FactsReads == 2);
-	CHECK(port.LastRequest.Branches.at(0).Tip == OidOf(10));
+	CHECK(port.LastRequest.Branches.back().Tip == OidOf(10));
 }
 
 TEST_CASE("Clear drops the facts and ignores answers still on their way")

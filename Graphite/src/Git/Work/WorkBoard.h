@@ -132,7 +132,7 @@ namespace Graphite {
 	// The card stands for a branch, whose menu it offers: not a detached worktree's card, nor a detached working copy's.
 	bool CardNamesBranch(const WorkCard& card);
 
-	// The trunk and every local branch but the trunk and HEAD's. With no trunk, no branches and a zero tip.
+	// The trunk and every other local branch, HEAD's too. With no trunk, no branches and a zero tip.
 	WorkFactsRequest WorkFactsRequestFor(const std::vector<Core::Branch>& branches, std::size_t patchBudget);
 
 	// "27 merged into main, 3 with the same change already in main · 1 locked by another session"; the

@@ -6,7 +6,9 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -260,6 +262,32 @@ TEST_CASE("Where says local, origin, both, and worktree")
 	CHECK(Graphite::WhereText(rows[1]) == "local \xC2\xB7 worktree");
 	CHECK(rows[1].InWorktree);
 	CHECK(Graphite::WhereText(rows[2]) == "upstream");
+}
+
+TEST_CASE("Every worktree but the open folder's holds its branch for Where, the main checkout too")
+{
+	const auto worktreeOn = [](const std::filesystem::path& path, const std::string& branch, bool isMain) {
+		Graphite::WorktreeFacts worktree;
+		worktree.Entry.Path = path;
+		worktree.Entry.IsMain = isMain;
+		worktree.Entry.Head = Core::HeadState{.Kind = Core::HeadKind::Branch, .BranchName = branch};
+		return worktree;
+	};
+
+	Graphite::WorkFacts facts;
+	facts.Worktrees = {worktreeOn("C:/repo/", "main", true), worktreeOn("C:/wt/feature", "feature", false),
+					   worktreeOn("C:/wt/side", "side", false)};
+	Graphite::WorktreeFacts gone = worktreeOn("C:/wt/gone", "gone", false);
+	gone.Entry.FolderMissing = true;
+	facts.Worktrees.push_back(gone);
+
+	CHECK(Graphite::BranchesHeldByOtherWorktrees(&facts, "C:/wt/feature/") ==
+		  std::set<std::string>{"refs/heads/main", "refs/heads/side"});
+	CHECK(Graphite::BranchesHeldByOtherWorktrees(&facts, "C:/repo") ==
+		  std::set<std::string>{"refs/heads/feature", "refs/heads/side"});
+	CHECK(Graphite::BranchesHeldByOtherWorktrees(&facts, {}) ==
+		  std::set<std::string>{"refs/heads/feature", "refs/heads/side"});
+	CHECK(Graphite::BranchesHeldByOtherWorktrees(nullptr, "C:/repo").empty());
 }
 
 TEST_CASE("A branch's tooltip names its message and authors and local time")

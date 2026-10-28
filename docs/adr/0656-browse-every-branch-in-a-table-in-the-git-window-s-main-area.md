@@ -11,11 +11,11 @@ The navigator beside the Git window lists the newest branches and no more. A rep
 
 "Show all" opens `BranchTableView`, a table of every branch in the main area.
 
-- `BuildBranchTable` makes the rows from the branches, their authors, the work facts, the branches held by a linked worktree, a scope, a sort and a filter. It is a pure function. The view rebuilds rows only when one of those changes, ages being read in minutes, and draws the visible ones through `ImGuiListClipper` ([0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md)).
+- `BuildBranchTable` makes the rows from the branches, their authors, the work facts, the branches held by a worktree other than the open folder's, a scope, a sort and a filter. It is a pure function. The view rebuilds rows only when one of those changes, ages being read in minutes, and draws the visible ones through `ImGuiListClipper` ([0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md)).
 - A local branch and its upstream are one row, named as the local branch. A remote branch no local branch tracks is a row of its own, named as the remote branch. A row's age is the newer of its two tips.
 - Five scopes, each shown with its row count under the filter: All; Local, the rows with a local branch; Remote only, the rows without one; Mine, the rows with a commit of the user's; Stale, the rows whose newest tip is 90 days old or more (`kStaleAfter`). The filter takes words matched against the name or an author, as the navigator's does.
-- Columns: Branch, Where ("local", the remote's name, or "local · origin", then " · worktree" when a linked worktree holds the branch), Trunk, Age, Authors, Subject. Every column sorts; the default is Age, newest first.
-- Trunk is the branch's distance to the trunk from the work facts, shown once the facts answered it. A local branch waits with a loader until then, and a row the facts do not cover (HEAD's branch, the trunk, a remote branch) shows a dash.
+- Columns: Branch, Where ("local", the remote's name, or "local · origin", then " · worktree" when a worktree other than the open folder's holds the branch, the main checkout too when a linked worktree is open), Trunk, Age, Authors, Subject. Every column sorts; the default is Age, newest first.
+- Trunk is the branch's distance to the trunk from the work facts, shown once the facts answered it. A local branch waits with a loader until then, and a row the facts do not cover (the trunk, a remote branch) shows a dash. HEAD's branch is in the facts request for this column, though the board gives it no card of its own, so it shows its distance too: open in a linked worktree, it is the branch holding the work.
 - Clicking a row opens the branch (its local branch when there is one); the right-click menu is the navigator's.
 
 ## Rationale

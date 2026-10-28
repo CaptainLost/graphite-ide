@@ -552,6 +552,23 @@ TEST_CASE("The trunk and HEAD's branch get no card of their own")
 	CHECK(board.Cards[0].Kind == Graphite::WorkCardKind::WorkingCopy);
 }
 
+TEST_CASE("HEAD's branch answered by the facts still gets no card of its own and no ready entry")
+{
+	for (const Core::PatchMatch& match : {Match(2, 0, 2, 0), Match(0, 1, 0, 0)})
+	{
+		Scene scene;
+		scene.Matches["refs/heads/feature"] = match;
+
+		const Graphite::WorkBoard board = scene.Build();
+
+		REQUIRE(board.Cards.size() == 1);
+		CHECK(board.Cards[0].Kind == Graphite::WorkCardKind::WorkingCopy);
+		CHECK(board.Cards[0].Branch == "refs/heads/feature");
+		CHECK(ReadyFor(board, "feature") == nullptr);
+		CHECK_FALSE(board.FactsPending);
+	}
+}
+
 TEST_CASE("Cards are ordered by their newest tip after the working copy")
 {
 	Scene scene;
@@ -676,7 +693,7 @@ TEST_CASE("The ready summary counts merged, same change and locked")
 		"2 merged into main, 1 with the same change already in main · 1 locked by another session");
 }
 
-TEST_CASE("The facts request names the trunk and every other local branch but HEAD's")
+TEST_CASE("The facts request names the trunk and every other local branch, HEAD's too")
 {
 	Scene scene;
 	scene.Add("side");
@@ -686,8 +703,9 @@ TEST_CASE("The facts request names the trunk and every other local branch but HE
 	CHECK(request.TrunkFullName == "refs/heads/main");
 	CHECK(request.TrunkTip == OidOf(1));
 	CHECK(request.PatchBudget == 50);
-	REQUIRE(request.Branches.size() == 1);
-	CHECK(request.Branches[0].FullName == "refs/heads/side");
+	REQUIRE(request.Branches.size() == 2);
+	CHECK(request.Branches[0].FullName == "refs/heads/feature");
+	CHECK(request.Branches[1].FullName == "refs/heads/side");
 
 	const std::vector<Core::Branch> none;
 	const Graphite::WorkFactsRequest empty = Graphite::WorkFactsRequestFor(none, 50);

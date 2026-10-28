@@ -71,28 +71,6 @@ namespace Graphite {
 			return status->Entries.size();
 		}
 
-		std::set<std::string> BranchesHeldByLinkedWorktrees(const WorkFacts* facts)
-		{
-			std::set<std::string> held;
-
-			if (facts == nullptr)
-			{
-				return held;
-			}
-
-			for (const WorktreeFacts& worktree : facts->Worktrees)
-			{
-				const Core::WorktreeEntry& entry = worktree.Entry;
-
-				if (!entry.IsMain && !entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch)
-				{
-					held.insert(Core::LocalBranchReference(entry.Head.BranchName));
-				}
-			}
-
-			return held;
-		}
-
 		std::string FolderName(const std::filesystem::path& folder)
 		{
 			// libgit2 hands the working directory back with a trailing separator, whose filename is empty.
@@ -731,7 +709,8 @@ namespace Graphite {
 		m_BranchTable.Draw(BranchTableInput{.Branches = m_TableBranches.get(),
 											.Authors = m_TableAuthors.get(),
 											.Facts = m_TableFacts.get(),
-											.HeldByWorktree = BranchesHeldByLinkedWorktrees(m_TableFacts.get()),
+											.HeldByWorktree = BranchesHeldByOtherWorktrees(m_TableFacts.get(),
+																						   m_Model.GetWorkingDirectory()),
 											.Now = NowInSeconds()},
 						   ReaderTimeZone());
 	}

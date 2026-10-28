@@ -4,6 +4,7 @@
 #include "Git/History/CommitDetails.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
 #include <format>
@@ -315,6 +316,34 @@ namespace Graphite {
 		Sort(rows, input.SortBy, input.Ascending);
 
 		return rows;
+	}
+
+	std::set<std::string> BranchesHeldByOtherWorktrees(const WorkFacts* facts,
+													   const std::filesystem::path& workingDirectory)
+	{
+		std::set<std::string> held;
+
+		if (facts == nullptr)
+		{
+			return held;
+		}
+
+		const Core::PathKeyText ownKey = Core::PathKey(workingDirectory);
+
+		for (const WorktreeFacts& worktree : facts->Worktrees)
+		{
+			const Core::WorktreeEntry& entry = worktree.Entry;
+
+			// As the board takes it: with no working directory known, the open folder's worktree is the main one.
+			const bool isOwn = workingDirectory.empty() ? entry.IsMain : Core::PathKey(entry.Path) == ownKey;
+
+			if (!isOwn && !entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch)
+			{
+				held.insert(Core::LocalBranchReference(entry.Head.BranchName));
+			}
+		}
+
+		return held;
 	}
 
 	std::array<std::size_t, 5> CountBranchScopes(const BranchTableInput& input)

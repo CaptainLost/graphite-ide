@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <set>
 #include <string>
@@ -43,7 +44,7 @@ namespace Graphite {
 		const std::vector<Core::Branch>* Branches = nullptr;
 		const BranchAuthors* Authors = nullptr;
 		const WorkFacts* Facts = nullptr;
-		std::set<std::string> HeldByWorktree; // local full names checked out in a linked worktree
+		std::set<std::string> HeldByWorktree; // local full names checked out in a worktree other than the open folder's
 		BranchScope Scope = BranchScope::All;
 		BranchColumn SortBy = BranchColumn::Age;
 		bool Ascending = false; // Age: newest first
@@ -68,6 +69,11 @@ namespace Graphite {
 	};
 
 	std::vector<BranchTableRow> BuildBranchTable(const BranchTableInput& input);
+
+	// The local full names checked out in every worktree but the open folder's own, the main one included: open in a
+	// linked worktree, the main checkout holds a branch too. None before the facts land.
+	std::set<std::string> BranchesHeldByOtherWorktrees(const WorkFacts* facts,
+													   const std::filesystem::path& workingDirectory);
 
 	// Rows per scope, in BranchScope order, with the filter applied and the scope ignored.
 	std::array<std::size_t, 5> CountBranchScopes(const BranchTableInput& input);

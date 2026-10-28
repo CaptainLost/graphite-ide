@@ -193,9 +193,10 @@ namespace Graphite {
 		request.TrunkFullName = trunk->FullName;
 		request.TrunkTip = trunk->Tip;
 
+		// HEAD's branch is asked too, for the branch table's Trunk column; the board still gives it no card of its own.
 		for (const Core::Branch& branch : branches)
 		{
-			if (IsWorkBranch(branch, trunk))
+			if (branch.Kind == Core::RefKind::Local && &branch != trunk)
 			{
 				request.Branches.push_back({.FullName = branch.FullName, .Tip = branch.Tip});
 			}
