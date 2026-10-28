@@ -1205,6 +1205,7 @@ namespace Graphite {
 															   .Scrollbar = m_EditorSettings.HasScrollbarChangeMarkers()},
 											 .HighlightOccurrences = m_EditorSettings.IsHighlightingOccurrences(),
 											 .LineAuthor = m_EditorSettings.HasLineAuthor(),
+											 .LineAuthorDelayMs = m_EditorSettings.GetLineAuthorDelayMs(),
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,

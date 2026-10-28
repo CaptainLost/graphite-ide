@@ -138,6 +138,13 @@ namespace Graphite {
 		return m_Phase != Phase::Closed;
 	}
 
+	bool NavigationBubble::IsSeenAt(double now, const CaretPlacement& caret, int frame, bool modalOpen) const
+	{
+		const std::optional<ShownBubble> shown = ShownAt(now);
+
+		return shown.has_value() && caret.DrawnInFrame == frame && IsBubbleDrawnAt(*shown, caret, modalOpen);
+	}
+
 	std::optional<ShownBubble> NavigationBubble::ShownAt(double now) const
 	{
 		switch (m_Phase)
@@ -180,13 +187,18 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	ImVec2 DrawNavigationBubble(const ShownBubble& shown, const CaretPlacement& caret, ImVec2 lastSize)
+	bool IsBubbleDrawnAt(const ShownBubble& shown, const CaretPlacement& caret, bool modalOpen)
 	{
 		// WARNING: A wait is not drawn over a modal, as the bubble is raised to the front every frame. How the command
 		// ended still is, because "Close the open dialog" is said while a dialog is open.
-		const bool waitBehindModal = shown.Waiting && ImGui::GetTopMostPopupModal() != nullptr;
+		const bool waitBehindModal = shown.Waiting && modalOpen;
 
-		if (!IsCaretInSurface(caret) || waitBehindModal)
+		return IsCaretInSurface(caret) && !waitBehindModal;
+	}
+
+	ImVec2 DrawNavigationBubble(const ShownBubble& shown, const CaretPlacement& caret, ImVec2 lastSize)
+	{
+		if (!IsBubbleDrawnAt(shown, caret, ImGui::GetTopMostPopupModal() != nullptr))
 		{
 			return lastSize;
 		}

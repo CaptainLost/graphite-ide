@@ -335,6 +335,8 @@ TEST_CASE("Blame model re-reads the head blame when the repository changes")
 	jobs.RunAll();
 	CHECK(port.Calls == 1);
 
+	// The tab is on screen in the frame before the change settles.
+	model.Update(kPath, buffer);
 	model.OnUpdate(Core::Timestep{0.2f});
 	jobs.RunAll();
 	CHECK(port.Calls == 2);
@@ -356,7 +358,8 @@ TEST_CASE("Blame model does not re-blame a hidden tab until it is shown again")
 	Settle(model, jobs, buffer);
 	REQUIRE(port.Calls == 1);
 
-	// Shown since the last repository change, so this one is read again.
+	// On screen in the frame before the change settles, so this one is read again.
+	model.Update(kPath, buffer);
 	model.Invalidate();
 	model.OnUpdate(Core::Timestep{0.2f});
 	jobs.RunAll();
@@ -380,6 +383,43 @@ TEST_CASE("Blame model does not re-blame a hidden tab until it is shown again")
 
 	REQUIRE(model.Get(kPath) != nullptr);
 	CHECK(model.Get(kPath)->Lines[1].Kind == LineAuthorKind::Committed);
+}
+
+TEST_CASE("Blame model re-reads on a repository change only the tabs shown just before it")
+{
+	const std::filesystem::path other{"C:/repo/b.txt"};
+	constexpr int kQuietFrames = 3;
+
+	FakeBlamePort port;
+	port.Head = Committed("a\nb\n", 2);
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\nX\n"};
+
+	for (int round = 0; round < 2; ++round)
+	{
+		model.OnUpdate(kFrame);
+		model.Update(kPath, buffer);
+		model.Update(other, buffer);
+		jobs.RunAll();
+	}
+
+	REQUIRE(port.Calls == 2);
+
+	// A quiet spell with no repository change, in which only the first tab is on screen.
+	for (int frame = 0; frame < kQuietFrames; ++frame)
+	{
+		model.OnUpdate(kFrame);
+		model.Update(kPath, buffer);
+		jobs.RunAll();
+	}
+
+	model.Invalidate();
+	model.OnUpdate(Core::Timestep{0.2f});
+	jobs.RunAll();
+
+	CHECK(port.Calls == 3);
 }
 
 TEST_CASE("Blame model keeps one head read in flight per path")

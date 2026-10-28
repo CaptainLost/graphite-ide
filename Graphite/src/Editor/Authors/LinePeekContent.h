@@ -29,7 +29,12 @@ namespace Graphite {
 	struct PeekEntry
 	{
 		std::string Title;
-		std::string Meta;     // "author · 3 months ago · e51a8f0", or "You"
+
+		// The list's second line, "author · 3 months ago · e51a8f0" or "You", in two parts: a narrow list cuts the name
+		// alone, so the age and the short hash after it stay whole.
+		std::string MetaName;   // "author", or "You"
+		std::string MetaRest;   // " · 3 months ago · e51a8f0"; empty after "You"
+
 		std::string Byline;   // "author · 2026-07-14 16:42", or "You · not committed yet"
 
 		// Only the shown entry's, each hunk cut to the change around the tracked line and a few lines of context.

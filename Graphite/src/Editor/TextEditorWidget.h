@@ -82,7 +82,8 @@ namespace Graphite {
 		const LineAuthors* Authors = nullptr;   // null: draw nothing, offer no card
 		std::chrono::sys_seconds Now{};
 		const std::chrono::time_zone* Zone = nullptr;   // the reader's, for the card's absolute time; null reads as UTC
-		bool HiddenWhileTyping = false;
+		bool Hidden = false;   // while typing, or until the caret has rested on its line for the delay set
+		bool WaitsForRest = false;   // a delay is set, so a caret that leaves its line this frame hides the text too
 		float HoverDelaySeconds = 0.5f;
 	};
 

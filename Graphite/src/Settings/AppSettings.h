@@ -94,6 +94,9 @@ namespace Graphite {
 		bool HasLineAuthor() const;
 		void SetLineAuthor(bool show);
 
+		int GetLineAuthorDelayMs() const;
+		void SetLineAuthorDelayMs(int milliseconds);
+
 		bool IsHoverInfoEnabled() const;
 		void SetHoverInfo(bool show);
 

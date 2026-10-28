@@ -86,6 +86,10 @@ namespace Graphite {
 		bool HasLineAuthor() const { return m_LineAuthor; }
 		void SetLineAuthor(bool show);
 
+		// How long the caret rests on a line before its author shows; 0 shows it at once.
+		int GetLineAuthorDelayMs() const { return m_LineAuthorDelayMs; }
+		void SetLineAuthorDelayMs(int milliseconds);
+
 		HoverSettings GetHoverSettings() const { return m_Hover; }
 
 		void SetHoverInfo(bool show);
@@ -123,6 +127,11 @@ namespace Graphite {
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;
 		bool m_LineAuthor = true;
+
+		static constexpr int kMinimumLineAuthorDelayMs = 0;
+		static constexpr int kMaximumLineAuthorDelayMs = 2000;
+
+		int m_LineAuthorDelayMs = kMinimumLineAuthorDelayMs;
 
 		bool m_HighlightOccurrences = true;
 

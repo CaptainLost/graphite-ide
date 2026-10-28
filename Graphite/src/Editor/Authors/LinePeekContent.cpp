@@ -65,7 +65,7 @@ namespace Graphite {
 		{
 			PeekEntry entry;
 			entry.Title = std::string{kUncommittedTitle};
-			entry.Meta = std::string{kYou};
+			entry.MetaName = std::string{kYou};
 			entry.Byline = std::string{kYou} + std::string{kMiddleDotSeparator} + "not committed yet";
 
 			if (!withLines)
@@ -210,8 +210,9 @@ namespace Graphite {
 
 			PeekEntry entry;
 			entry.Title = change.Commit.Summary;
-			entry.Meta = author + std::string{kMiddleDotSeparator} + RelativeAge(change.Commit.Author.When, input.Now) +
-						 std::string{kMiddleDotSeparator} + change.Commit.Id.ShortHex();
+			entry.MetaName = author;
+			entry.MetaRest = std::string{kMiddleDotSeparator} + RelativeAge(change.Commit.Author.When, input.Now) +
+							 std::string{kMiddleDotSeparator} + change.Commit.Id.ShortHex();
 			entry.Byline = author + std::string{kMiddleDotSeparator} +
 						   FormattedTimestamp(change.Commit.Author.When, input.Zone);
 			entry.Commit = change.Commit.Id;

@@ -2965,19 +2965,32 @@ namespace Graphite {
 
 				if (shownAuthors)
 				{
-					const double sinceEdit = ImGui::GetTime() - state.LastEditAt;
+					const double now = ImGui::GetTime();
+					const std::size_t caretLine = item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line;
 
-					view.Author.HiddenWhileTyping = sinceEdit < kAuthorQuietSeconds;
+					if (state.AuthorCaretLine != caretLine)
+					{
+						state.AuthorCaretLine = caretLine;
+						state.AuthorCaretLineSince = now;
+					}
+
+					const double restDelay =
+						std::chrono::duration<double>(std::chrono::milliseconds{m_LineAuthorDelayMs}).count();
+					const std::optional<double> hiddenFor =
+						LineAuthorHiddenFor(now - state.LastEditAt, now - state.AuthorCaretLineSince, restDelay);
+
+					view.Author.Hidden = hiddenFor.has_value();
+					view.Author.WaitsForRest = m_LineAuthorDelayMs > 0;
 					view.Author.Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 					// Only the card turns it into an offset, at the commit's own time, when it shows.
 					view.Author.Zone = ReaderTimeZone();
 
-					// WARNING: The loop idles between frames, so the frame that ends the quiet period has to be
-					// asked for, or the text stays hidden until something else draws.
-					if (view.Author.HiddenWhileTyping)
+					// WARNING: The loop idles between frames, so the frame that ends the quiet period or the rest has
+					// to be asked for, or the text stays hidden until something else draws.
+					if (hiddenFor)
 					{
-						Core::Redraw::RequestIn(std::chrono::duration<double>(kAuthorQuietSeconds - sinceEdit));
+						Core::Redraw::RequestIn(std::chrono::duration<double>(*hiddenFor));
 					}
 				}
 
@@ -3191,6 +3204,7 @@ namespace Graphite {
 	{
 		m_WorkspaceRoot = frame.WorkspaceRoot;
 		m_LineAuthor = frame.LineAuthor;
+		m_LineAuthorDelayMs = frame.LineAuthorDelayMs;
 
 		if (frame.Indent.Width > 0)
 		{
@@ -3219,8 +3233,15 @@ namespace Graphite {
 
 		// WARNING: Read before the documents draw. The bubble at the caret is the most passing thing an Escape closes,
 		// and AbandonNavigationIfReaderMovedOn below closes it on this same Escape, so without this one Escape closed
-		// the bubble and the peek under the line together.
-		m_BubbleTakesEscape = m_Bubble.IsOpen() && ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating);
+		// the bubble and the peek under the line together. Only a bubble the reader sees takes it, at the caret the
+		// documents placed last frame: one whose outcome has faded, whose wait has not shown yet, or whose caret is out
+		// of view stays open until the reader moves on, and an Escape it took closed nothing anyone could see.
+		const DocumentState* const bubbleState = FindState(m_Bubble.GetPath());
+		const bool bubbleSeen = bubbleState != nullptr &&
+								m_Bubble.IsSeenAt(ImGui::GetTime(), bubbleState->Caret, ImGui::GetFrameCount() - 1,
+												  ImGui::GetTopMostPopupModal() != nullptr);
+
+		m_BubbleTakesEscape = bubbleSeen && ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
 							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.LineAuthor,

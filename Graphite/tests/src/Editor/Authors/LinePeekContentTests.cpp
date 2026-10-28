@@ -229,6 +229,28 @@ TEST_CASE("Peek content lists an uncommitted edit first with the HEAD line it re
 	CHECK(content.Entries[1].Commit == std::optional<Core::Oid>{kCommitA});
 }
 
+TEST_CASE("Peek content keeps the author apart from the age and short hash in each entry's meta")
+{
+	const auto head = MakeHead();
+	const auto authors = Lay(head, "a\nX\nc\n");
+	const auto history = Done({MakeChange(kCommitA, 2)});
+
+	const auto content = Build(&authors, 1, "X", &history);
+
+	REQUIRE(content.State == PeekState::Ready);
+	REQUIRE(content.Entries.size() == 2);
+	CHECK(content.Entries[0].MetaName == "You");
+	CHECK(content.Entries[0].MetaRest.empty());
+
+	const Graphite::PeekEntry& committed = content.Entries[1];
+	const std::string separator = " \xC2\xB7 ";
+
+	CHECK(committed.MetaName == "Anna Kowalczyk");
+	CHECK(committed.MetaRest.starts_with(separator));
+	CHECK(committed.MetaRest.ends_with(separator + kCommitA.ShortHex()));
+	CHECK(committed.MetaRest.size() > (separator + separator + kCommitA.ShortHex()).size());
+}
+
 TEST_CASE("Peek content for a line added since HEAD has one entry and needs no history")
 {
 	const auto head = MakeHead();

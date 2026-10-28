@@ -47,11 +47,13 @@ namespace Graphite {
 		void DrawGutterMarkers();
 		void DrawScrollbarMarkers();
 		void DrawLineAuthor();
+		void DrawLineAuthorDelay();
 
 		EditorSettings& m_Settings;
 		Core::CommandRegistry& m_Commands;
 
 		std::optional<float> m_FontSizeWhileDragged;
 		std::optional<int> m_HoverDelayWhileDragged;
+		std::optional<int> m_LineAuthorDelayWhileDragged;
 	};
 }

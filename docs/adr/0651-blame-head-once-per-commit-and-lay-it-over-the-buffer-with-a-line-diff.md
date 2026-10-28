@@ -34,13 +34,15 @@ model next to `ChangeMarkersModel`, built the same way:
   handle. Only `RepositoryChangedEvent` and `Invalidate()`, which the
   application calls when this process has written to the repository
   itself, mark the model dirty under the same debounce `GitModel` uses.
-  When it settles, the head blame is read again only for the paths shown
-  (passed to `Update`) since the previous one; every other path is marked
-  stale and read again on its next `Update`, so a tab left in the
-  background is not blamed on each commit or fetch. A path has at most one
-  head read in flight: a request made while one is out marks the path to
-  be read again once the first answer lands, and that answer is still
-  kept, so changes that keep coming cannot starve it.
+  When it settles, the head blame is read again only for the paths on
+  screen: those passed to `Update` since the previous frame's `OnUpdate`,
+  which forgets every frame which paths were shown. Every other path is
+  marked stale and read again on its next `Update`, so a tab left in the
+  background is not blamed on each commit or fetch, nor all at once on the
+  first change after a quiet spell. A path has at most one head read in
+  flight: a request made while one is out marks the path to be read again
+  once the first answer lands, and that answer is still kept, so changes
+  that keep coming cannot starve it.
   `WorkspaceFilesChangedEvent` is deliberately not subscribed to: HEAD's
   blame does not depend on the working tree, so saving a file never
   re-reads it. `WorkspaceOpenedEvent` and `WorkspaceClosedEvent` clear the
@@ -57,11 +59,15 @@ model next to `ChangeMarkersModel`, built the same way:
   blame as text, has no authors; the check comes before the buffer is
   copied.
 - Every request takes a generation from one model-wide counter that is
-  never reset, so an answer that arrives after a newer request for the same
-  path, or after a `Clear`, is dropped. Clearing a path's authors, because
-  its head is untracked or failed or its buffer is over the cap, retires the
-  overlay generation too, so an overlay already in flight cannot put a table
-  back.
+  never reset, and an answer whose generation is no longer the one its path
+  waits for is dropped. An overlay or a line history can be overtaken: its
+  answer is dropped once a newer request for the same path, or a `Clear`,
+  has been made. A head read is never overtaken by another for its path,
+  since a request made while one is out waits for it as above, so its
+  answer is dropped only after a `Clear` or once the path is closed.
+  Clearing a path's authors, because its head is untracked or failed or its
+  buffer is over the cap, retires the overlay generation too, so an overlay
+  already in flight cannot put a table back.
 - A line history is asked through the same model, per path, and not
   through `GitModel`'s single log slot. `RequestLineHistory` ignores a
   request equal to the one already held or in flight, `GetLineHistory`
@@ -96,7 +102,7 @@ rules, which are already understood and tested.
   lines around them move, and edited lines show as uncommitted at once.
 - The blame is shared by every pause, and is read again only when the
   repository changes or this process writes to it, and then only for a
-  document shown since; saving a file costs no blame.
+  document on screen; saving a file costs no blame.
 
 ### Negative
 
