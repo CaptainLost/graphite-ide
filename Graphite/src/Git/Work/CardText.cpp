@@ -230,6 +230,11 @@ namespace Graphite {
 		return std::string("There is no trunk to compare against.");
 	}
 
+	std::string RefreshFailureText(const Core::Error& error)
+	{
+		return "Could not read the work again: " + error.Message;
+	}
+
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed)
 	{
 		if (!viewed.has_value())

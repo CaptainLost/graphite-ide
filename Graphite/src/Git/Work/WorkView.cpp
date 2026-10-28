@@ -7,6 +7,7 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "Theme/ActiveScheme.h"
+#include "Theme/Palettes.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Ref.h"
@@ -167,10 +168,12 @@ namespace Graphite {
 	{
 		m_ChipColours = ReadChipColours(m_Scheme.Get());
 
-		DrawBar(board, reading);
+		DrawBar(board, reading, error);
 
-		// WARNING: Without facts the board has only the working copy, so a failure of the read is the whole answer.
-		if (error.has_value() && board.FactsPending)
+		// WARNING: Before any facts land the board has only the working copy, so a failure of the read is the whole
+		// answer. After, a failed re-read keeps the cards the board holds and is told on the bar: a view that blanks
+		// itself because one refresh failed is worse than one a little out of date.
+		if (error.has_value() && !board.Worktrees.has_value())
 		{
 			if (Core::EmptyState(error->Message, "Retry") && OnRefresh)
 			{
@@ -197,7 +200,7 @@ namespace Graphite {
 		DrawReady(board, now);
 	}
 
-	void WorkView::DrawBar(const WorkBoard& board, bool reading)
+	void WorkView::DrawBar(const WorkBoard& board, bool reading, const std::optional<Core::Error>& error)
 	{
 		const float barTop = ImGui::GetCursorPosY();
 
@@ -210,6 +213,25 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", WorkSummaryText(board).c_str());
+
+		// A re-read that failed while the board still holds the facts before it; a read under way says so instead.
+		if (error.has_value() && board.Worktrees.has_value() && !reading)
+		{
+			const std::string failure = RefreshFailureText(*error);
+
+			ImGui::SameLine();
+			const float room = ImGui::GetContentRegionMax().x - Core::IconButtonSize() - ImGui::GetStyle().ItemSpacing.x -
+							   ImGui::GetCursorPosX();
+
+			ImGui::PushStyleColor(ImGuiCol_Text, DangerColourOf(m_Scheme.Get()));
+			ImGui::TextUnformatted(FitToWidth(failure, std::max(0.0f, room)).c_str());
+			ImGui::PopStyleColor();
+
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				ImGui::SetTooltip("%s", failure.c_str());
+			}
+		}
 
 		// WARNING: The cards stand for every branch while the facts are read, and the first read of a repository with
 		// tens of worktrees takes a while, so the wait is told here; the board's own loader is only for an empty board.

@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -162,6 +163,43 @@ TEST_CASE("A detached working copy's card opens no menu")
 
 	CHECK_FALSE(popupOpened);
 	CHECK_FALSE(menuDrawn);
+}
+
+TEST_CASE("A re-read that failed keeps the cards the board holds, and only a first read that failed takes the page")
+{
+	ImGuiFrames frames;
+	const Graphite::ActiveScheme scheme;
+	Graphite::WorkView view(scheme);
+	Graphite::WorkBoard board = BoardWithOneBranch();
+	board.FactsPending = true;
+	board.Worktrees = 3;
+	const std::optional<Core::Error> failed = Core::Error{.Code = Core::ErrorCode::IoFailure, .Message = "the disk is gone"};
+
+	std::optional<std::string> reviewed;
+	view.OnReview = [&](const Graphite::WorkCard& card) { reviewed = card.Branch; };
+
+	const auto sweep = [&](const std::function<void()>& draw) {
+		frames.Next(draw);
+		frames.Next(draw);
+
+		for (float y = 5.0f; y < kWindowHeight && !reviewed.has_value(); y += kSweepStep)
+		{
+			for (float x = 5.0f; x < kWindowWidth && !reviewed.has_value(); x += kSweepStep)
+			{
+				frames.Click(ImVec2(x, y), draw);
+			}
+		}
+	};
+
+	sweep([&] { DrawIn(view, board, false, failed); });
+
+	CHECK(reviewed == std::optional<std::string>{"refs/heads/feature"});
+
+	reviewed.reset();
+	board.Worktrees.reset();
+	sweep([&] { DrawIn(view, board, false, failed); });
+
+	CHECK_FALSE(reviewed.has_value());
 }
 
 TEST_CASE("Review on a branch card opens its thread")

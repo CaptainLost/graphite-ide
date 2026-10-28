@@ -43,7 +43,7 @@ namespace Graphite {
 		bool IsReadyExpanded() const { return m_ReadyExpanded; }
 
 	private:
-		void DrawBar(const WorkBoard& board, bool reading);
+		void DrawBar(const WorkBoard& board, bool reading, const std::optional<Core::Error>& error);
 		void DrawCards(const WorkBoard& board, std::chrono::sys_seconds now);
 		void DrawCard(const WorkBoard& board, const WorkCard& card, float width, float height,
 					  std::chrono::sys_seconds now);

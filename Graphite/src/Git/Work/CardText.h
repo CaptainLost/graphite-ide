@@ -4,6 +4,8 @@
 #include "Git/Work/WorkBoard.h"
 #include "Review/ReviewFiles.h"
 
+#include "Core/Base/Result.h"
+
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -55,6 +57,9 @@ namespace Graphite {
 	// "There is no trunk to compare against." once the facts say the repository has neither origin's default branch
 	// nor a branch checked out; empty while they are read and whenever there is a trunk.
 	std::optional<std::string> NoTrunkNote(const WorkBoard& board);
+
+	// "Could not read the work again: …" on the bar, over the cards a failed re-read leaves as they were.
+	std::string RefreshFailureText(const Core::Error& error);
 
 	// "3 of 10 viewed" in the thread's header; "counting viewed files…" while the count is unknown, never a zero.
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed);

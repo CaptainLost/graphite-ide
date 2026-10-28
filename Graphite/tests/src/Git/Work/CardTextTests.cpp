@@ -288,6 +288,13 @@ TEST_CASE("Work says there is no trunk only once the facts say so")
 	CHECK_FALSE(Graphite::NoTrunkNote(board).has_value());
 }
 
+TEST_CASE("A failed re-read is told with its reason")
+{
+	const Core::Error failure{.Code = Core::ErrorCode::IoFailure, .Message = "cannot list worktrees: locked"};
+
+	CHECK(Graphite::RefreshFailureText(failure) == "Could not read the work again: cannot list worktrees: locked");
+}
+
 TEST_CASE("Review progress reads as waiting until it is known")
 {
 	CHECK(Graphite::ReviewProgressText(std::nullopt) == "counting viewed files\xE2\x80\xA6");
