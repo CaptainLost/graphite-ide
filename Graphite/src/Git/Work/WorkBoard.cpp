@@ -4,6 +4,9 @@
 #include "Git/DefaultBranch.h"
 
 #include <algorithm>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace Graphite {
 
@@ -48,58 +51,64 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const WorktreeFacts* WorktreeHolding(const WorkFacts* facts, const std::string& branchFullName)
+		// WARNING: Built once per board. The board is rebuilt on every status, branch, title and facts change, and
+		// looking each branch up in the facts by a scan would cost the square of the branches every time.
+		class FactsIndex
 		{
-			if (facts == nullptr)
+		public:
+			explicit FactsIndex(const WorkFacts* facts)
 			{
-				return nullptr;
-			}
-
-			for (const WorktreeFacts& worktree : facts->Worktrees)
-			{
-				const Core::WorktreeEntry& entry = worktree.Entry;
-
-				// The main worktree counts too: open in a linked worktree, it holds a branch that is not HEAD's.
-				if (!entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch &&
-					Core::LocalBranchReference(entry.Head.BranchName) == branchFullName)
+				if (facts == nullptr)
 				{
-					return &worktree;
+					return;
+				}
+
+				for (const BranchFacts& branch : facts->Branches)
+				{
+					m_Answers.try_emplace(branch.FullName, &branch);
+				}
+
+				for (const BranchTip& answered : facts->Answers.Branches)
+				{
+					m_AnsweredTips.try_emplace(answered.FullName, &answered.Tip);
+				}
+
+				for (const WorktreeFacts& worktree : facts->Worktrees)
+				{
+					const Core::WorktreeEntry& entry = worktree.Entry;
+
+					// The main worktree counts too: open in a linked worktree, it holds a branch that is not HEAD's. The
+					// first worktree listed holding a branch is the one kept.
+					if (!entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch)
+					{
+						m_Holders.try_emplace(Core::LocalBranchReference(entry.Head.BranchName), &worktree);
+					}
 				}
 			}
 
-			return nullptr;
-		}
-
-		const BranchFacts* FactsOf(const WorkFacts* facts, const std::string& branchFullName)
-		{
-			if (facts == nullptr)
+			const BranchFacts* FactsOf(const std::string& branchFullName) const
 			{
-				return nullptr;
+				const auto found = m_Answers.find(branchFullName);
+				return found != m_Answers.end() ? found->second : nullptr;
 			}
 
-			for (const BranchFacts& branch : facts->Branches)
+			bool TipMovedSince(const Core::Branch& branch) const
 			{
-				if (branch.FullName == branchFullName)
-				{
-					return &branch;
-				}
+				const auto found = m_AnsweredTips.find(branch.FullName);
+				return found != m_AnsweredTips.end() && *found->second != branch.Tip;
 			}
 
-			return nullptr;
-		}
-
-		bool TipMovedSince(const WorkFacts* facts, const Core::Branch& branch)
-		{
-			for (const BranchTip& answered : facts->Answers.Branches)
+			const WorktreeFacts* WorktreeHolding(const std::string& branchFullName) const
 			{
-				if (answered.FullName == branch.FullName)
-				{
-					return answered.Tip != branch.Tip;
-				}
+				const auto found = m_Holders.find(branchFullName);
+				return found != m_Holders.end() ? found->second : nullptr;
 			}
 
-			return false;
-		}
+		private:
+			std::unordered_map<std::string_view, const BranchFacts*> m_Answers;
+			std::unordered_map<std::string_view, const Core::Oid*> m_AnsweredTips;
+			std::unordered_map<std::string, const WorktreeFacts*> m_Holders;
+		};
 
 		WorkState StateOf(std::size_t ahead, std::size_t behind)
 		{
@@ -225,6 +234,7 @@ namespace Graphite {
 		}
 
 		std::vector<WorkCard> branchCards;
+		const FactsIndex index(facts);
 
 		for (const Core::Branch& branch : branches)
 		{
@@ -233,14 +243,15 @@ namespace Graphite {
 				continue;
 			}
 
-			const BranchFacts* branchFacts = FactsOf(facts, branch.FullName);
+			const BranchFacts* branchFacts = index.FactsOf(branch.FullName);
 
-				// WARNING: Facts read at another tip say nothing about this one; the branch counts as unchecked.
-				if (branchFacts != nullptr && TipMovedSince(facts, branch))
-				{
-					branchFacts = nullptr;
-				}
-			const WorktreeFacts* worktree = WorktreeHolding(facts, branch.FullName);
+			// WARNING: Facts read at another tip say nothing about this one; the branch counts as unchecked.
+			if (branchFacts != nullptr && index.TipMovedSince(branch))
+			{
+				branchFacts = nullptr;
+			}
+
+			const WorktreeFacts* worktree = index.WorktreeHolding(branch.FullName);
 			const Core::PatchMatch* match = branchFacts != nullptr && branchFacts->Match.has_value() ? &*branchFacts->Match : nullptr;
 
 			const bool unchecked = match == nullptr || !match->Complete;
