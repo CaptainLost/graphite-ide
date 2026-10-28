@@ -137,6 +137,63 @@ TEST_CASE("A folder without a reviews file opens with no marks and writes nothin
 	CHECK_FALSE(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
 }
 
+TEST_CASE("Looking at a branch writes no reviews file to a folder without one")
+{
+	TempDirectory folder;
+	ReviewStore store;
+	store.Open(folder.GetPath());
+
+	store.GetSessions().OpenDraft(kBranch, "refs/heads/main");
+	Graphite::SessionSettings flat;
+	flat.Shape = Graphite::ListShape::Flat;
+	store.GetSessions().SetSettings(kBranch, flat);
+	Wait(store, kNoTime);
+	Wait(store, kWellPastTheDelay);
+	store.Close();
+
+	CHECK_FALSE(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
+}
+
+TEST_CASE("Looking at a branch leaves a readable reviews file as it was written")
+{
+	TempDirectory folder;
+	ReviewStore first;
+	first.Open(folder.GetPath());
+	first.GetSessions().Start(kBranch, "refs/heads/main");
+	first.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	first.Close();
+
+	// Spaced unlike the store writes it, so a rewrite of the same sessions would show.
+	const std::string spaced = ReadWhole(ReviewStore::FileFor(folder.GetPath())) + "\n\n";
+	WriteReviewsFile(folder.GetPath(), spaced);
+
+	ReviewStore second;
+	second.Open(folder.GetPath());
+	second.GetSessions().OpenDraft("refs/heads/other", "refs/heads/main");
+	Wait(second, kNoTime);
+	Wait(second, kWellPastTheDelay);
+	second.Close();
+
+	CHECK(ReadWhole(ReviewStore::FileFor(folder.GetPath())) == spaced);
+	CHECK(ReopenedHoldsTheMark(folder.GetPath()));
+}
+
+TEST_CASE("Looking at a branch takes no copy of a malformed reviews file and leaves it as it is")
+{
+	TempDirectory folder;
+	const std::string malformed = "{ not json";
+	WriteReviewsFile(folder.GetPath(), malformed);
+	ReviewStore store;
+	store.Open(folder.GetPath());
+
+	store.GetSessions().OpenDraft(kBranch, "refs/heads/main");
+	store.Flush();
+	store.Close();
+
+	CHECK_FALSE(std::filesystem::exists(BackupFor(folder.GetPath())));
+	CHECK(ReadWhole(ReviewStore::FileFor(folder.GetPath())) == malformed);
+}
+
 TEST_CASE("A moved folder saves its marks to its new place")
 {
 	TempDirectory before;

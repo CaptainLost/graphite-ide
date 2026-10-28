@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <string>
 
 namespace Graphite {
 
@@ -50,6 +51,10 @@ namespace Graphite {
 		FileOnOpen m_FileOnOpen = FileOnOpen::Writable;
 		ReviewsText m_TextOnOpen = ReviewsText::Read;
 		bool m_CopyFailureLogged = false;
+
+		// The text last written, or the encoding of what was read on open. A draft changes the version without changing
+		// the text, so a write of this same text is skipped: a glance never rewrites the file nor copies it aside.
+		std::string m_LastText;
 
 		std::uint64_t m_SavedVersion = 0;
 		std::uint64_t m_SeenVersion = 0;

@@ -81,6 +81,9 @@ namespace Graphite {
 			}
 		}
 
+		// WARNING: The encoding of what was read, not the file's text: a file that was malformed, or of another version,
+		// reads as no sessions, and a glance that leaves none must not count as a change that copies it aside.
+		m_LastText = EncodeReviewSessions(stored);
 		m_Sessions.Replace(std::move(stored));
 		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
@@ -96,6 +99,7 @@ namespace Graphite {
 		m_FileOnOpen = FileOnOpen::Writable;
 		m_TextOnOpen = ReviewsText::Read;
 		m_CopyFailureLogged = false;
+		m_LastText.clear();
 		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
 		m_UnchangedFor = kNoSecondsUnchanged;
@@ -148,6 +152,15 @@ namespace Graphite {
 			return;
 		}
 
+		std::string text = EncodeReviewSessions(m_Sessions.GetAll());
+
+		if (text == m_LastText)
+		{
+			m_SavedVersion = m_Sessions.GetVersion();
+			m_SeenVersion = m_SavedVersion;
+			return;
+		}
+
 		const std::filesystem::path file = FileFor(m_Root);
 
 		if (m_FileOnOpen == FileOnOpen::CopyAsideFirst && !CopyAsideBeforeFirstWrite(file))
@@ -159,7 +172,7 @@ namespace Graphite {
 		std::error_code directoryError;
 		std::filesystem::create_directories(file.parent_path(), directoryError);
 
-		const Core::Result<void> written = Core::WriteFileAtomically(file, EncodeReviewSessions(m_Sessions.GetAll()));
+		const Core::Result<void> written = Core::WriteFileAtomically(file, text);
 
 		if (!written.HasValue())
 		{
@@ -168,6 +181,7 @@ namespace Graphite {
 			return;
 		}
 
+		m_LastText = std::move(text);
 		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
 	}

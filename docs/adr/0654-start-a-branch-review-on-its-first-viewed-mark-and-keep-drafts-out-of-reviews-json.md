@@ -33,10 +33,11 @@ A branch that is only looked at holds its base and settings in a draft: a sessio
 
 - Glancing at a branch leaves no badge and no entry in `reviews.json`.
 - A branch's thread has a base and settings from the first frame.
+- A draft changes the sessions' version like any other change, but the store skips a write whose text equals the text it last wrote or read, so a glance never rewrites `reviews.json`, never creates it, and never takes the one-time copy of a file it could not read.
 
 ### Negative
 
-- A draft changes the sessions' version like any other change, so the store may write `reviews.json` without it holding anything new.
+- The store encodes the sessions on every flush that follows a change, to tell a glance from a change.
 - Code that asks `Find` whether a branch is under review gets a draft as an answer and must ask `IsKept` instead.
 - A draft is lost when the folder is closed; its settings come back as defaults.
 
