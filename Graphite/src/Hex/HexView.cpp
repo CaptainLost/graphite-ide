@@ -40,6 +40,12 @@ namespace Graphite {
 		constexpr std::int64_t kOneRow = 1;
 		constexpr std::size_t kValueBytes = 4;
 
+		// WARNING: NoNavFocus is needed as much as the items' NoNav. A click otherwise makes the rows or the bar ImGui's
+		// navigation focus, and Space or Enter then presses them as if at the pointer, wherever it is: the selection
+		// jumps to the byte nearest it and, past the rows' edge, the rows scroll for as long as the key is held. The
+		// window is still focused by the click.
+		constexpr ImGuiButtonFlags kPointerOnly = ImGuiButtonFlags_PressedOnClick | ImGuiButtonFlags_NoNavFocus;
+
 		struct KeyBinding
 		{
 			Core::KeyCode Key = Core::KeyCode::Left;
@@ -208,7 +214,7 @@ namespace Graphite {
 
 			bool hovered = false;
 			bool held = false;
-			const bool pressed = ImGui::ButtonBehavior(rows.Track, id, &hovered, &held, ImGuiButtonFlags_PressedOnClick);
+			const bool pressed = ImGui::ButtonBehavior(rows.Track, id, &hovered, &held, kPointerOnly);
 
 			const float inset = Core::ScrollbarGrabInset(style.ScrollbarPadding, rows.Track.GetSize());
 			Scrollbar bar{.Rail = ImRect(ImVec2(rows.Track.Min.x + inset, rows.Track.Min.y + inset),
@@ -291,14 +297,14 @@ namespace Graphite {
 			const std::uint64_t size = file.GetSize();
 			const ImGuiID rowsId = ImGui::GetID(kRowsId);
 
-			if (!ImGui::ItemAdd(rows.Area, rowsId))
+			if (!ImGui::ItemAdd(rows.Area, rowsId, nullptr, ImGuiItemFlags_NoNav))
 			{
 				return;
 			}
 
 			bool hovered = false;
 			bool held = false;
-			const bool pressed = ImGui::ButtonBehavior(rows.Area, rowsId, &hovered, &held, ImGuiButtonFlags_PressedOnClick);
+			const bool pressed = ImGui::ButtonBehavior(rows.Area, rowsId, &hovered, &held, kPointerOnly);
 
 			if (holdsKeyboard && input.Keys != nullptr)
 			{
@@ -328,6 +334,18 @@ namespace Graphite {
 			ImDrawList& drawList = *ImGui::GetWindowDrawList();
 			DrawRows(drawList, file, state, *input.Palette, grid, rows);
 			DrawScrollbar(drawList, bar, rows);
+		}
+
+		// The status bar's values come from the selection's first bytes, which may be off screen or run on into a block
+		// whose rows are not, so they are asked for every frame as the rows are: at most two blocks.
+		void WantSelectedValues(HexFile& file, const HexSelection& selection)
+		{
+			const std::uint64_t size = file.GetSize();
+
+			if (size > 0)
+			{
+				file.Want(selection.First(), std::min(selection.First() + (kValueBytes - 1), size - 1));
+			}
 		}
 
 		std::vector<ViewStatusItem> StatusOf(const HexFile& file, const HexSelection& selection)
@@ -364,6 +382,7 @@ namespace Graphite {
 
 		if (ImGui::GetCurrentWindow()->SkipItems)
 		{
+			WantSelectedValues(file, state.Selection);
 			frame.Status = StatusOf(file, state.Selection);
 			return frame;
 		}
@@ -424,6 +443,7 @@ namespace Graphite {
 			ImGui::PopFont();
 		}
 
+		WantSelectedValues(file, state.Selection);
 		frame.Status = StatusOf(file, state.Selection);
 		return frame;
 	}

@@ -299,6 +299,21 @@ namespace {
 			Keys.Clear();
 		}
 
+		// As ImGui's own keyboard navigation reads a key: straight from io, not through the router.
+		void PressNavigationKey(ImGuiKey key, int heldFrames = 1)
+		{
+			ImGuiIO& io = ImGui::GetIO();
+			io.AddKeyEvent(key, true);
+
+			for (int frame = 0; frame < heldFrames; ++frame)
+			{
+				Draw();
+			}
+
+			io.AddKeyEvent(key, false);
+			Draw();
+		}
+
 		void Wheel(float notches)
 		{
 			ImGui::GetIO().AddMouseWheelEvent(0.0f, notches);
@@ -947,4 +962,78 @@ TEST_CASE("A read still waiting after a fifth of a second shows Reading… at th
 	screen.Draw();
 
 	CHECK_FALSE(screen.FindText("Reading…", kInterfaceFont).has_value());
+}
+
+TEST_CASE("ImGui's keyboard navigation neither selects nor scrolls")
+{
+	constexpr int kHeldFrames = 5;
+
+	HexScreen screen(Pattern(4096));
+	screen.Land();
+	REQUIRE((ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
+
+	SUBCASE("A clicked byte is not activated by Space")
+	{
+		const std::optional<Found> opening = screen.FindText("41 42 43 44");
+		REQUIRE(opening.has_value());
+		screen.Click(screen.PartOf(*opening, 2, 2).GetCenter());
+		CheckSelection(screen.State.Selection, 1, 1);
+	}
+
+	SUBCASE("A clicked grab is not activated by Space")
+	{
+		const ImU32 idle = ImGui::GetColorU32(ImGuiCol_ScrollbarGrab);
+		const std::optional<HorizontalExtent> across = HorizontalExtentInColour(HexScreen::Drawn(), idle);
+		const std::optional<VerticalExtent> down = VerticalExtentInColour(HexScreen::Drawn(), idle);
+		REQUIRE(across.has_value());
+		REQUIRE(down.has_value());
+		screen.Click(ImVec2((across->Left + across->Right) * kHalf, (down->Top + down->Bottom) * kHalf));
+	}
+
+	REQUIRE(screen.State.Scroll.TopRow == 0);
+	const Graphite::HexSelection before = screen.State.Selection;
+
+	// Away from the view, where a press taken for the pointer's would select the last byte and scroll down to it.
+	screen.MoveTo(kFarAway);
+	screen.PressNavigationKey(ImGuiKey_RightArrow);
+	screen.PressNavigationKey(ImGuiKey_Space, kHeldFrames);
+	screen.PressNavigationKey(ImGuiKey_Enter);
+
+	CheckSelection(screen.State.Selection, before.Anchor, before.Active);
+	CHECK(screen.State.Scroll.TopRow == 0);
+}
+
+TEST_CASE("The selected bytes' values are read even when their rows are not on screen")
+{
+	constexpr std::uint64_t kBlockRows = Graphite::kHexBlockBytes / Graphite::kBytesPerRow;
+
+	const auto hasValues = [](const std::vector<ViewStatusItem>& status, const std::string& values) {
+		return std::ranges::find(status, ViewStatusItem{values, true, std::nullopt}) != status.end();
+	};
+
+	SUBCASE("After their block has left the cache")
+	{
+		HexScreen screen(Pattern((Graphite::kHexCachedBlocks + 2) * Graphite::kHexBlockBytes));
+		screen.Land();
+		REQUIRE(hasValues(screen.Last.Status, "u8 65  u16 16961  u32 1145258561"));
+
+		// The rows of one block after another, more blocks than the cache holds.
+		for (std::uint64_t block = 1; block <= Graphite::kHexCachedBlocks + 1; ++block)
+		{
+			screen.State.Scroll.TopRow = block * kBlockRows;
+			screen.Land();
+		}
+
+		CHECK(hasValues(screen.Last.Status, "u8 65  u16 16961  u32 1145258561"));
+	}
+
+	SUBCASE("When they run on into a block whose rows are not on screen")
+	{
+		HexScreen screen(Pattern(2 * Graphite::kHexBlockBytes));
+		screen.State.Selection = {0xFFFD, 0xFFFD};
+		screen.State.Scroll.TopRow = kBlockRows - 100;
+		screen.Land();
+
+		CHECK(hasValues(screen.Last.Status, "u8 78  u16 20302  u32 1364217678"));
+	}
 }
