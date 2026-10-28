@@ -56,6 +56,7 @@ namespace {
 	constexpr ImU32 kTextColour = IM_COL32(201, 202, 203, 255);
 	constexpr ImU32 kSelectionColour = IM_COL32(20, 60, 180, 255);
 	constexpr ImU32 kHoverColour = IM_COL32(70, 71, 72, 255);
+	constexpr ImU32 kRuleColour = IM_COL32(90, 91, 92, 255);
 
 	// The first 128 bytes of a Windows executable, with the DOS stub's message at 0x4E where a real one has it.
 	std::string DosStub()
@@ -208,8 +209,9 @@ namespace {
 			Row = ImRect(window.InnerRect.Min,
 						 ImVec2(window.InnerRect.Max.x, window.InnerRect.Min.y + Graphite::BreadcrumbHeight()));
 
-			// The theme's hover surface, the one list rows lift to.
+			// The theme's hover surface, the one list rows lift to, and its separator, which the theme gives its border.
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::ColorConvertU32ToFloat4(kHoverColour));
+			ImGui::PushStyleColor(ImGuiCol_Separator, ImGui::ColorConvertU32ToFloat4(kRuleColour));
 
 			Graphite::HexViewInput input;
 			input.Path = &Path;
@@ -219,7 +221,7 @@ namespace {
 			input.Notice = Notice;
 			input.RouteWheel = RouteWheel;
 			Last = Graphite::DrawHexView(Hex, State, input);
-			ImGui::PopStyleColor();
+			ImGui::PopStyleColor(2);
 
 			if (After)
 			{
@@ -481,6 +483,29 @@ TEST_CASE("The hex view draws the header, offsets, bytes and ASCII of the rows o
 	CHECK(screen.FindText(".!Th").has_value());
 	CHECK(AllIn(screen.ColoursOf(*text), kTextColour));
 	CHECK(std::abs(ascii->Box.Min.x - stub->Box.Min.x) < kFontSize * kHalf);
+}
+
+TEST_CASE("A one-pixel rule in the separator colour parts the header from the rows")
+{
+	HexScreen screen(DosStub());
+	screen.Land();
+
+	const std::optional<Found> heading = screen.FindText("Offset");
+	const std::optional<Found> firstRow = screen.FindOffset("00000000");
+	REQUIRE(heading.has_value());
+	REQUIRE(firstRow.has_value());
+
+	const std::vector<ImRect> rules = RectsInColour(HexScreen::Drawn(), kRuleColour);
+	REQUIRE(rules.size() == 1);
+	const ImRect& rule = rules.front();
+	CHECK(rule.GetHeight() == doctest::Approx(1.0f));
+	CHECK(rule.Min.y >= heading->Box.Max.y);
+	CHECK(rule.Max.y <= firstRow->Box.Min.y);
+
+	// Across the scrollbar's strip as well, which starts below the header.
+	const ImGuiWindow& window = HexScreen::Window();
+	CHECK(rule.Min.x == doctest::Approx(window.InnerRect.Min.x));
+	CHECK(rule.Max.x == doctest::Approx(window.InnerRect.Max.x));
 }
 
 TEST_CASE("Unread rows show their offset and placeholders")
@@ -884,7 +909,7 @@ TEST_CASE("A one-byte file draws one row")
 	CHECK(screen.FindText("M").has_value());
 
 	CHECK(screen.Last.Status ==
-		  std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+		  std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
 									  {"1 byte", false, std::nullopt},
 									  {"u8 77", true, std::nullopt},
 									  {"1 B", false, std::nullopt}});
@@ -944,14 +969,14 @@ TEST_CASE("The status bar items follow the selection")
 	screen.Draw();
 
 	// The selected bytes are not read yet, so there are no values to give.
-	CHECK(screen.Last.Status == std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+	CHECK(screen.Last.Status == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
 															{"1 byte", false, std::nullopt},
 															{"128 B", false, std::nullopt}});
 
 	screen.Jobs.RunAll();
 	screen.Draw();
 
-	CHECK(screen.Last.Status == std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+	CHECK(screen.Last.Status == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
 															{"1 byte", false, std::nullopt},
 															{"u8 77  u16 23117  u32 9460301", true, std::nullopt},
 															{"128 B", false, std::nullopt}});
@@ -965,7 +990,7 @@ TEST_CASE("The status bar items follow the selection")
 		screen.Stroke(KeyCode::Right, KeyModifier::Shift);
 	}
 
-	CHECK(screen.Last.Status == std::vector<ViewStatusItem>{{"Offset 0x0000004E", false, std::nullopt},
+	CHECK(screen.Last.Status == std::vector<ViewStatusItem>{{"0x0000004E", true, std::nullopt, "Offset "},
 															{"12 bytes", false, std::nullopt},
 															{"u8 84  u16 26708  u32 1936287828", true, std::nullopt},
 															{"128 B", false, std::nullopt}});

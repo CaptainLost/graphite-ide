@@ -37,6 +37,7 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kSmallestItemSide = 1.0f;
 		constexpr float kNoItemSpacing = 0.0f;
+		constexpr float kHeaderRuleThickness = 1.0f;
 		constexpr std::int64_t kWheelRows = 3;
 		constexpr std::int64_t kOneRow = 1;
 		constexpr std::size_t kValueBytes = 4;
@@ -131,6 +132,13 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 			ImGui::TextUnformatted(notice.data(), notice.data() + notice.size());
 			ImGui::PopStyleColor();
+		}
+
+		// A rule along the header's bottom edge, over the scrollbar's strip too, since the bar starts below it.
+		void DrawHeaderRule(ImDrawList& drawList, const ImRect& header)
+		{
+			drawList.AddRectFilled(ImVec2(header.Min.x, header.Max.y - kHeaderRuleThickness), header.Max,
+								   ImGui::GetColorU32(ImGuiCol_Separator));
 		}
 
 		// One line, after the rows' header, laid out without the spacing that would part it from the rows.
@@ -429,6 +437,7 @@ namespace Graphite {
 		const ImRect header(ImVec2(window->InnerRect.Min.x, headerTop),
 							ImVec2(window->InnerRect.Max.x, headerTop + grid.LineHeight));
 		DrawHeader(*ImGui::GetWindowDrawList(), grid, ImRect(header.Min, ImVec2(header.Max.x - barWidth, header.Max.y)));
+		DrawHeaderRule(*ImGui::GetWindowDrawList(), header);
 		ReserveLine(grid.LineHeight);
 		ImGui::PopFont();
 

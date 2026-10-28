@@ -529,7 +529,7 @@ TEST_CASE("A hex tab is kept across a restart")
 
 	const std::vector<Graphite::ViewStatusItem> status = after.StatusItems();
 	REQUIRE_FALSE(status.empty());
-	CHECK(status.front().Text == "Offset 0x00000000");
+	CHECK(status.front().Text == "0x00000000");
 	CHECK(status.back().Text == "10 B");
 	CHECK(after.TabDraws(program, "00000000", Face::Code));
 }
@@ -896,7 +896,7 @@ TEST_CASE("A hex tab gives the status bar its offset, count, values and size")
 
 	using Graphite::ViewStatusItem;
 
-	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
 															 {"1 byte", false, std::nullopt},
 															 {"u8 77  u16 23117  u32 9460301", true, std::nullopt},
 															 {"32 B", false, std::nullopt}});
@@ -904,7 +904,7 @@ TEST_CASE("A hex tab gives the status bar its offset, count, values and size")
 	drawn.Focus(program);
 	drawn.ShiftRight(2);
 
-	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
 															 {"3 bytes", false, std::nullopt},
 															 {"u8 77  u16 23117  u32 9460301", true, std::nullopt},
 															 {"32 B", false, std::nullopt}});
@@ -959,13 +959,13 @@ TEST_CASE("Ctrl+A then Ctrl+C on a large file is refused with a toast and reads 
 	SUBCASE("One byte past 1 MiB")
 	{
 		large = folder.MakeFile("large.bin", std::string(1024 * 1024 + 1, '\0'));
-		count = "1048577 bytes";
+		count = "1,048,577 bytes";
 	}
 
 	SUBCASE("5 GiB")
 	{
 		large = folder.GetPath() / "huge.bin";
-		count = "5368709120 bytes";
+		count = "5,368,709,120 bytes";
 
 		if (!TryWriteSparseFile(large, 5ull * 1024 * 1024 * 1024))
 		{
@@ -1096,7 +1096,7 @@ TEST_CASE("Arrow keys in a hex tab do not reach a text tab")
 	drawn.Press(Core::KeyCode::Right, Core::KeyModifier::None);
 
 	REQUIRE_FALSE(drawn.StatusItems().empty());
-	CHECK(drawn.StatusItems().front().Text == "Offset 0x00000011");
+	CHECK(drawn.StatusItems().front().Text == "0x00000011");
 	CHECK(drawn.Documents.At(*notesIndex).Caret.Offset == secondLine);
 }
 
@@ -1260,7 +1260,7 @@ TEST_CASE("An image that cannot be decoded is shown as hex under the reason")
 
 	using Graphite::ViewStatusItem;
 
-	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"Offset 0x00000000", false, std::nullopt},
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
 															 {"1 byte", false, std::nullopt},
 															 {"u8 116  u16 26740  u32 1936287860", true, std::nullopt},
 															 {"21 B", false, std::nullopt}});
@@ -1330,11 +1330,11 @@ TEST_CASE("A broken image shown as hex keeps its rows, scroll and selection whil
 	drawn.Press(Core::KeyCode::End, Core::KeyModifier::Control);
 	const std::vector<Graphite::ViewStatusItem> before = drawn.StatusItems();
 	REQUIRE_FALSE(before.empty());
-	REQUIRE(before.front().Text == "Offset 0x000007CF");
+	REQUIRE(before.front().Text == "0x000007CF");
 	REQUIRE(drawn.TabDraws(broken, "000007C0", Face::Code));
 
 	const auto showsBytes = [&drawn, &broken] {
-		return !drawn.StatusItems().empty() && drawn.StatusItems().front().Text.starts_with("Offset");
+		return !drawn.StatusItems().empty() && drawn.StatusItems().front().Label == "Offset ";
 	};
 
 	SUBCASE("A rewrite that is still broken")
@@ -1356,7 +1356,7 @@ TEST_CASE("A broken image shown as hex keeps its rows, scroll and selection whil
 
 		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Failed);
 		CHECK(showsBytes());
-		CHECK(drawn.StatusItems().front().Text == "Offset 0x000007CF");
+		CHECK(drawn.StatusItems().front().Text == "0x000007CF");
 		CHECK(drawn.StatusItems().back().Text == "2.0 KB");
 		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
 	}
@@ -1437,7 +1437,7 @@ TEST_CASE("An image past the pixel limit is shown as hex under its size")
 	CHECK(drawn.TabDraws(huge, "89 50 4E 47", Face::Code));
 	CHECK_FALSE(drawn.TabDraws(huge, "Retry", Face::Interface));
 	REQUIRE_FALSE(drawn.StatusItems().empty());
-	CHECK(drawn.StatusItems().front().Text == "Offset 0x00000000");
+	CHECK(drawn.StatusItems().front().Text == "0x00000000");
 }
 
 TEST_CASE("An image that cannot be read keeps its failure with Retry")

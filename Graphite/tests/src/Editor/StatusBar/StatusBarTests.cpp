@@ -928,6 +928,44 @@ TEST_CASE("A view's code item is drawn in the code face")
 	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), inInterface));
 }
 
+TEST_CASE("A view's item with a label draws the label, then its text with only the label's own space between")
+{
+	constexpr const char* kLabel = "Offset ";
+	constexpr const char* kNumber = "0x0000004E";
+	constexpr std::size_t kLabelGlyphs = 6;
+	constexpr float kWithinAPixel = 1.5f;
+
+	StatusBarScreen screen;
+	ImGui::GetStyle().FontSizeBase = 20.0f;
+	screen.Messages.View = {Graphite::ViewStatusItem{.Text = kNumber, .Code = true, .Label = kLabel}};
+
+	// WARNING: One run a reference window a frame: a window begun twice in a frame draws both runs into one list.
+	std::vector<ImRect> label;
+	std::vector<ImRect> number;
+	std::vector<ImRect> numberInTheWindowFace;
+	float labelWidth = 0.0f;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		label = GlyphRunOf("Offset", RunFace::TheBarFace);
+		number = GlyphRunOf(kNumber, RunFace::TheCodeFaceAtTheBarSize);
+		numberInTheWindowFace = GlyphRunOf(kNumber, RunFace::TheWindowFace);
+		labelWidth = BarTextWidth(kLabel);
+	});
+
+	const ImDrawList& drawing = StatusBarScreen::BarDrawing();
+	CHECK(DrawsGlyphRun(drawing, label));
+	CHECK(DrawsGlyphRun(drawing, number));
+	CHECK_FALSE(DrawsGlyphRun(drawing, numberInTheWindowFace));
+
+	// The bar draws the label's glyphs, the number's and the bell's, from the left; the space draws none.
+	std::vector<ImRect> glyphs = GlyphQuads(drawing);
+	std::ranges::sort(glyphs, [](const ImRect& a, const ImRect& b) { return a.Min.x < b.Min.x; });
+	REQUIRE(glyphs.size() > kLabelGlyphs);
+
+	const float labelToNumber = glyphs[kLabelGlyphs].Min.x - glyphs.front().Min.x;
+	CHECK(std::abs(labelToNumber - labelWidth) < kWithinAPixel);
+}
+
 TEST_CASE("A text document's caret, encoding and line endings are unchanged")
 {
 	constexpr const char* kViewText = "256 x 256";

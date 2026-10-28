@@ -1,6 +1,7 @@
 #include "Hex/HexText.h"
 
 #include "Core/Base/ByteSize.h"
+#include "Core/Base/Count.h"
 
 #include <array>
 #include <format>
@@ -90,8 +91,8 @@ namespace Graphite {
 											   std::span<const std::uint8_t> fromFirst, std::uint64_t fileSize)
 	{
 		std::vector<ViewStatusItem> items;
-		items.push_back({"Offset 0x" + OffsetText(first, OffsetDigits(fileSize)), false, std::nullopt});
-		items.push_back({count == 1 ? std::string("1 byte") : std::format("{} bytes", count), false, std::nullopt});
+		items.push_back({.Text = "0x" + OffsetText(first, OffsetDigits(fileSize)), .Code = true, .Label = "Offset "});
+		items.push_back({.Text = count == 1 ? std::string("1 byte") : Core::FormatCount(count) + " bytes"});
 
 		std::string values;
 		const auto add = [&](const char* name, std::size_t width) {

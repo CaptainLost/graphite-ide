@@ -61,12 +61,29 @@ TEST_CASE("The status bar names the offset, the count, the values and the size")
 	const auto items = Graphite::HexStatusItems(0x4E, 12, bytes, 4382720);
 
 	REQUIRE(items.size() == 4);
-	CHECK(items[0].Text == "Offset 0x0000004E");
+
+	// The number in the code face after its name in the interface face.
+	CHECK(items[0].Label == "Offset ");
+	CHECK(items[0].Text == "0x0000004E");
+	CHECK(items[0].Code);
+
 	CHECK(items[1].Text == "12 bytes");
+	CHECK_FALSE(items[1].Code);
 	CHECK(items[2].Text == "u8 84  u16 26708  u32 1936287828");
 	CHECK(items[2].Code);
-	CHECK_FALSE(items[0].Code);
 	CHECK(items[3].Text == "4.2 MB");
+	CHECK(items[1].Label.empty());
+	CHECK(items[2].Label.empty());
+	CHECK(items[3].Label.empty());
+}
+
+TEST_CASE("A count of selected bytes is grouped in thousands")
+{
+	const std::array<std::uint8_t, 4> bytes{'M', 'Z', 0x90, 0x00};
+
+	CHECK(Graphite::HexStatusItems(0, 4382720, bytes, 4382720)[1].Text == "4,382,720 bytes");
+	CHECK(Graphite::HexStatusItems(0, 999, bytes, 4382720)[1].Text == "999 bytes");
+	CHECK(Graphite::HexStatusItems(0, 1000, bytes, 4382720)[1].Text == "1,000 bytes");
 }
 
 TEST_CASE("A single selected byte is named in the singular")

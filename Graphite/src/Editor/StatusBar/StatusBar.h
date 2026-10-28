@@ -46,6 +46,10 @@ namespace Graphite {
 		// A square of this colour, over a checkerboard so its alpha shows, before the text.
 		std::optional<ImU32> Swatch;
 
+		// Words in the interface face right before the text, whatever face the text takes: `Offset ` before a number in
+		// the code face. Empty for none.
+		std::string Label;
+
 		bool operator==(const ViewStatusItem&) const = default;
 	};
 
