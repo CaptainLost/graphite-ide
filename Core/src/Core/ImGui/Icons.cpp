@@ -112,6 +112,8 @@ namespace Core {
 			ICON_LC_FILE_PLUS,
 			ICON_LC_FOLDER_PLUS,
 			ICON_LC_HISTORY,
+			ICON_LC_LAYOUT_GRID,
+			ICON_LC_LOCK,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
