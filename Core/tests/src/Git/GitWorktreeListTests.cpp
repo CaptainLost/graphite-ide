@@ -113,6 +113,27 @@ TEST_CASE("A worktree with a detached HEAD is listed as detached")
 	CHECK(worktrees[1].Head.Commit.has_value());
 }
 
+TEST_CASE("A linked worktree of a bare repository is listed once, with no main checkout, which a bare repository lacks")
+{
+	GitFixture fixture;
+	CommitOneFileAndBranchSide(fixture);
+
+	TempDirectory outside;
+	const std::filesystem::path barePath = outside.GetPath() / "bare.git";
+	const std::filesystem::path worktreePath = outside.GetPath() / "linked";
+	CloneBareWithWorktree(fixture, barePath, worktreePath);
+
+	const std::vector<Core::WorktreeEntry> worktrees = ListWorktreesOf(worktreePath);
+
+	REQUIRE(worktrees.size() == 1);
+	CHECK(!worktrees[0].IsMain);
+	CHECK(worktrees[0].Name == "linked");
+	CHECK(std::filesystem::equivalent(worktrees[0].Path, worktreePath));
+	CHECK(worktrees[0].Head.Kind == Core::HeadKind::Branch);
+	CHECK(worktrees[0].Head.BranchName == "linked");
+	CHECK(!worktrees[0].FolderMissing);
+}
+
 TEST_CASE("Asked from a linked worktree, the main checkout comes first just the same")
 {
 	GitFixture fixture;

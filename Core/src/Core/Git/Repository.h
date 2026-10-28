@@ -137,7 +137,7 @@ namespace Core {
 		Result<std::optional<std::filesystem::path>> WorktreeHolding(const std::string& branchFullName) const;
 
 		// The main checkout first, then the linked worktrees in name order. Asked from a linked
-		// worktree, the same list.
+		// worktree, the same list. A bare repository has no main checkout, so only its linked ones.
 		Result<std::vector<WorktreeEntry>> QueryWorktrees() const;
 
 		// Like `git cherry base tip`: a commit of tip's own is in the base when a commit the base has and

@@ -39,6 +39,32 @@ inline void AddWorktree(const GitFixture& fixture, const std::string& branch, co
 	git_repository_free(rawRepository);
 }
 
+// A bare clone of the fixture's repository at barePath, with a linked worktree named "linked" at worktreePath on a new
+// branch of that name at the clone's HEAD.
+inline void CloneBareWithWorktree(const GitFixture& fixture, const std::filesystem::path& barePath,
+								  const std::filesystem::path& worktreePath)
+{
+	{
+		Core::Result<Core::Repository> openedToInitialiseLibgit2 = Core::Repository::Open(fixture.GetPath());
+		REQUIRE(openedToInitialiseLibgit2.HasValue());
+	}
+
+	git_clone_options cloneOptions = GIT_CLONE_OPTIONS_INIT;
+	cloneOptions.bare = 1;
+
+	git_repository* bareRepository = nullptr;
+	REQUIRE(git_clone(&bareRepository, Core::ToUtf8(fixture.GetPath()).c_str(), Core::ToUtf8(barePath).c_str(),
+					  &cloneOptions) == 0);
+	REQUIRE(git_repository_is_bare(bareRepository) == 1);
+
+	git_worktree_add_options addOptions = GIT_WORKTREE_ADD_OPTIONS_INIT;
+	git_worktree* worktree = nullptr;
+	REQUIRE(git_worktree_add(&worktree, bareRepository, "linked", Core::ToUtf8(worktreePath).c_str(), &addOptions) == 0);
+
+	git_worktree_free(worktree);
+	git_repository_free(bareRepository);
+}
+
 inline void DetachHeadOf(const std::filesystem::path& worktreePath)
 {
 	git_repository* worktreeRepository = nullptr;

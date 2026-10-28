@@ -21,6 +21,7 @@ namespace Core {
 	namespace {
 
 		constexpr int kRepositoryIsLinkedWorktree = 1;
+		constexpr int kRepositoryIsBare = 1;
 
 		using RepositoryHandle = std::unique_ptr<git_repository, decltype(&git_repository_free)>;
 
@@ -37,6 +38,42 @@ namespace Core {
 			}
 
 			return RepositoryHandle{opened, &git_repository_free};
+		}
+
+		// `opened` is the repository asked; `mainHandle` the one the worktrees are listed from.
+		Result<WorktreeEntry> ReadMainCheckout(const Repository& opened, git_repository* mainHandle, bool isLinkedWorktree)
+		{
+			WorktreeEntry mainEntry;
+			mainEntry.IsMain = true;
+
+			const char* mainWorkingDirectory = git_repository_workdir(mainHandle);
+			mainEntry.Path = mainWorkingDirectory != nullptr ? FromUtf8(mainWorkingDirectory) : opened.GetWorkingDirectory();
+
+			Result<HeadState> mainHead = HeadState{};
+
+			if (isLinkedWorktree)
+			{
+				Result<Repository> mainRepository = Repository::OpenExactly(mainEntry.Path);
+
+				if (!mainRepository.HasValue())
+				{
+					return mainRepository.GetError();
+				}
+
+				mainHead = mainRepository.GetValue().QueryHead();
+			}
+			else
+			{
+				mainHead = opened.QueryHead();
+			}
+
+			if (!mainHead.HasValue())
+			{
+				return mainHead.GetError();
+			}
+
+			mainEntry.Head = std::move(mainHead).GetValue();
+			return mainEntry;
 		}
 
 		WorktreeEntry ReadLinkedWorktree(git_repository* mainHandle, const std::string& name)
@@ -116,40 +153,20 @@ namespace Core {
 
 		git_repository* listedFrom = isLinkedWorktree ? mainHandle.get() : m_Handle.get();
 
-		WorktreeEntry mainEntry;
-		mainEntry.IsMain = true;
+		std::vector<WorktreeEntry> entries;
 
-		const char* mainWorkingDirectory = git_repository_workdir(listedFrom);
-		mainEntry.Path = mainWorkingDirectory != nullptr ? FromUtf8(mainWorkingDirectory) : m_WorkingDirectory;
-
-		if (isLinkedWorktree)
+		// WARNING: A bare repository has no checkout of its own. Taken for one, its missing working directory would
+		// stand in for the open folder's, and the linked worktree open there would be listed twice.
+		if (git_repository_is_bare(listedFrom) != kRepositoryIsBare)
 		{
-			Result<Repository> mainRepository = Repository::OpenExactly(mainEntry.Path);
+			Result<WorktreeEntry> mainEntry = ReadMainCheckout(*this, listedFrom, isLinkedWorktree);
 
-			if (!mainRepository.HasValue())
+			if (!mainEntry.HasValue())
 			{
-				return mainRepository.GetError();
+				return mainEntry.GetError();
 			}
 
-			Result<HeadState> mainHead = mainRepository.GetValue().QueryHead();
-
-			if (!mainHead.HasValue())
-			{
-				return mainHead.GetError();
-			}
-
-			mainEntry.Head = std::move(mainHead).GetValue();
-		}
-		else
-		{
-			Result<HeadState> mainHead = QueryHead();
-
-			if (!mainHead.HasValue())
-			{
-				return mainHead.GetError();
-			}
-
-			mainEntry.Head = std::move(mainHead).GetValue();
+			entries.push_back(std::move(mainEntry).GetValue());
 		}
 
 		git_strarray worktreeNames{};
@@ -170,9 +187,7 @@ namespace Core {
 		git_strarray_dispose(&worktreeNames);
 		std::sort(names.begin(), names.end());
 
-		std::vector<WorktreeEntry> entries;
-		entries.reserve(names.size() + 1);
-		entries.push_back(std::move(mainEntry));
+		entries.reserve(entries.size() + names.size());
 
 		for (const std::string& name : names)
 		{
