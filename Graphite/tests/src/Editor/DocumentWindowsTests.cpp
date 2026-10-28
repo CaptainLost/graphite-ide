@@ -1288,6 +1288,70 @@ TEST_CASE("An image that cannot be decoded is shown as hex under the reason")
 	}
 }
 
+TEST_CASE("A broken image shown as hex keeps its rows, scroll and selection while its file changes")
+{
+	TempDirectory folder;
+	std::string contents = ProgramBytes(2000);
+	contents.replace(0, 8, std::string("not\0 png", 8));
+	const std::filesystem::path broken = folder.MakeFile("broken.png", contents);
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(broken, true);
+	ShowFailedImage(drawn);
+	drawn.Focus(broken);
+
+	drawn.Press(Core::KeyCode::End, Core::KeyModifier::Control);
+	const std::vector<Graphite::ViewStatusItem> before = drawn.StatusItems();
+	REQUIRE_FALSE(before.empty());
+	REQUIRE(before.front().Text == "Offset 0x000007CF");
+	REQUIRE(drawn.TabDraws(broken, "000007C0", Face::Code));
+
+	const auto showsBytes = [&drawn, &broken] {
+		return !drawn.StatusItems().empty() && drawn.StatusItems().front().Text.starts_with("Offset");
+	};
+
+	SUBCASE("A rewrite that is still broken")
+	{
+		Rewrite(broken, contents + "tail");
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+
+		drawn.Frame();
+		CHECK(showsBytes());
+		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		CHECK(showsBytes());
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Failed);
+		CHECK(showsBytes());
+		CHECK(drawn.StatusItems().front().Text == "Offset 0x000007CF");
+		CHECK(drawn.StatusItems().back().Text == "2.0 KB");
+		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+	}
+
+	SUBCASE("A rewrite that is a picture")
+	{
+		Rewrite(broken, Contents(ImageFixtures::kPng2x2));
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+
+		drawn.Frame();
+		CHECK(showsBytes());
+
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Ready);
+		CHECK(drawn.StatusItems() == std::vector<Graphite::ViewStatusItem>{{"2 × 2 · PNG · 77 B", false, std::nullopt}});
+	}
+}
+
 TEST_CASE("An image past the pixel limit is shown as hex under its size")
 {
 	TempDirectory folder;

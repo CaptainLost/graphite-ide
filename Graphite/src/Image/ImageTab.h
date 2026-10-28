@@ -64,7 +64,7 @@ namespace Graphite {
 		// The whole line shown in place of the picture.
 		const std::string& GetFailure() const;
 
-		// None unless the tab is Failed.
+		// None unless the tab is Failed or is loading again after a failure, whose kind it keeps until the new result lands.
 		ImageFailure GetFailureKind() const;
 
 		// False for a picture too large to preview, which reading the same file again cannot change; a change to the

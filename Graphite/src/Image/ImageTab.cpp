@@ -88,9 +88,9 @@ namespace Graphite {
 
 		if (m_State == ImageTabState::Failed)
 		{
+			// WARNING: The failure stays while the new version is read, so a view of the bytes does not blank; the result
+			// that lands replaces it.
 			m_State = ImageTabState::Loading;
-			m_Failure.clear();
-			m_FailureKind = ImageFailure::None;
 		}
 
 		Core::DecodeLimits limits;

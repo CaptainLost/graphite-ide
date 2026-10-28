@@ -165,12 +165,12 @@ namespace Graphite {
 			return item.View == Core::ItemView::Hex && item.Failure == Core::OpenFailure::None;
 		}
 
-		// An image that is not a picture this program shows is drawn as its bytes; one that could not be read is not,
-		// since its bytes cannot be read either.
+		// An image that is not a picture this program shows is drawn as its bytes, also while its file is read again, so
+		// the bytes do not blank; one that could not be read is not, since its bytes cannot be read either.
 		bool FallsBackToBytes(const ImageTab& tab)
 		{
-			return tab.GetState() == ImageTabState::Failed && (tab.GetFailureKind() == ImageFailure::Decode ||
-															   tab.GetFailureKind() == ImageFailure::TooLarge);
+			return tab.GetState() != ImageTabState::Ready && (tab.GetFailureKind() == ImageFailure::Decode ||
+															  tab.GetFailureKind() == ImageFailure::TooLarge);
 		}
 
 		std::string SavedCount(std::size_t saved)
