@@ -52,7 +52,7 @@ namespace Graphite {
 	// "33 worktrees · main ↑13 to push" over the cards; the count reads as waiting until the facts land, never as 0.
 	std::string WorkSummaryText(const WorkBoard& board);
 
-	// "Reviewed 3/10"; "Reviewed …" while the count is unknown, never a zero.
+	// "3 of 10 viewed" in the thread's header; "counting viewed files…" while the count is unknown, never a zero.
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed);
 
 	// "3/10" at the end of a card's progress bar; "…" while the count is unknown, never a zero.

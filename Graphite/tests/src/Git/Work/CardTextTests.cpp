@@ -274,9 +274,9 @@ TEST_CASE("A ready row names the branch, its worktree folder, why it is ready an
 
 TEST_CASE("Review progress reads as waiting until it is known")
 {
-	CHECK(Graphite::ReviewProgressText(std::nullopt) == "Reviewed \xE2\x80\xA6");
-	CHECK(Graphite::ReviewProgressText(Graphite::ViewedCount{.Viewed = 3, .Total = 10}) == "Reviewed 3/10");
-	CHECK(Graphite::ReviewProgressText(Graphite::ViewedCount{.Viewed = 0, .Total = 0}) == "Reviewed 0/0");
+	CHECK(Graphite::ReviewProgressText(std::nullopt) == "counting viewed files\xE2\x80\xA6");
+	CHECK(Graphite::ReviewProgressText(Graphite::ViewedCount{.Viewed = 3, .Total = 10}) == "3 of 10 viewed");
+	CHECK(Graphite::ReviewProgressText(Graphite::ViewedCount{.Viewed = 0, .Total = 0}) == "0 of 0 viewed");
 }
 
 TEST_CASE("A card's review count reads as waiting until it is known")

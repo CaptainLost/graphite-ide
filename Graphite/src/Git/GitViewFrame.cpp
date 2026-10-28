@@ -525,9 +525,19 @@ namespace Graphite {
 			.Viewed = ReviewProgressOf ? ReviewProgressOf(branch) : std::nullopt,
 			.Colours = ReadChipColours(m_Scheme.Get())};
 
-		if (DrawThreadHeader(header) && OpenReviewTab)
+		switch (DrawThreadHeader(header))
 		{
-			OpenReviewTab(branch);
+		case ThreadHeaderClick::OpenInOwnTab:
+			if (OpenReviewTab)
+			{
+				OpenReviewTab(branch);
+			}
+			break;
+		case ThreadHeaderClick::BackToWork:
+			ShowWork(false);
+			return;
+		case ThreadHeaderClick::None:
+			break;
 		}
 
 		if (!DrawReview)

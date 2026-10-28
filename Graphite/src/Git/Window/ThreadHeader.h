@@ -28,7 +28,14 @@ namespace Graphite {
 		ChipColours Colours;
 	};
 
-	// Title, branch and folder, the card chips, "against {base}" when the session's base is not the trunk, and
-	// "Open in own tab". True when "Open in own tab" was clicked.
-	bool DrawThreadHeader(const ThreadHeaderInput& input);
+	enum class ThreadHeaderClick
+	{
+		None,
+		BackToWork,
+		OpenInOwnTab
+	};
+
+	// Back to Work, the title, branch and folder, the card chips, "against {base}" when the session's base is not the
+	// trunk, and "Open in own tab". Answers which button was clicked.
+	ThreadHeaderClick DrawThreadHeader(const ThreadHeaderInput& input);
 }
