@@ -175,9 +175,11 @@ namespace Graphite {
 	void WorkView::DrawBar(const WorkBoard& board, bool reading)
 	{
 		ImGui::AlignTextToFramePadding();
+		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 		ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
-		ImGui::TextUnformatted(ICON_LC_LAYOUT_GRID " Work");
+		ImGui::TextUnformatted("Work");
 		ImGui::PopStyleColor();
+		ImGui::PopFont();
 
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", WorkSummaryText(board).c_str());
