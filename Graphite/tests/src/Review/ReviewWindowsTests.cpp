@@ -3,8 +3,13 @@
 #include "Review/ReviewWindows.h"
 
 #include "DeferredJobs.h"
+#include "ImGuiFrames.h"
 #include "Review/FakeReviewPort.h"
 #include "UI/Dialogs/ModalGate.h"
+
+#include "Core/ImGui/TabCloseRequests.h"
+
+#include <imgui.h>
 
 #include <string>
 #include <vector>
@@ -271,4 +276,191 @@ TEST_CASE("A review tab is named for its branch and identified by the full name"
 
 	const std::string name = Graphite::ReviewWindowName("refs/heads/feature/x");
 	CHECK(name.find("Review: feature/x###review:refs/heads/feature/x") != std::string::npos);
+}
+
+namespace {
+
+	const std::string kOther = "refs/heads/other";
+
+	constexpr float kHostWidth = 1000.0f;
+	constexpr float kHostHeight = 600.0f;
+	constexpr int kFramesToSettle = 3;
+
+	// The window an embedded review is drawn into, as the Git window's main area holds it.
+	struct EmbeddedHost
+	{
+		ImGuiFrames Frames;
+		FakeReviewPort Port;
+		DeferredJobs Jobs;
+		Graphite::ReviewModel Model{Port, Jobs.Submitter(), NoWatches()};
+		ReviewSessions Sessions;
+		Graphite::ModalGate Modals;
+		ReviewWindows Windows{Modals};
+		Graphite::GitPalette Palette;
+		Graphite::SyntaxPalette Syntax;
+		Core::TabCloseRequests CloseRequests;
+
+		Graphite::ReviewRenderInput Input()
+		{
+			return Graphite::ReviewRenderInput{.Model = Model,
+											   .Sessions = Sessions,
+											   .Palette = Palette,
+											   .Syntax = Syntax,
+											   .CloseRequests = CloseRequests};
+		}
+
+		// Draws frame after frame, landing what each one asked for, until nothing more is asked.
+		void Draw(const std::string& branch)
+		{
+			const Graphite::ReviewRenderInput input = Input();
+
+			for (int frame = 0; frame < kFramesToSettle; ++frame)
+			{
+				Frames.Next([&] {
+					ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+					ImGui::SetNextWindowSize(ImVec2(kHostWidth, kHostHeight));
+					ImGui::Begin("Git", nullptr, ImGuiWindowFlags_NoSavedSettings);
+					Windows.RenderEmbedded(branch, input);
+					ImGui::End();
+				});
+
+				Jobs.RunAll();
+				Model.OnUpdate(kFrame);
+			}
+		}
+
+		void CloseTab(const std::string& branch)
+		{
+			const Graphite::ReviewRenderInput input = Input();
+
+			CloseRequests.Request(Graphite::ReviewWindowName(branch));
+			CloseRequests.EndFrame();
+			Frames.Next([&] { Windows.Render(input); });
+		}
+	};
+}
+
+TEST_CASE("An embedded review draws a draft's branch without opening a tab")
+{
+	EmbeddedHost host;
+	host.Sessions.OpenDraft(kSide, kMain);
+
+	host.Draw(kSide);
+
+	CHECK(host.Windows.GetCount() == 0);
+	CHECK(host.Windows.CaptureState().empty());
+	CHECK(host.Port.RangeQueries == 1);
+	CHECK(host.Port.RangeDiffQueries == 1);
+}
+
+TEST_CASE("An embedded review of a branch that is gone asks to be closed")
+{
+	EmbeddedHost host;
+	host.Port.Range.Problem = Graphite::RangeProblem::BranchMissing;
+	host.Sessions.OpenDraft(kSide, kMain);
+
+	host.Draw(kSide);
+
+	CHECK(host.Windows.TakeEmbeddedClosed());
+	CHECK_FALSE(host.Windows.TakeEmbeddedClosed());
+}
+
+TEST_CASE("Switching the embedded review to another branch asks that branch's range")
+{
+	EmbeddedHost host;
+	host.Sessions.OpenDraft(kSide, kMain);
+	host.Sessions.OpenDraft(kOther, kMain);
+	const ReviewKey sideKey{.Branch = kSide, .Base = kMain};
+
+	host.Draw(kSide);
+	REQUIRE(host.Model.GetRange(sideKey) != nullptr);
+
+	host.Draw(kOther);
+
+	CHECK(host.Port.RangeQueries == 2);
+	CHECK(host.Model.GetRange(sideKey) == nullptr);
+	CHECK(host.Model.GetRange(ReviewKey{.Branch = kOther, .Base = kMain}) != nullptr);
+}
+
+TEST_CASE("Switching the embedded review away from a branch a tab still shows keeps that tab's range")
+{
+	EmbeddedHost host;
+	host.Sessions.Start(kSide, kMain);
+	host.Sessions.OpenDraft(kOther, kMain);
+	const ReviewKey sideKey{.Branch = kSide, .Base = kMain};
+	host.Windows.Open(kSide);
+	host.Windows.FollowSessions(host.Sessions, host.Model);
+
+	host.Draw(kSide);
+	REQUIRE(host.Model.GetRange(sideKey) != nullptr);
+
+	host.Draw(kOther);
+
+	CHECK(host.Model.GetRange(sideKey) != nullptr);
+	CHECK(host.Port.RangeQueries == 2);
+}
+
+TEST_CASE("Closing a review tab keeps the range the embedded review of its branch still shows")
+{
+	EmbeddedHost host;
+	host.Sessions.Start(kSide, kMain);
+	const ReviewKey sideKey{.Branch = kSide, .Base = kMain};
+	host.Windows.Open(kSide);
+	host.Draw(kSide);
+	REQUIRE(host.Model.GetRange(sideKey) != nullptr);
+
+	host.CloseTab(kSide);
+
+	CHECK(host.Windows.GetCount() == 0);
+	CHECK(host.Model.GetRange(sideKey) != nullptr);
+}
+
+TEST_CASE("An embedded review whose session ends forgets what the model held for it")
+{
+	EmbeddedHost host;
+	host.Sessions.OpenDraft(kSide, kMain);
+	const ReviewKey key{.Branch = kSide, .Base = kMain};
+	host.Draw(kSide);
+	REQUIRE(host.Model.GetRange(key) != nullptr);
+
+	host.Sessions.End(kSide);
+	host.Windows.FollowSessions(host.Sessions, host.Model);
+
+	CHECK(host.Model.GetRange(key) == nullptr);
+}
+
+TEST_CASE("An embedded review follows a rename and forgets the range it held under the old name")
+{
+	EmbeddedHost host;
+	host.Sessions.OpenDraft("refs/heads/before", kMain);
+	const ReviewKey oldKey{.Branch = "refs/heads/before", .Base = kMain};
+	host.Draw("refs/heads/before");
+	REQUIRE(host.Model.GetRange(oldKey) != nullptr);
+	host.Windows.NoteRename("refs/heads/before", "refs/heads/after");
+
+	const std::vector<BranchRename> followed =
+		host.Windows.FollowBranches({BranchNamed(kMain), BranchNamed("refs/heads/after")}, host.Model);
+
+	REQUIRE(followed.size() == 1);
+	CHECK(host.Model.GetRange(oldKey) == nullptr);
+	CHECK(host.Windows.GetCount() == 0);
+
+	host.Sessions.Rename(followed.front().From, followed.front().To);
+	host.Draw("refs/heads/after");
+
+	CHECK(host.Port.RangeQueries == 2);
+	CHECK(host.Model.GetRange(ReviewKey{.Branch = "refs/heads/after", .Base = kMain}) != nullptr);
+}
+
+TEST_CASE("Closing every tab forgets what the model held for the embedded review too")
+{
+	EmbeddedHost host;
+	host.Sessions.OpenDraft(kSide, kMain);
+	const ReviewKey key{.Branch = kSide, .Base = kMain};
+	host.Draw(kSide);
+	REQUIRE(host.Model.GetRange(key) != nullptr);
+
+	host.Windows.CloseAll(host.Model);
+
+	CHECK(host.Model.GetRange(key) == nullptr);
 }

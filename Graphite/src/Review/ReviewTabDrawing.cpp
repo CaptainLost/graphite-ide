@@ -758,6 +758,13 @@ namespace Graphite {
 
 			if (range->Problem == RangeProblem::BranchMissing)
 			{
+				if (tab.Embedded)
+				{
+					Core::EmptyState(problem);
+					m_EmbeddedClosed = true;
+					return;
+				}
+
 				if (Core::EmptyState(problem, "Close"))
 				{
 					tab.CloseRequested = true;

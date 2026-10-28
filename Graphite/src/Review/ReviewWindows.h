@@ -94,6 +94,13 @@ namespace Graphite {
 
 		void Render(const ReviewRenderInput& input);
 
+		// Draws the review of `branch` into the current window, outside any tab. The branch must have a draft
+		// or a session. Another branch replaces the one drawn before and forgets its ranges in `input.Model`.
+		void RenderEmbedded(const std::string& branch, const ReviewRenderInput& input);
+
+		// True once after the embedded review's branch was found gone, so the host can leave it.
+		bool TakeEmbeddedClosed();
+
 		std::function<void(const std::filesystem::path&)> OpenFile;
 
 		std::function<void(std::string_view)> OnCopied;
@@ -180,6 +187,7 @@ namespace Graphite {
 			bool ScrollToCommitFile = false;
 			TabWindowState Window{.Focus = true};
 			bool CloseRequested = false;
+			bool Embedded = false;
 
 			std::optional<LoadedReview> LastLoaded;
 
@@ -203,6 +211,9 @@ namespace Graphite {
 		using OpenRelativeFile = std::function<void(const std::filesystem::path&)>;
 
 		static void ForgetTab(const Tab& tab, ReviewModel& model);
+		void ForgetUnlessShown(const Tab& leaving, ReviewModel& model) const;
+		static bool FollowSession(Tab& tab, const ReviewSessions& sessions, ReviewModel& model);
+		static void FollowRename(Tab& tab, const std::string& to, ReviewModel& model);
 		static ReviewGroups GroupsOf(const Tab& tab, const LoadedReview& review);
 		static FileList FilesPageList(Tab& tab, const ReviewGroups& groups);
 		static FileList CommitFileList(Tab& tab, const Core::Diff& commitDiff);
@@ -265,6 +276,8 @@ namespace Graphite {
 		void RenderEndDialog(const ReviewRenderInput& input);
 
 		std::vector<Tab> m_Tabs;
+		std::optional<Tab> m_Embedded;
+		bool m_EmbeddedClosed = false;
 		ModalQuestion<std::string> m_EndQuestion;
 		std::vector<BranchRename> m_PendingRenames;
 	};
