@@ -307,3 +307,10 @@ TEST_CASE("A card's review count reads as waiting until it is known")
 	CHECK(Graphite::ReviewCountText(std::nullopt) == "\xE2\x80\xA6");
 	CHECK(Graphite::ReviewCountText(Graphite::ViewedCount{.Viewed = 3, .Total = 10}) == "3/10");
 }
+
+TEST_CASE("A card's review count that will not come because of a problem reads as a dash, not as a wait")
+{
+	CHECK(Graphite::ReviewCountText(std::nullopt, true) == "\xE2\x80\x94");
+	CHECK(Graphite::ReviewCountText(std::nullopt, false) == "\xE2\x80\xA6");
+	CHECK(Graphite::ReviewCountText(Graphite::ViewedCount{.Viewed = 1, .Total = 2}, false) == "1/2");
+}

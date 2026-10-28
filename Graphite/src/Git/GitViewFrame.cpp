@@ -138,6 +138,10 @@ namespace Graphite {
 			return ReviewProgressOf ? ReviewProgressOf(branchFullName) : std::optional<ViewedCount>{};
 		};
 
+		m_WorkView.ReviewProblemOf = [this](const std::string& branchFullName) {
+			return ReviewProblemOf ? ReviewProblemOf(branchFullName) : std::optional<std::string>{};
+		};
+
 		m_WorkView.OnRefresh = [this] { m_Work.Refresh(); };
 
 		m_BranchTable.OnBranchClicked = [this](const Core::Branch& branch) { SelectBranch(branch); };
@@ -524,6 +528,7 @@ namespace Graphite {
 			.AgainstBase = againstTrunk ? std::nullopt : std::optional<std::string>{Core::ShortBranchName(*base)},
 			.Branch = branch,
 			.Viewed = ReviewProgressOf ? ReviewProgressOf(branch) : std::nullopt,
+			.ReviewProblem = ReviewProblemOf ? ReviewProblemOf(branch) : std::nullopt,
 			.Colours = ReadChipColours(m_Scheme.Get())};
 
 		switch (DrawThreadHeader(header))

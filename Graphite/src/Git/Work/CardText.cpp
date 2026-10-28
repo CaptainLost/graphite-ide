@@ -10,6 +10,7 @@ namespace Graphite {
 	namespace {
 
 		constexpr const char* kEllipsis = "\xE2\x80\xA6";
+		constexpr const char* kEmDash = "\xE2\x80\x94";
 		constexpr const char* kMiddleDot = "\xC2\xB7";
 		constexpr const char* kUpArrow = "\xE2\x86\x91";
 		constexpr const char* kDownArrow = "\xE2\x86\x93";
@@ -253,5 +254,10 @@ namespace Graphite {
 		}
 
 		return std::to_string(viewed->Viewed) + "/" + std::to_string(viewed->Total);
+	}
+
+	std::string ReviewCountText(const std::optional<ViewedCount>& viewed, bool hasProblem)
+	{
+		return hasProblem ? std::string(kEmDash) : ReviewCountText(viewed);
 	}
 }

@@ -44,6 +44,12 @@ namespace Graphite {
 										   const Core::Ref<const std::vector<Core::Branch>>& branches,
 										   const ReviewSessions& sessions, ReviewModel& model);
 
+		// Why CountOf will not answer for what `model` holds now: the branch has no base, its range has a problem, or
+		// its range or diff could not be read. Empty while the count may still come. Asks `model` for nothing.
+		std::optional<std::string> ProblemOf(const std::string& branch,
+											 const Core::Ref<const std::vector<Core::Branch>>& branches,
+											 const ReviewSessions& sessions, const ReviewModel& model);
+
 		void Clear();
 
 	private:

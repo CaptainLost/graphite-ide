@@ -38,24 +38,28 @@ namespace Graphite {
 			return input.Card != nullptr ? CardBranchLine(*input.Card) : Core::ShortBranchName(std::string(input.Branch));
 		}
 
-		std::vector<Chip> HeaderChips(const ThreadHeaderInput& input)
+	}
+
+	std::vector<Chip> ThreadHeaderChips(const ThreadHeaderInput& input)
+	{
+		std::vector<Chip> chips;
+
+		if (input.Card != nullptr)
 		{
-			std::vector<Chip> chips;
-
-			if (input.Card != nullptr)
-			{
-				chips = CardChips(*input.Card, input.TrunkName);
-			}
-
-			chips.push_back({ReviewProgressText(input.Viewed)});
-
-			if (input.AgainstBase.has_value())
-			{
-				chips.push_back({"against " + *input.AgainstBase});
-			}
-
-			return chips;
+			chips = CardChips(*input.Card, input.TrunkName);
 		}
+
+		if (!input.ReviewProblem.has_value())
+		{
+			chips.push_back({ReviewProgressText(input.Viewed)});
+		}
+
+		if (input.AgainstBase.has_value())
+		{
+			chips.push_back({"against " + *input.AgainstBase});
+		}
+
+		return chips;
 	}
 
 	ThreadHeaderClick DrawThreadHeader(const ThreadHeaderInput& input)
@@ -107,7 +111,7 @@ namespace Graphite {
 		ImGui::PopFont();
 
 		ImGui::SameLine();
-		DrawChipRow(HeaderChips(input), input.Colours);
+		DrawChipRow(ThreadHeaderChips(input), input.Colours);
 		ImGui::Separator();
 
 		return click;

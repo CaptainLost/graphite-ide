@@ -136,6 +136,47 @@ namespace Graphite {
 		return count;
 	}
 
+	std::optional<std::string> ReviewProgress::ProblemOf(const std::string& branch,
+														 const Core::Ref<const std::vector<Core::Branch>>& branches,
+														 const ReviewSessions& sessions, const ReviewModel& model)
+	{
+		const std::optional<std::string> base = BaseOf(branch, branches, sessions);
+
+		if (!base.has_value())
+		{
+			return branches != nullptr ? std::optional<std::string>{NoReviewBaseMessage(branch, *branches)} : std::nullopt;
+		}
+
+		const ReviewKey key{.Branch = branch, .Base = *base};
+		const Core::Ref<const ReviewRange> range = model.GetRange(key);
+
+		if (range == nullptr)
+		{
+			// WARNING: A retry the reader asked for is waited on, as the review itself waits on it.
+			const Core::Error* error = model.GetRangeError(key);
+			return error != nullptr && !model.IsRangeRetrying(key) ? std::optional<std::string>{error->Message}
+																	: std::nullopt;
+		}
+
+		if (range->Problem != RangeProblem::None)
+		{
+			return RangeProblemMessage(range->Problem, branch, *base);
+		}
+
+		const ReviewSession* session = sessions.Find(branch);
+		const RangeDiffKey diffKey{.Ends = range->Ends,
+								   .Whitespace = session != nullptr ? session->Settings.Whitespace
+																	: SessionSettings{}.Whitespace};
+
+		if (HasCommittedFiles(*range) && model.IsCommittedDiffFailed(diffKey))
+		{
+			const std::optional<Core::Error>& error = model.GetCommittedDiffError();
+			return error.has_value() ? error->Message : std::string("The branch's changes could not be read.");
+		}
+
+		return std::nullopt;
+	}
+
 	void ReviewProgress::Clear()
 	{
 		m_BasesFrom.reset();

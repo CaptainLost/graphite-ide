@@ -109,6 +109,9 @@ namespace Graphite {
 		// Empty while the count is unknown.
 		std::function<std::optional<ViewedCount>(const std::string& branch)> ReviewProgressOf;
 
+		// Why the count will not come; empty while it may.
+		std::function<std::optional<std::string>(const std::string& branch)> ReviewProblemOf;
+
 		// A kept session's base.
 		std::function<std::optional<std::string>(const std::string& branch)> SessionBaseOf;
 

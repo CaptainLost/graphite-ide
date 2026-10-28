@@ -230,6 +230,10 @@ namespace Graphite {
 			return m_ReviewProgress.CountOf(branch, m_Git.GetBranches(), m_ReviewStore.GetSessions(), m_Reviews);
 		};
 
+		gitView->ReviewProblemOf = [this](const std::string& branch) {
+			return m_ReviewProgress.ProblemOf(branch, m_Git.GetBranches(), m_ReviewStore.GetSessions(), m_Reviews);
+		};
+
 		gitView->SessionBaseOf = [this](const std::string& branch) -> std::optional<std::string> {
 			const ReviewSessions& sessions = m_ReviewStore.GetSessions();
 			return sessions.IsKept(branch) ? std::optional<std::string>{sessions.Find(branch)->Base} : std::nullopt;

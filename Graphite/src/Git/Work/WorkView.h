@@ -34,6 +34,9 @@ namespace Graphite {
 
 		// Empty while the count is unknown.
 		std::function<std::optional<ViewedCount>(const std::string& branchFullName)> ReviewProgressOf;
+
+		// Why the count will not come; empty while it may. The card then shows "—" with this as its tooltip.
+		std::function<std::optional<std::string>(const std::string& branchFullName)> ReviewProblemOf;
 		std::function<void()> OnRefresh;
 
 		void Draw(const WorkBoard& board, bool reading, const std::optional<Core::Error>& error,

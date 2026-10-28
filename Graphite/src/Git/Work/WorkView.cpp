@@ -414,11 +414,16 @@ namespace Graphite {
 			return;
 		}
 
+		// WARNING: Asked first, since asking for the count is what asks for the range again once it goes stale. A range
+		// with a problem never gets a count, so it is told as one, not as a wait.
 		const std::optional<ViewedCount> viewed = ReviewProgressOf ? ReviewProgressOf(card.Branch) : std::nullopt;
-		const std::string count = ReviewCountText(viewed);
+		const std::optional<std::string> problem =
+			!viewed.has_value() && ReviewProblemOf ? ReviewProblemOf(card.Branch) : std::nullopt;
+		const std::string count = ReviewCountText(viewed, problem.has_value());
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
 
 		// "Reviewed", the bar, then the count, on one line.
+		ImGui::BeginGroup();
 		ImGui::TextDisabled("Reviewed");
 		ImGui::SameLine();
 
@@ -448,6 +453,12 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", count.c_str());
+		ImGui::EndGroup();
+
+		if (problem.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+		{
+			ImGui::SetTooltip("%s", problem->c_str());
+		}
 	}
 
 	void WorkView::DrawButtons(const WorkCard& card, std::chrono::sys_seconds now)

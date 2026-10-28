@@ -235,6 +235,59 @@ TEST_CASE("A branch's progress stays unknown while its range cannot be read")
 	CHECK(port.RangeDiffQueries == 0);
 }
 
+TEST_CASE("A branch whose range has a problem or cannot be read says why its progress will not come")
+{
+	FakeReviewPort port;
+	port.Range = RangeFrom(1, 2);
+	port.Range.Problem = Graphite::RangeProblem::NoCommonAncestor;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const ReviewSessions sessions;
+	const Core::Ref<const std::vector<Core::Branch>> branches = MainAndSide();
+	ReviewProgress progress;
+
+	CHECK_FALSE(progress.CountOf(kSide, branches, sessions, model).has_value());
+	CHECK_FALSE(progress.ProblemOf(kSide, branches, sessions, model).has_value());
+	Settle(model, jobs);
+
+	CHECK_FALSE(progress.CountOf(kSide, branches, sessions, model).has_value());
+	CHECK(progress.ProblemOf(kSide, branches, sessions, model) ==
+		  std::optional<std::string>{"side has no common ancestor with main."});
+
+	FakeReviewPort failingPort;
+	failingPort.RangeFailure = Core::Error{.Code = Core::ErrorCode::IoFailure, .Message = "the disk is gone"};
+	ReviewModel failingModel{failingPort, jobs.Submitter(), NoWatches()};
+	ReviewProgress failingProgress;
+
+	static_cast<void>(failingProgress.CountOf(kSide, branches, sessions, failingModel));
+	Settle(failingModel, jobs);
+
+	CHECK(failingProgress.ProblemOf(kSide, branches, sessions, failingModel) ==
+		  std::optional<std::string>{"the disk is gone"});
+}
+
+TEST_CASE("A branch whose range is fine has no problem to tell, and the trunk says it has no base")
+{
+	FakeReviewPort port;
+	port.Range = RangeFrom(1, 2);
+	port.RangeDiff = ThreeFiles();
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const ReviewSessions sessions;
+	const Core::Ref<const std::vector<Core::Branch>> branches = MainAndSide();
+	ReviewProgress progress;
+
+	static_cast<void>(progress.CountOf(kSide, branches, sessions, model));
+	Settle(model, jobs);
+	static_cast<void>(progress.CountOf(kSide, branches, sessions, model));
+	Settle(model, jobs);
+
+	CHECK(IsCount(progress.CountOf(kSide, branches, sessions, model), 0, 3));
+	CHECK_FALSE(progress.ProblemOf(kSide, branches, sessions, model).has_value());
+	CHECK(progress.ProblemOf(kMain, branches, sessions, model) ==
+		  std::optional<std::string>{"There is nothing to review main against."});
+}
+
 TEST_CASE("A branch's progress is unknown while the branches are unread and it has no session")
 {
 	FakeReviewPort port;

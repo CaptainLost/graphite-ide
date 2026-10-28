@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Graphite {
 
@@ -25,6 +26,9 @@ namespace Graphite {
 		// Empty while the count is unknown.
 		std::optional<ViewedCount> Viewed;
 
+		// Why the count will not come. The header then shows no count: the review below says what is wrong.
+		std::optional<std::string> ReviewProblem;
+
 		ChipColours Colours;
 	};
 
@@ -34,6 +38,10 @@ namespace Graphite {
 		BackToWork,
 		OpenInOwnTab
 	};
+
+	// The card's chips, the files viewed unless the count will not come, and "against {base}" when the base is not the
+	// trunk.
+	std::vector<Chip> ThreadHeaderChips(const ThreadHeaderInput& input);
 
 	// Back to Work, the title, branch and folder, the card chips, "against {base}" when the session's base is not the
 	// trunk, and "Open in own tab". Answers which button was clicked.

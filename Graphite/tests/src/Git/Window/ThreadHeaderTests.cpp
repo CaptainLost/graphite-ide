@@ -5,8 +5,11 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -83,6 +86,20 @@ TEST_CASE("Open in own tab sits inside the main column of the Git window and ans
 	CHECK(clicked == Graphite::ThreadHeaderClick::OpenInOwnTab);
 	CHECK(*answeredAt > kLeftColumnWidth);
 	CHECK(*answeredAt < kWindowWidth);
+}
+
+TEST_CASE("The thread header counts the viewed files, and shows no count that will not come")
+{
+	Graphite::ThreadHeaderInput input{.Card = nullptr, .TrunkName = "main", .Branch = "refs/heads/topic"};
+	const auto hasChip = [](const std::vector<Graphite::Chip>& chips, const std::string& text) {
+		return std::ranges::find(chips, text, &Graphite::Chip::Text) != chips.end();
+	};
+
+	CHECK(hasChip(Graphite::ThreadHeaderChips(input), "counting viewed files\xE2\x80\xA6"));
+
+	input.ReviewProblem = "topic has no common ancestor with main.";
+
+	CHECK_FALSE(hasChip(Graphite::ThreadHeaderChips(input), "counting viewed files\xE2\x80\xA6"));
 }
 
 TEST_CASE("Back to Work leads the thread header at the main column's left edge")

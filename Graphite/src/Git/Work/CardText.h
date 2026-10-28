@@ -66,4 +66,7 @@ namespace Graphite {
 
 	// "3/10" at the end of a card's progress bar; "…" while the count is unknown, never a zero.
 	std::string ReviewCountText(const std::optional<ViewedCount>& viewed);
+
+	// As above, but "—" for a count that will not come because the range has a problem.
+	std::string ReviewCountText(const std::optional<ViewedCount>& viewed, bool hasProblem);
 }
