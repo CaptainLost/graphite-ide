@@ -38,8 +38,9 @@ namespace Graphite {
 		{
 			if (card.Kind == WorkCardKind::WorkingCopy)
 			{
-				chips.push_back(card.Uncommitted.has_value() ? std::to_string(*card.Uncommitted) + " changes"
-															 : std::string("counting changes") + kEllipsis);
+				chips.push_back(card.Uncommitted.has_value()
+									? std::to_string(*card.Uncommitted) + (*card.Uncommitted == 1 ? " change" : " changes")
+									: std::string("counting changes") + kEllipsis);
 
 				if (card.DistanceKnown && card.Ahead > 0)
 				{

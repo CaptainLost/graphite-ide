@@ -54,6 +54,19 @@ TEST_CASE("The working copy card says its changes and what is left to push")
 	CHECK_FALSE(Has(chips, "\xE2\x86\x93" "0 to pull"));
 }
 
+TEST_CASE("The working copy card counts one change in the singular")
+{
+	Graphite::WorkCard card;
+	card.Kind = Graphite::WorkCardKind::WorkingCopy;
+	card.Branch = "refs/heads/main";
+	card.Uncommitted = 1;
+
+	const std::vector<std::string> chips = Graphite::CardChips(card, "main");
+
+	CHECK(Has(chips, "1 change"));
+	CHECK_FALSE(Has(chips, "1 changes"));
+}
+
 TEST_CASE("Uncounted uncommitted files read as waiting, not as zero")
 {
 	Graphite::WorkCard card = BranchCard();
