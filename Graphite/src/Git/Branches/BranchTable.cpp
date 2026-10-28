@@ -1,10 +1,12 @@
 #include "Git/Branches/BranchTable.h"
 
 #include "Git/Branches/BranchListFilter.h"
+#include "Git/History/CommitDetails.h"
 
 #include "Core/Base/Ascii.h"
 
 #include <algorithm>
+#include <format>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -15,6 +17,7 @@ namespace Graphite {
 		constexpr const char* kWhereSeparator = " \xC2\xB7 "; // " · "
 		constexpr const char* kLocalWord = "local";
 		constexpr const char* kWorktreeWord = "worktree";
+		constexpr std::size_t kMostAuthorsNamed = 3;
 
 		const BranchAuthors kNoAuthors;
 
@@ -349,6 +352,41 @@ namespace Graphite {
 		if (row.InWorktree)
 		{
 			text += std::string{kWhereSeparator} + kWorktreeWord;
+		}
+
+		return text;
+	}
+
+	std::string BranchTooltipText(const Core::Branch& branch, std::string_view label,
+								  const std::vector<BranchAuthor>& authors, const std::chrono::time_zone* zone)
+	{
+		std::string text{label};
+
+		if (branch.TipCommit.has_value() && !branch.TipCommit->Summary.empty())
+		{
+			text += "\n" + branch.TipCommit->Summary;
+		}
+
+		if (!authors.empty())
+		{
+			text += authors.size() == 1 ? "\nAuthor: " : "\nAuthors: ";
+
+			const std::size_t namedCount = std::min(authors.size(), kMostAuthorsNamed);
+
+			for (std::size_t authorIndex = 0; authorIndex < namedCount; ++authorIndex)
+			{
+				text += authorIndex == 0 ? authors[authorIndex].Name : ", " + authors[authorIndex].Name;
+			}
+
+			if (authors.size() > namedCount)
+			{
+				text += std::format(" +{}", authors.size() - namedCount);
+			}
+		}
+
+		if (branch.TipCommit.has_value())
+		{
+			text += "\n" + FormattedTimestamp(branch.TipCommit->Committer.When, zone);
 		}
 
 		return text;

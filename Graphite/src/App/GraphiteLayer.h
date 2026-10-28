@@ -17,10 +17,12 @@
 #include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/Changes/ChangesShared.h"
+#include "Git/Changes/ChangesView.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Git/Work/WorkModel.h"
 #include "Image/ImageTabs.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
@@ -332,10 +334,10 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these seven is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel and
-		// ReviewModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST of the seven:
-		// members are destroyed in reverse order, which joins every worker before the models and the port go away.
-		// Declaring a queue first compiles and fails only under real threading.
+		// The order among these eight is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel,
+		// ReviewModel and WorkModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST
+		// of the eight: members are destroyed in reverse order, which joins every worker before the models and the
+		// port go away. Declaring a queue first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 					   [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); }};
@@ -344,6 +346,7 @@ namespace Graphite {
 		BlameModel m_Blame{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  WatchWithDirectoryWatcher()};
+		WorkModel m_Work{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::JobQueue m_Jobs;
 
 		static constexpr std::size_t kGitWriteWorkers = 1;
@@ -365,6 +368,11 @@ namespace Graphite {
 		// WARNING: Declared before m_Panels, because ChangesPanel holds it by reference.
 		ChangesShared m_ChangesShared;
 
+		// WARNING: Declared after m_ChangesShared, which it holds, and before m_Panels, where GitView holds it by
+		// reference. The Git window's host of the Changes view; the side panel owns its own.
+		ChangesView m_GitWindowChanges{m_Git, m_Modals, m_Documents, m_DocumentWindows, m_ActiveScheme,
+									   m_Events, m_ChangesShared, "window"};
+
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
 		ReviewBadges m_ReviewBadges;
@@ -381,9 +389,6 @@ namespace Graphite {
 		NotificationHistory m_Notifications;
 		NotificationsPopup m_NotificationsPopup;
 		const std::chrono::time_zone* m_LocalTimeZone = Core::LocalTimeZone();
-
-		// WARNING: Declared before m_Panels, where GitView holds it by reference.
-		BranchListState m_BranchList;
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

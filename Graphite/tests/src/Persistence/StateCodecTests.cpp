@@ -661,31 +661,3 @@ TEST_CASE("An unknown Git window view reads back as Work")
 	CHECK(ReadWorkspaceState(file, kRoot).GitWindow == GitWindowState{});
 	CHECK(ReadWorkspaceState(Core::JsonFile{}, kRoot).GitWindow == GitWindowState{});
 }
-
-TEST_CASE("The branch list's sort and grouping survive a write and a read")
-{
-	WorkspaceState state;
-	state.BranchList = BranchListState{.Sort = BranchSort::Oldest, .Group = BranchGrouping::Author};
-
-	Core::JsonFile file;
-	WriteWorkspaceState(state, kRoot, file);
-
-	CHECK(ReadWorkspaceState(file, kRoot).BranchList == state.BranchList);
-	CHECK(file.Get("restore.branchList.sort") == "oldest");
-	CHECK(file.Get("restore.branchList.group") == "author");
-}
-
-TEST_CASE("A folder state without the branch list reads as newest first and ungrouped")
-{
-	const Core::JsonFile file;
-
-	CHECK(ReadWorkspaceState(file, kRoot).BranchList == BranchListState{});
-}
-
-TEST_CASE("An unknown branch list sort reads as newest first")
-{
-	Core::JsonFile file;
-	file.Set("restore.branchList.sort", "sideways");
-
-	CHECK(ReadWorkspaceState(file, kRoot).BranchList.Sort == BranchSort::Newest);
-}

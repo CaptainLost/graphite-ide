@@ -207,15 +207,14 @@ namespace Graphite {
 
 		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
-		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_EditorSettings,
-																   m_DiffWindows, m_Modals, m_DocumentBuffers,
-																   m_BranchList, m_Events));
+		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Work, m_GitWindowChanges, m_ActiveScheme,
+																   m_EditorSettings, m_DiffWindows, m_Modals,
+																   m_DocumentBuffers, m_Events));
 		gitView->Subscribe();
 		m_GitView = gitView;
 
 		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };
 		gitView->OnReviewMenuItem = [this](const ReviewMenuItem& item) { ApplyReviewMenuItem(item); };
-		gitView->ReviewBadgeOf = [this](const Core::Branch& branch) { return ReviewBadgeOfBranch(branch); };
 
 		gitView->OnBranchRenamed = [this](const std::string& from, const std::string& to) {
 			m_ReviewWindows.NoteRename(from, to);
@@ -450,7 +449,6 @@ namespace Graphite {
 			m_DocumentWindows.RestoreState(restorable);
 			m_SessionWindows.RestoreState(restorable.Sessions);
 			m_Terminals.RestoreState(restorable.Terminals, trusted);
-			m_BranchList = restorable.BranchList;
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
@@ -744,7 +742,6 @@ namespace Graphite {
 		state.Diffs = m_DiffWindows.CaptureState();
 		state.Reviews = m_ReviewWindows.CaptureState();
 		state.Terminals = m_Terminals.CaptureState();
-		state.BranchList = m_BranchList;
 
 		return state;
 	}

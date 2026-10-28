@@ -4,7 +4,6 @@
 #include "Git/GitStatusText.h"
 
 #include "Core/Git/Checkout.h"
-#include "Core/Git/Ref.h"
 
 #include <optional>
 #include <string>
@@ -36,10 +35,6 @@ namespace Graphite {
 	};
 
 	GitPanelWait DescribePanelWait(const GitPanelCheckouts& checkouts);
-
-	std::optional<Core::CheckoutTarget> CheckoutMarkedOnRows(const GitPanelCheckouts& checkouts);
-
-	bool IsCheckoutTargetOf(const Core::CheckoutTarget& target, const Core::Branch& branch);
 
 	// WARNING: Says nothing of a running checkout, which the branch item names in place of the head.
 	std::optional<GitActivity> DescribeGitActivity(const std::optional<GitModel::WriteReport>& report,

@@ -30,14 +30,6 @@ namespace {
 	{
 		return Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = name};
 	}
-
-	Core::Branch BranchOf(const char* name, Core::RefKind kind)
-	{
-		Core::Branch branch;
-		branch.Name = name;
-		branch.Kind = kind;
-		return branch;
-	}
 }
 
 TEST_CASE("A write of many files counts them in groups of three digits, while it runs and once it is done")
@@ -191,25 +183,4 @@ TEST_CASE("A delete whose question waits for the Git panel says so")
 	const Graphite::GitPanelWait wait = Graphite::DescribePanelWait({.DeleteHeldForPanel = "old"});
 
 	CHECK(wait.AwaitingAnswer == "Deleting branch old");
-}
-
-TEST_CASE("The row marked as being checked out follows the checkout from its plan to its write")
-{
-	CHECK(Graphite::CheckoutMarkedOnRows({.Planning = LocalTarget("a")}) == LocalTarget("a"));
-	CHECK(Graphite::CheckoutMarkedOnRows({.Asking = LocalTarget("b")}) == LocalTarget("b"));
-	CHECK(Graphite::CheckoutMarkedOnRows({.Writing = LocalTarget("c")}) == LocalTarget("c"));
-	CHECK_FALSE(Graphite::CheckoutMarkedOnRows({}).has_value());
-}
-
-TEST_CASE("A checkout target matches the branch row of its own kind and name only")
-{
-	const Core::CheckoutTarget local = LocalTarget("feature");
-	const Core::CheckoutTarget remote{.Kind = Core::CheckoutKind::RemoteBranch, .Name = "origin/feature"};
-	const Core::CheckoutTarget commit{.Kind = Core::CheckoutKind::Commit};
-
-	CHECK(Graphite::IsCheckoutTargetOf(local, BranchOf("feature", Core::RefKind::Local)));
-	CHECK_FALSE(Graphite::IsCheckoutTargetOf(local, BranchOf("feature", Core::RefKind::Remote)));
-	CHECK_FALSE(Graphite::IsCheckoutTargetOf(local, BranchOf("other", Core::RefKind::Local)));
-	CHECK(Graphite::IsCheckoutTargetOf(remote, BranchOf("origin/feature", Core::RefKind::Remote)));
-	CHECK_FALSE(Graphite::IsCheckoutTargetOf(commit, BranchOf("feature", Core::RefKind::Local)));
 }

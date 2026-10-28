@@ -87,19 +87,6 @@ namespace Graphite {
 		friend bool operator==(const ReviewTabState&, const ReviewTabState&) = default;
 	};
 
-	enum class BranchSort
-	{
-		Newest,
-		Oldest,
-		Name
-	};
-
-	enum class BranchGrouping
-	{
-		None,
-		Author
-	};
-
 	// What the Git window shows beside its navigator.
 	enum class GitWindowView
 	{
@@ -120,14 +107,6 @@ namespace Graphite {
 		friend bool operator==(const GitWindowState&, const GitWindowState&) = default;
 	};
 
-	struct BranchListState
-	{
-		BranchSort Sort = BranchSort::Newest;
-		BranchGrouping Group = BranchGrouping::None;
-
-		friend bool operator==(const BranchListState&, const BranchListState&) = default;
-	};
-
 	struct WorkspaceState
 	{
 		std::vector<TabState> Tabs;
@@ -137,7 +116,6 @@ namespace Graphite {
 		std::vector<ReviewTabState> Reviews;
 
 		std::optional<std::vector<TerminalTabState>> Terminals;
-		BranchListState BranchList;
 		GitWindowState GitWindow;
 
 		friend bool operator==(const WorkspaceState&, const WorkspaceState&) = default;

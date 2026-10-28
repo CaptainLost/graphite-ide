@@ -178,36 +178,6 @@ namespace Graphite {
 		return wait;
 	}
 
-	std::optional<Core::CheckoutTarget> CheckoutMarkedOnRows(const GitPanelCheckouts& checkouts)
-	{
-		if (checkouts.Writing.has_value())
-		{
-			return checkouts.Writing;
-		}
-
-		if (const std::optional<Core::CheckoutTarget> started = CheckoutStartedInPanel(checkouts); started.has_value())
-		{
-			return started;
-		}
-
-		return checkouts.HeldForPanel;
-	}
-
-	bool IsCheckoutTargetOf(const Core::CheckoutTarget& target, const Core::Branch& branch)
-	{
-		switch (target.Kind)
-		{
-		case Core::CheckoutKind::LocalBranch:
-			return branch.Kind == Core::RefKind::Local && branch.Name == target.Name;
-		case Core::CheckoutKind::RemoteBranch:
-			return branch.Kind == Core::RefKind::Remote && branch.Name == target.Name;
-		case Core::CheckoutKind::Commit:
-			break;
-		}
-
-		return false;
-	}
-
 	std::optional<GitActivity> DescribeGitActivity(const std::optional<GitModel::WriteReport>& report,
 												   const std::optional<std::string>& awaitingAnswer)
 	{

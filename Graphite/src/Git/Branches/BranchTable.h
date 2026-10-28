@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Graphite {
@@ -73,4 +74,8 @@ namespace Graphite {
 
 	// "local", "origin", "local · origin", then " · worktree" when held.
 	std::string WhereText(const BranchTableRow& row);
+
+	// The label, the tip's message, up to three authors and how many more, and the tip's time in the zone.
+	std::string BranchTooltipText(const Core::Branch& branch, std::string_view label,
+								  const std::vector<BranchAuthor>& authors, const std::chrono::time_zone* zone);
 }

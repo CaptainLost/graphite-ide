@@ -52,3 +52,5 @@ Paging would sort and count only the loaded part, so the order and the counts wo
 - [0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md): the loader's delay.
 - [0530](0530-draw-a-frame-only-when-there-is-reason-to.md): frames are drawn only on a reason.
 - [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md): the menus the rows carry.
+
+Superseded in part by [0657](0657-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md): `BranchListView`, `BuildBranchRows` and the saved sort and grouping are gone; the table of every branch ([0656](0656-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md)) builds its rows from a pure function and draws only the visible ones, as this record says.

@@ -261,3 +261,18 @@ TEST_CASE("Where says local, origin, both, and worktree")
 	CHECK(rows[1].InWorktree);
 	CHECK(Graphite::WhereText(rows[2]) == "upstream");
 }
+
+TEST_CASE("A branch's tooltip names its message and authors and local time")
+{
+	Core::Branch branch = Local("feature", 0);
+	branch.TipCommit->Summary = "Fix the login page";
+
+	const std::vector<Graphite::BranchAuthor> authors = {
+		{.Key = "a@x", .Name = "Ann"}, {.Key = "b@x", .Name = "Bob"}, {.Key = "c@x", .Name = "Cid"},
+		{.Key = "d@x", .Name = "Dan"}, {.Key = "e@x", .Name = "Eve"},
+	};
+
+	const std::string text = Graphite::BranchTooltipText(branch, "feature", authors, nullptr);
+
+	CHECK(text == "feature\nFix the login page\nAuthors: Ann, Bob, Cid +2\n2023-11-14 22:13");
+}

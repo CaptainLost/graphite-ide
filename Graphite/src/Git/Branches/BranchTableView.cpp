@@ -1,7 +1,6 @@
 #include "Git/Branches/BranchTableView.h"
 
 #include "Git/Branches/BranchAge.h"
-#include "Git/Branches/BranchRows.h"
 #include "UI/FittedText.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"

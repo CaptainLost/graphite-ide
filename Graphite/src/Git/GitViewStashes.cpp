@@ -112,7 +112,9 @@ namespace Graphite {
 			// WARNING: The label is drawn over an id-only Selectable because a stash message is free text and a "##" in it would cut a Selectable label short.
 			const ImVec2 rowStart = ImGui::GetCursorPos();
 
-			if (ListRowSelectable("##stash", m_SelectedStash == stash.Id, ImGuiSelectableFlags_AllowOverlap))
+			const bool shown = m_Selection.View == GitWindowView::History && m_SelectedStash == stash.Id;
+
+			if (ListRowSelectable("##stash", shown, ImGuiSelectableFlags_AllowOverlap))
 			{
 				SelectStash(stash.Id);
 			}
@@ -178,7 +180,9 @@ namespace Graphite {
 
 	void GitView::SelectStash(const Core::Oid& stash)
 	{
+		m_PendingRestore.reset();
 		m_SelectedStash = stash;
+		m_Selection = {GitWindowView::History, m_SelectedRef.value_or(std::string{})};
 
 		RequestLog(HistoryReach{});
 	}

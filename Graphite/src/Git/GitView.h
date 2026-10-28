@@ -5,8 +5,11 @@
 #include "UI/Dialogs/ModalGate.h"
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Git/CheckoutQuestion.h"
+#include "Git/Branches/BranchAuthors.h"
 #include "Git/Branches/BranchDeletion.h"
-#include "Git/Branches/BranchListView.h"
+#include "Git/Branches/BranchTableView.h"
+#include "Git/Changes/ChangesView.h"
+#include "Git/Diff/DiffBody.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
 #include "Git/History/CommitDetailsView.h"
@@ -23,7 +26,15 @@
 #include "Git/History/HistoryReach.h"
 #include "Git/History/HistoryStatus.h"
 #include "Git/History/HistoryStatusLine.h"
+#include "Git/Window/GitWindowSelection.h"
+#include "Git/Window/NavigatorRows.h"
+#include "Git/Window/NavigatorView.h"
+#include "Git/Work/WorkBoard.h"
+#include "Git/Work/WorkModel.h"
+#include "Git/Work/WorkView.h"
 #include "Persistence/PersistedState.h"
+#include "Review/ReviewFiles.h"
+#include "Sessions/SessionTitles.h"
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Events/EventBus.h"
@@ -39,6 +50,7 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -52,12 +64,14 @@
 namespace Graphite {
 	std::string RefLabel(const Core::Branch& branch);
 
+	// The Git window: a navigator of work, changes, branches and stashes beside one main area that shows
+	// what the navigator selects.
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
-				DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
-				BranchListState& branchList, Core::EventBus& events);
+		GitView(GitModel& model, WorkModel& work, ChangesView& changes, const ActiveScheme& scheme,
+				EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
+				Core::EventBus& events);
 
 		void OnUpdate(Core::Timestep timestep) override;
 
@@ -79,9 +93,29 @@ namespace Graphite {
 
 		std::function<void(const ReviewMenuItem& item)> OnReviewMenuItem;
 
-		std::function<std::string(const Core::Branch& branch)> ReviewBadgeOf;
-
 		std::function<void(const std::string& from, const std::string& to)> OnBranchRenamed;
+
+		// Every hook below may be left unset: the window then draws without what it would bring.
+		std::function<Core::Ref<const SessionTitles>()> TitlesNow;
+
+		// Draws the embedded review of the thread's branch.
+		std::function<void(const std::string& branch)> DrawReview;
+		std::function<bool()> TakeReviewClosed;
+		std::function<void(const std::string& branch)> OpenReviewTab;
+
+		// Empty while the count is unknown.
+		std::function<std::optional<ViewedCount>(const std::string& branch)> ReviewProgressOf;
+
+		// A kept session's base.
+		std::function<std::optional<std::string>(const std::string& branch)> SessionBaseOf;
+
+		void OpenThread(const std::string& branchFullName);
+		void ShowWork(bool expandReady);
+
+		GitWindowState CaptureWindowState() const;
+
+		// Applied through SelectionToRestore once the branches are known.
+		void RestoreWindowState(const GitWindowState& state);
 
 	private:
 		struct CheckoutQuestionPayload
@@ -151,10 +185,45 @@ namespace Graphite {
 			std::string To;
 		};
 
-		void RenderRefs();
-		BranchListFrame BranchListFrameNow() const;
+		void ConnectViews();
+
+		void Select(const GitWindowSelection& selection);
+
+		// The history of the ref, or HEAD's with none.
+		void SelectRef(std::optional<std::string> fullName);
 		void SelectBranch(const Core::Branch& branch);
+
+		// History's selection names the ref the history shows, so it follows m_SelectedRef.
+		void KeepHistorySelectionOnRef();
+
+		void FollowWork(bool panelOnScreen);
+		void ApplyPendingRestore();
+		void RebuildBoardWhenOutOfDate();
+		void RebuildNavigatorWhenOutOfDate();
+
+		void RenderNavigator();
+		void RenderNavigatorHeader();
+		void RenderMain(const GitPalette& palette);
+		void RenderWork();
+		void RenderThread();
+		void RenderChanges(const GitPalette& palette);
+		void RenderChangesDiff(const GitPalette& palette);
+		void RenderHistory(const GitPalette& palette);
+		void RenderHistoryHeader();
+		void RenderBranchTable();
+
+		const WorkCard* CardOfBranch(const std::string& branchFullName) const;
+		std::string HistoryTitle() const;
+
+		void FollowSelectedRef();
+		void FollowThreadBranch(const std::vector<Core::Branch>& branches, bool renameLanded);
+		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
+
+		// Opens the menu on a right-click of the last item.
 		void RenderRefMenu(const Core::Branch& branch);
+
+		// Fills a menu already open.
+		void RenderRefMenuItems(const Core::Branch& branch);
 
 		void RenderReviewItem(const Core::Branch& branch);
 		void DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items);
@@ -170,8 +239,6 @@ namespace Graphite {
 		void BeginRename(const std::string& branch);
 
 		void ApplyCommitAction();
-
-		void FollowSelectedRef();
 
 		void ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen);
 		void AskCheckoutQuestion(const CheckoutPlanAnswer& answer, std::vector<std::filesystem::path> unsaved,
@@ -242,6 +309,8 @@ namespace Graphite {
 		std::optional<BaseSeen> m_BaseSeen;
 
 		GitModel& m_Model;
+		WorkModel& m_Work;
+		ChangesView& m_Changes;
 		const ActiveScheme& m_Scheme;
 
 		EditorSettings& m_EditorSettings;
@@ -254,7 +323,62 @@ namespace Graphite {
 
 		CommitListView m_Commits;
 		DiffView m_Diff;
-		BranchListView m_BranchList;
+
+		GitWindowSelection m_Selection;
+
+		// A restored thread or history waits here for the branches it names.
+		std::optional<GitWindowState> m_PendingRestore;
+
+		NavigatorView m_Navigator;
+		WorkView m_WorkView;
+		BranchTableView m_BranchTable;
+
+		struct BoardInputs
+		{
+			Core::Ref<const WorkFacts> Facts;
+			Core::Ref<const std::vector<Core::Branch>> Branches;
+			Core::Ref<const Core::WorkingTreeStatus> Status;
+			Core::Ref<const SessionTitles> Titles;
+
+			friend bool operator==(const BoardInputs&, const BoardInputs&) = default;
+		};
+
+		// WARNING: The inputs are held, not only compared, so a snapshot freed and another made at its address can
+		// never pass for the one the board was built from.
+		std::optional<BoardInputs> m_BoardBuiltFrom;
+		WorkBoard m_Board;
+		std::uint64_t m_BoardVersion = 0;
+		std::vector<std::filesystem::path> m_CardWorktrees;
+
+		Core::Ref<const std::vector<Core::Branch>> m_FollowedBranches;
+
+		struct NavigatorInputs
+		{
+			std::uint64_t BoardVersion = 0;
+			Core::Ref<const std::vector<Core::Branch>> Branches;
+			std::optional<std::size_t> ChangeCount;
+			GitWindowSelection Selection;
+
+			friend bool operator==(const NavigatorInputs&, const NavigatorInputs&) = default;
+		};
+
+		// The rows' indices point into the branches held here.
+		std::optional<NavigatorInputs> m_NavigatorBuiltFrom;
+		std::vector<NavigatorRow> m_NavigatorRows;
+
+		// WARNING: The table compares its input's snapshots by address, so these are the ones it was last handed,
+		// held until the next frame it draws: a snapshot freed while the table remembers its address could come
+		// back as another at the same address and pass for it.
+		Core::Ref<const std::vector<Core::Branch>> m_TableBranches;
+		Core::Ref<const BranchAuthors> m_TableAuthors;
+		Core::Ref<const WorkFacts> m_TableFacts;
+
+		// WARNING: A working-tree diff asks GitModel's single working-tree slot, which a diff tab shares, so it is
+		// asked for only while it is drawn.
+		DiffBody m_ChangesDiff;
+		bool m_ChangesPicked = false;
+		float m_ChangesListHeight = 0.0f;
+		bool m_ChangesDrawn = false;
 
 		std::optional<std::string> m_SelectedRef;
 
