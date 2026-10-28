@@ -19,7 +19,6 @@
 #include "UI/ClipboardCopy.h"
 #include "UI/FittedText.h"
 #include "UI/Lists/ListRow.h"
-#include "UI/SplitResults.h"
 #include "UI/ToastEvent.h"
 
 #include <IconsLucide.h>
@@ -36,7 +35,8 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr float kChangesListHeightInFontSizes = 20.0f;
+		constexpr float kChangesListWidthInFontSizes = 22.0f;
+		constexpr int kChangesColumnCount = 2;
 
 		constexpr const char* kNoTrunkName = "the trunk";
 
@@ -496,21 +496,22 @@ namespace Graphite {
 	{
 		m_ChangesDrawn = true;
 
-		if (m_ChangesListHeight <= 0.0f)
+		// The picked file's diff sits beside the list, which keeps the commit box at its foot.
+		if (ImGui::BeginTable("gitChanges", kChangesColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
-			m_ChangesListHeight = ImGui::GetFontSize() * kChangesListHeightInFontSizes;
+			ImGui::TableSetupColumn("files", ImGuiTableColumnFlags_WidthFixed,
+									ImGui::GetFontSize() * kChangesListWidthInFontSizes);
+			ImGui::TableSetupColumn("diff", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableNextRow();
+
+			ImGui::TableSetColumnIndex(0);
+			m_Changes.Draw();
+
+			ImGui::TableSetColumnIndex(1);
+			RenderChangesDiff(palette);
+
+			ImGui::EndTable();
 		}
-
-		const std::function<void()> drawList = [this] { m_Changes.Draw(); };
-		const std::function<void()> drawDiff = [this, &palette] { RenderChangesDiff(palette); };
-
-		DrawSplitResults(SplitResultsInput{.HasSelection = true,
-										   .ResultsHeight = m_ChangesListHeight,
-										   .DrawResults = drawList,
-										   .DrawPreview = drawDiff,
-										   .ResultsChildId = "##gitChanges",
-										   .PreviewChildId = "##gitChangesDiff",
-										   .SplitterId = "##gitChangesSplit"});
 	}
 
 	void GitView::RenderChangesDiff(const GitPalette& palette)

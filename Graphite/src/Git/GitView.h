@@ -377,7 +377,6 @@ namespace Graphite {
 		// asked for only while it is drawn.
 		DiffBody m_ChangesDiff;
 		bool m_ChangesPicked = false;
-		float m_ChangesListHeight = 0.0f;
 		bool m_ChangesDrawn = false;
 
 		std::optional<std::string> m_SelectedRef;
