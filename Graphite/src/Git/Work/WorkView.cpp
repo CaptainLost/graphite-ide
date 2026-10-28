@@ -174,6 +174,8 @@ namespace Graphite {
 
 	void WorkView::DrawBar(const WorkBoard& board, bool reading)
 	{
+		const float barTop = ImGui::GetCursorPosY();
+
 		ImGui::AlignTextToFramePadding();
 		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 		ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
@@ -188,13 +190,17 @@ namespace Graphite {
 		// tens of worktrees takes a while, so the wait is told here; the board's own loader is only for an empty board.
 		if (reading && !ShowsBoardLoader(board, reading))
 		{
+			// WARNING: The loader places its text from the cursor, not on the line's text baseline, so it is lowered
+			// by the frame padding the bar's text stands on.
 			ImGui::SameLine();
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y);
 			ImGui::PushID("##workReading");
 			Core::LoadingLine("Reading worktrees and branches");
 			ImGui::PopID();
 		}
 
 		ImGui::SameLine(ImGui::GetContentRegionMax().x - Core::IconButtonSize());
+		ImGui::SetCursorPosY(barTop);
 
 		if (Core::DrawIconButton("##workRefresh", ICON_LC_REFRESH_CW, false, "Refresh") && OnRefresh)
 		{
