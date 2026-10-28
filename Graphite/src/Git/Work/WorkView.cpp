@@ -2,6 +2,7 @@
 
 #include "Git/Branches/BranchAge.h"
 #include "Git/Work/CardText.h"
+#include "Git/Work/ChipRow.h"
 #include "UI/FittedText.h"
 #include "UI/Lists/Chevron.h"
 
@@ -32,16 +33,9 @@ namespace Graphite {
 		constexpr float kCodeLineScale = 1.1f;
 		constexpr int kSubjectLines = 2;
 		constexpr int kChipLines = 2;
-		constexpr float kChipPaddingX = 6.0f;
-		constexpr float kChipPaddingY = 2.0f;
 		constexpr float kProgressBarHeight = 4.0f;
 		constexpr float kHalf = 0.5f;
 		constexpr std::size_t kCardItemCount = 7;
-
-		float ChipHeight()
-		{
-			return ImGui::GetTextLineHeight() + 2.0f * kChipPaddingY;
-		}
 
 		float CardHeight()
 		{
@@ -80,18 +74,6 @@ namespace Graphite {
 			}
 
 			return line;
-		}
-
-		void DrawChip(const std::string& text, const ImVec2& size)
-		{
-			ImGui::Dummy(size);
-
-			const ImVec2 min = ImGui::GetItemRectMin();
-			ImDrawList* const drawList = ImGui::GetWindowDrawList();
-			drawList->AddRectFilled(min, ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_FrameBg),
-									ImGui::GetStyle().FrameRounding);
-			drawList->AddText(ImVec2(min.x + kChipPaddingX, min.y + kChipPaddingY),
-							  ImGui::GetColorU32(ImGuiCol_TextDisabled), text.c_str());
 		}
 
 		std::string InfoText(const WorkInfo& info)
@@ -287,33 +269,7 @@ namespace Graphite {
 							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
 								  ImGuiWindowFlags_NoBackground))
 		{
-			const float spacing = ImGui::GetStyle().ItemSpacing.x;
-			const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-			bool first = true;
-
-			for (const std::string& chip : CardChips(card, trunk))
-			{
-				const ImVec2 size(ImGui::CalcTextSize(chip.c_str()).x + 2.0f * kChipPaddingX, ChipHeight());
-
-				if (!first)
-				{
-					const float after = ImGui::GetItemRectMax().x + spacing;
-
-					if (after + size.x <= right)
-					{
-						ImGui::SameLine();
-					}
-				}
-
-				DrawChip(chip, size);
-				first = false;
-			}
-
-			// WARNING: A card with no chips still ends the child on an item.
-			if (first)
-			{
-				ImGui::Dummy(ImVec2(0.0f, ChipHeight()));
-			}
+			DrawChipRow(CardChips(card, trunk));
 		}
 		ImGui::EndChild();
 	}
