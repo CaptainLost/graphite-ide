@@ -1,5 +1,7 @@
 #include "Image/PictureCanvas.h"
 
+#include "UI/WheelNotches.h"
+
 #include "Core/ImGui/ImageTexture.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -16,15 +18,6 @@ namespace Graphite {
 		constexpr float kGridLineWidth = 1.0f;
 		constexpr float kCheckerSide = 8.0f;
 		constexpr float kSmallestItemSide = 1.0f;
-
-		// A touchpad reports a fraction of a notch at a time; the fractions add up and a step comes with each whole notch.
-		int TakeWholeNotches(float& pending, float wheel)
-		{
-			pending += wheel;
-			const int notches = static_cast<int>(std::trunc(pending));
-			pending -= static_cast<float>(notches);
-			return notches;
-		}
 
 		float SteppedZoom(float zoom, int notches)
 		{

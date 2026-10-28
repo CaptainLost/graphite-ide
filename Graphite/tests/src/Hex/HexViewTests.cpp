@@ -756,6 +756,35 @@ TEST_CASE("The wheel scrolls three rows a notch and is not passed on")
 	CHECK(screen.State.Scroll.TopRow == 0);
 }
 
+TEST_CASE("Quarter wheel notches over the rows scroll three rows after four")
+{
+	HexScreen screen(Pattern(4096));
+	screen.Land();
+
+	const std::optional<Found> top = screen.FindOffset("00000000");
+	REQUIRE(top.has_value());
+	screen.MoveTo(top->Box.GetCenter());
+
+	for (int quarter = 0; quarter < 3; ++quarter)
+	{
+		screen.Wheel(-0.25f);
+		CHECK(screen.State.Scroll.TopRow == 0);
+	}
+
+	screen.Wheel(-0.25f);
+	CHECK(screen.State.Scroll.TopRow == 3);
+
+	SUBCASE("A fraction is dropped when the pointer leaves the rows")
+	{
+		screen.Wheel(-0.75f);
+		screen.MoveTo(kFarAway);
+		screen.MoveTo(top->Box.GetCenter());
+		screen.Wheel(-0.25f);
+
+		CHECK(screen.State.Scroll.TopRow == 3);
+	}
+}
+
 TEST_CASE("Ctrl+wheel over the rows leaves the scroll and is routed to the hovered-editor chords")
 {
 	HexScreen screen(Pattern(4096));
@@ -778,7 +807,11 @@ TEST_CASE("Ctrl+wheel over the rows leaves the scroll and is routed to the hover
 	screen.Wheel(-1.0f);
 
 	CHECK(screen.State.Scroll.TopRow == 3);
-	CHECK(routed >= 1);
+	CHECK(routed == 1);
+
+	// Ctrl held over the rows with no turn routes nothing.
+	screen.Draw();
+	CHECK(routed == 1);
 
 	io.AddKeyEvent(ImGuiKey_LeftCtrl, false);
 	io.AddKeyEvent(ImGuiMod_Ctrl, false);

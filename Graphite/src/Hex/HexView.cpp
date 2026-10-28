@@ -3,6 +3,7 @@
 #include "Hex/HexFile.h"
 #include "Hex/HexGrid.h"
 #include "Hex/HexText.h"
+#include "UI/WheelNotches.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Assert.h"
@@ -77,12 +78,6 @@ namespace Graphite {
 			bool OverGrab = false;
 			bool Held = false;
 		};
-
-		// A touchpad reports a fraction of a notch, which still counts as one, as the terminal counts it.
-		std::int64_t WholeNotches(float wheel)
-		{
-			return static_cast<std::int64_t>(wheel > 0.0f ? std::ceil(wheel) : std::floor(wheel));
-		}
 
 		// Shift extends any move; Control is part of only Ctrl+Home and Ctrl+End, and any other modifier leaves the
 		// stroke to someone else.
@@ -208,9 +203,10 @@ namespace Graphite {
 			// wheel to the window's own scroll at the start of the next frame and tests the ownership set during this one.
 			ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, owner);
 
-			if (const std::int64_t notches = WholeNotches(ImGui::GetIO().MouseWheel); notches != 0)
+			if (const int notches = TakeWholeNotches(state.WheelPending, ImGui::GetIO().MouseWheel); notches != 0)
 			{
-				state.Scroll = ScrolledBy(state.Scroll, -notches * kWheelRows, rows.Count, rows.Visible);
+				state.Scroll = ScrolledBy(state.Scroll, -static_cast<std::int64_t>(notches) * kWheelRows, rows.Count,
+										  rows.Visible);
 			}
 		}
 
@@ -323,13 +319,17 @@ namespace Graphite {
 
 			const ImRect whole(rows.Area.Min, rows.Track.Max);
 
+			const ImGuiIO& io = ImGui::GetIO();
+
 			if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
 				ImGui::IsMouseHoveringRect(whole.Min, whole.Max))
 			{
 				// With Control held the turn is not the view's: the rows are drawn in the editor font, which it zooms.
-				if (ImGui::GetIO().KeyCtrl)
+				if (io.KeyCtrl)
 				{
-					if (input.RouteWheel)
+					state.WheelPending = 0.0f;
+
+					if (io.MouseWheel != 0.0f && input.RouteWheel)
 					{
 						input.RouteWheel();
 					}
@@ -348,6 +348,10 @@ namespace Graphite {
 			if (state.Hovered)
 			{
 				ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
+			}
+			else
+			{
+				state.WheelPending = 0.0f;
 			}
 
 			WantRowsOnScreen(file, state.Scroll, rows);

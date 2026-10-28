@@ -23,6 +23,9 @@ namespace Graphite {
 		HexScroll Scroll;
 		std::optional<std::uint64_t> Hovered;
 		std::uint64_t SeenChange = 0;
+
+		// The part of a wheel notch over the rows not yet taken as a scroll.
+		float WheelPending = 0.0f;
 	};
 
 	struct HexViewInput
@@ -41,8 +44,8 @@ namespace Graphite {
 		// One line above the header, such as why an image is shown as bytes; empty for none.
 		std::string_view Notice;
 
-		// Run while the pointer is over the rows and Ctrl is held with a wheel turn, which the view leaves unscrolled: the
-		// owner routes the turn to the chords bound to a hovered editor, such as the font zoom. Empty for none.
+		// Run in a frame whose wheel turns while the pointer is over the rows with Ctrl held, a turn the view leaves
+		// unscrolled: the owner routes it to the chords bound to a hovered editor, such as the font zoom. Empty for none.
 		std::function<void()> RouteWheel;
 	};
 
