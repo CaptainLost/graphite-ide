@@ -20,6 +20,9 @@ namespace Graphite {
 	// "feature · feature-folder": the short branch name and the worktree folder, either alone when the other is missing.
 	std::string CardBranchLine(const WorkCard& card);
 
+	// "33 worktrees · main ↑13 to push" over the cards; the count reads as waiting until the facts land, never as 0.
+	std::string WorkSummaryText(const WorkBoard& board);
+
 	// "Reviewed 3/10"; "Reviewed …" while the count is unknown, never a zero.
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed);
 }

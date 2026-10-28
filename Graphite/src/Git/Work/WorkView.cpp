@@ -81,6 +81,11 @@ namespace Graphite {
 		{
 			return reason == ReadyReason::Merged ? "merged into " + trunk : "same change already in " + trunk;
 		}
+
+		bool ShowsBoardLoader(const WorkBoard& board, bool reading)
+		{
+			return board.FactsPending && reading && board.Cards.size() <= 1;
+		}
 	}
 
 	void WorkView::ExpandReady()
@@ -91,7 +96,7 @@ namespace Graphite {
 	void WorkView::Draw(const WorkBoard& board, bool reading, const std::optional<Core::Error>& error,
 						std::chrono::sys_seconds now)
 	{
-		DrawBar(board);
+		DrawBar(board, reading);
 
 		// WARNING: Without facts the board has only the working copy, so a failure of the read is the whole answer.
 		if (error.has_value() && board.FactsPending)
@@ -106,7 +111,7 @@ namespace Graphite {
 
 		DrawCards(board, now);
 
-		if (board.FactsPending && reading && board.Cards.size() <= 1)
+		if (ShowsBoardLoader(board, reading))
 		{
 			Core::LoadingState("Reading worktrees and branches");
 		}
@@ -114,31 +119,25 @@ namespace Graphite {
 		DrawReady(board, now);
 	}
 
-	void WorkView::DrawBar(const WorkBoard& board)
+	void WorkView::DrawBar(const WorkBoard& board, bool reading)
 	{
-		std::size_t worktrees = 0;
-
-		for (const WorkCard& card : board.Cards)
-		{
-			worktrees += card.Worktree.has_value() ? 1 : 0;
-		}
-
-		std::string summary = std::to_string(worktrees) + (worktrees == 1 ? " worktree" : " worktrees");
-
-		if (!board.Cards.empty() && board.Cards.front().Kind == WorkCardKind::WorkingCopy &&
-			board.Cards.front().DistanceKnown && board.Cards.front().Ahead > 0)
-		{
-			summary += " \xC2\xB7 " + Core::ShortBranchName(board.Cards.front().Branch) + " \xE2\x86\x91" +
-				std::to_string(board.Cards.front().Ahead) + " to push";
-		}
-
 		ImGui::AlignTextToFramePadding();
 		ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
 		ImGui::TextUnformatted(ICON_LC_LAYOUT_GRID " Work");
 		ImGui::PopStyleColor();
 
 		ImGui::SameLine();
-		ImGui::TextDisabled("%s", summary.c_str());
+		ImGui::TextDisabled("%s", WorkSummaryText(board).c_str());
+
+		// WARNING: The cards stand for every branch while the facts are read, and the first read of a repository with
+		// tens of worktrees takes a while, so the wait is told here; the board's own loader is only for an empty board.
+		if (reading && !ShowsBoardLoader(board, reading))
+		{
+			ImGui::SameLine();
+			ImGui::PushID("##workReading");
+			Core::LoadingLine("Reading worktrees and branches");
+			ImGui::PopID();
+		}
 
 		ImGui::SameLine(ImGui::GetContentRegionMax().x - Core::IconButtonSize());
 

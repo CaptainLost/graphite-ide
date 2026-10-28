@@ -645,3 +645,20 @@ TEST_CASE("The facts request names the trunk and every other local branch but HE
 	CHECK(empty.TrunkTip.IsZero());
 	CHECK(empty.Branches.empty());
 }
+
+TEST_CASE("The board counts every worktree of the repository once the facts land, and none before")
+{
+	Scene scene;
+	scene.Add("merged");
+	scene.Add("side");
+	scene.Matches["refs/heads/merged"] = Match(0, 1, 0, 0);
+	scene.Matches["refs/heads/side"] = Match(2, 0, 2, 0);
+	scene.Worktree("merged", 0);
+	scene.Worktree("side", 0);
+
+	// The main worktree and the two linked ones, one of them ready to remove and so on no card.
+	CHECK(scene.Build().Worktrees == std::optional<std::size_t>{3});
+
+	scene.HaveFacts = false;
+	CHECK_FALSE(scene.Build().Worktrees.has_value());
+}

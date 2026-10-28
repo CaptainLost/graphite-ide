@@ -196,6 +196,11 @@ namespace Graphite {
 		board.FactsPending = facts == nullptr || facts->Answers != WorkFactsRequestFor(branches, facts->Answers.PatchBudget);
 		board.Cards.push_back(WorkingCopyCard(input, head, MainWorktree(facts)));
 
+		if (facts != nullptr)
+		{
+			board.Worktrees = facts->Worktrees.size();
+		}
+
 		if (trunk == nullptr)
 		{
 			return board;

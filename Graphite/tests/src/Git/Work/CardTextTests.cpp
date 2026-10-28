@@ -169,6 +169,26 @@ TEST_CASE("A card's branch line names the worktree folder, also of a path that e
 	CHECK(Graphite::CardBranchLine(BranchCard()) == "feature");
 }
 
+TEST_CASE("The Work summary counts the worktrees, reads as waiting until they are counted, and says what is left to push")
+{
+	Graphite::WorkBoard board;
+
+	Graphite::WorkCard workingCopy;
+	workingCopy.Kind = Graphite::WorkCardKind::WorkingCopy;
+	workingCopy.Branch = "refs/heads/main";
+	board.Cards.push_back(workingCopy);
+
+	CHECK(Graphite::WorkSummaryText(board) == "counting worktrees\xE2\x80\xA6");
+
+	board.Worktrees = 1;
+	CHECK(Graphite::WorkSummaryText(board) == "1 worktree");
+
+	board.Worktrees = 33;
+	board.Cards.front().Ahead = 13;
+	board.Cards.front().DistanceKnown = true;
+	CHECK(Graphite::WorkSummaryText(board) == "33 worktrees \xC2\xB7 main \xE2\x86\x91" "13 to push");
+}
+
 TEST_CASE("Review progress reads as waiting until it is known")
 {
 	CHECK(Graphite::ReviewProgressText(std::nullopt) == "Reviewed \xE2\x80\xA6");

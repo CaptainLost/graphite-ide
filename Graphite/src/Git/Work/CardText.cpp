@@ -139,6 +139,26 @@ namespace Graphite {
 		return line;
 	}
 
+	std::string WorkSummaryText(const WorkBoard& board)
+	{
+		std::string summary = !board.Worktrees.has_value() ? std::string("counting worktrees") + kEllipsis
+							  : *board.Worktrees == 1       ? std::string("1 worktree")
+															: std::to_string(*board.Worktrees) + " worktrees";
+
+		if (!board.Cards.empty())
+		{
+			const WorkCard& workingCopy = board.Cards.front();
+
+			if (workingCopy.Kind == WorkCardKind::WorkingCopy && workingCopy.DistanceKnown && workingCopy.Ahead > 0)
+			{
+				summary += std::string(" ") + kMiddleDot + " " + Core::ShortBranchName(workingCopy.Branch) + " " +
+						   kUpArrow + std::to_string(workingCopy.Ahead) + " to push";
+			}
+		}
+
+		return summary;
+	}
+
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed)
 	{
 		if (!viewed.has_value())

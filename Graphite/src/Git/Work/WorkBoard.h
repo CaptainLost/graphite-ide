@@ -103,6 +103,9 @@ namespace Graphite {
 
 		// No facts answer the current branches yet.
 		bool FactsPending = false;
+
+		// Every worktree of the repository, the main one too; unknown until the first facts land.
+		std::optional<std::size_t> Worktrees;
 	};
 
 	struct WorkBoardInput
