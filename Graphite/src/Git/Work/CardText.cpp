@@ -88,7 +88,8 @@ namespace Graphite {
 							trunk);
 		}
 
-		if (!card.Checked)
+		// Only a branch's commits are matched against the trunk's.
+		if (card.Kind == WorkCardKind::Branch && !card.Checked)
 		{
 			chips.push_back("not checked against " + trunk);
 		}

@@ -97,6 +97,27 @@ TEST_CASE("An unchecked card says it was not checked against the trunk")
 	CHECK(Has(Graphite::CardChips(card, "main"), "not checked against main"));
 }
 
+TEST_CASE("Only a branch card says it was not checked: the working copy and a detached worktree have no patch check")
+{
+	Graphite::WorkCard workingCopy;
+	workingCopy.Kind = Graphite::WorkCardKind::WorkingCopy;
+	workingCopy.Branch = "refs/heads/feature";
+	workingCopy.Uncommitted = 0;
+
+	Graphite::WorkCard detached;
+	detached.Kind = Graphite::WorkCardKind::DetachedWorktree;
+	detached.Worktree = "C:/repo-detached";
+	detached.Uncommitted = 2;
+
+	for (const Graphite::WorkCard& card : {workingCopy, detached})
+	{
+		for (const std::string& chip : Graphite::CardChips(card, "main"))
+		{
+			CHECK(chip.find("not checked") == std::string::npos);
+		}
+	}
+}
+
 TEST_CASE("A detached card names its commit and the operation in progress")
 {
 	Graphite::WorkCard card = BranchCard();
