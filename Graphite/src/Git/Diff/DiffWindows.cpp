@@ -15,6 +15,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -273,6 +274,19 @@ namespace Graphite {
 	void DiffWindows::CloseWorkingTree()
 	{
 		std::erase_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Body.Diff); });
+	}
+
+	std::optional<OpenDiff> DiffWindows::WorkingTreeDiff() const
+	{
+		const auto found =
+			std::ranges::find_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Body.Diff); });
+
+		if (found == m_Open.end())
+		{
+			return std::nullopt;
+		}
+
+		return found->Body.Diff;
 	}
 
 	std::vector<DiffTabState> DiffWindows::CaptureState() const

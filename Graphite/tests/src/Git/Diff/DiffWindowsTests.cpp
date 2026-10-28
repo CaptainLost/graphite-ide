@@ -136,6 +136,22 @@ TEST_CASE("Opening the same working-tree diff twice adds one tab")
 	CHECK(windows.GetCount() == 1);
 }
 
+TEST_CASE("The working-tree tab's diff is known while it is open")
+{
+	Graphite::DiffWindows windows;
+	CHECK_FALSE(windows.WorkingTreeDiff().has_value());
+
+	windows.Open(Diff(1, "commit.txt"));
+	CHECK_FALSE(windows.WorkingTreeDiff().has_value());
+
+	const Graphite::OpenDiff staged{.Commit = std::nullopt, .Target = Core::DiffTarget::IndexToHead, .Path = "a.txt"};
+	windows.Open(staged);
+	CHECK(windows.WorkingTreeDiff() == staged);
+
+	windows.CloseWorkingTree();
+	CHECK_FALSE(windows.WorkingTreeDiff().has_value());
+}
+
 namespace {
 
 	Graphite::OpenDiff WorkingDiff(Core::DiffTarget target, const char* path)

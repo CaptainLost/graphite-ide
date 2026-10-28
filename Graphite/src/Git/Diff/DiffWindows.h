@@ -53,6 +53,9 @@ namespace Graphite {
 		// immediately before Open() so the previous tab does not ask into the new tab's slot.
 		void CloseWorkingTree();
 
+		// What the working-tree tab shows, while one is open.
+		std::optional<OpenDiff> WorkingTreeDiff() const;
+
 		std::vector<DiffTabState> CaptureState() const;
 
 		void RestoreState(const std::vector<DiffTabState>& diffs);
