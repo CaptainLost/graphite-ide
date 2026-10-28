@@ -60,8 +60,10 @@
 #include "Core/Base/Log.h"
 
 #include "Core/ImGui/DetachedWindows.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/Theme.h"
@@ -220,18 +222,33 @@ namespace Graphite {
 			m_ReviewWindows.NoteRename(from, to);
 		};
 
+		gitView->DrawReview = [this](const std::string& branch) { DrawThreadReview(branch); };
+		gitView->TakeReviewClosed = [this] { return m_ReviewWindows.TakeEmbeddedClosed(); };
+		gitView->OpenReviewTab = [this](const std::string& branch) { OpenReviewTab(branch); };
+
+		gitView->ReviewProgressOf = [this](const std::string& branch) {
+			return m_ReviewProgress.CountOf(branch, m_Git.GetBranches(), m_ReviewStore.GetSessions(), m_Reviews);
+		};
+
+		gitView->SessionBaseOf = [this](const std::string& branch) -> std::optional<std::string> {
+			const ReviewSessions& sessions = m_ReviewStore.GetSessions();
+			return sessions.IsKept(branch) ? std::optional<std::string>{sessions.Find(branch)->Base} : std::nullopt;
+		};
+
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
 													 m_DocumentWindows, m_ActiveScheme,
 													 m_DiffWindows, m_Events, m_ChangesShared));
 
 		m_ClaudeSettings.Load();
 
-		m_Panels.Add(Core::CreateScope<SessionsPanel>(
+		m_SessionsPanel = m_Panels.Add(Core::CreateScope<SessionsPanel>(
 			m_Workspace, m_ClaudeSettings, m_SessionWindows,
 			[this](const std::string& label, const ClaudeCommand& command,
 				   const std::filesystem::path& workingDirectory) {
 				return m_Terminals.OpenCommand(label, command.Program, command.Arguments, workingDirectory);
 			}));
+
+		gitView->TitlesNow = [this] { return m_SessionsPanel->GetTitles(); };
 
 		// Until a tab takes the keyboard, editor commands act on the active tab, as they always did.
 		m_ActiveEditor.Set(m_DocumentWindows);
@@ -449,6 +466,7 @@ namespace Graphite {
 			m_DocumentWindows.RestoreState(restorable);
 			m_SessionWindows.RestoreState(restorable.Sessions);
 			m_Terminals.RestoreState(restorable.Terminals, trusted);
+			m_GitView->RestoreWindowState(restorable.GitWindow);
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
@@ -534,6 +552,7 @@ namespace Graphite {
 		m_DiffWindows.CloseAll();
 
 		m_ReviewWindows.CloseAll(m_Reviews);
+		m_ReviewProgress.Clear();
 		m_ReviewStore.Close();
 		m_ReviewedBranches.reset();
 
@@ -667,20 +686,97 @@ namespace Graphite {
 		{
 		case ReviewAction::Start:
 			m_ReviewStore.GetSessions().Start(item.Branch, item.Base);
-			m_ReviewWindows.Open(item.Branch);
+			ShowThread(item.Branch);
 			break;
 		case ReviewAction::Open:
-			if (!item.Base.empty())
-			{
-				m_ReviewStore.GetSessions().OpenDraft(item.Branch, item.Base);
-			}
-
-			m_ReviewWindows.Open(item.Branch);
+			ShowThread(item.Branch);
 			break;
 		case ReviewAction::End:
 			m_ReviewWindows.AskToEnd(item.Branch);
 			break;
 		}
+	}
+
+	void GraphiteLayer::ShowThread(const std::string& branch)
+	{
+		m_GitView->OpenThread(branch);
+		RevealPanel("git");
+	}
+
+	bool GraphiteLayer::OpenReviewDraft(const std::string& branch)
+	{
+		ReviewSessions& sessions = m_ReviewStore.GetSessions();
+
+		if (sessions.Find(branch) != nullptr)
+		{
+			return true;
+		}
+
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
+
+		if (branches == nullptr)
+		{
+			return false;
+		}
+
+		const std::optional<std::string> base = ReviewBaseOf(branch, *branches, sessions);
+
+		if (!base.has_value())
+		{
+			return false;
+		}
+
+		sessions.OpenDraft(branch, *base);
+		return true;
+	}
+
+	void GraphiteLayer::DrawThreadReview(const std::string& branch)
+	{
+		if (OpenReviewDraft(branch))
+		{
+			const GitPalette palette = ReadGitPalette(m_ActiveScheme.Get());
+			const SyntaxPalette syntax = ReadSyntaxPalette(m_ActiveScheme.Get());
+
+			m_ReviewWindows.RenderEmbedded(branch, ReviewInputWith(palette, syntax));
+			return;
+		}
+
+		if (m_Git.GetBranches() != nullptr)
+		{
+			Core::EmptyState("There is no trunk to review this branch against.");
+		}
+		else if (const std::optional<Core::Error>& error = m_Git.GetBranchesError(); error.has_value())
+		{
+			Core::EmptyState("Could not read the branches: " + error->Message);
+		}
+		else
+		{
+			Core::LoadingState("Loading branches");
+		}
+	}
+
+	void GraphiteLayer::OpenReviewTab(const std::string& branch)
+	{
+		if (!OpenReviewDraft(branch))
+		{
+			return;
+		}
+
+		m_ReviewStore.GetSessions().Keep(branch);
+		m_ReviewWindows.Open(branch);
+	}
+
+	ReviewRenderInput GraphiteLayer::ReviewInputWith(const GitPalette& palette, const SyntaxPalette& syntax)
+	{
+		return ReviewRenderInput{.Model = m_Reviews,
+								 .Sessions = m_ReviewStore.GetSessions(),
+								 .Danger = DangerColourOf(m_ActiveScheme.Get()),
+								 .Palette = palette,
+								 .Syntax = syntax,
+								 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,
+								 .DiffOptions = m_EditorSettings.GetDiffViewOptions(),
+								 .CentreNode = m_DockSpace.GetCenterNodeId(),
+								 .CloseRequests = m_TabCloseRequests};
 	}
 
 	GlobalState GraphiteLayer::CaptureGlobalState()
@@ -707,6 +803,7 @@ namespace Graphite {
 		state.Diffs = m_DiffWindows.CaptureState();
 		state.Reviews = m_ReviewWindows.CaptureState();
 		state.Terminals = m_Terminals.CaptureState();
+		state.GitWindow = m_GitView->CaptureWindowState();
 
 		return state;
 	}
@@ -1188,15 +1285,7 @@ namespace Graphite {
 		const GitPalette reviewPalette = ReadGitPalette(m_ActiveScheme.Get());
 		const SyntaxPalette reviewSyntax = ReadSyntaxPalette(m_ActiveScheme.Get());
 
-		m_ReviewWindows.Render(ReviewRenderInput{.Model = m_Reviews,
-												 .Sessions = m_ReviewStore.GetSessions(),
-												 .Danger = DangerColourOf(m_ActiveScheme.Get()),
-												 .Palette = reviewPalette,
-												 .Syntax = reviewSyntax,
-												 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,
-												 .DiffOptions = m_EditorSettings.GetDiffViewOptions(),
-												 .CentreNode = m_DockSpace.GetCenterNodeId(),
-												 .CloseRequests = m_TabCloseRequests});
+		m_ReviewWindows.Render(ReviewInputWith(reviewPalette, reviewSyntax));
 
 		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()),
 								m_TabCloseRequests);

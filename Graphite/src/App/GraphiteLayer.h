@@ -37,6 +37,7 @@
 #include "Persistence/StateKeeper.h"
 #include "Review/ReviewMenu.h"
 #include "Review/ReviewModel.h"
+#include "Review/ReviewProgress.h"
 #include "Review/ReviewStore.h"
 #include "Review/ReviewWindows.h"
 #include "Review/WorktreeWatch.h"
@@ -75,7 +76,9 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -87,6 +90,7 @@ namespace Graphite {
 	class SettingsPanel;
 	class ReferencesPanel;
 	class GitView;
+	class SessionsPanel;
 
 	class GraphiteLayer final : public Core::Layer
 	{
@@ -200,6 +204,20 @@ namespace Graphite {
 
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
 		void ApplyReviewMenuItem(const ReviewMenuItem& item);
+
+		// Selects the branch's thread in the Git window and brings the window forward.
+		void ShowThread(const std::string& branch);
+
+		// Opens a draft against ReviewBaseOf's base for a branch with neither a draft nor a session. False while the
+		// branch still has neither: the branches are unread, or there is nothing to review it against.
+		bool OpenReviewDraft(const std::string& branch);
+
+		void DrawThreadReview(const std::string& branch);
+
+		// The tab exists only with a kept session, so the draft is kept first.
+		void OpenReviewTab(const std::string& branch);
+
+		ReviewRenderInput ReviewInputWith(const GitPalette& palette, const SyntaxPalette& syntax);
 
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
@@ -374,6 +392,7 @@ namespace Graphite {
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
+		ReviewProgress m_ReviewProgress;
 
 		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
 
@@ -414,6 +433,7 @@ namespace Graphite {
 		ReferencesPanel* m_ReferencesPanel = nullptr;
 		SettingsPanel* m_SettingsPanel = nullptr;
 		GitView* m_GitView = nullptr;
+		SessionsPanel* m_SessionsPanel = nullptr;
 
 		StateKeeper m_StateKeeper{
 			[this](const GlobalState& state) { m_AppSettings.SetGlobalState(state); },

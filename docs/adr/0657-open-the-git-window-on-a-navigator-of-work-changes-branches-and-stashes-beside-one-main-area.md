@@ -23,6 +23,8 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
   - **Changes**: the window's `ChangesView` in a pane 20 font sizes high to start, a splitter, and the picked file's diff under it.
   - **History**: the filter bar, the commits and the preview as before, under a header naming the ref, "HEAD · main" for HEAD's.
   - **Branches**: `BranchTableView`.
+- **Reviews.** A thread drawn for a branch with neither a session nor a draft opens a draft ([0654](0654-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md)) against the base `OfferReview` offers, else the trunk; with no trunk the thread says there is nothing to review against. A session or draft keeps its own base. The branch menu's "Review", "Review against" and "Open review" open the thread and bring the window forward. A review tab opens only from the thread header's "Open in own tab", which keeps the draft as a session first, because a tab exists only with a session.
+- **Review progress.** A card and the thread header show the files viewed out of the files in the committed range, in place of the badge [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md) put on branch rows. A kept session counts its marks as the badge did; a draft or no session counts none viewed, against the same base its thread would show. The count reads as waiting while the range or its diff is read, and also while the range cannot be read or has a problem, which the thread itself explains. A count is held per branch until its range, its marks or its whitespace setting change, so a card does not keep its diff among the review model's few held diffs.
 - Selecting a branch or a stash shows its history. File History and Show Commit show HEAD's history, and HEAD's branch row reads as selected.
 - Every branch has `RenderRefMenu`'s menu wherever it is shown: navigator, table, card or history.
 - **Which view opens.** Work, the first time. After that the view last selected, kept with the folder's state as `restore.gitWindow.view` (a word: `work`, `thread`, `changes`, `history`, `branches`) and `restore.gitWindow.branch`. An unknown word reads as Work. A restored thread or history waits for the branches, then `SelectionToRestore` applies it: a thread of a branch that is gone opens Work, a history of a ref that is gone shows HEAD's.
@@ -51,6 +53,8 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
 - History no longer sits beside a full branch list. Only the six newest local branches are one click away; any other is two, through "Show all" and the table.
 - The branch list's saved sort and grouping are dropped from the folder's state, and nothing carries them into the table, whose own sort, scope and filter are not saved.
 - A window brought back after commits elsewhere shows its facts as pending until the read it then asks for lands.
+- A card whose range cannot be read shows its review progress as waiting, not as a failure; only its thread says what went wrong.
+- Every card on screen costs a range and a diff on first sight, with a session or without one, and its range is read again after every branch snapshot while it is drawn.
 - `GitView` owns the state of five views. It is split across files by part (`GitView.cpp`, `GitViewFrame.cpp`, the dialogs, the stashes, the reveal), but it is one class.
 
 ### Neutral
@@ -69,5 +73,6 @@ The work now has its own views: cards of the work not yet in the trunk ([0653](0
 - [0493](0493-draw-the-git-view-as-a-centrally-docked-panel.md): the panel the frame is drawn in.
 - [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md): the menus every branch and stash keeps.
 - [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md): the branch list this replaces, whose way of building rows the table keeps.
+- [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md): the review badge the cards' progress replaces.
 - [0635](0635-report-each-git-write-in-the-status-bar-from-the-click-until-the-status-after-it-lands.md): the checkout's loader, moved from the branch row to the navigator header.
 - [0653](0653-count-a-branch-as-holding-work-while-a-commit-of-its-own-has-no-patch-twin-in-the-trunk-or-its-worktree-has-changes.md), [0654](0654-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md), [0655](0655-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md), [0656](0656-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md): the views the frame hosts.
