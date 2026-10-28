@@ -26,6 +26,7 @@
 #include "Explorer/NewFilePath.h"
 #include "Explorer/FilteredTree.h"
 #include "Explorer/TreeReveal.h"
+#include "Git/GitRequests.h"
 #include "UI/OpenGesture.h"
 #include "UI/TypographicMarks.h"
 #include "UI/ToastEvent.h"
@@ -457,6 +458,18 @@ namespace Graphite {
 		{
 			CopyToClipboard(m_Events, node.IsDirectory ? "folder name" : "file name",
 							Core::ToUtf8(node.Path.filename()));
+		}
+
+		if (!node.IsDirectory)
+		{
+			ImGui::Separator();
+
+			const std::optional<std::filesystem::path> relative = m_GitDecorations.RelativeOf(node.Path);
+
+			if (ImGui::MenuItem("File History", kNoShortcut, kNotSelected, relative.has_value()))
+			{
+				m_Events.Publish(ShowFileHistoryRequested{.RelativePath = *relative});
+			}
 		}
 
 		const bool nodeIsFree = !m_FileOperations.IsBusyOrHoldsABusyPath(node.Path);

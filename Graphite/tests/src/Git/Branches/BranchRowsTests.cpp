@@ -883,7 +883,7 @@ TEST_CASE("A branch's tooltip names its message and authors and local time")
 	};
 
 	const std::string text =
-		Graphite::BranchTooltipText(branches[0], "feature", authors, std::chrono::minutes{0});
+		Graphite::BranchTooltipText(branches[0], "feature", authors, nullptr);
 
 	CHECK(text == "feature\nFix the login page\nAuthors: Ann, Bob, Cid +2\n2023-11-14 22:13");
 }

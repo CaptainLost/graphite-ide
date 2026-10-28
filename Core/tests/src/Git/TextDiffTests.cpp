@@ -70,3 +70,35 @@ TEST_CASE("Adding a missing final newline changes the last line, as git counts t
 	CHECK(Diff("a\nb", "a\nb\n") ==
 		  std::vector<LineHunk>{{.OldStart = 1, .OldCount = 1, .NewStart = 1, .NewCount = 1}});
 }
+
+TEST_CASE("Trace line keeps a line below a change and shifts it")
+{
+	// old: a b c   new: a X Y c  -> hunk {OldStart 1, OldCount 1, NewStart 1, NewCount 2}
+	const std::vector<LineHunk> hunks{{.OldStart = 1, .OldCount = 1, .NewStart = 1, .NewCount = 2}};
+	const Core::TracedLine traced = Core::TraceLineToOld(hunks, 3);
+	CHECK(traced.Fate == Core::LineFate::Unchanged);
+	CHECK(traced.OldLine == 2);
+}
+
+TEST_CASE("Trace line pairs a replaced block by position")
+{
+	const std::vector<LineHunk> hunks{{.OldStart = 1, .OldCount = 1, .NewStart = 1, .NewCount = 2}};
+	CHECK(Core::TraceLineToOld(hunks, 1).Fate == Core::LineFate::Changed);
+	CHECK(Core::TraceLineToOld(hunks, 1).OldLine == 1);
+	CHECK(Core::TraceLineToOld(hunks, 2).Fate == Core::LineFate::Added);
+}
+
+TEST_CASE("Trace line keeps a line above every change where it was")
+{
+	const std::vector<LineHunk> hunks{{.OldStart = 4, .OldCount = 0, .NewStart = 4, .NewCount = 1}};
+	CHECK(Core::TraceLineToOld(hunks, 2).Fate == Core::LineFate::Unchanged);
+	CHECK(Core::TraceLineToOld(hunks, 2).OldLine == 2);
+}
+
+TEST_CASE("Trace line shifts a line below a pure deletion and keeps an empty hunk list as is")
+{
+	const std::vector<LineHunk> hunks{{.OldStart = 1, .OldCount = 2, .NewStart = 1, .NewCount = 0}};
+	CHECK(Core::TraceLineToOld(hunks, 1).Fate == Core::LineFate::Unchanged);
+	CHECK(Core::TraceLineToOld(hunks, 1).OldLine == 3);
+	CHECK(Core::TraceLineToOld({}, 7).OldLine == 7);
+}

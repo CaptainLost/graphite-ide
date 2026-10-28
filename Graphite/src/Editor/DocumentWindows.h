@@ -22,9 +22,12 @@
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Editor/Authors/LinePeekContent.h"
+
 #include "Hex/HexView.h"
 #include "Image/Zoom.h"
 
+#include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/GitDecorationView.h"
 
@@ -43,10 +46,12 @@
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -75,6 +80,7 @@ namespace Graphite {
 		bool WordWrap;
 		ChangeMarkerDisplay ChangeMarkers;
 		bool HighlightOccurrences;
+		bool LineAuthor;
 		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
@@ -87,9 +93,9 @@ namespace Graphite {
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
-						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
-						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis, Core::EventBus& events,
-						ActiveEditorTarget& activeEditor, ImageTabs& images, HexFiles& hex)
+						ChangeMarkersModel& changeMarkers, BlameModel& blame, PreviewSemantics& previewSemantics,
+						AnalysisCache& analysis, AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis,
+						Core::EventBus& events, ActiveEditorTarget& activeEditor, ImageTabs& images, HexFiles& hex)
 			: m_Documents(documents),
 			  m_ActiveEditor(activeEditor),
 			  m_Images(images),
@@ -98,6 +104,7 @@ namespace Graphite {
 			  m_Server(server),
 			  m_Diagnostics(diagnostics),
 			  m_ChangeMarkers(changeMarkers),
+			  m_Blame(blame),
 			  m_PreviewSemantics(previewSemantics),
 			  m_Analysis(analysis),
 			  m_AnalysisStore(analysisStore),
@@ -154,6 +161,8 @@ namespace Graphite {
 		std::optional<std::filesystem::path> CaretFile() override { return ActiveTextDocument(m_Documents); }
 		void GoToDefinition() override;
 		void FindReferences(ReferencesPanel& panel) override;
+		bool CanShowLineHistory() override;
+		void ShowLineHistory(bool fromMenu) override;
 
 		std::optional<std::string> GetStatusMessage() const;
 
@@ -201,6 +210,27 @@ namespace Graphite {
 			bool ServerCouldCount = false;
 		};
 
+		struct LinePeekState
+		{
+			std::size_t Line = 0;
+			std::size_t Selected = 0;
+
+			// The authors table the line's history was last asked from. A table a few edits old can name another HEAD
+			// line or none, so the history is asked again from each newer table; the blame model ignores a request equal
+			// to the one it holds.
+			Core::Ref<const LineAuthors> AskedFrom;
+
+			// Passed to the widget on the next frame the tab draws, so the peek is scrolled into view once.
+			bool JustOpened = true;
+
+			// The buffer's change sequence when the peek opened: an edit made through another view of the document
+			// closes the peek as an edit through this one does.
+			std::uint64_t ChangeSequence = 0;
+
+			// What the peek shows, built again only when the authors, the history, the line or the entry changes.
+			LinePeekCache Cache;
+		};
+
 		struct DocumentState;
 
 		DocumentState& StateFor(const std::filesystem::path& path);
@@ -231,6 +261,20 @@ namespace Graphite {
 			const std::filesystem::path& path);
 
 		void PruneDocumentStates();
+
+		// Opens the peek under `line`, in place of any other the document has; on the line it is already open on, only
+		// scrolls it into view again.
+		void OpenLinePeek(const Core::OpenItem& item, std::size_t line);
+
+		// Asks for the line's history from each authors table the blame gives, and gives what the peek shows, held in
+		// the peek until what it is built from changes.
+		const LinePeekContent& LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
+												  const Core::Ref<const LineAuthors>& authors,
+												  const std::chrono::time_zone* zone);
+
+		// Closes the peek on the caret leaving its line, an edit or a close request, or follows what was clicked in it.
+		void SettleLinePeek(const Core::OpenItem& item, DocumentState& state, const EditorFrameResult& frame,
+							const LinePeekContent* content);
 
 		void UpdateLenses(const Core::OpenItem& item, LensState& state,
 						  const EditorFrameResult& frame);
@@ -375,7 +419,7 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
-								   bool highlightOccurrences, HoverSettings hoverSettings,
+								   bool highlightOccurrences, bool lineAuthor, HoverSettings hoverSettings,
 								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 								   Core::TabCloseRequests& closeRequests,
 								   const std::filesystem::path& workspaceRoot, EditorSettings& settings);
@@ -461,6 +505,8 @@ namespace Graphite {
 
 		ChangeMarkersModel& m_ChangeMarkers;
 
+		BlameModel& m_Blame;
+
 		PreviewSemantics& m_PreviewSemantics;
 
 		AnalysisCache& m_Analysis;
@@ -482,6 +528,13 @@ namespace Graphite {
 		std::unordered_map<std::string, unsigned int> m_PendingDockTargets;
 
 		bool m_WasFocused = true;
+
+		// The Line author setting as of the last frame. With it off, a document's blame is kept only while its peek is
+		// open, so no blame is held for a file nobody is looking at the authors of.
+		bool m_LineAuthor = false;
+
+		// This frame's Escape belongs to the open navigation bubble, so no document's peek or find bar closes on it.
+		bool m_BubbleTakesEscape = false;
 
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
@@ -550,6 +603,12 @@ namespace Graphite {
 			EditorWidgetState Widget;
 
 			HoverState Hover;
+
+			// ImGui::GetTime() of the last edit made through the editor; the lowest double when there was none.
+			double LastEditAt = std::numeric_limits<double>::lowest();
+
+			// At most one peek a view; it survives switching to another tab and back.
+			std::optional<LinePeekState> Peek;
 		};
 
 		std::map<std::filesystem::path, DocumentState> m_States;

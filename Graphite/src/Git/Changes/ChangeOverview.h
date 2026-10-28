@@ -22,4 +22,10 @@ namespace Graphite {
 	std::vector<OverviewMark> BuildChangeOverview(const ChangeMarkers& markers,
 												  const std::function<float(std::size_t)>& lineTop,
 												  float minFraction);
+
+	// lineEnd(line) is where the line's last row ends on the track. A mark ends there rather than at the next line's
+	// top, which rows drawn between two lines, a peek's or a lens's, push further down.
+	std::vector<OverviewMark> BuildChangeOverview(const ChangeMarkers& markers,
+												  const std::function<float(std::size_t)>& lineTop,
+												  const std::function<float(std::size_t)>& lineEnd, float minFraction);
 }

@@ -157,6 +157,7 @@ namespace Graphite {
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 		m_HighlightOccurrences = m_Store.IsHighlightingOccurrences();
+		m_LineAuthor = m_Store.HasLineAuthor();
 
 		m_Hover.ShowInfo = m_Store.IsHoverInfoEnabled();
 		m_Hover.Preview = PreviewModeFrom(m_Store.GetHoverPreview());
@@ -246,6 +247,12 @@ namespace Graphite {
 	{
 		m_HighlightOccurrences = highlight;
 		m_Store.SetHighlightOccurrences(m_HighlightOccurrences);
+	}
+
+	void EditorSettings::SetLineAuthor(bool show)
+	{
+		m_LineAuthor = show;
+		m_Store.SetLineAuthor(m_LineAuthor);
 	}
 
 	void EditorSettings::SetHoverInfo(bool show)

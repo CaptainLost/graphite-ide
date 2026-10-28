@@ -157,6 +157,32 @@ TEST_CASE("EditorSettings remembers occurrence highlighting turned off")
 	CHECK_FALSE(reloaded.IsHighlightingOccurrences());
 }
 
+TEST_CASE("Line author setting is on by default")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+	settings.Load();
+
+	CHECK(settings.HasLineAuthor());
+}
+
+TEST_CASE("Line author setting is remembered when turned off")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.SetLineAuthor(kDisabled);
+
+		CHECK_FALSE(settings.HasLineAuthor());
+	}
+
+	Graphite::EditorSettings reloaded{store.Reload()};
+	reloaded.Load();
+
+	CHECK_FALSE(reloaded.HasLineAuthor());
+}
+
 TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
 {
 	TempAppSettings store;

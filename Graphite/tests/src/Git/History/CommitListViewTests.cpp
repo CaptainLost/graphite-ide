@@ -17,7 +17,10 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <string_view>
 
 using namespace Graphite;
 
@@ -58,7 +61,7 @@ namespace {
 			frames.Next([&] {
 				ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
 				ImGui::Begin("history");
-				view.Render(page, graph, palette, std::chrono::minutes{0},
+				view.Render(page, graph, palette, nullptr,
 							[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
 							[](const Core::Oid&) { return false; }, refs);
 				expectedPitch = Graphite::ListRowPitch();
@@ -115,7 +118,7 @@ TEST_CASE("A commit row under the pointer is highlighted once across the history
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
 		ImGui::Begin("history");
-		view.Render(page, graph, palette, std::chrono::minutes{0},
+		view.Render(page, graph, palette, nullptr,
 					[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
 					[](const Core::Oid&) { return false; }, refs);
 		ImGui::End();
@@ -180,4 +183,127 @@ TEST_CASE("A commit row under the pointer is highlighted once across the history
 	CHECK(std::abs(right - (ends.Max.x - kHighlightInset)) <= kFringe);
 
 	CHECK_FALSE(DrawsInColour(drawing, ImGui::GetColorU32(ImGuiCol_HeaderHovered)));
+}
+
+TEST_CASE("Root anchor highlights a root file's name in an expanded commit")
+{
+	constexpr int kSettleFrames = 3;
+
+	Core::LogPage page;
+	page.Commits.push_back(CommitNumbered(1));
+
+	const Core::CommitGraph graph = Core::LayoutCommits(page.Commits);
+	const GitPalette palette;
+	const CommitRefMap refs;
+	CommitListView view;
+	ImGuiFrames frames;
+
+	auto diff = std::make_shared<Core::Diff>();
+	diff->Files.push_back(Core::FileDiff{.OldPath = "README.md", .NewPath = "README.md", .Change = Core::FileChange::Modified});
+	const Core::Ref<const Core::Diff> shownDiff = diff;
+
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	view.SetExpanded(page.Commits[0].Id, true);
+
+	// What File History writes for a file at the root.
+	const std::string_view pathFilter = "/README.md";
+
+	const auto draw = [&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
+		ImGui::Begin("history");
+		view.Render(page, graph, palette, nullptr, [&shownDiff](const Core::Oid&) { return shownDiff; },
+					[](const Core::Oid&) { return false; }, refs, {}, pathFilter);
+		ImGui::End();
+	};
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frames.Next(draw);
+	}
+
+	const ImGuiTable* table = nullptr;
+	ImGuiContext& context = *ImGui::GetCurrentContext();
+
+	for (int index = 0; index < context.Tables.GetMapSize(); ++index)
+	{
+		if (const ImGuiTable* listed = context.Tables.TryGetMapData(index))
+		{
+			table = listed;
+		}
+	}
+
+	REQUIRE(table != nullptr);
+	CHECK(DrawsInColour(*table->InnerWindow->DrawList, ImGui::GetColorU32(ImGuiCol_CheckMark)));
+}
+
+TEST_CASE("Commit reveal scrolls the history to a commit far down the page")
+{
+	constexpr int kCommitCount = 300;
+	constexpr int kTargetCommit = 250;
+	constexpr int kSettleFrames = 3;
+	constexpr int kByteValues = 256;
+
+	Core::LogPage page;
+
+	for (int number = 0; number < kCommitCount; ++number)
+	{
+		Core::CommitSummary commit;
+		commit.Id.Bytes[0] = static_cast<std::uint8_t>(number / kByteValues + 1);
+		commit.Id.Bytes[1] = static_cast<std::uint8_t>(number % kByteValues);
+		commit.Summary = "commit " + std::to_string(number);
+		page.Commits.push_back(commit);
+	}
+
+	const Core::CommitGraph graph = Core::LayoutCommits(page.Commits);
+	const GitPalette palette;
+	const CommitRefMap refs;
+	CommitListView view;
+	ImGuiFrames frames;
+	float pitch = 0.0f;
+
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+
+	const auto draw = [&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
+		ImGui::Begin("history");
+		view.Render(page, graph, palette, nullptr,
+					[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
+					[](const Core::Oid&) { return false; }, refs);
+		pitch = Graphite::ListRowPitch();
+		ImGui::End();
+	};
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frames.Next(draw);
+	}
+
+	view.ScrollToCommit(page.Commits[kTargetCommit].Id);
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frames.Next(draw);
+	}
+
+	const ImGuiTable* table = nullptr;
+	ImGuiContext& context = *ImGui::GetCurrentContext();
+
+	for (int index = 0; index < context.Tables.GetMapSize(); ++index)
+	{
+		if (const ImGuiTable* listed = context.Tables.TryGetMapData(index))
+		{
+			table = listed;
+		}
+	}
+
+	REQUIRE(table != nullptr);
+
+	const ImGuiWindow& list = *table->InnerWindow;
+	const float targetTop = static_cast<float>(kTargetCommit) * pitch;
+
+	CHECK(list.Scroll.y > 0.0f);
+	CHECK(targetTop >= list.Scroll.y);
+	CHECK(targetTop + pitch <= list.Scroll.y + list.Size.y);
 }

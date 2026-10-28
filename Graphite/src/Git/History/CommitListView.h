@@ -56,7 +56,7 @@ namespace Graphite {
 	{
 	public:
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-					const GitPalette& palette, std::chrono::minutes offset,
+					const GitPalette& palette, const std::chrono::time_zone* zone,
 					const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 					const std::function<bool(const Core::Oid&)>& diffFailed, const CommitRefMap& refs,
 					std::string_view highlight = {},
@@ -71,6 +71,16 @@ namespace Graphite {
 
 		bool IsExpanded(const Core::Oid& commit) const;
 		void ToggleExpanded(const Core::Oid& commit);
+		void SetExpanded(const Core::Oid& commit, bool expanded);
+
+		// Selects the commit as a click on its row does, which lets go of the selected file.
+		void SelectCommit(const Core::Oid& commit);
+
+		void SelectFile(const FileSelection& file) { m_SelectedFile = file; }
+
+		// Brings the commit's row into view on the next Render that draws a page holding it; a page
+		// without it drops the request.
+		void ScrollToCommit(const Core::Oid& commit) { m_ScrollTarget = commit; }
 
 		std::optional<FileSelection> GetSelectedFile() const { return m_SelectedFile; }
 
@@ -97,7 +107,7 @@ namespace Graphite {
 		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 							 const GitPalette& palette, const CommitRefMap& refs,
 							 std::string_view highlight, std::chrono::sys_seconds now,
-							 std::chrono::minutes offset, bool isEarlierHistory);
+							 const std::chrono::time_zone* zone, bool isEarlierHistory);
 
 		void RenderSeparatorRow(const std::string& text);
 
@@ -110,6 +120,7 @@ namespace Graphite {
 		std::unordered_set<Core::Oid> m_Expanded;
 		std::optional<FileSelection> m_SelectedFile;
 		std::optional<Core::Oid> m_SelectedCommit;
+		std::optional<Core::Oid> m_ScrollTarget;
 
 		std::optional<CommitAction> m_CommitAction;
 		bool m_ActionsEnabled = true;

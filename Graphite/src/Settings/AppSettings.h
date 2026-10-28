@@ -91,6 +91,9 @@ namespace Graphite {
 		bool IsHighlightingOccurrences() const;
 		void SetHighlightOccurrences(bool highlight);
 
+		bool HasLineAuthor() const;
+		void SetLineAuthor(bool show);
+
 		bool IsHoverInfoEnabled() const;
 		void SetHoverInfo(bool show);
 

@@ -8,7 +8,6 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
-#include "Core/Time/TimeZone.h"
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
@@ -16,6 +15,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 #include "Git/DefaultBranch.h"
+#include "Git/GitRequests.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -440,6 +440,14 @@ namespace Graphite {
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent&) { ForgetRepository(); });
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { ForgetRepository(); });
+
+		m_Events.Subscribe<ShowFileHistoryRequested>([this](const ShowFileHistoryRequested& request) {
+			ShowFileHistory(request.RelativePath);
+		});
+
+		m_Events.Subscribe<ShowCommitRequested>([this](const ShowCommitRequested& request) {
+			ShowCommit(CommitReveal{.Commit = request.Commit, .Path = request.RelativePath});
+		});
 	}
 
 	void GitView::ForgetRepository()
@@ -466,6 +474,9 @@ namespace Graphite {
 
 		m_HeldCheckout.Forget();
 		m_Deletion.Finish();
+
+		m_PendingReveal.reset();
+		m_RevealedFile.reset();
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
 		WithdrawQuestions();
@@ -557,7 +568,7 @@ namespace Graphite {
 		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
 		frame.CheckingOut = CheckoutMarkedOnRows(Checkouts());
 		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-		frame.LocalOffset = LocalOffset();
+		frame.Zone = ReaderTimeZone();
 
 		return frame;
 	}
@@ -713,15 +724,6 @@ namespace Graphite {
 		}
 	}
 
-	std::chrono::minutes GitView::LocalOffset()
-	{
-		// WARNING: The offset is resolved on every call and never cached, since it changes at a
-		// daylight-saving boundary.
-		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
-
-		return Core::OffsetAt(Core::LocalTimeZone(), now);
-	}
-
 	void GitView::RequestLog(const HistoryReach& reach, LogAsk ask)
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
@@ -815,12 +817,15 @@ namespace Graphite {
 			if (page)
 			{
 				m_Commits.KeepSelectionWithin(*page);
+				AdvanceReveal(*page);
 			}
 			else
 			{
 				m_Commits.ClearSelection();
 			}
 		}
+
+		ConfirmRevealedFile();
 	}
 
 	void GitView::RenderFilterBar()
@@ -906,7 +911,7 @@ namespace Graphite {
 			m_Commits.SetRoomBelow(status.has_value() ? HistoryStatusLineHeight() : 0.0f);
 			m_Commits.SetEmptyText(IsShownLogNarrowed() ? "No matching commits." : "No commits yet.");
 
-			m_Commits.Render(*page, m_Graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
+			m_Commits.Render(*page, m_Graph, palette, ReaderTimeZone(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
 
 			// WARNING: Drawn straight after the list, before anything else moves the cursor, so it sits
@@ -1040,7 +1045,7 @@ namespace Graphite {
 
 		const bool diffFailed = m_Model.IsDiffFailed(commit.Id);
 
-		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, LocalOffset(), palette))
+		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, ReaderTimeZone(), palette))
 		{
 			m_Commits.ClearCommitSelection();
 		}

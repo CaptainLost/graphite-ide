@@ -2,10 +2,12 @@
 
 #include "Core/Base/Result.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Blame.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/LineHistory.h"
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
@@ -64,6 +66,17 @@ namespace Core {
 		// Newest first, in topological then date order. An unborn HEAD answers with an empty,
 		// complete page rather than an error.
 		Result<LogPage> QueryLog(const LogRequest& request) const;
+
+		// Each line of the file as it is at request.At, with the commit that last changed it and the
+		// path and line it had there; a rename is followed. NotFound when the path is not a file in
+		// that commit.
+		Result<Blame> QueryBlame(const BlameRequest& request) const;
+
+		// One line followed back along first parents to the commit that added it, listing every
+		// commit that changed it on the way, newest first. A rename is followed. Not Complete when
+		// MaxWalk or a diff that cannot be read stopped the walk first, or when a root commit was
+		// reached without the file in it.
+		Result<LineHistory> QueryLineHistory(const LineHistoryRequest& request) const;
 
 		// The commits reachable from `tip`, itself included, as `git rev-list --count` gives them.
 		// Reads only the commit graph, not the commits' messages. NotFound for a commit the object

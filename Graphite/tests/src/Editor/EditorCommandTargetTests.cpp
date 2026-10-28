@@ -34,6 +34,11 @@ namespace {
 		std::optional<std::filesystem::path> CaretFile() override { return std::filesystem::path{"a.cpp"}; }
 		void GoToDefinition() override { Calls.push_back("definition"); }
 		void FindReferences(ReferencesPanel&) override { Calls.push_back("references"); }
+		bool CanShowLineHistory() override { return Allowed; }
+		void ShowLineHistory(bool fromMenu) override
+		{
+			Calls.push_back(fromMenu ? "line history from menu" : "line history");
+		}
 	};
 
 	struct Harness
@@ -80,6 +85,25 @@ TEST_CASE("Save and close and find and go to definition reach the active target"
 	CHECK(harness.Commands.Run("editor.goToDefinition"));
 
 	CHECK(target.Calls == std::vector<std::string>{"save", "close", "find", "definition"});
+}
+
+TEST_CASE("Peek command Line History runs on the active editor")
+{
+	Harness harness;
+	RecordingTarget first;
+	RecordingTarget second;
+
+	harness.Active.Set(first);
+	harness.Active.Set(second);
+	CHECK(harness.Commands.Run(kLineHistoryCommand));
+	CHECK(harness.Commands.RunFromMenu(kLineHistoryCommand));
+
+	second.Allowed = false;
+	CHECK_FALSE(harness.Commands.Run(kLineHistoryCommand));
+
+	CHECK(first.Calls.empty());
+	CHECK(second.Calls == std::vector<std::string>{"line history", "line history from menu"});
+	CHECK(harness.Keys.FindConflicts().empty());
 }
 
 TEST_CASE("A command the active target refuses does not run")
@@ -135,7 +159,7 @@ TEST_CASE("The editing commands register before the navigation commands in their
 	}
 	expected.insert(expected.end(), {kSaveCommand, kCloseCommand});
 	CHECK(editingCount == expected.size());
-	expected.insert(expected.end(), {"find.open", kGoToDefinitionCommand, kFindReferencesCommand});
+	expected.insert(expected.end(), {"find.open", kGoToDefinitionCommand, kFindReferencesCommand, kLineHistoryCommand});
 
 	CHECK(ids == expected);
 }

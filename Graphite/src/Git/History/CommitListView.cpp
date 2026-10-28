@@ -32,6 +32,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -253,14 +254,14 @@ namespace Graphite {
 		}
 
 		std::string FormattedMoment(std::chrono::sys_seconds when, std::chrono::sys_seconds now,
-									std::chrono::minutes offset)
+									const std::chrono::time_zone* zone)
 		{
-			return std::format("{}  ·  {}", FormattedTimestamp(when, offset),
+			return std::format("{}  ·  {}", FormattedTimestamp(when, zone),
 							   RelativeAge(when, now));
 		}
 
 		void CellTooltip(int column, const Core::CommitSummary& commit,
-						 std::chrono::sys_seconds now, std::chrono::minutes offset)
+						 std::chrono::sys_seconds now, const std::chrono::time_zone* zone)
 		{
 			const bool wasCommittedAtAnotherTime = commit.Committer.When != commit.Author.When;
 
@@ -283,11 +284,11 @@ namespace Graphite {
 				break;
 
 			case Column::Date:
-				text = FormattedMoment(commit.Author.When, now, offset);
+				text = FormattedMoment(commit.Author.When, now, zone);
 
 				if (wasCommittedAtAnotherTime)
 				{
-					text += "\ncommitted " + FormattedMoment(commit.Committer.When, now, offset);
+					text += "\ncommitted " + FormattedMoment(commit.Committer.When, now, zone);
 				}
 
 				break;
@@ -297,6 +298,32 @@ namespace Graphite {
 			}
 
 			ImGui::SetTooltip("%s", text.c_str());
+		}
+
+		std::optional<int> DisplayRowOf(const std::optional<Core::Oid>& commit, const Core::LogPage& page,
+										const CommitRows& rows)
+		{
+			if (!commit.has_value())
+			{
+				return std::nullopt;
+			}
+
+			for (std::size_t commitIndex = 0; commitIndex < page.Commits.size(); ++commitIndex)
+			{
+				if (page.Commits[commitIndex].Id == *commit)
+				{
+					return Core::Narrow<int>(rows.RowOfCommit[commitIndex]);
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		// File History names a file at the root "/README.md" so that it names that file alone, and its row reads
+		// "README.md".
+		std::string_view WithoutRootAnchor(std::string_view pathHighlight)
+		{
+			return pathHighlight.starts_with('/') ? pathHighlight.substr(1) : pathHighlight;
 		}
 	}
 
@@ -369,11 +396,26 @@ namespace Graphite {
 		}
 	}
 
+	void CommitListView::SetExpanded(const Core::Oid& commit, bool expanded)
+	{
+		if (IsExpanded(commit) != expanded)
+		{
+			ToggleExpanded(commit);
+		}
+	}
+
+	void CommitListView::SelectCommit(const Core::Oid& commit)
+	{
+		m_SelectedCommit = commit;
+		m_SelectedFile.reset();
+	}
+
 	void CommitListView::Reset()
 	{
 		m_Expanded.clear();
 		m_SelectedFile.reset();
 		m_SelectedCommit.reset();
+		m_ScrollTarget.reset();
 	}
 
 	std::optional<CommitAction> CommitListView::TakeCommitAction()
@@ -400,7 +442,7 @@ namespace Graphite {
 	}
 
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-								const GitPalette& palette, std::chrono::minutes offset,
+								const GitPalette& palette, const std::chrono::time_zone* zone,
 								const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 								const std::function<bool(const Core::Oid&)>& diffFailed,
 								const CommitRefMap& refs, std::string_view highlight,
@@ -409,6 +451,8 @@ namespace Graphite {
 	{
 		if (page.Commits.empty())
 		{
+			m_ScrollTarget.reset();
+
 			constexpr float kSmallestRegion = 1.0f;
 			const float height = std::max(ImGui::GetContentRegionAvail().y - m_RoomBelow, kSmallestRegion);
 
@@ -484,8 +528,17 @@ namespace Graphite {
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 			ImGui::TableHeadersRow();
 
+			const std::optional<int> scrollRow = DisplayRowOf(std::exchange(m_ScrollTarget, std::nullopt), page, rows);
+
 			ImGuiListClipper clipper;
 			clipper.Begin(Core::Narrow<int>(rows.Rows.size()), metrics.RowHeight);
+
+			// WARNING: The clipper only draws the rows in view, and SetScrollHereY reads the row just
+			// drawn, so a row scrolled far away is made to draw this once.
+			if (scrollRow.has_value())
+			{
+				clipper.IncludeItemByIndex(*scrollRow);
+			}
 
 			while (clipper.Step())
 			{
@@ -514,11 +567,16 @@ namespace Graphite {
 					{
 						const bool isEarlierHistory = separatorRow.has_value() && static_cast<std::size_t>(displayRow) > *separatorRow;
 
-						RenderCommitRow(page, commit, palette, refs, highlight, now, offset, isEarlierHistory);
+						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, isEarlierHistory);
+
+						if (scrollRow == displayRow)
+						{
+							ImGui::SetScrollHereY(kHalf);
+						}
 					}
 					else
 					{
-						RenderFileRow(commit, row.File, palette, diffOf, diffFailed, pathHighlight);
+						RenderFileRow(commit, row.File, palette, diffOf, diffFailed, WithoutRootAnchor(pathHighlight));
 					}
 
 					ImGui::PopID();
@@ -544,7 +602,7 @@ namespace Graphite {
 	void CommitListView::RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 										 const GitPalette& palette, const CommitRefMap& refs,
 										 std::string_view highlight, std::chrono::sys_seconds now,
-										 std::chrono::minutes offset, bool isEarlierHistory)
+										 const std::chrono::time_zone* zone, bool isEarlierHistory)
 	{
 		const bool expanded = IsExpanded(commit.Id);
 		const bool isSelectedCommit = m_SelectedCommit == commit.Id;
@@ -639,7 +697,7 @@ namespace Graphite {
 
 		if (selectableHoveredForTooltip)
 		{
-			CellTooltip(ImGui::TableGetHoveredColumn(), commit, now, offset);
+			CellTooltip(ImGui::TableGetHoveredColumn(), commit, now, zone);
 		}
 
 		if (!selectableClicked)

@@ -8,10 +8,11 @@ namespace Graphite {
 	namespace {
 
 		OverviewMark MarkOf(const ChangeHunk& hunk, const std::function<float(std::size_t)>& lineTop,
-							float minFraction)
+							const std::function<float(std::size_t)>& lineEnd, float minFraction)
 		{
 			const float from = lineTop(hunk.FirstLine);
-			const float to = hunk.Kind == HunkKind::Deleted ? from : lineTop(hunk.FirstLine + hunk.LineCount);
+			const bool spansNoLine = hunk.Kind == HunkKind::Deleted || hunk.LineCount == 0;
+			const float to = spansNoLine ? from : lineEnd(hunk.FirstLine + hunk.LineCount - 1);
 
 			OverviewMark mark{.From = from,
 							  .To = std::max(to, from + minFraction),
@@ -34,6 +35,14 @@ namespace Graphite {
 												  const std::function<float(std::size_t)>& lineTop,
 												  float minFraction)
 	{
+		return BuildChangeOverview(markers, lineTop, [&lineTop](std::size_t line) { return lineTop(line + 1); },
+								   minFraction);
+	}
+
+	std::vector<OverviewMark> BuildChangeOverview(const ChangeMarkers& markers,
+												  const std::function<float(std::size_t)>& lineTop,
+												  const std::function<float(std::size_t)>& lineEnd, float minFraction)
+	{
 		std::vector<OverviewMark> marks;
 		marks.reserve(markers.Hunks.size());
 
@@ -45,7 +54,7 @@ namespace Graphite {
 			{
 				if (hunk.Staged == stagedPass)
 				{
-					marks.push_back(MarkOf(hunk, lineTop, minFraction));
+					marks.push_back(MarkOf(hunk, lineTop, lineEnd, minFraction));
 				}
 			}
 		}

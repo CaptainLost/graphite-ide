@@ -3,6 +3,7 @@
 #include "Core/Command/Binding.h"
 #include "Core/Command/MenuItem.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -21,6 +22,7 @@ namespace Graphite {
 	inline constexpr const char* kGoToDefinitionCommand = "editor.goToDefinition";
 	inline constexpr const char* kFindReferencesCommand = "editor.findReferences";
 	inline constexpr const char* kSwitchHeaderSourceCommand = "editor.switchHeaderSource";
+	inline constexpr const char* kLineHistoryCommand = "git.lineHistory";
 	inline constexpr const char* kCutCommand = "edit.cut";
 	inline constexpr const char* kCopyCommand = "edit.copy";
 	inline constexpr const char* kPasteCommand = "edit.paste";
@@ -87,7 +89,12 @@ namespace Graphite {
 	// Cut to Redo, then Save and Close Tab.
 	void RegisterEditingCommands(Core::CommandRegistry& commands, Core::Keymap& keys, ActiveEditorTarget& active);
 
-	// Find, Go to Definition and Find All References: global, so they also run from a panel.
+	// Find, Go to Definition, Find All References and Line History: global, so they also run from a panel.
 	void RegisterEditorNavigationCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
 										  ActiveEditorTarget& active, EditorCommandServices services);
+
+	// The line Line History opens its peek under: the caret's, or the one right-clicked to open the context menu. For
+	// the second the caret is collapsed onto the clicked place when it is on another line, since the peek closes as
+	// soon as the caret leaves its line. The item must hold a document.
+	std::size_t PlaceCaretForLineHistory(Core::OpenItem& item, std::optional<std::size_t> rightClickedOffset);
 }

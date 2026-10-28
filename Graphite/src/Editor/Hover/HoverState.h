@@ -4,6 +4,7 @@
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/Hover/HoverLayout.h"
 #include "Editor/Hover/HoverTracker.h"
+#include "Editor/Hover/InteractiveTooltip.h"
 #include "Editor/Server/LspAnswerRouter.h"
 
 #include "Language/Api/HoverInfo.h"
@@ -44,13 +45,7 @@ namespace Graphite {
 
 		bool NoDefinitionFound = false;
 
-		float TooltipNaturalHeight = 0.0f;
-
-		ImVec2 TooltipMin{};
-		ImVec2 TooltipMax{};
-		bool TooltipShown = false;
-
-		ImGuiID FocusBeforeTooltip = 0;
+		InteractiveTooltipState Tooltip;
 
 		ImVec2 LastMouse{};
 

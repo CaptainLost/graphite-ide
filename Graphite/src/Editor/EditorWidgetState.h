@@ -1,8 +1,13 @@
 #pragma once
 
+#include "Editor/Authors/AuthorCard.h"
 #include "Editor/BracketMatch.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/Find/SelectionOccurrences.h"
+#include "Editor/Hover/InteractiveTooltip.h"
+
+#include <imgui.h>
+#include <imgui_internal.h>
 
 #include <cstddef>
 #include <limits>
@@ -75,5 +80,15 @@ namespace Graphite {
 		OccurrenceMemo Occurrences;
 
 		std::vector<PendingEditorAction> PendingActions;
+
+		// Where the caret line's author was drawn this frame; empty on a frame that drew none.
+		std::optional<ImRect> AuthorTextRect;
+
+		AuthorCardTracker AuthorCard;
+		InteractiveTooltipState AuthorCardWindow;
+
+		// The offset right-clicked to open the context menu, kept while the menu is open, so a command run from it can
+		// act on the clicked line rather than the caret's.
+		std::optional<std::size_t> ContextMenuOffset;
 	};
 }

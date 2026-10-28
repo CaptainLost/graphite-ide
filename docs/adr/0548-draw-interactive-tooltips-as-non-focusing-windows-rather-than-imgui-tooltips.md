@@ -48,10 +48,20 @@ Draw an interactive tooltip as an ordinary ImGui window, not with
   it to that viewport with `SetNextWindowViewport`. It may be as wide as that
   rectangle and as tall as the room on its side; what does not fit scrolls in
   the window itself, never in a child of it, so there is one pair of scrollbars.
+  The one exception is a section that has a height cap of its own, such as the
+  line-author card's commit body, capped at twelve lines: it scrolls in a child
+  sized to that cap, and the rest of the window still scrolls as above.
 - **Focus handed back.** Once no mouse button is down after a click inside the
   tooltip, return focus to the window that held it before the click. Fall back
   to the surface the tooltip belongs to if no window held it or that window has
-  gone.
+  gone. The hand-back runs after the window's content has been drawn, not right
+  after `Begin`: giving focus away clears the active item, so a button inside
+  the window would never report a click released on that frame.
+- **One helper.** The window setup, the placement and the focus hand-back live
+  in `Editor/Hover/InteractiveTooltip`, as `BeginInteractiveTooltip` and
+  `EndInteractiveTooltip`. The symbol hover and the line-author card
+  (`Editor/Authors/AuthorCard`) both draw through it and keep only their own
+  content and window names.
 - **Nothing over a modal.** While a modal popup is open, neither raise nor draw
   the tooltip.
 - **Separate router slots.** The hover's questions to the language server go

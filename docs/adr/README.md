@@ -680,5 +680,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0648](0648-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) | Let a tab's view put its tools on the right of the path row, and give the row to image tabs | proposed | 2026-10-26 |
 | [0649](0649-open-images-as-views-inside-the-document-tabs.md) | Open images as views inside the document tabs | proposed | 2026-10-26 |
 | [0650](0650-hold-what-is-asked-of-a-loading-tab-until-its-text-lands.md) | Hold what is asked of a loading tab until its text lands | proposed | 2026-10-27 |
-| [0651](0651-read-binary-files-on-demand-into-a-hex-view-with-no-size-limit-and-no-file-handle-held.md) | Read binary files on demand into a hex view, with no size limit and no file handle held | proposed | 2026-10-28 |
+| [0651](0651-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
+| [0652](0652-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md) | Place non-document rows as blocks from a source the language server does not own | proposed | 2026-10-26 |
+| [0653](0653-read-binary-files-on-demand-into-a-hex-view-with-no-size-limit-and-no-file-handle-held.md) | Read binary files on demand into a hex view, with no size limit and no file handle held | proposed | 2026-10-28 |
 <!-- /adr-index -->

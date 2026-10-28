@@ -12,6 +12,8 @@
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextDocument.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <string_view>
 
@@ -196,6 +198,8 @@ namespace Graphite {
 				Core::MenuItem::Command(kFindReferencesCommand),
 				Core::MenuItem::Command(kSwitchHeaderSourceCommand),
 				Core::MenuItem::Separator(),
+				Core::MenuItem::Command(kLineHistoryCommand),
+				Core::MenuItem::Separator(),
 				Core::MenuItem::Command(kCutCommand),
 				Core::MenuItem::Command(kCopyCommand),
 				Core::MenuItem::Command(kPasteCommand),
@@ -287,5 +291,39 @@ namespace Graphite {
 
 		keys.SetDefault(kFindReferencesCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
+
+		// No default key. From the context menu it acts on the right-clicked line, which the editor records as the menu
+		// opens, because a right-click inside a selection leaves the caret where it was; from the palette it acts on
+		// the caret's line.
+		constexpr bool kFromPalette = false;
+		constexpr bool kFromMenu = true;
+
+		commands.Add({.Id = kLineHistoryCommand,
+					  .Label = "Line History",
+					  .Run = [&active] { active.Get()->ShowLineHistory(kFromPalette); },
+					  .RunFromMenu = [&active] { active.Get()->ShowLineHistory(kFromMenu); },
+					  .Enabled = [&active] { return active.Get() != nullptr && active.Get()->CanShowLineHistory(); }});
+	}
+
+	std::size_t PlaceCaretForLineHistory(Core::OpenItem& item, std::optional<std::size_t> rightClickedOffset)
+	{
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const std::size_t caretLine = buffer.ToPosition(item.Caret.Offset).Line;
+
+		if (!rightClickedOffset)
+		{
+			return caretLine;
+		}
+
+		// Another view may have shortened the document while the menu was open.
+		const std::size_t offset = std::min(*rightClickedOffset, buffer.GetLength());
+		const std::size_t clickedLine = buffer.ToPosition(offset).Line;
+
+		if (clickedLine != caretLine)
+		{
+			item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Collapse, item.TabWidth);
+		}
+
+		return clickedLine;
 	}
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Git/Repository.h"
+#include "Git/Blame/HeadBlame.h"
 #include "Git/Changes/ChangeBases.h"
 #include "Git/GitPort.h"
 #include "Review/ReviewPort.h"
@@ -18,7 +19,7 @@ namespace Graphite {
 
 	// WARNING: A git_repository must not be used from two threads at once, so each worker thread
 	// caches its own handle per root.
-	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public ReviewPort
+	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort
 	{
 	public:
 		explicit RepositoryGitPort(std::filesystem::path root);
@@ -66,6 +67,9 @@ namespace Graphite {
 			const std::filesystem::path& newPath) override;
 
 		Core::Result<ChangeBases> ReadBases(const std::filesystem::path& absolutePath) override;
+
+		Core::Result<HeadBlame> BlameAtHead(const std::filesystem::path& absolutePath) override;
+		Core::Result<Core::LineHistory> QueryLineHistory(const Core::LineHistoryRequest& request) override;
 
 		Core::Result<ReviewRange> ResolveRange(const ReviewKey& key) override;
 		Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace) override;

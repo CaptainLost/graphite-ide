@@ -1,4 +1,4 @@
-# 0651. Read binary files on demand into a hex view, with no size limit and no file handle held
+# 0653. Read binary files on demand into a hex view, with no size limit and no file handle held
 
 Status: proposed
 Date: 2026-10-28

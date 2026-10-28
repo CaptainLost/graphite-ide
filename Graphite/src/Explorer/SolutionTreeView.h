@@ -121,6 +121,7 @@ namespace Graphite {
 		void AddFolderIn(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Project& project, const std::string& folder);
+		void RenderContextMenu(const ContentFile& file);
 		bool RenderFolderRenameEditor(const Folder& folder,
 									  const std::string& path);
 		void RenderMoveToFolderMenu(const Project& project,

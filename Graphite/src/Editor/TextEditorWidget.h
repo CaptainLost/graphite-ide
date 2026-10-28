@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Editor/Authors/AuthorCard.h"
+#include "Editor/Authors/LinePeek.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LspAnswerRouter.h"
 #include "Editor/ScrollAnchor.h"
@@ -7,6 +9,7 @@
 #include "Core/Command/MenuItem.h"
 #include "Core/Text/Editing.h"
 
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -30,6 +33,8 @@ namespace Graphite {
 	class SemanticOverlay;
 	class DiagnosticOverlay;
 	struct ChangeMarkers;
+	struct LineAuthors;
+	struct LinePeekContent;
 	struct HoverState;
 	class PreviewSemantics;
 	struct ResolvedScheme;
@@ -72,6 +77,23 @@ namespace Graphite {
 
 	std::size_t WrappedColumns(const WrapGeometry& geometry, std::size_t lineCount, VerticalScrollbar scrollbar);
 
+	struct LineAuthorView
+	{
+		const LineAuthors* Authors = nullptr;   // null: draw nothing, offer no card
+		std::chrono::sys_seconds Now{};
+		const std::chrono::time_zone* Zone = nullptr;   // the reader's, for the card's absolute time; null reads as UTC
+		bool HiddenWhileTyping = false;
+		float HoverDelaySeconds = 0.5f;
+	};
+
+	struct LinePeekView
+	{
+		std::size_t Line = 0;                       // zero-based buffer line the peek sits under
+		const LinePeekContent* Content = nullptr;   // null: the rows are kept and nothing is drawn in them
+		std::size_t Selected = 0;
+		bool JustOpened = false;                    // scroll so the whole peek shows, if it fits
+	};
+
 	struct EditorFrameResult
 	{
 		bool Edited = false;
@@ -91,7 +113,9 @@ namespace Graphite {
 
 		std::optional<std::size_t> LensClicked;
 
-		bool ContextMenuWanted = false;
+		// Set by a right-click that asks for the context menu: the offset clicked, which inside a selection is not the
+		// caret's, because such a click leaves the caret where it was.
+		std::optional<std::size_t> ContextMenuOffset;
 
 		std::optional<std::string> CopiedFromMenu;
 
@@ -107,6 +131,10 @@ namespace Graphite {
 		bool RetryPressed = false;
 
 		std::optional<WrapGeometry> Wrap;
+
+		std::optional<AuthorCardAction> CardAction;
+
+		std::optional<PeekAction> PeekAnswer;
 	};
 
 	struct EditorView
@@ -135,6 +163,14 @@ namespace Graphite {
 		ChangeMarkerDisplay ChangeDisplay;
 
 		bool HighlightOccurrences = false;
+
+		LineAuthorView Author;
+
+		std::optional<LinePeekView> Peek;
+
+		// Something in front of the editor, the navigation bubble at the caret, took this frame's Escape, so neither the
+		// peek nor the find bar closes on it.
+		bool EscapeTaken = false;
 
 		ScrollAnchor* Anchor = nullptr;
 

@@ -69,4 +69,34 @@ namespace Core {
 
 		return hunks;
 	}
+
+	TracedLine TraceLineToOld(std::span<const LineHunk> hunks, std::size_t newLine)
+	{
+		std::ptrdiff_t shiftToOldSide = 0;
+
+		for (const LineHunk& hunk : hunks)
+		{
+			if (newLine < hunk.NewStart)
+			{
+				break;
+			}
+
+			if (newLine < hunk.NewStart + hunk.NewCount)
+			{
+				const std::size_t position = newLine - hunk.NewStart;
+
+				if (position < hunk.OldCount)
+				{
+					return TracedLine{.Fate = LineFate::Changed, .OldLine = hunk.OldStart + position};
+				}
+
+				return TracedLine{.Fate = LineFate::Added};
+			}
+
+			shiftToOldSide += static_cast<std::ptrdiff_t>(hunk.OldCount) - static_cast<std::ptrdiff_t>(hunk.NewCount);
+		}
+
+		return TracedLine{.Fate = LineFate::Unchanged,
+						  .OldLine = static_cast<std::size_t>(static_cast<std::ptrdiff_t>(newLine) + shiftToOldSide)};
+	}
 }

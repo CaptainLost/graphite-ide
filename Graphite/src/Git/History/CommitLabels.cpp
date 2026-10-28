@@ -2,6 +2,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Strings.h"
+#include "Core/Time/TimeZone.h"
 
 #include <cctype>
 #include <format>
@@ -68,6 +69,13 @@ namespace Graphite {
 		}
 
 		return AgeText(seconds / kSecondsPerYear, "year");
+	}
+
+	const std::chrono::time_zone* ReaderTimeZone()
+	{
+		static const std::chrono::time_zone* const zone = Core::LocalTimeZone();
+
+		return zone;
 	}
 
 	std::string AuthorInitials(const Core::Signature& signature)

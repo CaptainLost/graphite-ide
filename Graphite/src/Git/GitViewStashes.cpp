@@ -6,6 +6,8 @@
 #include "Core/ImGui/LoadingState.h"
 
 #include "Git/Branches/RefSectionHeading.h"
+#include "Git/History/CommitDetails.h"
+#include "Git/History/CommitLabels.h"
 #include "Git/StashBranch.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/FittedText.h"
@@ -15,7 +17,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <format>
 #include <string>
 
 namespace Graphite {
@@ -98,7 +99,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::chrono::minutes localOffset = LocalOffset();
+		const std::chrono::time_zone* const zone = ReaderTimeZone();
 
 		for (const Core::StashEntry& stash : *stashes)
 		{
@@ -106,7 +107,7 @@ namespace Graphite {
 			ImGui::PushID(stash.Id.ToHex().c_str());
 
 			const std::chrono::sys_seconds madeAt{std::chrono::seconds{stash.SecondsSinceEpoch}};
-			const std::string when = std::format("{:%Y-%m-%d %H:%M}", madeAt + localOffset);
+			const std::string when = FormattedTimestamp(madeAt, zone);
 
 			// WARNING: The label is drawn over an id-only Selectable because a stash message is free text and a "##" in it would cut a Selectable label short.
 			const ImVec2 rowStart = ImGui::GetCursorPos();

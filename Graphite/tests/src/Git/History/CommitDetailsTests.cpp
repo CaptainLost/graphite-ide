@@ -101,6 +101,27 @@ TEST_CASE("A negative offset can carry a timestamp back over the date")
 	CHECK(Graphite::FormattedTimestamp(At(0), -std::chrono::hours{1}) == "1969-12-31 23:00");
 }
 
+TEST_CASE("A timestamp in a zone reads in the zone's offset at its own moment")
+{
+	const std::chrono::time_zone* const warsaw = std::chrono::locate_zone("Europe/Warsaw");
+
+	// 16:42 in Warsaw on both days: summer time in July, standard time in January.
+	const std::chrono::sys_seconds summer =
+		std::chrono::sys_days{std::chrono::year{2026} / 7 / 14} + std::chrono::hours{14} + std::chrono::minutes{42};
+	const std::chrono::sys_seconds winter =
+		std::chrono::sys_days{std::chrono::year{2026} / 1 / 14} + std::chrono::hours{15} + std::chrono::minutes{42};
+
+	CHECK(Graphite::FormattedTimestamp(summer, warsaw) == "2026-07-14 16:42");
+	CHECK(Graphite::FormattedTimestamp(winter, warsaw) == "2026-01-14 16:42");
+}
+
+TEST_CASE("A timestamp with no zone reads as UTC")
+{
+	const std::chrono::time_zone* const noZone = nullptr;
+
+	CHECK(Graphite::FormattedTimestamp(At(0), noZone) == "1970-01-01 00:00");
+}
+
 TEST_CASE("Seconds are dropped rather than rounded")
 {
 	CHECK(Graphite::FormattedTimestamp(At(59), std::chrono::minutes{0}) == "1970-01-01 00:00");

@@ -108,5 +108,5 @@ namespace Graphite {
 	std::string AuthorsFailureText(std::string_view message);
 
 	std::string BranchTooltipText(const Core::Branch& branch, std::string_view label,
-								  const std::vector<BranchAuthor>& authors, std::chrono::minutes localOffset);
+								  const std::vector<BranchAuthor>& authors, const std::chrono::time_zone* zone);
 }

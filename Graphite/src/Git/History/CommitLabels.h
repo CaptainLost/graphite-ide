@@ -15,6 +15,10 @@ namespace Graphite {
 
 	std::string RelativeAge(std::chrono::sys_seconds when, std::chrono::sys_seconds now);
 
+	// The reader's local zone, looked up once: a lookup is an ICU call and a search of every zone. Its offset is taken at
+	// each instant shown, through Core::OffsetAt, since it changes at a daylight-saving boundary.
+	const std::chrono::time_zone* ReaderTimeZone();
+
 	std::string AuthorInitials(const Core::Signature& signature);
 
 	std::string AuthorName(const Core::Signature& signature);

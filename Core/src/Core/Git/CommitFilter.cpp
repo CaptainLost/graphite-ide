@@ -12,6 +12,8 @@ namespace Core {
 
 	namespace {
 
+		constexpr char kRootAnchor = '/';
+
 		bool IsLowercaseHexDigit(char character)
 		{
 			const bool isDecimalDigit = character >= '0' && character <= '9';
@@ -65,6 +67,12 @@ namespace Core {
 		}
 
 		const std::string forwardSlashPath = ToGenericUtf8(path);
+
+		if (pattern.starts_with(kRootAnchor))
+		{
+			return GlobMatches(pattern.substr(1), forwardSlashPath);
+		}
+
 		const bool patternHasSeparator = pattern.find('/') != std::string_view::npos;
 
 		if (patternHasSeparator)
@@ -82,5 +90,17 @@ namespace Core {
 		}
 
 		return LoweredTextContains(fileName, Lowered(pattern));
+	}
+
+	std::string PatternNamingOnly(const std::filesystem::path& relativePath)
+	{
+		std::string pattern = ToGenericUtf8(relativePath);
+
+		if (pattern.find('/') == std::string::npos)
+		{
+			pattern.insert(pattern.begin(), kRootAnchor);
+		}
+
+		return pattern;
 	}
 }

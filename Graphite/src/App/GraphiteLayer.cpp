@@ -20,6 +20,7 @@
 
 #include "Git/Changes/ChangesPanel.h"
 #include "Theme/GitPalette.h"
+#include "Git/GitRequests.h"
 #include "Git/GitStatusText.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
@@ -427,6 +428,7 @@ namespace Graphite {
 	{
 		m_Git.SubscribeTo(m_Events);
 		m_ChangeMarkers.SubscribeTo(m_Events);
+		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
@@ -478,6 +480,10 @@ namespace Graphite {
 			m_Terminals.Reveal();
 			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // reports its own failure
 		});
+
+		// The Git panel answers both itself; here it is only brought forward.
+		m_Events.Subscribe<ShowFileHistoryRequested>([this](const ShowFileHistoryRequested&) { RevealPanel("git"); });
+		m_Events.Subscribe<ShowCommitRequested>([this](const ShowCommitRequested&) { RevealPanel("git"); });
 
 		m_Events.Subscribe<StatusMessageEvent>([this](const StatusMessageEvent& event) {
 			m_DocumentWindows.SetTransientMessage(event.Text);
@@ -570,9 +576,11 @@ namespace Graphite {
 		{
 			m_SeenGitWrites = writes;
 			m_ChangeMarkers.Invalidate();
+			m_Blame.Invalidate();
 		}
 
 		m_ChangeMarkers.OnUpdate(timestep);
+		m_Blame.OnUpdate(timestep);
 
 		FollowBranchesIntoReviews();
 		m_Reviews.OnUpdate(timestep);
@@ -1196,6 +1204,7 @@ namespace Graphite {
 											 .ChangeMarkers = {.Gutter = m_EditorSettings.HasGutterChangeMarkers(),
 															   .Scrollbar = m_EditorSettings.HasScrollbarChangeMarkers()},
 											 .HighlightOccurrences = m_EditorSettings.IsHighlightingOccurrences(),
+											 .LineAuthor = m_EditorSettings.HasLineAuthor(),
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,

@@ -3,6 +3,10 @@
 #include "Core/Base/Base.h"
 
 #include "Editor/ActiveTextDocument.h"
+#include "Editor/Authors/AuthorCard.h"
+#include "Editor/Authors/AuthorText.h"
+#include "Editor/Authors/LinePeek.h"
+#include "Editor/Authors/LinePeekContent.h"
 #include "Editor/Breadcrumb.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
@@ -12,6 +16,9 @@
 #include "Editor/TabColour.h"
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
+#include "Git/Blame/LineAuthors.h"
+#include "Git/GitRequests.h"
+#include "Git/History/CommitLabels.h"
 
 #include "Hex/HexCommands.h"
 #include "Hex/HexFiles.h"
@@ -48,6 +55,8 @@
 #include "Core/Events/FrameInput.h"
 #include "Core/Events/MouseEvent.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Blame.h"
+#include "Core/Git/Repository.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -87,6 +96,31 @@ namespace Graphite {
 		std::string DocumentIdentityOf(const Core::DocumentSet& documents, std::size_t index)
 		{
 			return Core::ToUtf8(documents.At(index).Path);
+		}
+
+		void RunAuthorCardAction(Core::EventBus& events, const LineAuthors& authors, const AuthorCardAction& action,
+								 const std::function<void()>& openLineHistory)
+		{
+			const Core::BlameHunk* const hunk = CommittedHunkOf(authors, action.Line);
+
+			switch (action.Action)
+			{
+			case AuthorCardAction::Kind::LineHistory:
+				openLineHistory();
+				break;
+			case AuthorCardAction::Kind::ShowCommit:
+				if (hunk != nullptr)
+				{
+					events.Publish(ShowCommitRequested{.Commit = hunk->Commit, .RelativePath = hunk->OriginalPath});
+				}
+				break;
+			case AuthorCardAction::Kind::CopyHash:
+				if (hunk != nullptr)
+				{
+					CopyToClipboard(events, "hash", hunk->Commit.ToHex());
+				}
+				break;
+			}
 		}
 
 		std::vector<std::string> CurrentIdentities(const Core::DocumentSet& documents)
@@ -874,6 +908,15 @@ namespace Graphite {
 				APP_ERROR("{}", revealed.GetError().Message);
 				ReportFailure(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message);
 			}
+		}
+
+		ImGui::Separator();
+
+		const std::optional<std::filesystem::path> relative = m_GitDecorations.RelativeOf(item.Path);
+
+		if (ImGui::MenuItem("File History", nullptr, selected, relative.has_value()))
+		{
+			m_Events.Publish(ShowFileHistoryRequested{.RelativePath = *relative});
 		}
 	}
 
@@ -1766,8 +1809,177 @@ namespace Graphite {
 		m_Hex.Prune(openPaths);
 		std::erase_if(m_HexViews, [&openPaths](const auto& view) { return !openPaths.contains(view.first); });
 
-		m_ChangeMarkers.Retain(
-			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
+		const auto isOpen = [this](const std::filesystem::path& path) {
+			return m_Documents.GetStore().Find(path) != nullptr;
+		};
+
+		// Not isOpen alone: with the Line author setting off only a document whose peek is open needs its blame, and
+		// any other would hold HEAD's blame and text for nothing.
+		const auto keepsBlame = [this, &isOpen](const std::filesystem::path& path) {
+			if (!isOpen(path))
+			{
+				return false;
+			}
+
+			const DocumentState* const state = FindState(path);
+
+			return m_LineAuthor || (state != nullptr && state->Peek.has_value());
+		};
+
+		m_ChangeMarkers.Retain(isOpen);
+		m_Blame.Retain(keepsBlame);
+	}
+
+	bool DocumentWindows::CanShowLineHistory()
+	{
+		const Core::OpenItem* const item = FindActiveTextItem();
+
+		if (item == nullptr || !item->Document || !m_GitDecorations.RelativeOf(item->Path))
+		{
+			return false;
+		}
+
+		// Not in HEAD, so there is nothing to blame.
+		const GitDecoration decoration = m_GitDecorations.FileOf(item->Path);
+
+		if (decoration == GitDecoration::Untracked || decoration == GitDecoration::Added ||
+			decoration == GitDecoration::Renamed)
+		{
+			return false;
+		}
+
+		if (const Core::Ref<const LineAuthors> authors = m_Blame.Get(item->Path))
+		{
+			if (authors->Head == nullptr || !authors->Head->Tracked || authors->Head->Unusable)
+			{
+				return false;
+			}
+		}
+
+		return item->Document->GetBuffer().GetLength() <= Core::MaximumDiffTextSize;
+	}
+
+	void DocumentWindows::ShowLineHistory(bool fromMenu)
+	{
+		Core::OpenItem* const item = FindActiveTextItem();
+
+		if (item == nullptr || !item->Document)
+		{
+			return;
+		}
+
+		const DocumentState* const state = FindState(item->Path);
+		const std::optional<std::size_t> rightClicked =
+			fromMenu && state != nullptr ? state->Widget.ContextMenuOffset : std::nullopt;
+
+		OpenLinePeek(*item, PlaceCaretForLineHistory(*item, rightClicked));
+	}
+
+	void DocumentWindows::OpenLinePeek(const Core::OpenItem& item, std::size_t line)
+	{
+		if (!item.Document)
+		{
+			return;
+		}
+
+		DocumentState& state = StateFor(item.Path);
+
+		if (state.Peek && state.Peek->Line == line)
+		{
+			state.Peek->JustOpened = true;
+			return;
+		}
+
+		// The history held is another line's; until this line's is asked for, it would be shown as this one's.
+		m_Blame.ForgetLineHistory(item.Path);
+
+		state.Peek = LinePeekState{.Line = line, .ChangeSequence = item.Document->GetBuffer().GetChangeSequence()};
+	}
+
+	const LinePeekContent& DocumentWindows::LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
+															   const Core::Ref<const LineAuthors>& authors,
+															   const std::chrono::time_zone* zone)
+	{
+		if (authors != nullptr && authors != peek.AskedFrom)
+		{
+			if (const std::optional<Core::LineHistoryRequest> request = LineHistoryStart(*authors, peek.Line))
+			{
+				m_Blame.RequestLineHistory(item.Path, *request);
+			}
+
+			peek.AskedFrom = authors;
+		}
+
+		const LineHistoryState history = m_Blame.GetLineHistory(item.Path);
+		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+
+		const LinePeekSource source{.Authors = authors,
+									.History = history.History,
+									.HistoryError = history.Error ? std::optional<std::string>{history.Error->Message}
+																  : std::nullopt,
+									.Line = peek.Line,
+									.Selected = peek.Selected};
+
+		return peek.Cache.Get(source, now, [&item, &peek, &authors, &history, now, zone] {
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const std::string lineText = peek.Line < buffer.GetLineCount() ? buffer.LineText(peek.Line) : std::string{};
+
+			return BuildLinePeekContent(LinePeekInput{.Line = peek.Line,
+													  .Selected = peek.Selected,
+													  .Authors = authors.get(),
+													  .BufferLine = lineText,
+													  .History = &history,
+													  .Now = now,
+													  .Zone = zone});
+		});
+	}
+
+	void DocumentWindows::SettleLinePeek(const Core::OpenItem& item, DocumentState& state,
+										 const EditorFrameResult& frame, const LinePeekContent* content)
+	{
+		if (!state.Peek || !item.Document)
+		{
+			return;
+		}
+
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const std::optional<PeekAction>& answer = frame.PeekAnswer;
+
+		const PeekFrame peekFrame{.PeekLine = state.Peek->Line,
+								  .CaretLine = buffer.ToPosition(item.Caret.Offset).Line,
+								  .Edited = frame.Edited || buffer.GetChangeSequence() != state.Peek->ChangeSequence,
+								  .CloseRequested = answer && answer->Action == PeekAction::Kind::Close};
+
+		if (PeekClosedBy(peekFrame))
+		{
+			state.Peek.reset();
+			m_Blame.ForgetLineHistory(item.Path);
+			return;
+		}
+
+		// WARNING: The answer indexes the entries drawn this frame. A peek opened during the draw, from the context
+		// menu, has none yet.
+		if (!answer || content == nullptr || answer->Entry >= content->Entries.size())
+		{
+			return;
+		}
+
+		const PeekEntry& entry = content->Entries[answer->Entry];
+
+		switch (answer->Action)
+		{
+		case PeekAction::Kind::Select:
+			state.Peek->Selected = answer->Entry;
+			break;
+		case PeekAction::Kind::ShowCommit:
+			if (entry.Commit)
+			{
+				m_Events.Publish(ShowCommitRequested{.Commit = *entry.Commit, .RelativePath = entry.Path});
+			}
+			break;
+		case PeekAction::Kind::Close:
+			break;
+		}
 	}
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
@@ -2580,7 +2792,7 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
-		bool highlightOccurrences, HoverSettings hoverSettings, const ResolvedScheme& scheme,
+		bool highlightOccurrences, bool lineAuthor, HoverSettings hoverSettings, const ResolvedScheme& scheme,
 		ReferencesPanel& referencesPanel,
 		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot, EditorSettings& settings)
 	{
@@ -2733,6 +2945,56 @@ namespace Graphite {
 					wantsChanges ? m_ChangeMarkers.Get(item.Path) : nullptr;
 				view.Changes = changes.get();
 
+				Core::Ref<const LineAuthors> authors;
+
+				// A peek needs the blame whatever the Line author setting says.
+				if ((lineAuthor || state.Peek) && item.Document)
+				{
+					m_Blame.Update(item.Path, item.Document->GetBuffer());
+					authors = m_Blame.Get(item.Path);
+				}
+
+				// An empty table is a file with no committed history: nothing to show at a line's end, and no clock to
+				// resolve for it.
+				const bool anyAuthor = authors != nullptr && !authors->Lines.empty();
+				const Core::Ref<const LineAuthors> shownAuthors = lineAuthor && anyAuthor ? authors : nullptr;
+
+				view.Author.Authors = shownAuthors.get();
+				view.Author.HoverDelaySeconds =
+					std::chrono::duration<float>(std::chrono::milliseconds{hoverSettings.DelayMs}).count();
+
+				if (shownAuthors)
+				{
+					const double sinceEdit = ImGui::GetTime() - state.LastEditAt;
+
+					view.Author.HiddenWhileTyping = sinceEdit < kAuthorQuietSeconds;
+					view.Author.Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+
+					// Only the card turns it into an offset, at the commit's own time, when it shows.
+					view.Author.Zone = ReaderTimeZone();
+
+					// WARNING: The loop idles between frames, so the frame that ends the quiet period has to be
+					// asked for, or the text stays hidden until something else draws.
+					if (view.Author.HiddenWhileTyping)
+					{
+						Core::Redraw::RequestIn(std::chrono::duration<double>(kAuthorQuietSeconds - sinceEdit));
+					}
+				}
+
+				// Held in the peek's state; the peek's answer after DrawEditor indexes the entries drawn this frame.
+				const LinePeekContent* peekContent = nullptr;
+
+				if (state.Peek && item.Document)
+				{
+					peekContent = &LinePeekContentFor(item, *state.Peek, authors, ReaderTimeZone());
+
+					view.Peek = LinePeekView{.Line = state.Peek->Line,
+											 .Content = peekContent,
+											 .Selected = state.Peek->Selected,
+											 .JustOpened = std::exchange(state.Peek->JustOpened, false)};
+				}
+
+				view.EscapeTaken = m_BubbleTakesEscape;
 				view.Anchor = &state.Anchor;
 				view.Widget = &state.Widget;
 
@@ -2802,6 +3064,11 @@ namespace Graphite {
 											 .Viewport = editorResult.Viewport,
 											 .DrawnInFrame = ImGui::GetFrameCount()};
 
+				if (editorResult.Edited)
+				{
+					state.LastEditAt = ImGui::GetTime();
+				}
+
 				if (lens != nullptr)
 				{
 					UpdateLenses(item, *lens, editorResult);
@@ -2856,6 +3123,21 @@ namespace Graphite {
 				{
 					m_Router.AskPreviewDefinition(*editorResult.AskPreview);
 				}
+
+				// The peek drawn this frame is settled before the card's answer, which may open another in its place.
+				SettleLinePeek(item, state, editorResult, peekContent);
+
+				if (editorResult.CardAction && authors)
+				{
+					const std::size_t cardLine = editorResult.CardAction->Line;
+
+					RunAuthorCardAction(m_Events, *authors, *editorResult.CardAction, [this, &item, &state, cardLine] {
+						OpenLinePeek(item, cardLine);
+
+						// The card would cover the peek it opened.
+						state.Widget.AuthorCard.Dismiss();
+					});
+				}
 			}
 
 			// WARNING: Checked again after the tab draws: a chord bound to the close command runs
@@ -2908,6 +3190,7 @@ namespace Graphite {
 								 ReferencesPanel& referencesPanel)
 	{
 		m_WorkspaceRoot = frame.WorkspaceRoot;
+		m_LineAuthor = frame.LineAuthor;
 
 		if (frame.Indent.Width > 0)
 		{
@@ -2934,8 +3217,14 @@ namespace Graphite {
 		RenderCloseConfirm(danger);
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
+		// WARNING: Read before the documents draw. The bubble at the caret is the most passing thing an Escape closes,
+		// and AbandonNavigationIfReaderMovedOn below closes it on this same Escape, so without this one Escape closed
+		// the bubble and the peek under the line together.
+		m_BubbleTakesEscape = m_Bubble.IsOpen() && ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating);
+
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.Hover, frame.Scheme,
+							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.LineAuthor,
+							  frame.Hover, frame.Scheme,
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot, frame.Settings);
 

@@ -159,3 +159,31 @@ TEST_CASE("An empty pattern names nothing")
 	const std::string_view emptyPattern = "";
 	CHECK_FALSE(Core::NamesPath(emptyPattern, "Core/src/Core/App/Application.cpp"));
 }
+
+TEST_CASE("Root anchor names the root's file and not the same name deeper")
+{
+	CHECK(Core::NamesPath("/README.md", "README.md"));
+	CHECK(Core::NamesPath("/readme.md", "README.md"));
+	CHECK_FALSE(Core::NamesPath("/README.md", "docs/README.md"));
+	CHECK_FALSE(Core::NamesPath("/README", "README.md"));
+}
+
+TEST_CASE("Root anchor with a directory names that path from the root")
+{
+	CHECK(Core::NamesPath("/src/a.cpp", "src/a.cpp"));
+	CHECK_FALSE(Core::NamesPath("/src/a.cpp", "lib/src/a.cpp"));
+	CHECK(Core::NamesPath("/*.cpp", "main.cpp"));
+	CHECK_FALSE(Core::NamesPath("/*.cpp", "src/main.cpp"));
+}
+
+TEST_CASE("Root anchor alone names nothing")
+{
+	CHECK_FALSE(Core::NamesPath("/", "README.md"));
+}
+
+TEST_CASE("Root anchor is added to the pattern naming only a root file")
+{
+	CHECK(Core::PatternNamingOnly("README.md") == "/README.md");
+	CHECK(Core::PatternNamingOnly(std::filesystem::path(L"src\\Core\\a.cpp")) == "src/Core/a.cpp");
+	CHECK_FALSE(Core::NamesPath(Core::PatternNamingOnly("README.md"), "docs/README.md"));
+}

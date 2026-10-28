@@ -148,6 +148,68 @@ namespace Core {
 
 			return static_cast<std::size_t>(shiftedLine);
 		}
+
+		// The Removed and Added lines seen since the last Context line.
+		struct ChangeRun
+		{
+			std::vector<std::size_t> RemovedOldLines;
+			std::vector<std::size_t> AddedNewLines;
+		};
+
+		std::optional<TracedLine> TraceLineThroughRun(const ChangeRun& run, std::size_t line)
+		{
+			for (std::size_t position = 0; position < run.AddedNewLines.size(); ++position)
+			{
+				if (run.AddedNewLines[position] != line)
+				{
+					continue;
+				}
+
+				if (position < run.RemovedOldLines.size())
+				{
+					return TracedLine{.Fate = LineFate::Changed, .OldLine = run.RemovedOldLines[position]};
+				}
+
+				return TracedLine{.Fate = LineFate::Added};
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<TracedLine> TraceLineInHunk(const Hunk& hunk, std::size_t line)
+		{
+			ChangeRun run;
+
+			for (const DiffLine& diffLine : hunk.Lines)
+			{
+				if (diffLine.Kind == DiffLineKind::Removed)
+				{
+					run.RemovedOldLines.push_back(static_cast<std::size_t>(diffLine.OldLine));
+					continue;
+				}
+
+				if (diffLine.Kind == DiffLineKind::Added)
+				{
+					run.AddedNewLines.push_back(static_cast<std::size_t>(diffLine.NewLine));
+					continue;
+				}
+
+				if (static_cast<std::size_t>(diffLine.NewLine) == line)
+				{
+					return TracedLine{.Fate = LineFate::Unchanged, .OldLine = static_cast<std::size_t>(diffLine.OldLine)};
+				}
+
+				// A Context line ends the run; the line cannot be in a run that is already over.
+				if (const std::optional<TracedLine> traced = TraceLineThroughRun(run, line))
+				{
+					return traced;
+				}
+
+				run = ChangeRun{};
+			}
+
+			return TraceLineThroughRun(run, line);
+		}
 	}
 
 	bool TouchesRange(const FileDiff& file, const OneBasedLineRange& range)
@@ -209,5 +271,40 @@ namespace Core {
 		}
 
 		return mapped;
+	}
+
+	TracedLine TraceLineToParent(const FileDiff& file, std::size_t line)
+	{
+		if (file.Change == FileChange::Added)
+		{
+			return TracedLine{.Fate = LineFate::Added};
+		}
+
+		std::ptrdiff_t shiftToOldSide = 0;
+
+		for (const Hunk& hunk : file.Hunks)
+		{
+			if (OnePastLastNewLine(hunk) <= line)
+			{
+				shiftToOldSide += static_cast<std::ptrdiff_t>(hunk.OldCount) - static_cast<std::ptrdiff_t>(hunk.NewCount);
+				continue;
+			}
+
+			if (line < FirstNewLine(hunk))
+			{
+				break;
+			}
+
+			if (const std::optional<TracedLine> traced = TraceLineInHunk(hunk, line))
+			{
+				return *traced;
+			}
+
+			break;
+		}
+
+		const std::ptrdiff_t shiftedLine = static_cast<std::ptrdiff_t>(line) + shiftToOldSide;
+		return TracedLine{.Fate = LineFate::Unchanged,
+						  .OldLine = static_cast<std::size_t>(std::max<std::ptrdiff_t>(shiftedLine, 0))};
 	}
 }

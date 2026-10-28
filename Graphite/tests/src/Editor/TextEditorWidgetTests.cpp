@@ -2,14 +2,23 @@
 
 #include "DrawnColours.h"
 #include "HoveredItems.h"
+#include "DrawnGlyphs.h"
 #include "ImGuiFrames.h"
 
 #include "Editor/TextEditorWidget.h"
+#include "Editor/Authors/AuthorCard.h"
+#include "Editor/Authors/LinePeek.h"
+#include "Editor/Authors/LinePeekContent.h"
+#include "Editor/EditorCommandTarget.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/EditorWidgetState.h"
+#include "Editor/ScrollAnchor.h"
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/Overlays/LensModel.h"
+#include "Git/Blame/HeadBlame.h"
+#include "Git/Blame/LineAuthors.h"
 #include "Git/Changes/ChangeMarkers.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/SyntaxCache.h"
@@ -22,6 +31,8 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuItem.h"
+#include "Core/Git/Blame.h"
+#include "Core/Git/Commit.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/Scrollbar.h"
@@ -37,8 +48,10 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -72,6 +85,7 @@ namespace {
 	constexpr const char* kTooltipWindow = "##Tooltip_00";
 	constexpr std::string_view kEditorSurface = "##EditorSurface";
 	constexpr std::string_view kHoverTooltipPrefix = "##HoverTooltip";
+	constexpr std::string_view kAuthorCardPrefix = "##AuthorCard";
 
 	Core::OpenItem ItemWith(std::string content)
 	{
@@ -104,6 +118,7 @@ namespace {
 		std::optional<std::size_t> LensClicked;
 		int StackBefore = 0;
 		int StackAfter = 0;
+		float Height = kDocumentHeight;
 
 		explicit EditorFrames(std::string content)
 			: Item(ItemWith(std::move(content)))
@@ -114,7 +129,7 @@ namespace {
 		void Draw()
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, kDocumentHeight));
+			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, Height));
 			ImGui::Begin("Document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			StackBefore = ImGui::GetCurrentContext()->FontStack.Size;
@@ -433,6 +448,274 @@ namespace {
 	{
 		return TextTopOfRow(rowTop) + kEditorFontSize;
 	}
+
+	constexpr std::string_view kTwoLines = "first\nsecond\n";
+	constexpr std::size_t kTwoLinesLineCount = 3;
+	constexpr std::size_t kBothTextLines = 2;
+	constexpr std::size_t kOnlyTheFirstLine = 1;
+	constexpr std::uint8_t kAnnsCommitByte = 0xA1;
+	constexpr std::chrono::sys_seconds kCommittedAt{std::chrono::seconds{1'700'000'000}};
+	constexpr std::chrono::days kThreeMonths{90};
+
+	// A table for kTwoLines whose first `committed` lines Ann last changed in a commit titled `title`; the rest are
+	// Unknown.
+	Graphite::LineAuthors AuthorsByAnn(std::size_t lineCount, std::size_t committed, std::string title)
+	{
+		Core::Oid commit;
+		commit.Bytes.fill(kAnnsCommitByte);
+
+		auto blame = std::make_shared<Core::Blame>();
+		blame->File = "widget.txt";
+		blame->LineCount = committed;
+		blame->Hunks = {Core::BlameHunk{.FirstLine = 1,
+										.LineCount = committed,
+										.Commit = commit,
+										.OriginalPath = "widget.txt",
+										.OriginalFirstLine = 1}};
+
+		Core::CommitSummary& summary = blame->Commits[commit];
+		summary.Id = commit;
+		summary.Author = Core::Signature{.Name = "Ann", .Email = "ann@example.com", .When = kCommittedAt};
+		summary.Summary = std::move(title);
+
+		auto head = std::make_shared<Graphite::HeadBlame>();
+		head->Tracked = true;
+		head->Blame = std::move(blame);
+		head->HeadText = std::string{kTwoLines};
+
+		Graphite::LineAuthors authors;
+		authors.Head = std::move(head);
+		authors.Lines.resize(lineCount);
+
+		for (std::size_t line = 0; line < committed && line < lineCount; ++line)
+		{
+			authors.Lines[line] = Graphite::LineAuthor{.Kind = Graphite::LineAuthorKind::Committed,
+													   .Hunk = 0,
+													   .HeadLine = line + 1};
+		}
+
+		return authors;
+	}
+
+	void ShowAuthors(EditorFrames& editor, const Graphite::LineAuthors& authors)
+	{
+		editor.View.Author.Authors = &authors;
+		editor.View.Author.Now = kCommittedAt + kThreeMonths;
+	}
+
+	std::vector<DrawnGlyph> SurfaceGlyphsIn(ImU32 colour)
+	{
+		const ImGuiWindow* surface = EditorSurface();
+		REQUIRE(surface != nullptr);
+
+		std::vector<DrawnGlyph> found;
+
+		for (const DrawnGlyph& glyph : DrawnGlyphs(*surface->DrawList))
+		{
+			if (glyph.Colour == colour)
+			{
+				found.push_back(glyph);
+			}
+		}
+
+		return found;
+	}
+
+	bool WithinRow(const DrawnGlyph& glyph, float rowTop)
+	{
+		return glyph.Box.Min.y >= rowTop && glyph.Box.Max.y <= rowTop + kEditorLineHeight;
+	}
+
+	ImGuiWindow* ShownAuthorCard()
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			const bool child = (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
+
+			if (!child && std::string_view{window->Name}.starts_with(kAuthorCardPrefix) && window->Active)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// ImGui keeps no item's position past its frame, so the pointer walks the card from its foot up, a row at a
+	// time, until ImGui reports the item with this label under it.
+	std::optional<ImVec2> FindInAuthorCard(EditorFrames& editor, const char* label)
+	{
+		constexpr float kStep = 4.0f;
+
+		ImGuiWindow* const card = ShownAuthorCard();
+
+		if (card == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const ImGuiID item = card->GetID(label);
+		const ImRect box = card->Rect();
+
+		for (float y = box.Max.y - kStep; y > box.Min.y; y -= kStep)
+		{
+			for (float x = box.Min.x + kStep; x < box.Max.x; x += kStep)
+			{
+				editor.HoverAt(ImVec2(x, y));
+
+				if (ImGui::GetCurrentContext()->HoveredId == item)
+				{
+					return ImVec2(x, y);
+				}
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	// ImGui names a child window "<parent>/<label>_<id>", so a label's slash and underscore pick out that child alone.
+	constexpr std::string_view kPeekWindowMark = "/##LinePeek_";
+	constexpr std::string_view kPeekListMark = "/##LinePeekList_";
+	constexpr bool kJustOpened = true;
+
+	ImGuiWindow* ActiveWindowNamedWith(std::string_view mark)
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if (window->Active && std::string_view{window->Name}.find(mark) != std::string_view::npos)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// The surface itself, not one of the children named under it.
+	ImGuiWindow* MutableEditorSurface()
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			const std::string_view name{window->Name};
+			const std::size_t mark = name.find(kEditorSurface);
+
+			if (mark != std::string_view::npos && name.find('/', mark) == std::string_view::npos)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	std::string LinesOf(std::size_t count)
+	{
+		std::string content;
+
+		for (std::size_t line = 0; line < count; ++line)
+		{
+			content += "line\n";
+		}
+
+		return content;
+	}
+
+	Graphite::LinePeekContent PeekOfTwoCommits()
+	{
+		Graphite::LinePeekContent content;
+		content.State = Graphite::PeekState::Ready;
+		content.Header = "History of line 1";
+		content.Entries = {Graphite::PeekEntry{.Title = "Fix",
+											   .Meta = "Ann",
+											   .Byline = "Ann",
+											   .Lines = {{Core::DiffLineKind::Removed, "frist", true},
+														 {Core::DiffLineKind::Added, "first", true}},
+											   .Commit = Core::Oid{}},
+						   Graphite::PeekEntry{.Title = "Add",
+											   .Meta = "Ann",
+											   .Byline = "Ann",
+											   .Lines = {{Core::DiffLineKind::Added, "frist", true}},
+											   .Commit = Core::Oid{}}};
+
+		return content;
+	}
+
+	void ShowPeek(EditorFrames& editor, std::size_t line, const Graphite::LinePeekContent& content,
+				  bool justOpened = false)
+	{
+		editor.View.Peek = Graphite::LinePeekView{.Line = line, .Content = &content, .JustOpened = justOpened};
+	}
+
+	// The pointer walks down the window near its left edge, a step at a time, until ImGui reports the item with this
+	// label under it.
+	std::optional<ImVec2> FindDownTheLeftOf(EditorFrames& editor, std::string_view windowMark, const char* label)
+	{
+		constexpr float kStep = 2.0f;
+		constexpr float kIntoTheWindow = 8.0f;
+
+		ImGuiWindow* const window = ActiveWindowNamedWith(windowMark);
+
+		if (window == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const ImGuiID item = window->GetID(label);
+		const ImRect box = window->Rect();
+		const float x = box.Min.x + kIntoTheWindow;
+
+		for (float y = box.Min.y + kStep; y < box.Max.y; y += kStep)
+		{
+			editor.HoverAt(ImVec2(x, y));
+
+			if (ImGui::GetCurrentContext()->HoveredId == item)
+			{
+				return ImVec2(x, y);
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	float RowsTall(std::size_t rows)
+	{
+		return static_cast<float>(rows) * kEditorLineHeight;
+	}
+
+	// Stands in for DocumentWindows, the one real target, where Line History is concerned: it takes the line the way
+	// that does, from the offset the editor recorded when its context menu opened.
+	class LineHistoryTarget final : public Graphite::EditorCommandTarget
+	{
+	public:
+		LineHistoryTarget(Core::OpenItem& item, const Graphite::EditorWidgetState& widget)
+			: m_Item(&item), m_Widget(&widget)
+		{
+		}
+
+		std::optional<std::size_t> OpenedOn;
+
+		bool CanRun(Graphite::EditorAction) override { return false; }
+		void Queue(Graphite::EditorAction, bool) override {}
+		bool CanSave() override { return false; }
+		void Save() override {}
+		bool CanClose() override { return false; }
+		void Close() override {}
+		bool CanFind() override { return false; }
+		void OpenFind() override {}
+		std::optional<std::filesystem::path> CaretFile() override { return std::nullopt; }
+		void GoToDefinition() override {}
+		void FindReferences(Graphite::ReferencesPanel&) override {}
+		bool CanShowLineHistory() override { return true; }
+
+		void ShowLineHistory(bool fromMenu) override
+		{
+			OpenedOn = Graphite::PlaceCaretForLineHistory(*m_Item, fromMenu ? m_Widget->ContextMenuOffset : std::nullopt);
+		}
+
+	private:
+		Core::OpenItem* m_Item = nullptr;
+		const Graphite::EditorWidgetState* m_Widget = nullptr;
+	};
 }
 
 TEST_CASE("A lens label is drawn at 0.78 of the editor size and hit across that width")
@@ -1340,4 +1623,505 @@ TEST_CASE("Where a document just fits its surface, the rows reserve room for a s
 		CHECK(scrollbarShown == (linesPastFit > 0));
 		CHECK(item.ColumnsPerWrappedRow == Graphite::WrappedColumns(*result.Wrap, static_cast<std::size_t>(lineCount), shownOrHidden));
 	}
+}
+
+TEST_CASE("Line author is drawn after the caret line's text in the lens colour")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+
+	const float lineTop = editor.CaretScreenPos().y;
+	float textRight = -FLT_MAX;
+
+	for (const DrawnGlyph& glyph : SurfaceGlyphsIn(DarkEditorPalette().Text))
+	{
+		if (WithinRow(glyph, lineTop))
+		{
+			textRight = std::max(textRight, glyph.Box.Max.x);
+		}
+	}
+
+	REQUIRE(textRight > editor.CaretScreenPos().x);
+
+	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().Lens);
+	REQUIRE_FALSE(author.empty());
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	for (const DrawnGlyph& glyph : author)
+	{
+		CHECK(glyph.Box.Min.x > textRight);
+		CHECK(WithinRow(glyph, lineTop));
+		CHECK(widget.AuthorTextRect->Contains(glyph.Box.GetCenter()));
+	}
+
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Line author is not drawn on other lines")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+
+	ShowAuthors(editor, authors);
+	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
+	editor.Next();
+	editor.Next();
+
+	const float secondLineTop = editor.CaretScreenPos().y;
+	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().Lens);
+	REQUIRE_FALSE(author.empty());
+
+	for (const DrawnGlyph& glyph : author)
+	{
+		CHECK(WithinRow(glyph, secondLineTop));
+	}
+}
+
+TEST_CASE("Line author is hidden while typing")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	editor.View.Author.HiddenWhileTyping = true;
+	editor.Next();
+
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK_FALSE(widget.AuthorTextRect.has_value());
+}
+
+TEST_CASE("Line author draws nothing past a stale table")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kOnlyTheFirstLine, kOnlyTheFirstLine, "Fix");
+
+	ShowAuthors(editor, authors);
+	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
+	editor.Next();
+	editor.Next();
+
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+}
+
+TEST_CASE("Line author leaves the horizontal scroll range alone")
+{
+	constexpr int kTitleRepeats = 8;
+
+	std::string longTitle;
+
+	for (int repeat = 0; repeat < kTitleRepeats; ++repeat)
+	{
+		longTitle += "Iterate a copy so handlers can unsubscribe while publishing ";
+	}
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, longTitle);
+
+	ShowAuthors(editor, authors);
+	editor.Next();
+	editor.Next();
+
+	REQUIRE_FALSE(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	const float withAuthor = EditorSurface()->ScrollMax.x;
+
+	editor.View.Author.Authors = nullptr;
+	editor.Next();
+	editor.Next();
+
+	REQUIRE(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK(EditorSurface()->ScrollMax.x == withAuthor);
+}
+
+TEST_CASE("Author card opens over the author and Copy hash reports the line")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Author.HoverDelaySeconds = 0.0f;
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	editor.HoverAt(widget.AuthorTextRect->GetCenter());
+	editor.Next();
+
+	REQUIRE(ShownAuthorCard() != nullptr);
+	CHECK(editor.StackAfter == editor.StackBefore);
+
+	const std::optional<ImVec2> copyHash = FindInAuthorCard(editor, "Copy hash");
+	REQUIRE(copyHash.has_value());
+
+	const ImGuiWindow* const focusedBefore = ImGui::GetCurrentContext()->NavWindow;
+	REQUIRE(focusedBefore != nullptr);
+
+	editor.Click(*copyHash);
+
+	CHECK(editor.Result.CardAction ==
+		  Graphite::AuthorCardAction{.Action = Graphite::AuthorCardAction::Kind::CopyHash, .Line = kFirstLine});
+	CHECK(ImGui::GetCurrentContext()->NavWindow == focusedBefore);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Author card opens on a click on the author without moving the caret")
+{
+	constexpr float kLongDelay = 10.0f;
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Author.HoverDelaySeconds = kLongDelay;
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	const ImVec2 author = widget.AuthorTextRect->GetCenter();
+
+	editor.HoverAt(author);
+
+	CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_Arrow);
+	CHECK(ShownAuthorCard() == nullptr);
+
+	editor.Click(author);
+
+	CHECK(editor.Item.Caret.Offset == 0);
+	CHECK(ShownAuthorCard() != nullptr);
+}
+
+TEST_CASE("Peek pushes the lines below it down by its rows")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Next();
+	const float firstLineTop = editor.CaretScreenPos().y;
+
+	ShowPeek(editor, kFirstLine, loading);
+	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
+	editor.Next();
+
+	CHECK(editor.CaretScreenPos().y - firstLineTop == RowsTall(Graphite::kLinePeekRows + 1));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek under the last line draws below it")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Next();
+	editor.Next();
+	const float withoutPeek = EditorSurface()->ContentSize.y;
+
+	ShowPeek(editor, kTwoLinesLineCount - 1, loading);
+	editor.Next();
+	editor.Next();
+
+	CHECK(EditorSurface()->ContentSize.y - withoutPeek == RowsTall(Graphite::kLinePeekRows));
+	CHECK(ActiveWindowNamedWith(kPeekWindowMark) != nullptr);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek takes Escape before the find bar")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Item.Find.Open = true;
+	ShowPeek(editor, kFirstLine, loading);
+	editor.Next();
+	editor.Next();
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+	editor.Next();
+
+	CHECK(editor.Result.PeekAnswer == Graphite::PeekAction{.Action = Graphite::PeekAction::Kind::Close});
+	CHECK(editor.Item.Find.Open);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+	editor.Next();
+
+	CHECK(editor.Item.Find.Open);
+
+	editor.View.Peek.reset();
+	editor.Frames.PressKey(ImGuiKey_Escape, [&editor] { editor.Draw(); });
+
+	CHECK_FALSE(editor.Item.Find.Open);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek leaves an Escape taken in front of the editor to that")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Item.Find.Open = true;
+	ShowPeek(editor, kFirstLine, loading);
+	editor.Next();
+	editor.Next();
+
+	// The navigation bubble at the caret took this one.
+	editor.View.EscapeTaken = true;
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+	editor.Next();
+
+	CHECK_FALSE(editor.Result.PeekAnswer.has_value());
+	CHECK(editor.Item.Find.Open);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+	editor.View.EscapeTaken = false;
+	editor.Next();
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+	editor.Next();
+
+	CHECK(editor.Result.PeekAnswer == Graphite::PeekAction{.Action = Graphite::PeekAction::Kind::Close});
+	CHECK(editor.Item.Find.Open);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+	editor.Next();
+
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek leaves its line's change mark on the scrollbar one line tall")
+{
+	constexpr std::size_t kLineCount = 60;
+	constexpr std::size_t kChangedLine = 10;
+	constexpr float kRowsAtMost = 3.0f;
+
+	EditorFrames editor{LinesOf(kLineCount)};
+	editor.View.ChangeDisplay.Gutter = false;
+
+	Graphite::ChangeMarkers changes;
+	changes.Lines.resize(BufferOf(editor.Item).GetLineCount());
+	changes.Lines[kChangedLine] = Graphite::LineChange{.Kind = Graphite::ChangeKind::Modified};
+	changes.Hunks = {Graphite::ChangeHunk{.Kind = Graphite::HunkKind::Modified,
+										  .FirstLine = kChangedLine,
+										  .LineCount = 1,
+										  .MarkedCount = 1}};
+	editor.View.Changes = &changes;
+
+	const Graphite::LinePeekContent loading;
+	ShowPeek(editor, kChangedLine, loading);
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* const surface = MutableEditorSurface();
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->ScrollbarY);
+
+	const ImRect bar = ImGui::GetWindowScrollbarRect(surface, ImGuiAxis_Y);
+	const std::optional<VerticalExtent> mark =
+		VerticalExtentInColour(*surface->DrawList, DarkEditorPalette().ChangeModified);
+	REQUIRE(mark.has_value());
+
+	// The track stands for the document's rows and the peek's; the mark ends with its line, not past the peek.
+	const float rowsOnTrack = static_cast<float>(BufferOf(editor.Item).GetLineCount() + Graphite::kLinePeekRows);
+	const float rowHeight = bar.GetHeight() / rowsOnTrack;
+
+	CHECK(mark->Bottom - mark->Top < rowHeight * kRowsAtMost);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek reports a selected entry")
+{
+	constexpr std::size_t kSecondEntry = 1;
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent history = PeekOfTwoCommits();
+
+	ShowPeek(editor, kFirstLine, history);
+	editor.Next();
+	editor.Next();
+
+	const std::optional<ImVec2> secondEntry = FindDownTheLeftOf(editor, kPeekListMark, "##LinePeekEntry1");
+	REQUIRE(secondEntry.has_value());
+
+	editor.Click(*secondEntry);
+
+	CHECK(editor.Result.PeekAnswer ==
+		  Graphite::PeekAction{.Action = Graphite::PeekAction::Kind::Select, .Entry = kSecondEntry});
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek offers Show commit beside the byline above a long diff")
+{
+	constexpr int kDiffLines = 30;
+	constexpr float kStep = 4.0f;
+
+	EditorFrames editor{LinesOf(kDiffLines)};
+
+	Graphite::LinePeekContent content;
+	content.State = Graphite::PeekState::Ready;
+	content.Header = "History of line 1";
+
+	Graphite::PeekEntry entry{.Title = "Add", .Meta = "Ann", .Byline = "Ann", .Commit = Core::Oid{}};
+
+	for (int line = 0; line < kDiffLines; ++line)
+	{
+		entry.Lines.push_back({Core::DiffLineKind::Added, "line", line == kDiffLines - 1});
+	}
+
+	content.Entries = {entry};
+
+	ShowPeek(editor, kFirstLine, content);
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* const detail = ActiveWindowNamedWith("/##LinePeekDiff_");
+	REQUIRE(detail != nullptr);
+	REQUIRE(detail->Scroll.y == 0.0f);
+
+	const ImGuiID showCommit = detail->GetID("Show commit");
+	const ImRect shown = detail->InnerClipRect;
+	bool found = false;
+
+	for (float y = shown.Min.y + kStep; y < shown.Max.y && !found; y += kStep)
+	{
+		for (float x = shown.Min.x + kStep; x < shown.Max.x && !found; x += kStep)
+		{
+			editor.HoverAt(ImVec2(x, y));
+			found = ImGui::GetCurrentContext()->HoveredId == showCommit;
+		}
+	}
+
+	CHECK(found);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek scrolls into view when it opens")
+{
+	constexpr std::size_t kLineCount = 60;
+
+	EditorFrames editor{LinesOf(kLineCount)};
+	const Graphite::LinePeekContent loading;
+
+	editor.Next();
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->Scroll.y == 0.0f);
+
+	const auto rowsShown = static_cast<std::size_t>(surface->InnerRect.GetHeight() / kEditorLineHeight);
+	REQUIRE(rowsShown > 1);
+
+	ShowPeek(editor, rowsShown - 1, loading, kJustOpened);
+	editor.Next();
+	editor.View.Peek->JustOpened = false;
+	editor.Next();
+
+	const ImGuiWindow* peek = ActiveWindowNamedWith(kPeekWindowMark);
+	REQUIRE(peek != nullptr);
+
+	CHECK(surface->Scroll.y > 0.0f);
+	CHECK(peek->Rect().Min.y >= surface->InnerRect.Min.y);
+	CHECK(peek->Rect().Max.y <= surface->InnerRect.Max.y);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek holds the scroll when only its rows are visible")
+{
+	constexpr std::size_t kLineCount = 60;
+	constexpr std::size_t kPeekLine = 10;
+	constexpr std::size_t kRowsShown = 4;
+	constexpr std::size_t kPeekRowsAboveTheView = 1;
+	constexpr float kTopAndBottom = 2.0f;
+
+	EditorFrames editor{LinesOf(kLineCount)};
+	editor.Height = RowsTall(kRowsShown) + ImGui::GetStyle().WindowPadding.y * kTopAndBottom;
+
+	Graphite::ScrollAnchor anchor;
+	const Graphite::LinePeekContent loading;
+
+	editor.View.Anchor = &anchor;
+	ShowPeek(editor, kPeekLine, loading);
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* const surface = MutableEditorSurface();
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->InnerRect.GetHeight() <= RowsTall(kRowsShown));
+
+	// The peek's rows begin right under its line, so this shows none of the document's rows.
+	const float intoThePeek = RowsTall(kPeekLine + 1 + kPeekRowsAboveTheView);
+	ImGui::SetScrollY(surface, intoThePeek);
+	editor.Next();
+	editor.Next();
+
+	REQUIRE(surface->Scroll.y == intoThePeek);
+	CHECK(anchor.Line == kPeekLine + 1);
+
+	Graphite::LensModel lenses;
+	DeclareReferencedFirstLine(lenses, editor.Item);
+	editor.View.Lens = &lenses;
+	editor.Next();
+	editor.Next();
+
+	CHECK(surface->Scroll.y == intoThePeek + kEditorLineHeight);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek command Line History from the menu opens on the right-clicked line inside a selection")
+{
+	constexpr std::size_t kThirdLine = 2;
+	constexpr std::size_t kIntoTheLine = 2;
+
+	EditorFrames editor{"first\nsecond\nthird\n"};
+	Graphite::EditorWidgetState widget;
+	Core::CommandRegistry commands;
+	Core::Keymap keys;
+	Graphite::ActiveEditorTarget active;
+	LineHistoryTarget target{editor.Item, widget};
+	const std::vector<Core::MenuItem> menu = Graphite::BuildEditorContextMenu();
+
+	Graphite::RegisterEditorNavigationCommands(commands, keys, active, Graphite::EditorCommandServices{});
+	active.Set(target);
+
+	editor.View.Widget = &widget;
+	editor.Context.Commands = &commands;
+	editor.Context.Keys = &keys;
+	editor.Context.ContextMenu = &menu;
+
+	editor.Next();
+	const ImVec2 firstLine = editor.CaretScreenPos();
+
+	// Selected from the start of the document into the third line, where the caret is.
+	editor.Item.Caret = Core::Caret{.Offset = BufferOf(editor.Item).LineStart(kThirdLine) + kIntoTheLine, .Anchor = 0};
+	editor.Next();
+
+	editor.Click(ImVec2(firstLine.x + kIntoTheRow, firstLine.y + kEditorLineHeight + kIntoTheRow),
+				 ImGuiMouseButton_Right);
+	editor.Next();
+
+	REQUIRE(CaretLine(editor.Item) == kThirdLine);
+	REQUIRE(editor.Frames.ClickMenuItem("Line History###git.lineHistory", [&editor] { editor.Draw(); }));
+
+	REQUIRE(target.OpenedOn.has_value());
+	CHECK(*target.OpenedOn == kSecondLine);
+	CHECK(CaretLine(editor.Item) == kSecondLine);
+	CHECK_FALSE(Core::HasSelection(editor.Item.Caret));
+
+	editor.Next();
+
+	CHECK_FALSE(widget.ContextMenuOffset.has_value());
+	CHECK(editor.StackAfter == editor.StackBefore);
 }
