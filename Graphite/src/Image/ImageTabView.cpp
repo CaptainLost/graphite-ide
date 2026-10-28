@@ -51,7 +51,7 @@ namespace Graphite {
 				return;
 			}
 
-			tab.GetZoom() = ZoomAround(tab.GetZoom(), zoom, area.GetCenter(), PictureSizeOf(*facts), area);
+			tab.GetZoom() = ZoomAround(tab.GetZoom(), zoom, area.GetCenter(), PictureSizeOf(*facts), area, PanKeepVisible());
 		}
 
 		// WARNING: The row puts the tools at its top edge. Their frame is centred in the row's height here, measured in
@@ -211,7 +211,7 @@ namespace Graphite {
 			ZoomTo(tab, StepOut(state.Zoom), area);
 			return;
 		case PictureZoom::Fit:
-			state.Zoom = FitZoom(PictureSizeOf(*facts), area.GetSize());
+			state.Zoom = FitZoom(PictureSizeOf(*facts), area.GetSize(), FitMargin());
 			state.Pan = ImVec2(0.0f, 0.0f);
 			return;
 		}

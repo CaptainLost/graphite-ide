@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/ImGui/UiScale.h"
+
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -43,20 +45,33 @@ namespace Graphite {
 		bool operator==(const PixelPoint&) const = default;
 	};
 
+	// The margins in screen pixels at the current interface scale. The functions below take them as arguments and know
+	// no units, so what is scaled is decided where they are called.
+	inline float FitMargin()
+	{
+		return Core::Scaled(kFitMargin);
+	}
+
+	inline float PanKeepVisible()
+	{
+		return Core::Scaled(kPanKeepVisible);
+	}
+
 	// The next step above `zoom`, or `zoom` itself at the top.
 	float StepIn(float zoom);
 	// The next step below `zoom`, or `zoom` itself when none is smaller.
 	float StepOut(float zoom);
 
-	// The largest zoom at which the whole picture fits the area less kFitMargin on each side.
-	float FitZoom(ImVec2 picture, ImVec2 area);
-	float OpeningZoom(ImVec2 picture, ImVec2 area);
+	// The largest zoom at which the whole picture fits the area less `margin` on each side.
+	float FitZoom(ImVec2 picture, ImVec2 area, float margin);
+	float OpeningZoom(ImVec2 picture, ImVec2 area, float margin);
 
 	// Centred in the area, moved by the pan, corners rounded to whole pixels.
 	ImRect PlacePicture(const ZoomState& state, ImVec2 picture, const ImRect& area);
 
-	ZoomState ZoomAround(const ZoomState& state, float zoom, ImVec2 point, ImVec2 picture, const ImRect& area);
-	ZoomState ClampPan(const ZoomState& state, ImVec2 picture, const ImRect& area);
+	ZoomState ZoomAround(const ZoomState& state, float zoom, ImVec2 point, ImVec2 picture, const ImRect& area,
+						 float keepVisible);
+	ZoomState ClampPan(const ZoomState& state, ImVec2 picture, const ImRect& area, float keepVisible);
 
 	// The file pixel under `point`, or nothing outside the picture.
 	std::optional<PixelPoint> PixelUnder(ImVec2 point, const ZoomState& state, ImVec2 picture, const ImRect& area);

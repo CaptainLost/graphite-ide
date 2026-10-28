@@ -44,7 +44,7 @@ namespace Graphite {
 			{
 				zoom.Pan.x += io.MouseDelta.x;
 				zoom.Pan.y += io.MouseDelta.y;
-				zoom = ClampPan(zoom, picture, area);
+				zoom = ClampPan(zoom, picture, area, PanKeepVisible());
 			}
 
 			if (!hovered)
@@ -59,12 +59,12 @@ namespace Graphite {
 
 			if (const int notches = TakeWholeNotches(zoom.WheelPending, io.MouseWheel); notches != 0)
 			{
-				zoom = ZoomAround(zoom, SteppedZoom(zoom.Zoom, notches), io.MousePos, picture, area);
+				zoom = ZoomAround(zoom, SteppedZoom(zoom.Zoom, notches), io.MousePos, picture, area, PanKeepVisible());
 			}
 
 			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 			{
-				zoom.Zoom = zoom.Zoom == 1.0f ? FitZoom(picture, area.GetSize()) : 1.0f;
+				zoom.Zoom = zoom.Zoom == 1.0f ? FitZoom(picture, area.GetSize(), FitMargin()) : 1.0f;
 				zoom.Pan = ImVec2(0.0f, 0.0f);
 			}
 		}
@@ -222,7 +222,7 @@ namespace Graphite {
 				return result;
 			}
 
-			zoom.Zoom = OpeningZoom(input.Picture, area.GetSize());
+			zoom.Zoom = OpeningZoom(input.Picture, area.GetSize(), FitMargin());
 			zoom.Pan = ImVec2(0.0f, 0.0f);
 			zoom.Opened = true;
 		}

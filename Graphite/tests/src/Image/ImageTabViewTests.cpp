@@ -449,7 +449,7 @@ TEST_CASE("Zooming an image tab steps around the middle of its area and fits the
 
 	screen.Tab.GetZoom().Pan = ImVec2(5.0f, -3.0f);
 	Graphite::ZoomImageTab(screen.Tab, PictureZoom::Fit, area);
-	CHECK(screen.Tab.GetZoom().Zoom == doctest::Approx(Graphite::FitZoom(kPictureSize, area.GetSize())));
+	CHECK(screen.Tab.GetZoom().Zoom == doctest::Approx(Graphite::FitZoom(kPictureSize, area.GetSize(), Graphite::FitMargin())));
 	CHECK(screen.Tab.GetZoom().Pan.x == 0.0f);
 	CHECK(screen.Tab.GetZoom().Pan.y == 0.0f);
 

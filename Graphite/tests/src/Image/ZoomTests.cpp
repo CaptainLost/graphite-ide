@@ -30,22 +30,22 @@ TEST_CASE("Zooming out below the smallest step does nothing, zooming in reaches 
 
 TEST_CASE("A picture that fits opens at 100%")
 {
-	CHECK(Graphite::OpeningZoom(ImVec2(256.0f, 256.0f), kAreaSize) == 1.0f);
+	CHECK(Graphite::OpeningZoom(ImVec2(256.0f, 256.0f), kAreaSize, Graphite::kFitMargin) == 1.0f);
 }
 
 TEST_CASE("A picture that does not fit opens at Fit")
 {
-	CHECK(Graphite::OpeningZoom(ImVec2(2000.0f, 1000.0f), kAreaSize) == doctest::Approx((764.0f - 48.0f) / 2000.0f));
+	CHECK(Graphite::OpeningZoom(ImVec2(2000.0f, 1000.0f), kAreaSize, Graphite::kFitMargin) == doctest::Approx((764.0f - 48.0f) / 2000.0f));
 }
 
 TEST_CASE("Fit enlarges a small picture")
 {
-	CHECK(Graphite::FitZoom(ImVec2(256.0f, 256.0f), kAreaSize) == doctest::Approx((508.0f - 48.0f) / 256.0f));
+	CHECK(Graphite::FitZoom(ImVec2(256.0f, 256.0f), kAreaSize, Graphite::kFitMargin) == doctest::Approx((508.0f - 48.0f) / 256.0f));
 }
 
 TEST_CASE("A long thin picture fits below the smallest step")
 {
-	CHECK(Graphite::FitZoom(ImVec2(10000.0f, 40.0f), kAreaSize) < 0.1f);
+	CHECK(Graphite::FitZoom(ImVec2(10000.0f, 40.0f), kAreaSize, Graphite::kFitMargin) < 0.1f);
 }
 
 TEST_CASE("Zooming around a point keeps that point over the same pixel")
@@ -59,7 +59,7 @@ TEST_CASE("Zooming around a point keeps that point over the same pixel")
 
 	for (const float zoom : {2.0f, 4.0f, 8.0f})
 	{
-		const Graphite::ZoomState after = Graphite::ZoomAround(before, zoom, point, picture, kArea);
+		const Graphite::ZoomState after = Graphite::ZoomAround(before, zoom, point, picture, kArea, Graphite::kPanKeepVisible);
 		CHECK(after.Zoom == zoom);
 		CHECK(Graphite::PixelUnder(point, after, picture, kArea) == pixelBefore);
 	}
@@ -70,14 +70,14 @@ TEST_CASE("Panning keeps 32 pixels of the picture in view")
 	const ImVec2 picture(400.0f, 300.0f);
 	const Graphite::ZoomState far{1.0f, ImVec2(5000.0f, -5000.0f), true};
 
-	const Graphite::ZoomState clamped = Graphite::ClampPan(far, picture, kArea);
+	const Graphite::ZoomState clamped = Graphite::ClampPan(far, picture, kArea, Graphite::kPanKeepVisible);
 	const ImRect placed = Graphite::PlacePicture(clamped, picture, kArea);
 
 	CHECK(placed.Min.x == doctest::Approx(kArea.Max.x - Graphite::kPanKeepVisible));
 	CHECK(placed.Max.y == doctest::Approx(kArea.Min.y + Graphite::kPanKeepVisible));
 
 	const Graphite::ZoomState centred{1.0f, ImVec2(3.0f, 4.0f), true};
-	CHECK(Graphite::ClampPan(centred, picture, kArea).Pan.x == 3.0f);
+	CHECK(Graphite::ClampPan(centred, picture, kArea, Graphite::kPanKeepVisible).Pan.x == 3.0f);
 }
 
 TEST_CASE("The pixel under the pointer is found in file pixels")
