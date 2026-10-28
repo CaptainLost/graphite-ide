@@ -132,10 +132,19 @@ TEST_CASE("A review offered no base falls back to the trunk and has no base with
 	const ReviewSessions sessions;
 
 	CHECK(Graphite::ReviewBaseOf("refs/heads/not-read-yet", branches, sessions) == kMain);
-	CHECK(Graphite::ReviewBaseOf(kMain, branches, sessions) == kMain);
 
 	const std::vector<Core::Branch> detached = {LocalBranch("main", kNotCheckedOut), LocalBranch("side", kNotCheckedOut)};
 	CHECK_FALSE(Graphite::ReviewBaseOf(kSide, detached, sessions).has_value());
+	CHECK(Graphite::NoReviewBaseMessage(kSide, detached) == "There is no trunk to review this branch against.");
+}
+
+TEST_CASE("The trunk is never reviewed against itself")
+{
+	const std::vector<Core::Branch> branches = *MainAndSide();
+	const ReviewSessions sessions;
+
+	CHECK_FALSE(Graphite::ReviewBaseOf(kMain, branches, sessions).has_value());
+	CHECK(Graphite::NoReviewBaseMessage(kMain, branches) == "There is nothing to review main against.");
 }
 
 TEST_CASE("A kept session's progress counts its viewed files of the committed range")

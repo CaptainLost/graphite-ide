@@ -742,9 +742,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_Git.GetBranches() != nullptr)
+		if (const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches(); branches != nullptr)
 		{
-			Core::EmptyState("There is no trunk to review this branch against.");
+			Core::EmptyState(NoReviewBaseMessage(branch, *branches));
 		}
 		else if (const std::optional<Core::Error>& error = m_Git.GetBranchesError(); error.has_value())
 		{
