@@ -15,6 +15,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Core {
@@ -31,8 +32,16 @@ namespace Graphite {
 	class ChangesView
 	{
 	public:
+		// `host` names the host, "panel" or "window", so that each host's questions are its own.
 		ChangesView(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents, DocumentWindows& documentWindows,
-					const ActiveScheme& scheme, Core::EventBus& events, ChangesShared& shared);
+					const ActiveScheme& scheme, Core::EventBus& events, ChangesShared& shared, std::string_view host);
+
+		// WARNING: The questions hold pointers into the view's own title strings, so a copy or a move would leave
+		// them pointing into the view it was made from.
+		ChangesView(const ChangesView&) = delete;
+		ChangesView& operator=(const ChangesView&) = delete;
+		ChangesView(ChangesView&&) = delete;
+		ChangesView& operator=(ChangesView&&) = delete;
 
 		// The reader picked a row: the side panel opens a diff tab, the Git window shows the diff beside the list.
 		std::function<void(const OpenDiff& diff)> OnFileChosen;
@@ -141,6 +150,8 @@ namespace Graphite {
 			}
 		};
 
+		// WARNING: Declared before the question that holds a pointer into it, so it is built first.
+		const std::string m_DiscardTitle;
 		ModalQuestion<DiscardQuestion> m_DiscardQuestion;
 
 		struct StashQuestion
@@ -148,6 +159,7 @@ namespace Graphite {
 			bool operator==(const StashQuestion&) const = default;
 		};
 
+		const std::string m_StashTitle;
 		ModalQuestion<StashQuestion> m_StashQuestion;
 		std::string m_StashMessage;
 		bool m_StashIncludeUntracked = false;

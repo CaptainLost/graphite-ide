@@ -150,14 +150,24 @@ namespace Graphite {
 
 			return false;
 		}
+
+		// WARNING: ModalGate knows the question holding it by title alone, and a view that finds the gate held under
+		// its own title with no popup of its own hands the gate back. So each host's questions carry an identity of
+		// their own after the ###, and the dialog shows only the part before it.
+		std::string QuestionTitle(std::string_view shown, std::string_view question, std::string_view host)
+		{
+			return std::format("{}###{}-{}", shown, question, host);
+		}
 	}
 
 	ChangesView::ChangesView(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents,
 							 DocumentWindows& documentWindows, const ActiveScheme& scheme, Core::EventBus& events,
-							 ChangesShared& shared)
+							 ChangesShared& shared, std::string_view host)
 		: m_Model(model), m_Documents(documents), m_DocumentWindows(documentWindows), m_Scheme(scheme),
-		  m_Events(events), m_Shared(shared), m_DiscardQuestion(modals, "Discard changes?"),
-		  m_StashQuestion(modals, "Stash changes")
+		  m_Events(events), m_Shared(shared), m_DiscardTitle(QuestionTitle("Discard changes?", "ChangesDiscard", host)),
+		  m_DiscardQuestion(modals, m_DiscardTitle.c_str()),
+		  m_StashTitle(QuestionTitle("Stash changes", "ChangesStash", host)),
+		  m_StashQuestion(modals, m_StashTitle.c_str())
 	{
 	}
 

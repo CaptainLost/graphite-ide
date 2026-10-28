@@ -18,6 +18,7 @@ Draw Changes through one class, `ChangesView`, and give each host an instance of
 - `ChangesView` draws the lists, the commit box and the questions into the current window. It keeps the selection, the open folders, the collapsed sections and both questions.
 - A host decides what picking a file does, through `OnFileChosen`. The side panel opens a diff tab, following the one working-tree tab rule of [0538](0538-refresh-the-working-tree-diff-when-the-repository-changes-not-when-it-is-asked-for.md). The Git window will show the diff beside the list.
 - A host that does not draw its view on a frame calls `WithdrawQuestions`, so a question nobody can see does not hold the modal gate.
+- Each view is given its host's name, `panel` or `window`, and its questions take it into their identity: the dialog shows "Discard changes?" or "Stash changes", and the identity after the `###` is `ChangesDiscard-<host>` or `ChangesStash-<host>`. `ModalGate` knows the question holding it only by title, so with one title for both, a view that found the gate held under its own title and no popup of its own would hand back the gate another host's open dialog holds.
 - What the hosts share lives in `ChangesShared`, owned by `GraphiteLayer` and passed to every host: the message, Amend, and the files remembered for discards in flight.
 - `ChangesPanel` alone drains `TakeCommitted` and `TakeDiscarded`, in `OnUpdate`, which runs every frame whether or not the panel is drawn. No other host drains them.
 
@@ -41,7 +42,8 @@ Draw Changes through one class, `ChangesView`, and give each host an instance of
 
 - Every host must call `WithdrawQuestions` on each frame it does not draw its view. A host that forgets leaves a question holding the modal gate, and nothing in the type says so.
 - Draining depends on the side panel being registered. A build of the application without it would stop clearing the draft after a commit and stop warning the editor before a discard.
-- Every view asks its questions under the same titles, and `ModalGate` knows its owner only by title. A second view drawn while the first one's question is on screen would find the gate held under its own title, see no popup of its own, and hand the gate back. The questions need a title per host before the Git window hosts a view.
+- A view's question identities are per host, so every host must pass a name no other host uses. Two hosts given the same name would close each other's dialogs again, and nothing checks the names are different.
+- The view holds its question titles itself and the questions point into them, so a view can be neither copied nor moved.
 
 ### Neutral
 

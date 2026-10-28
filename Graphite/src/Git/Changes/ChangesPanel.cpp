@@ -16,7 +16,7 @@ namespace Graphite {
 							   DiffWindows& diffWindows, Core::EventBus& events, ChangesShared& shared)
 		: Core::Panel("changes", "Changes", "git", ICON_LC_FILE_DIFF, StartsAs::Visible, Sides::Flush),
 		  m_Model(model), m_DocumentWindows(documentWindows), m_DiffWindows(diffWindows), m_Shared(shared),
-		  m_View(model, modals, documents, documentWindows, scheme, events, shared)
+		  m_View(model, modals, documents, documentWindows, scheme, events, shared, "panel")
 	{
 		m_View.OnFileChosen = [this](const OpenDiff& diff) {
 			// WARNING: GitModel keeps a single slot for the working-tree diff, so two tabs of
