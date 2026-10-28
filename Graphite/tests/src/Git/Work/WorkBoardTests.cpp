@@ -309,6 +309,28 @@ TEST_CASE("A merged branch whose worktree has uncommitted files keeps a card")
 	CHECK(ReadyFor(board, "side") == nullptr);
 }
 
+TEST_CASE("A card that took a session's title says so")
+{
+	Scene scene;
+	scene.Add("side");
+	scene.Matches["refs/heads/side"] = Match(0, 3, 0, 0);
+	scene.Worktree("side", 2);
+
+	const Graphite::WorkCard* withoutTitle = nullptr;
+	const Graphite::WorkBoard plain = scene.Build();
+	withoutTitle = CardFor(plain, "side");
+	REQUIRE(withoutTitle != nullptr);
+	CHECK_FALSE(withoutTitle->FromSession);
+	CHECK_FALSE(plain.Cards.front().FromSession);
+
+	scene.Titles[scene.PathOf("side")] = "side";
+	const Graphite::WorkBoard titled = scene.Build();
+	const Graphite::WorkCard* card = CardFor(titled, "side");
+	REQUIRE(card != nullptr);
+	CHECK(card->FromSession);
+	CHECK(card->Title == "side");
+}
+
 TEST_CASE("A worktree whose uncommitted files could not be counted keeps its branch out of the ready group")
 {
 	Scene scene;

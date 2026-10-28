@@ -70,17 +70,6 @@ namespace Graphite {
 			return Core::ToUtf8(folder.filename());
 		}
 
-		// The title is the session's when it differs from the names the card already shows.
-		bool CameFromSession(const WorkCard& card)
-		{
-			if (card.Title.empty() || card.Title == Core::ShortBranchName(card.Branch))
-			{
-				return false;
-			}
-
-			return !card.Worktree.has_value() || card.Title != FolderName(*card.Worktree);
-		}
-
 		std::string BranchAndFolder(const WorkCard& card)
 		{
 			std::string line = card.Branch.empty() ? std::string() : Core::ShortBranchName(card.Branch);
@@ -253,7 +242,7 @@ namespace Graphite {
 		const float room = ImGui::GetContentRegionAvail().x;
 
 		// Title.
-		const bool fromSession = CameFromSession(card);
+		const bool fromSession = card.FromSession;
 		const std::string title = FitToWidth(card.Title, room - (fromSession ? ImGui::GetFontSize() * 1.5f : 0.0f));
 		ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
 		ImGui::TextUnformatted((fromSession ? std::string(ICON_LC_BOT " ") + title : title).c_str());

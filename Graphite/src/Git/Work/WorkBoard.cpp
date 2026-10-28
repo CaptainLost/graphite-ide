@@ -129,6 +129,7 @@ namespace Graphite {
 			}
 
 			card.Title = title.value_or(head != nullptr ? head->Name : "HEAD");
+			card.FromSession = title.has_value();
 
 			if (head != nullptr)
 			{
@@ -269,6 +270,7 @@ namespace Graphite {
 			}
 
 			card.Title = title.value_or(branch.Name);
+			card.FromSession = title.has_value();
 
 			if (match != nullptr)
 			{
@@ -325,7 +327,9 @@ namespace Graphite {
 				WorkCard card;
 				card.Kind = WorkCardKind::DetachedWorktree;
 				card.Worktree = entry.Path;
-				card.Title = TitleFor(input, entry.Path).value_or(Core::ToUtf8(entry.Path.filename()));
+				const std::optional<std::string> sessionTitle = TitleFor(input, entry.Path);
+				card.Title = sessionTitle.value_or(Core::ToUtf8(entry.Path.filename()));
+				card.FromSession = sessionTitle.has_value();
 				card.Uncommitted = worktree.Uncommitted;
 				card.Locked = entry.Locked;
 				card.Operation = entry.Head.Operation;

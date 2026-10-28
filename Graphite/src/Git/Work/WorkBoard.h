@@ -51,6 +51,9 @@ namespace Graphite {
 		std::string Branch;
 		std::optional<std::filesystem::path> Worktree;
 		std::string Title;
+
+		// The title is a Claude session's, not the branch's or folder's name.
+		bool FromSession = false;
 		std::string TipSubject;
 		std::optional<std::chrono::sys_seconds> TipTime;
 
