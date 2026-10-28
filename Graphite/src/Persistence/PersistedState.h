@@ -100,6 +100,16 @@ namespace Graphite {
 		Author
 	};
 
+	// What the Git window shows beside its navigator.
+	enum class GitWindowView
+	{
+		Work,
+		Thread,
+		Changes,
+		History,
+		Branches
+	};
+
 	struct BranchListState
 	{
 		BranchSort Sort = BranchSort::Newest;
