@@ -362,6 +362,9 @@ namespace Graphite {
 			std::optional<std::size_t> ChangeCount;
 			GitWindowSelection Selection;
 
+			// In whole minutes, so the branch ages rebuild the rows once a minute, not each frame.
+			std::chrono::sys_seconds Now{};
+
 			friend bool operator==(const NavigatorInputs&, const NavigatorInputs&) = default;
 		};
 

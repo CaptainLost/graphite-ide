@@ -1,5 +1,6 @@
 #include "Git/Window/NavigatorRows.h"
 
+#include "Git/Branches/BranchAge.h"
 #include "Git/Work/CardText.h"
 
 #include <algorithm>
@@ -223,8 +224,12 @@ namespace Graphite {
 				// HEAD's history names no ref, and it is the history of HEAD's branch.
 				const bool shown = selection.Branch == branch.FullName || (selection.Branch.empty() && branch.IsHead);
 
+				// HEAD's branch is told by its mark, which the view draws.
 				rows.push_back({.Kind = NavigatorRowKind::Branch,
-								.Label = branch.IsHead ? "* " + branch.Name : branch.Name,
+								.Label = branch.Name,
+								.Count = branch.TipCommit.has_value()
+											 ? FormatBranchAge(branch.TipCommit->Committer.When, input.Now)
+											 : std::string{},
 								.Index = index,
 								.Branch = branch.FullName,
 								.Selected = selection.View == GitWindowView::History && shown});

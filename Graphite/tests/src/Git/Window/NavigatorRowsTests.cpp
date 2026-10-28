@@ -293,6 +293,30 @@ TEST_CASE("Work counts its threads once the facts have landed, and waits before"
 	CHECK(FirstOf(BuildNavigatorRows(input), NavigatorRowKind::Work)->Count == "3");
 }
 
+TEST_CASE("A branch row carries its age at the right and HEAD's has no mark in its label")
+{
+	const WorkBoard board = BoardWithThreads(0);
+	const std::vector<Core::Branch> branches = {LocalBranch("main", 1000, true), LocalBranch("topic", 1000 - 3 * 86400)};
+
+	const std::vector<NavigatorRow> rows = BuildNavigatorRows({.Board = &board,
+															   .ChangeCount = 0,
+															   .Branches = &branches,
+															   .Selection = {},
+															   .Now = SystemSecondsAt(1000 + 2 * 3600)});
+
+	std::vector<std::pair<std::string, std::string>> shown;
+
+	for (const NavigatorRow& row : rows)
+	{
+		if (row.Kind == NavigatorRowKind::Branch)
+		{
+			shown.emplace_back(row.Label, row.Count);
+		}
+	}
+
+	CHECK(shown == std::vector<std::pair<std::string, std::string>>{{"main", "2h"}, {"topic", "3d"}});
+}
+
 TEST_CASE("A detached worktree's row selects Work")
 {
 	NavigatorRow row;

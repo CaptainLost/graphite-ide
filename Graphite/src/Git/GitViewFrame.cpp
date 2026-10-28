@@ -302,7 +302,8 @@ namespace Graphite {
 		NavigatorInputs inputs{.BoardVersion = m_BoardVersion,
 							   .Branches = m_Model.GetBranches(),
 							   .ChangeCount = ChangeCountOf(m_Model.GetStatus()),
-							   .Selection = showsStash ? GitWindowSelection{GitWindowView::History, kStashRef} : m_Selection};
+							   .Selection = showsStash ? GitWindowSelection{GitWindowView::History, kStashRef} : m_Selection,
+							   .Now = std::chrono::floor<std::chrono::minutes>(NowInSeconds())};
 
 		if (m_NavigatorBuiltFrom == inputs)
 		{
@@ -312,7 +313,8 @@ namespace Graphite {
 		m_NavigatorRows = BuildNavigatorRows(NavigatorInput{.Board = &m_Board,
 															.ChangeCount = inputs.ChangeCount,
 															.Branches = inputs.Branches.get(),
-															.Selection = inputs.Selection});
+															.Selection = inputs.Selection,
+															.Now = inputs.Now});
 		m_NavigatorBuiltFrom = std::move(inputs);
 	}
 

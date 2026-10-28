@@ -6,6 +6,10 @@
 #include "UI/FittedText.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/ImGui/Theme.h"
+
+#include <IconsLucide.h>
+
 #include <imgui.h>
 
 namespace Graphite {
@@ -23,8 +27,7 @@ namespace Graphite {
 		bool IsDimRow(NavigatorRowKind kind)
 		{
 			return kind == NavigatorRowKind::ShowAllWork || kind == NavigatorRowKind::ShowAllBranches ||
-				   kind == NavigatorRowKind::Ready || kind == NavigatorRowKind::Locked ||
-				   kind == NavigatorRowKind::BranchesHeading;
+				   kind == NavigatorRowKind::Ready || kind == NavigatorRowKind::Locked;
 		}
 
 		// "3 ready to remove" reads as a sentence, the rest keep their number at the right edge.
@@ -43,6 +46,35 @@ namespace Graphite {
 			{
 				ImGui::TextUnformatted(text);
 			}
+		}
+
+		// The icon in a row's lead slot; a thread's and the ready row's slot holds a dot instead.
+		const char* LeadIcon(NavigatorRowKind kind)
+		{
+			switch (kind)
+			{
+			case NavigatorRowKind::Work:
+				return ICON_LC_LAYOUT_GRID;
+			case NavigatorRowKind::Changes:
+				return ICON_LC_FILE_DIFF;
+			case NavigatorRowKind::Branch:
+				return ICON_LC_GIT_BRANCH;
+			case NavigatorRowKind::Locked:
+				return ICON_LC_LOCK;
+			case NavigatorRowKind::Thread:
+			case NavigatorRowKind::ShowAllWork:
+			case NavigatorRowKind::Ready:
+			case NavigatorRowKind::BranchesHeading:
+			case NavigatorRowKind::ShowAllBranches:
+				break;
+			}
+
+			return nullptr;
+		}
+
+		bool HasLeadSlot(NavigatorRowKind kind)
+		{
+			return kind != NavigatorRowKind::BranchesHeading;
 		}
 	}
 
@@ -70,11 +102,16 @@ namespace Graphite {
 	{
 		const ResolvedScheme& scheme = m_Scheme.Get();
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float leadWidth = ImGui::CalcTextSize(ICON_LC_GIT_BRANCH).x;
+		const float lineMiddle = ImGui::GetTextLineHeight() * kHalf;
+		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 
 		for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
 		{
 			const NavigatorRow& row = rows[rowIndex];
 			const bool dim = IsDimRow(row.Kind);
+			const Core::Branch* const branch =
+				row.Kind == NavigatorRowKind::Branch && row.Index < branches.size() ? &branches[row.Index] : nullptr;
 			bool clicked = false;
 
 			ImGui::PushID(static_cast<int>(rowIndex));
@@ -85,20 +122,40 @@ namespace Graphite {
 			if (IsActionRow(row.Kind))
 			{
 				clicked = ListRowSelectable("##row", row.Selected, ImGuiSelectableFlags_AllowOverlap);
+
+				// The whole row answers the right click, not only its text.
+				if (branch != nullptr && DrawBranchMenu)
+				{
+					DrawBranchMenu(*branch);
+				}
 			}
 
 			ImGui::SetCursorScreenPos(ImVec2(rowStart.x, textTop));
 			ImGui::BeginGroup();
 
-			float labelLeft = rowStart.x;
+			float labelLeft = HasLeadSlot(row.Kind) ? rowStart.x + leadWidth + spacing : rowStart.x;
+			const ImVec2 leadCentre(rowStart.x + leadWidth * kHalf, textTop + lineMiddle);
+			const float radius = ImGui::GetFontSize() * kDotRadiusInFontSizes;
 
-			if (row.Kind == NavigatorRowKind::Thread)
+			if (const char* const icon = LeadIcon(row.Kind); icon != nullptr)
 			{
-				const float radius = ImGui::GetFontSize() * kDotRadiusInFontSizes;
-				const ImVec2 centre(rowStart.x + radius + spacing * kHalf, textTop + ImGui::GetTextLineHeight() * kHalf);
+				ImGui::SetCursorScreenPos(ImVec2(rowStart.x, textTop));
+				ImGui::TextUnformatted(icon);
+			}
+			else if (row.Kind == NavigatorRowKind::Thread || row.Kind == NavigatorRowKind::Ready)
+			{
+				const WorkState state = row.Kind == NavigatorRowKind::Thread ? row.State : WorkState::Other;
+				drawList->AddCircleFilled(leadCentre, radius, WorkStateDotColour(state, scheme));
+			}
 
-				ImGui::GetWindowDrawList()->AddCircleFilled(centre, radius, WorkStateDotColour(row.State, scheme));
-				labelLeft = centre.x + radius + spacing;
+			// HEAD's branch is marked with an accent dot before its name, which is drawn brighter.
+			const bool isHead = branch != nullptr && branch->IsHead;
+
+			if (isHead)
+			{
+				drawList->AddCircleFilled(ImVec2(labelLeft + radius, textTop + lineMiddle), radius,
+										  ImGui::GetColorU32(ImGuiCol_CheckMark));
+				labelLeft += 2.0f * radius + spacing;
 			}
 
 			const std::string count = row.Count;
@@ -115,10 +172,32 @@ namespace Graphite {
 			else
 			{
 				const float room = end - labelLeft - (count.empty() ? 0.0f : countWidth + spacing);
-				bool cut = false;
+				const std::string label = FitToWidth(row.Label, room);
 
 				ImGui::SetCursorScreenPos(ImVec2(labelLeft, textTop));
-				DrawText(FitToWidth(row.Label, room, &cut).c_str(), dim);
+
+				if (isHead)
+				{
+					ImGui::PushStyleColor(ImGuiCol_Text, Core::EmphasisText());
+					ImGui::TextUnformatted(label.c_str());
+					ImGui::PopStyleColor();
+				}
+				else
+				{
+					DrawText(label.c_str(), dim);
+				}
+
+				// The heading runs on as a rule to the row's end, as a section's does.
+				if (row.Kind == NavigatorRowKind::BranchesHeading)
+				{
+					const float ruleLeft = ImGui::GetItemRectMax().x + spacing;
+
+					if (ruleLeft < end)
+					{
+						drawList->AddLine(ImVec2(ruleLeft, textTop + lineMiddle), ImVec2(end, textTop + lineMiddle),
+										  ImGui::GetColorU32(ImGuiCol_Separator));
+					}
+				}
 
 				if (!count.empty())
 				{
@@ -128,11 +207,6 @@ namespace Graphite {
 			}
 
 			ImGui::EndGroup();
-
-			if (row.Kind == NavigatorRowKind::Branch && DrawBranchMenu && row.Index < branches.size())
-			{
-				DrawBranchMenu(branches[row.Index]);
-			}
 
 			if (!IsActionRow(row.Kind))
 			{

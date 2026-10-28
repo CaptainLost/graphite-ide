@@ -4,6 +4,7 @@
 #include "Git/Window/GitWindowSelection.h"
 #include "Git/Work/WorkBoard.h"
 
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -32,7 +33,7 @@ namespace Graphite {
 		NavigatorRowKind Kind = NavigatorRowKind::Work;
 		std::string Label;
 
-		// "" while unknown.
+		// At the row's right edge: a count, a thread's distance or a branch's age; "" while unknown.
 		std::string Count;
 
 		// Card index for Thread, branch index for Branch.
@@ -53,6 +54,9 @@ namespace Graphite {
 		std::optional<std::size_t> ChangeCount;
 		const std::vector<Core::Branch>* Branches = nullptr;
 		GitWindowSelection Selection;
+
+		// What a branch row's age is counted to.
+		std::chrono::sys_seconds Now{};
 	};
 
 	std::vector<NavigatorRow> BuildNavigatorRows(const NavigatorInput& input);
