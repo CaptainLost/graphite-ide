@@ -101,7 +101,7 @@ namespace Graphite {
 			{
 				if (const std::optional<ColumnSpan> hovered = ColumnsWithin(start, count, *state.Hovered, *state.Hovered))
 				{
-					Mark(drawList, grid, top, *hovered, palette.CurrentLine);
+					Mark(drawList, grid, top, *hovered, ImGui::GetColorU32(ImGuiCol_ButtonHovered));
 				}
 			}
 		}

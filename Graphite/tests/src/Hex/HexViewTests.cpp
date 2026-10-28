@@ -188,7 +188,6 @@ namespace {
 			Path.FileName = kFileName;
 			Palette.Text = kTextColour;
 			Palette.Selection = kSelectionColour;
-			Palette.CurrentLine = kHoverColour;
 		}
 
 		void DrawWindow()
@@ -209,6 +208,9 @@ namespace {
 			Row = ImRect(window.InnerRect.Min,
 						 ImVec2(window.InnerRect.Max.x, window.InnerRect.Min.y + Graphite::BreadcrumbHeight()));
 
+			// The theme's hover surface, the one list rows lift to.
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::ColorConvertU32ToFloat4(kHoverColour));
+
 			Graphite::HexViewInput input;
 			input.Path = &Path;
 			input.Palette = &Palette;
@@ -216,6 +218,7 @@ namespace {
 			input.Keys = &Keys;
 			input.Notice = Notice;
 			Last = Graphite::DrawHexView(Hex, State, input);
+			ImGui::PopStyleColor();
 
 			if (After)
 			{
