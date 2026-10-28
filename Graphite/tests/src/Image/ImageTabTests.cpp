@@ -770,3 +770,25 @@ TEST_CASE("The pixel under the pointer is read from a picture scaled down to the
 
 	CHECK_FALSE(tab.PixelAt({16, 0}).has_value());
 }
+
+TEST_CASE("An image tab whose file could not be opened tries again on the next check")
+{
+	TempDirectory directory;
+	DeferredJobs jobs;
+	FakeTextureFactory textures;
+	const std::filesystem::path path = WriteFile(directory.GetPath() / "picture.png", Bytes(ImageFixtures::kPng2x2));
+	ImageTab tab(path, jobs.Submitter(), textures);
+
+	std::FILE* const held = _wfsopen(path.c_str(), L"rb", _SH_DENYRW);
+	REQUIRE(held != nullptr);
+
+	LoadAndLand(tab, jobs);
+	REQUIRE(tab.GetState() == ImageTabState::Failed);
+	REQUIRE(tab.GetFailureKind() == ImageFailure::Read);
+
+	std::fclose(held);
+
+	ReloadAndLand(tab, jobs);
+
+	CHECK(tab.GetState() == ImageTabState::Ready);
+}

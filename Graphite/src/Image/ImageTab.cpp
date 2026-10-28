@@ -313,11 +313,16 @@ namespace Graphite {
 
 	void ImageTab::Apply(LoadedPicture picture)
 	{
-		m_Stamp = picture.Stamp;
-
 		if (!picture.Decoded)
 		{
 			const Core::Error& error = picture.Decoded.GetError();
+
+			// A file that could not be read keeps the stamp it had, so the next check tries it again by itself; only bytes
+			// the decoder refused are not worth reading again until the file changes.
+			if (KindOf(error) != ImageFailure::Read)
+			{
+				m_Stamp = picture.Stamp;
+			}
 
 			if (!m_Frames.empty())
 			{
@@ -333,6 +338,8 @@ namespace Graphite {
 			m_State = ImageTabState::Failed;
 			return;
 		}
+
+		m_Stamp = picture.Stamp;
 
 		Core::DecodedImage decoded = std::move(picture.Decoded).GetValue();
 
