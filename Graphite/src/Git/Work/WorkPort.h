@@ -42,7 +42,8 @@ namespace Graphite {
 	{
 		Core::WorktreeEntry Entry;
 
-		// Empty for the main checkout (GitModel's status counts it), for a missing folder and for an unreadable status.
+		// Empty for the open folder's own worktree (GitModel's status counts it), for a missing folder and for an
+		// unreadable status. The main checkout is counted when a linked worktree is the open folder.
 		std::optional<std::size_t> Uncommitted;
 	};
 

@@ -60,6 +60,26 @@ TEST_CASE("Work facts list the worktrees and count each linked worktree's uncomm
 	CHECK(*facts.GetValue().Worktrees[1].Uncommitted == 2);
 }
 
+TEST_CASE("Opened in a linked worktree, work facts count the main checkout's uncommitted files and not the open one's")
+{
+	ReviewRepository repository;
+	Core::Oid masterTip;
+	Core::Oid sideTip;
+	const std::filesystem::path worktree = MakeSideWorktree(repository, masterTip, sideTip);
+	repository.Write("main-only.txt", "m\n");
+	ReviewRepository::WriteFileAt(worktree / "x.txt", "x\n");
+	Graphite::RepositoryGitPort port{worktree};
+
+	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(RequestFor(masterTip, sideTip));
+
+	REQUIRE(facts.HasValue());
+	REQUIRE(facts.GetValue().Worktrees.size() == 2);
+	CHECK(facts.GetValue().Worktrees[0].Entry.IsMain);
+	REQUIRE(facts.GetValue().Worktrees[0].Uncommitted.has_value());
+	CHECK(*facts.GetValue().Worktrees[0].Uncommitted == 1);
+	CHECK_FALSE(facts.GetValue().Worktrees[1].Uncommitted.has_value());
+}
+
 TEST_CASE("Work facts match each branch's commits against the trunk")
 {
 	ReviewRepository repository;

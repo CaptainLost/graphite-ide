@@ -1236,11 +1236,15 @@ namespace Graphite {
 		WorkFacts facts;
 		facts.Answers = request;
 
+		// WARNING: The open folder's own worktree is counted by GitModel's status, which may be a linked one; the main
+		// checkout is then a worktree like any other and is counted here.
+		const Core::PathKeyText ownKey = Core::PathKey(repository->GetWorkingDirectory());
+
 		for (Core::WorktreeEntry& entry : entries.GetValue())
 		{
 			WorktreeFacts worktree;
 
-			if (!entry.IsMain && !entry.FolderMissing)
+			if (!entry.FolderMissing && Core::PathKey(entry.Path) != ownKey)
 			{
 				const Core::Result<std::size_t> count = CountUncommitted(entry.Path);
 
