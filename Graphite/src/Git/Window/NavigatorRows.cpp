@@ -30,6 +30,33 @@ namespace Graphite {
 		{
 			return card.Kind != WorkCardKind::WorkingCopy;
 		}
+
+		std::size_t ThreadCount(const WorkBoard& board)
+		{
+			return static_cast<std::size_t>(std::ranges::count_if(board.Cards, IsThread));
+		}
+	}
+
+	std::string ThreadDistanceText(const WorkCard& card)
+	{
+		if (!card.DistanceKnown)
+		{
+			return {};
+		}
+
+		std::string text;
+
+		if (card.Ahead > 0)
+		{
+			text = "\xE2\x86\x91" + std::to_string(card.Ahead);
+		}
+
+		if (card.Behind > 0)
+		{
+			text += (text.empty() ? "" : " ") + std::string("\xE2\x86\x93") + std::to_string(card.Behind);
+		}
+
+		return text;
 	}
 
 	std::vector<std::size_t> NewestLocalBranches(const std::vector<Core::Branch>& branches, std::size_t count)
@@ -118,8 +145,12 @@ namespace Graphite {
 		std::vector<NavigatorRow> rows;
 		const GitWindowSelection& selection = input.Selection;
 
+		// WARNING: Before the first facts land every branch stands as an unchecked card, so the count waits for them.
+		const bool workCounted = input.Board != nullptr && input.Board->Worktrees.has_value();
+
 		rows.push_back({.Kind = NavigatorRowKind::Work,
 						.Label = kWorkLabel,
+						.Count = workCounted ? CountText(ThreadCount(*input.Board)) : std::string{},
 						.Selected = selection.View == GitWindowView::Work});
 
 		if (input.Board != nullptr)
@@ -148,6 +179,7 @@ namespace Graphite {
 
 				rows.push_back({.Kind = NavigatorRowKind::Thread,
 								.Label = ThreadRowLabel(card),
+								.Count = ThreadDistanceText(card),
 								.Index = cardIndex,
 								.Branch = card.Kind == WorkCardKind::Branch ? card.Branch : std::string{},
 								.State = card.State,

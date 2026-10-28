@@ -63,6 +63,9 @@ namespace Graphite {
 	// The worktree folder's name, else the short branch name.
 	std::string ThreadRowLabel(const WorkCard& card);
 
+	// "↑4 ↓38" against the trunk: each side only when it is not zero, nothing while the distance is unknown.
+	std::string ThreadDistanceText(const WorkCard& card);
+
 	// What a click on the row selects.
 	GitWindowSelection SelectionOf(const NavigatorRow& row);
 }

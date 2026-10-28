@@ -255,6 +255,44 @@ TEST_CASE("A thread row is labelled by its worktree folder, else its short branc
 	CHECK(ThreadRowLabel(card) == "topic-wt");
 }
 
+TEST_CASE("A thread row carries its distance to the trunk, each side only when it is not zero")
+{
+	WorkBoard board = BoardWithThreads(3);
+	board.Cards[1].Ahead = 4;
+	board.Cards[1].Behind = 38;
+	board.Cards[1].DistanceKnown = true;
+	board.Cards[2].Ahead = 6;
+	board.Cards[2].DistanceKnown = true;
+
+	const std::vector<Core::Branch> branches;
+	const std::vector<NavigatorRow> rows =
+		BuildNavigatorRows({.Board = &board, .ChangeCount = std::nullopt, .Branches = &branches, .Selection = {}});
+
+	std::vector<std::string> counts;
+
+	for (const NavigatorRow& row : rows)
+	{
+		if (row.Kind == NavigatorRowKind::Thread)
+		{
+			counts.push_back(row.Count);
+		}
+	}
+
+	CHECK(counts == std::vector<std::string>{"\xE2\x86\x91" "4 \xE2\x86\x93" "38", "\xE2\x86\x91" "6", ""});
+}
+
+TEST_CASE("Work counts its threads once the facts have landed, and waits before")
+{
+	WorkBoard board = BoardWithThreads(3);
+	const std::vector<Core::Branch> branches;
+	const NavigatorInput input{.Board = &board, .ChangeCount = std::nullopt, .Branches = &branches, .Selection = {}};
+
+	CHECK(FirstOf(BuildNavigatorRows(input), NavigatorRowKind::Work)->Count.empty());
+
+	board.Worktrees = 5;
+	CHECK(FirstOf(BuildNavigatorRows(input), NavigatorRowKind::Work)->Count == "3");
+}
+
 TEST_CASE("A detached worktree's row selects Work")
 {
 	NavigatorRow row;
