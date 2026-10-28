@@ -889,7 +889,6 @@ TEST_CASE("A click on the breadcrumb leaves the caret where it was and the focus
 
 TEST_CASE("A path row with tools gives up folders to make room for them")
 {
-	constexpr float kToolsWidth = 200.0f;
 	constexpr std::size_t kLastFolder = 2;
 	constexpr float kBothSides = 2.0f;
 
@@ -900,9 +899,12 @@ TEST_CASE("A path row with tools gives up folders to make room for them")
 	document.WithEditor = false;
 
 	float lastFolderAndFile = 0.0f;
+	float toolsWidth = 0.0f;
 	document.Frames.Next([&] {
 		document.Draw();
 		lastFolderAndFile = Graphite::BreadcrumbWidth(model, kLastFolder);
+		// Half the last folder's room: the file name still fits beside the tools, the folder does not.
+		toolsWidth = std::floor((lastFolderAndFile - Graphite::BreadcrumbWidth(model, model.Folders.size())) * kHalf);
 	});
 
 	document.Width = std::ceil(lastFolderAndFile) + Core::Scaled(kRowLeftPadding) * kBothSides + kOnePixel;
@@ -914,7 +916,7 @@ TEST_CASE("A path row with tools gives up folders to make room for them")
 	});
 	const std::size_t withoutTools = GlyphQuadsInColour(DocumentDrawing(), dim).size();
 
-	document.Tools.Width = kToolsWidth;
+	document.Tools.Width = toolsWidth;
 	document.Tools.Draw = [] {};
 	document.Frames.Next([&] { document.Draw(); });
 	const std::size_t withTools = GlyphQuadsInColour(DocumentDrawing(), dim).size();

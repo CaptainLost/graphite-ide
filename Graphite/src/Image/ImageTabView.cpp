@@ -144,11 +144,19 @@ namespace Graphite {
 
 		if (showsPicture)
 		{
-			tools.Width = ImageToolsWidth();
-			tools.Draw = [&tool, &tab, &settings] {
-				CentreInRow();
-				tool = DrawImageTools(tab.GetZoom().Zoom, settings.GetImageBackground());
+			const auto toolsOf = [&tool, &tab, &settings](ImageToolsSet shown) {
+				BreadcrumbTools set;
+				set.Width = ImageToolsWidth(shown);
+				set.Draw = [&tool, &tab, &settings, shown] {
+					CentreInRow();
+					tool = DrawImageTools(tab.GetZoom().Zoom, settings.GetImageBackground(), shown);
+				};
+				return set;
 			};
+
+			tools = toolsOf(ImageToolsSet::All);
+			tools.Narrower = {toolsOf(ImageToolsSet::WithoutBackground), toolsOf(ImageToolsSet::ZoomButtons),
+							  toolsOf(ImageToolsSet::StepButtons)};
 		}
 
 		DrawBreadcrumb(path, tools);
