@@ -6,6 +6,8 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/Platform/Shell.h"
@@ -39,6 +41,10 @@ namespace Graphite {
 		constexpr int kChangesColumnCount = 2;
 
 		constexpr const char* kNoTrunkName = "the trunk";
+
+		// The header's path is in the code face, smaller than the folder's name beside it.
+		constexpr float kHeaderPathScale = 0.8f;
+		constexpr float kKeepFontSize = 0.0f;
 
 		// The ref every stash is kept under: while a stash's history is shown, no branch row reads as shown.
 		constexpr const char* kStashRef = "refs/stash";
@@ -362,13 +368,34 @@ namespace Graphite {
 	void GitView::RenderNavigatorHeader()
 	{
 		const float room = ImGui::GetContentRegionAvail().x;
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
 
+		// The folder's name in bold and its path after it, on one line.
 		if (const std::filesystem::path& folder = m_Model.GetWorkingDirectory(); !folder.empty())
 		{
-			const std::string path = Core::ToUtf8(folder);
+			const std::filesystem::path shown = Core::NormalizeDirectory(folder);
+			const std::string path = Core::ToUtf8(shown);
+			const float lineStart = ImGui::GetCursorScreenPos().x;
 
-			EmphasisedLine(FitToWidth(FolderName(folder), room));
-			ImGui::TextDisabled("%s", FitToWidth(path, room).c_str());
+			ImGui::BeginGroup();
+			ImGui::TextUnformatted(ICON_LC_FOLDER);
+			ImGui::SameLine();
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+			EmphasisedLine(FitToWidth(FolderName(shown), room - (ImGui::GetCursorScreenPos().x - lineStart)));
+			ImGui::PopFont();
+
+			const float pathRoom = room - (ImGui::GetItemRectMax().x + spacing - lineStart);
+
+			if (pathRoom > 0.0f)
+			{
+				ImGui::SameLine();
+				Core::PushCodeFont(ImGui::GetFontSize() * kHeaderPathScale);
+				ImGui::TextDisabled("%s", FitToWidth(path, pathRoom).c_str());
+				ImGui::PopFont();
+			}
+
+			ImGui::EndGroup();
 
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
@@ -398,8 +425,22 @@ namespace Graphite {
 		}
 		else if (segment.has_value() && !segment->Branch.empty())
 		{
-			const std::string line = segment->Distance.empty() ? segment->Branch : segment->Branch + "  " + segment->Distance;
-			ImGui::TextUnformatted(FitToWidth(line, room).c_str());
+			// HEAD's branch, then its distance to the upstream in a chip with the status bar's marks.
+			const bool inSync = segment->Distance == ICON_LC_CHECK;
+			const Chip distance{inSync ? std::string(ICON_LC_CHECK " in sync") : segment->Distance,
+								inSync ? ChipTone::Good : ChipTone::Plain};
+			const float chipRoom = segment->Distance.empty() ? 0.0f : ChipWidthOf(distance.Text) + spacing;
+
+			ImGui::BeginGroup();
+			ImGui::TextUnformatted(FitToWidth(segment->Branch, room - chipRoom).c_str());
+
+			if (!segment->Distance.empty())
+			{
+				ImGui::SameLine();
+				DrawChipRow({distance}, ReadChipColours(m_Scheme.Get()));
+			}
+
+			ImGui::EndGroup();
 
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
