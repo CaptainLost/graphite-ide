@@ -44,4 +44,8 @@ namespace Graphite {
 	// Whether a log asked with this request keeps only some commits. Core trims the message text, so
 	// text of only spaces narrows nothing; BuildLogRequest leaves File unset for a blank path.
 	bool NarrowsHistory(const Core::LogRequest& request);
+
+	// Whether the page that answers `shown` is the history of another ref or stash than `asked` names. Its rows would
+	// stand under the asked history's name until that is read; a narrower or longer page of the same ref would not.
+	bool AnswersAnotherHistory(const Core::LogRequest& shown, const Core::LogRequest& asked);
 }

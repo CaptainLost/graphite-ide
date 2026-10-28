@@ -3,6 +3,7 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryReach.h"
 
+#include <filesystem>
 #include <string>
 
 using Graphite::BuildLogRequest;
@@ -244,6 +245,28 @@ TEST_CASE("A filter changed after being asked for still settles")
 
 	CHECK(settling.Advance(Core::Timestep{kSettled}));
 	CHECK(settling.Get().Text == "encoding");
+}
+
+TEST_CASE("A page of another ref or stash answers another history, a narrower or longer one of the same ref does not")
+{
+	Core::LogRequest head;
+
+	Core::LogRequest branch;
+	branch.Ref = "refs/heads/topic";
+
+	Core::LogRequest stash;
+	stash.Stash = Core::Oid{};
+
+	Core::LogRequest fileOfHead = head;
+	fileOfHead.File = std::filesystem::path("src/Main.cpp");
+	fileOfHead.Filter.Text = "fix";
+	fileOfHead.MaxCount = head.MaxCount + 500;
+
+	CHECK(Graphite::AnswersAnotherHistory(branch, fileOfHead));
+	CHECK(Graphite::AnswersAnotherHistory(head, branch));
+	CHECK(Graphite::AnswersAnotherHistory(head, stash));
+	CHECK_FALSE(Graphite::AnswersAnotherHistory(head, fileOfHead));
+	CHECK_FALSE(Graphite::AnswersAnotherHistory(branch, branch));
 }
 
 TEST_CASE("The frame a change is typed in does not count toward its wait, even when it carries the whole idle sleep")

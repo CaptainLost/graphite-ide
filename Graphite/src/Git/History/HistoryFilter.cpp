@@ -38,6 +38,11 @@ namespace Graphite {
 		return !Core::Trimmed(request.Filter.Text).empty() || request.File.has_value();
 	}
 
+	bool AnswersAnotherHistory(const Core::LogRequest& shown, const Core::LogRequest& asked)
+	{
+		return shown.Ref != asked.Ref || shown.Stash != asked.Stash;
+	}
+
 	void SettlingFilter::Set(HistoryFilter filter)
 	{
 		if (filter == m_Pending)

@@ -897,7 +897,14 @@ namespace Graphite {
 			RequestLog(HistoryReach{});
 		}
 
-		if (!page)
+		// WARNING: The page in hand may be another branch's, kept while the one now asked for is read; its rows
+		// would stand under this branch's name, so the wait is shown instead of them.
+		const std::optional<Core::LogRequest>& shownRequest = m_Model.GetShownLogRequest();
+		const std::optional<Core::LogRequest>& askedRequest = m_Model.GetAskedLogRequest();
+		const bool showsAnotherHistory = page && shownRequest.has_value() && askedRequest.has_value() &&
+										 AnswersAnotherHistory(*shownRequest, *askedRequest);
+
+		if (!page || showsAnotherHistory)
 		{
 			const LogAttempt attempt =
 				m_Model.IsLogAnswered(m_Model.GetLogGeneration()) ? LogAttempt::Settled : LogAttempt::InFlight;
