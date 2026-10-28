@@ -48,7 +48,7 @@ TEST_CASE("A branch without a kept session offers Review and a submenu of other 
 	CHECK(menu.Items[0].Label == "Review");
 	CHECK(menu.Items[0].Action == ReviewAction::Open);
 	CHECK(menu.Items[0].Branch == kSide);
-	CHECK(menu.Items[0].Base == kMain);
+	CHECK(menu.Items[0].Base.empty());
 	CHECK(menu.Submenu == "Review against");
 	REQUIRE(menu.SubmenuItems.size() == 1);
 	CHECK(menu.SubmenuItems[0].Label == "main");
@@ -67,11 +67,11 @@ TEST_CASE("A draft counts as no session in the review menu")
 
 	REQUIRE(menu.Items.size() == 1);
 	CHECK(menu.Items[0].Label == "Review");
-	CHECK(menu.Items[0].Base == kMain);
+	CHECK(menu.Items[0].Action == ReviewAction::Open);
 	CHECK(menu.Submenu == "Review against");
 }
 
-TEST_CASE("The checked-out branch is offered a review against its upstream and nothing without one")
+TEST_CASE("The checked-out branch is offered a review when it has an upstream and nothing without one")
 {
 	Core::Branch main = LocalBranch("main", kCheckedOut);
 	main.Upstream = "origin/main";
@@ -81,7 +81,7 @@ TEST_CASE("The checked-out branch is offered a review against its upstream and n
 	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[0], branches, sessions);
 
 	REQUIRE(menu.Items.size() == 1);
-	CHECK(menu.Items[0].Base == "refs/remotes/origin/main");
+	CHECK(menu.Items[0].Label == "Review");
 
 	const std::vector<Core::Branch> withoutUpstream = {LocalBranch("main", kCheckedOut)};
 	CHECK(Graphite::ReviewMenuFor(withoutUpstream[0], withoutUpstream, sessions).Items.empty());

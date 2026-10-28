@@ -88,7 +88,6 @@ TEST_CASE("Any branch but the checked-out one is offered for review against the 
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label == "Review against main");
 	CHECK(offer->Branch == "refs/heads/side");
 	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 }
@@ -102,7 +101,6 @@ TEST_CASE("The checked-out branch is offered for review against its upstream and
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[0], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label == "Review against origin/main");
 	CHECK(offer->Base == std::optional<std::string>{"refs/remotes/origin/main"});
 
 	const std::vector<Core::Branch> withoutUpstream = {LocalBranch("main", kCheckedOut)};
@@ -116,7 +114,6 @@ TEST_CASE("With HEAD detached a branch is offered with no base yet")
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label.empty());
 	CHECK_FALSE(offer->Base.has_value());
 }
 
@@ -144,7 +141,6 @@ TEST_CASE("With a remote default every other branch is offered for review agains
 		const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(reviewed, branches);
 
 		REQUIRE(offer.has_value());
-		CHECK(offer->Label == "Review against main");
 		CHECK(offer->Branch == reviewed.FullName);
 		CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 	}
@@ -158,7 +154,6 @@ TEST_CASE("The local branch tracking the remote default is offered for review ag
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[0], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label == "Review against origin/main");
 	CHECK(offer->Base == std::optional<std::string>{"refs/remotes/origin/main"});
 }
 
@@ -170,7 +165,6 @@ TEST_CASE("With HEAD detached a remote default still gives a branch its base")
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label == "Review against main");
 	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 }
 
@@ -182,7 +176,6 @@ TEST_CASE("With no local branch tracking the remote default the remote branch is
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label == "Review against origin/main");
 	CHECK(offer->Base == std::optional<std::string>{"refs/remotes/origin/main"});
 
 	CHECK_FALSE(Graphite::OfferReview(branches[2], branches).has_value());

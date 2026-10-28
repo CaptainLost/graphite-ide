@@ -15,8 +15,6 @@ namespace Graphite {
 	namespace {
 
 
-		constexpr std::string_view kReviewAgainst = "Review against ";
-
 		constexpr std::string_view kRenameArrow = " → ";
 
 		constexpr const char* kCommittedFilesHeading = "Files";
@@ -26,8 +24,7 @@ namespace Graphite {
 
 		ReviewOffer OfferAgainst(const Core::Branch& branch, const Core::Branch& base)
 		{
-			return ReviewOffer{
-				.Label = std::string{kReviewAgainst} + base.Name, .Branch = branch.FullName, .Base = base.FullName};
+			return ReviewOffer{.Branch = branch.FullName, .Base = base.FullName};
 		}
 
 		std::optional<ReviewOffer> OfferAgainstUpstream(const Core::Branch& branch,
@@ -73,7 +70,7 @@ namespace Graphite {
 
 		if (base == nullptr)
 		{
-			return ReviewOffer{.Label = std::string{}, .Branch = branch.FullName, .Base = std::nullopt};
+			return ReviewOffer{.Branch = branch.FullName, .Base = std::nullopt};
 		}
 
 		if (base->FullName == branch.FullName)

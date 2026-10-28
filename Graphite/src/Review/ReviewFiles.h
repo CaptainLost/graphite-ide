@@ -17,7 +17,6 @@ namespace Graphite {
 
 	struct ReviewOffer
 	{
-		std::string Label;
 		std::string Branch;
 
 		std::optional<std::string> Base;

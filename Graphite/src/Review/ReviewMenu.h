@@ -24,6 +24,7 @@ namespace Graphite {
 		ReviewAction Action = ReviewAction::Start;
 		std::string Branch;
 
+		// The base a Start item starts against; empty for Open and End.
 		std::string Base;
 	};
 
