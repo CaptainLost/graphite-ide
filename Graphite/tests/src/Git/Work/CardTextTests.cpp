@@ -3,6 +3,7 @@
 #include "Git/Work/CardText.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -146,6 +147,26 @@ TEST_CASE("A detached card names its commit and the operation in progress")
 	CHECK(Has(chips, "locked"));
 	CHECK(Has(chips, "detached at " + id.ShortHex()));
 	CHECK(Has(chips, "cherry-pick in progress"));
+}
+
+TEST_CASE("A card's branch line names the worktree folder, also of a path that ends in a separator")
+{
+	Graphite::WorkCard card = BranchCard();
+	card.Worktree = std::filesystem::path("D:/Repos/feature-folder");
+	CHECK(Graphite::CardBranchLine(card) == "feature \xC2\xB7 feature-folder");
+
+	Graphite::WorkCard workingCopy;
+	workingCopy.Kind = Graphite::WorkCardKind::WorkingCopy;
+	workingCopy.Branch = "refs/heads/main";
+	workingCopy.Worktree = std::filesystem::path("D:/Temp/bare/");
+	CHECK(Graphite::CardBranchLine(workingCopy) == "main \xC2\xB7 bare");
+
+	Graphite::WorkCard detached;
+	detached.Kind = Graphite::WorkCardKind::DetachedWorktree;
+	detached.Worktree = std::filesystem::path("D:/Temp/wt");
+	CHECK(Graphite::CardBranchLine(detached) == "wt");
+
+	CHECK(Graphite::CardBranchLine(BranchCard()) == "feature");
 }
 
 TEST_CASE("Review progress reads as waiting until it is known")

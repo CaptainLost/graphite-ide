@@ -1,5 +1,8 @@
 #include "Git/Work/CardText.h"
 
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Ref.h"
+
 #include <string>
 
 namespace Graphite {
@@ -111,6 +114,29 @@ namespace Graphite {
 		}
 
 		return chips;
+	}
+
+	std::string WorktreeFolderName(const std::filesystem::path& worktree)
+	{
+		const std::filesystem::path name = worktree.has_filename() ? worktree.filename() : worktree.parent_path().filename();
+		return Core::ToUtf8(name);
+	}
+
+	std::string CardBranchLine(const WorkCard& card)
+	{
+		std::string line = card.Branch.empty() ? std::string() : Core::ShortBranchName(card.Branch);
+
+		if (card.Worktree.has_value())
+		{
+			const std::string folder = WorktreeFolderName(*card.Worktree);
+
+			if (!folder.empty())
+			{
+				line += (line.empty() ? "" : std::string(" ") + kMiddleDot + " ") + folder;
+			}
+		}
+
+		return line;
 	}
 
 	std::string ReviewProgressText(const std::optional<ViewedCount>& viewed)

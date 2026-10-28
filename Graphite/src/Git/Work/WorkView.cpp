@@ -6,7 +6,6 @@
 #include "UI/FittedText.h"
 #include "UI/Lists/Chevron.h"
 
-#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
@@ -59,26 +58,10 @@ namespace Graphite {
 			return board.Trunk.has_value() ? Core::ShortBranchName(*board.Trunk) : "the trunk";
 		}
 
-		std::string FolderName(const std::filesystem::path& folder)
-		{
-			return Core::ToUtf8(folder.filename());
-		}
-
-		std::string BranchAndFolder(const WorkCard& card)
-		{
-			std::string line = card.Branch.empty() ? std::string() : Core::ShortBranchName(card.Branch);
-
-			if (card.Worktree.has_value())
-			{
-				line += (line.empty() ? "" : " \xC2\xB7 ") + FolderName(*card.Worktree);
-			}
-
-			return line;
-		}
-
 		std::string InfoText(const WorkInfo& info)
 		{
-			const std::string name = info.Branch.empty() ? FolderName(info.Worktree) : Core::ShortBranchName(info.Branch);
+			const std::string name =
+				info.Branch.empty() ? WorktreeFolderName(info.Worktree) : Core::ShortBranchName(info.Branch);
 
 			switch (info.Kind)
 			{
@@ -232,7 +215,7 @@ namespace Graphite {
 
 		// Branch and folder.
 		Core::PushCodeFont(ImGui::GetFontSize() * kCodeLineScale);
-		ImGui::TextDisabled("%s", FitToWidth(BranchAndFolder(card), room).c_str());
+		ImGui::TextDisabled("%s", FitToWidth(CardBranchLine(card), room).c_str());
 		ImGui::PopFont();
 
 		// Tip subject, two lines at most.

@@ -4,7 +4,6 @@
 #include "Git/Work/ChipRow.h"
 #include "UI/FittedText.h"
 
-#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/TextButton.h"
@@ -30,15 +29,7 @@ namespace Graphite {
 
 		std::string BranchAndFolder(const ThreadHeaderInput& input)
 		{
-			const std::string branch = input.Card != nullptr ? input.Card->Branch : std::string(input.Branch);
-			std::string line = Core::ShortBranchName(branch);
-
-			if (input.Card != nullptr && input.Card->Worktree.has_value())
-			{
-				line += " \xC2\xB7 " + Core::ToUtf8(input.Card->Worktree->filename());
-			}
-
-			return line;
+			return input.Card != nullptr ? CardBranchLine(*input.Card) : Core::ShortBranchName(std::string(input.Branch));
 		}
 
 		std::vector<std::string> HeaderChips(const ThreadHeaderInput& input)

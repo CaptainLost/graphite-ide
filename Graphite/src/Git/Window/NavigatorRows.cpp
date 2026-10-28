@@ -1,6 +1,6 @@
 #include "Git/Window/NavigatorRows.h"
 
-#include "Core/FileSystem/FileSystem.h"
+#include "Git/Work/CardText.h"
 
 #include <algorithm>
 
@@ -76,16 +76,9 @@ namespace Graphite {
 	{
 		if (card.Worktree.has_value())
 		{
-			std::filesystem::path folder = card.Worktree->filename();
-
-			if (folder.empty())
+			if (std::string folder = WorktreeFolderName(*card.Worktree); !folder.empty())
 			{
-				folder = card.Worktree->parent_path().filename();
-			}
-
-			if (!folder.empty())
-			{
-				return Core::ToUtf8(folder);
+				return folder;
 			}
 		}
 
