@@ -132,6 +132,45 @@ TEST_CASE("Past the budget the comparison stops and says it is incomplete")
 	CHECK(match.Behind == 3);
 }
 
+TEST_CASE("A branch with no change of its own reads none of the base's commits")
+{
+	GitFixture fixture;
+	const std::string fork = ForkSide(fixture);
+	fixture.Write("m1.txt", "1\n");
+	fixture.Commit("m1");
+	fixture.Write("m2.txt", "2\n");
+	fixture.Commit("m2");
+	fixture.Write("m3.txt", "3\n");
+	const std::string masterTip = fixture.Commit("m3");
+
+	Core::PatchIdCache cache;
+	const Core::PatchMatch match = Match(fixture, fork, masterTip, 1, cache);
+
+	CHECK(match == Core::PatchMatch{0, 3, 0, 0, true});
+	CHECK(cache.GetSize() == 0);
+}
+
+TEST_CASE("The base's commits are read only until every change of the branch has a twin")
+{
+	GitFixture fixture;
+	ForkSide(fixture);
+	fixture.Write("m1.txt", "1\n");
+	fixture.Commit("m1");
+	fixture.Write("m2.txt", "2\n");
+	fixture.Commit("m2");
+	fixture.Write("b.txt", "x\n");
+	const std::string masterTip = fixture.Commit("master adds b");
+	fixture.Checkout("side");
+	fixture.Write("b.txt", "x\n");
+	const std::string sideTip = fixture.Commit("side adds b");
+
+	Core::PatchIdCache cache;
+	const Core::PatchMatch match = Match(fixture, sideTip, masterTip, 1, cache);
+
+	CHECK(match == Core::PatchMatch{1, 3, 1, 1, true});
+	CHECK(cache.GetSize() == 2);
+}
+
 TEST_CASE("A commit's patch id is worked out once")
 {
 	GitFixture fixture;

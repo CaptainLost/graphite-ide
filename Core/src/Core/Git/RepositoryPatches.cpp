@@ -189,6 +189,17 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
 		}
 
+		match.OwnChanges = ownPatchIds.size();
+
+		// A branch merged long ago has no change of its own, and its base side can hold every trunk commit
+		// since: walking it would cost a patch id per commit for an answer already known.
+		std::unordered_set<Oid> unmatched(ownPatchIds.begin(), ownPatchIds.end());
+
+		if (unmatched.empty())
+		{
+			return match;
+		}
+
 		Result<RevwalkHandle> baseWalk = StartWalk(m_Handle.get(), base, tip);
 
 		if (!baseWalk.HasValue())
@@ -196,8 +207,9 @@ namespace Core {
 			return std::move(baseWalk).GetError();
 		}
 
-		std::unordered_set<Oid> basePatches;
+		std::unordered_set<Oid> matched;
 		std::size_t read = 0;
+		bool allMatched = false;
 
 		while ((nextResult = git_revwalk_next(&walked, baseWalk.GetValue().get())) == 0)
 		{
@@ -216,22 +228,26 @@ namespace Core {
 				return std::move(patchId).GetError();
 			}
 
-			if (patchId.GetValue().has_value())
+			if (patchId.GetValue().has_value() && unmatched.erase(*patchId.GetValue()) == 1)
 			{
-				basePatches.insert(*patchId.GetValue());
+				matched.insert(*patchId.GetValue());
+			}
+
+			if (unmatched.empty())
+			{
+				allMatched = true;
+				break;
 			}
 		}
 
-		if (match.Complete && nextResult != GIT_ITEROVER)
+		if (match.Complete && !allMatched && nextResult != GIT_ITEROVER)
 		{
 			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
 		}
 
-		match.OwnChanges = ownPatchIds.size();
-
 		for (const Oid& patchId : ownPatchIds)
 		{
-			if (basePatches.contains(patchId))
+			if (matched.contains(patchId))
 			{
 				++match.InBase;
 			}

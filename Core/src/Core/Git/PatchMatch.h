@@ -15,7 +15,7 @@ namespace Core {
 		std::size_t Behind = 0;     // commits base has that tip lacks
 		std::size_t OwnChanges = 0; // of Ahead, those with a change of their own: not a merge, not empty
 		std::size_t InBase = 0;     // of OwnChanges, those whose patch a commit among Behind also has
-		bool Complete = true;       // false when Behind holds more commits than the budget let it read
+		bool Complete = true;       // false when the budget ran out while a change of its own still had no twin
 
 		friend bool operator==(const PatchMatch&, const PatchMatch&) = default;
 	};
