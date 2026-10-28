@@ -36,7 +36,9 @@ namespace Graphite {
 		constexpr int kChipLines = 2;
 		constexpr float kProgressBarHeight = 4.0f;
 		constexpr float kHalf = 0.5f;
-		constexpr std::size_t kCardItemCount = 7;
+
+		// Title, branch line, subject, chips, progress and buttons, with one spacing to spare at the foot.
+		constexpr std::size_t kCardItemCount = 6;
 
 		float CardHeight()
 		{
@@ -45,7 +47,7 @@ namespace Graphite {
 			const float chips = static_cast<float>(kChipLines) * ChipHeight() + style.ItemSpacing.y;
 
 			return 2.0f * style.WindowPadding.y + line + line * kCodeLineScale +
-				static_cast<float>(kSubjectLines) * line + chips + line + kProgressBarHeight + ImGui::GetFrameHeight() +
+				static_cast<float>(kSubjectLines) * line + chips + line + ImGui::GetFrameHeight() +
 				static_cast<float>(kCardItemCount) * style.ItemSpacing.y;
 		}
 
@@ -310,24 +312,39 @@ namespace Graphite {
 		}
 
 		const std::optional<ViewedCount> viewed = ReviewProgressOf ? ReviewProgressOf(card.Branch) : std::nullopt;
+		const std::string count = ReviewCountText(viewed);
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
 
-		ImGui::TextDisabled("%s", ReviewProgressText(viewed).c_str());
+		// "Reviewed", the bar, then the count, on one line.
+		ImGui::TextDisabled("Reviewed");
+		ImGui::SameLine();
+
+		const float barWidth =
+			std::max(0.0f, ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(count.c_str()).x - spacing);
+		ImGui::Dummy(ImVec2(barWidth, ImGui::GetTextLineHeight()));
 
 		// WARNING: The bar is drawn only for a known count; an unknown one is not an empty bar.
-		const ImVec2 barSize(ImGui::GetContentRegionAvail().x, kProgressBarHeight);
-		ImGui::Dummy(barSize);
-
 		if (viewed.has_value() && viewed->Total > 0)
 		{
 			const ImVec2 min = ImGui::GetItemRectMin();
-			const ImVec2 max = ImGui::GetItemRectMax();
+			const float top = min.y + (ImGui::GetTextLineHeight() - kProgressBarHeight) * kHalf;
+			const ImVec2 trackMin(min.x, top);
+			const ImVec2 trackMax(min.x + barWidth, top + kProgressBarHeight);
 			const float fraction = static_cast<float>(viewed->Viewed) / static_cast<float>(viewed->Total);
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
 
-			drawList->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_FrameBg), kProgressBarHeight * kHalf);
-			drawList->AddRectFilled(min, ImVec2(min.x + (max.x - min.x) * fraction, max.y),
-									ImGui::GetColorU32(ImGuiCol_CheckMark), kProgressBarHeight * kHalf);
+			drawList->AddRectFilled(trackMin, trackMax, ImGui::GetColorU32(ImGuiCol_Border), kProgressBarHeight * kHalf);
+
+			// WARNING: Nothing viewed draws no fill: a rounded rectangle of no width still shows as a dot.
+			if (viewed->Viewed > 0)
+			{
+				drawList->AddRectFilled(trackMin, ImVec2(trackMin.x + barWidth * fraction, trackMax.y),
+										ImGui::GetColorU32(ImGuiCol_CheckMark), kProgressBarHeight * kHalf);
+			}
 		}
+
+		ImGui::SameLine();
+		ImGui::TextDisabled("%s", count.c_str());
 	}
 
 	void WorkView::DrawButtons(const WorkCard& card, std::chrono::sys_seconds now)

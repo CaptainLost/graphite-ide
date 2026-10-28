@@ -228,4 +228,14 @@ namespace Graphite {
 
 		return "Reviewed " + std::to_string(viewed->Viewed) + "/" + std::to_string(viewed->Total);
 	}
+
+	std::string ReviewCountText(const std::optional<ViewedCount>& viewed)
+	{
+		if (!viewed.has_value())
+		{
+			return kEllipsis;
+		}
+
+		return std::to_string(viewed->Viewed) + "/" + std::to_string(viewed->Total);
+	}
 }
