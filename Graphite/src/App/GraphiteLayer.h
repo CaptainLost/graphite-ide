@@ -19,6 +19,7 @@
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
@@ -284,6 +285,10 @@ namespace Graphite {
 		ImageTabs m_ImageTabs{[this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  Core::ImGuiRenderer::GetTextures()};
 
+		// WARNING: Declared before m_DocumentWindows, which holds it by reference. Its reads hold only their own
+		// mailboxes, so it may outlive m_Jobs, declared further down.
+		HexFiles m_HexFiles{[this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+
 		// WARNING: Declared after m_DocumentPort, m_Analysis and m_AnalysisCoordinator, which it holds by reference.
 		// m_ChangeMarkers is declared further down and is not yet constructed here; only a reference to it
 		// is bound, and nothing reaches through that reference until the first frame.
@@ -291,7 +296,7 @@ namespace Graphite {
 										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
 										  m_Analysis, m_AnalysisCoordinator.GetStore(),
 										  m_AnalysisCoordinator.GetPass(), m_Events, m_ActiveEditor,
-										  m_ImageTabs};
+										  m_ImageTabs, m_HexFiles};
 
 		// WARNING: Declared after m_Documents and m_DocumentWindows and before m_Panels, where GitView holds it by reference.
 		DocumentBuffers m_DocumentBuffers{m_Documents, m_DocumentWindows};

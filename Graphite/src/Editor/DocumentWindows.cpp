@@ -13,6 +13,10 @@
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Hex/HexCommands.h"
+#include "Hex/HexFiles.h"
+#include "Hex/HexView.h"
+
 #include "Image/ImageTabView.h"
 #include "Image/ImageTabs.h"
 
@@ -156,6 +160,11 @@ namespace Graphite {
 			return item.View == Core::ItemView::Image && item.Failure == Core::OpenFailure::None;
 		}
 
+		bool ShowsBytes(const Core::OpenItem& item)
+		{
+			return item.View == Core::ItemView::Hex && item.Failure == Core::OpenFailure::None;
+		}
+
 		std::string SavedCount(std::size_t saved)
 		{
 			if (saved == 0)
@@ -281,7 +290,7 @@ namespace Graphite {
 			tab.Path = item.Path;
 			tab.Preview = item.Preview;
 
-			// A picture has no caret and no scroll to keep.
+			// A picture has no caret and no scroll to keep, and the bytes of a file keep neither.
 			if (item.Document)
 			{
 				const Core::Position caret = item.Document->GetBuffer().ToPosition(item.Caret.Offset);
@@ -594,7 +603,7 @@ namespace Graphite {
 			}
 
 			RespondToSync(index, Core::SyncWithFile(m_Documents, index), batch);
-			CheckPictureOnDisk(index);
+			CheckViewOnDisk(index);
 		}
 
 		AnnounceExpectedReloads(batch);
@@ -620,7 +629,7 @@ namespace Graphite {
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
 			RespondToSync(index, Core::SyncWithFile(m_Documents, index), batch);
-			CheckPictureOnDisk(index);
+			CheckViewOnDisk(index);
 		}
 
 		AnnounceExpectedReloads(batch);
@@ -1000,8 +1009,71 @@ namespace Graphite {
 		return index ? &m_Documents.At(*index) : nullptr;
 	}
 
+	std::optional<std::filesystem::path> DocumentWindows::FindActiveHexTab() const
+	{
+		const std::optional<std::size_t> index = m_Documents.GetActiveIndex();
+
+		if (!index || !ShowsBytes(m_Documents.At(*index)))
+		{
+			return std::nullopt;
+		}
+
+		return m_Documents.At(*index).Path;
+	}
+
+	// A hex tab runs its command at once rather than when it next draws: it has no editor to hand it to, and a menu
+	// copy is reported as it is made.
+	void DocumentWindows::RunOnHexTab(const std::filesystem::path& path, EditorAction action, bool fromMenu)
+	{
+		const std::uint64_t size = m_Hex.For(path).GetSize();
+
+		if (!CanRunOnHexTab(action, size))
+		{
+			return;
+		}
+
+		HexViewState& view = m_HexViews[path];
+
+		if (action == EditorAction::SelectAll)
+		{
+			view.Selection = WholeFile(size);
+			Core::Redraw::Request();
+			return;
+		}
+
+		const Core::Result<std::string> copied = CopySelectedBytes(path, view.Selection, size);
+
+		if (!copied)
+		{
+			const bool tooLarge = copied.GetError().Code == Core::ErrorCode::TooLarge;
+			ReportFailure(tooLarge ? Core::ToastKind::Warning : Core::ToastKind::Error, "Cannot copy",
+						  copied.GetError().Message);
+			return;
+		}
+
+		if (copied.GetValue().empty())
+		{
+			return;
+		}
+
+		if (fromMenu)
+		{
+			CopyToClipboard(m_Events, "bytes", copied.GetValue());
+		}
+		else
+		{
+			ImGui::SetClipboardText(copied.GetValue().c_str());
+		}
+	}
+
 	void DocumentWindows::QueueOnActiveDocument(EditorAction action, bool fromMenu)
 	{
+		if (const std::optional<std::filesystem::path> hex = FindActiveHexTab())
+		{
+			RunOnHexTab(*hex, action, fromMenu);
+			return;
+		}
+
 		if (const std::optional<std::size_t> index = FindActiveTextIndex())
 		{
 			QueueEditorAction(*index, action, fromMenu);
@@ -1012,6 +1084,11 @@ namespace Graphite {
 	// the clipboard and copies it, and logs an error whenever it holds something other than text.
 	bool DocumentWindows::CanRunOnActiveDocument(EditorAction action)
 	{
+		if (const std::optional<std::filesystem::path> hex = FindActiveHexTab())
+		{
+			return CanRunOnHexTab(action, m_Hex.For(*hex).GetSize());
+		}
+
 		const Core::OpenItem* item = FindActiveTextItem();
 		const bool hasText = action == EditorAction::Paste && Core::ClipboardHasText();
 
@@ -1131,7 +1208,7 @@ namespace Graphite {
 			return false;
 		}
 
-		if (const auto shown = m_ShownPictures.find(*picture); shown != m_ShownPictures.end())
+		if (const auto shown = m_ShownViews.find(*picture); shown != m_ShownViews.end())
 		{
 			ZoomImageTab(m_Images.For(*picture), zoom, shown->second.Area);
 			Core::Redraw::Request();
@@ -1144,14 +1221,14 @@ namespace Graphite {
 	// a menu takes the focus before its item runs, so no tab holds it at that moment.
 	std::optional<std::filesystem::path> DocumentWindows::PictureTakingTheZoom() const
 	{
-		if (m_FocusedPicture)
+		if (m_FocusedView)
 		{
-			return m_FocusedPicture;
+			return m_FocusedView;
 		}
 
 		const std::filesystem::path* const active = m_Documents.GetActiveItemPath();
 
-		if (m_DocumentFocused || active == nullptr || !m_ShownPictures.contains(*active))
+		if (m_DocumentFocused || active == nullptr || !m_ShownViews.contains(*active))
 		{
 			return std::nullopt;
 		}
@@ -1168,14 +1245,14 @@ namespace Graphite {
 			return {};
 		}
 
-		const auto shown = m_ShownPictures.find(*active);
-		return shown != m_ShownPictures.end() ? shown->second.Status : std::vector<ViewStatusItem>{};
+		const auto shown = m_ShownViews.find(*active);
+		return shown != m_ShownViews.end() ? shown->second.Status : std::vector<ViewStatusItem>{};
 	}
 
-	DocumentWindows::ShownPicture DocumentWindows::RenderImageTab(const CommandContext& context,
-																  const Core::OpenItem& item, EditorSettings& settings,
-																  const std::filesystem::path& workspaceRoot,
-																  bool updatedAsShown)
+	DocumentWindows::ShownView DocumentWindows::RenderImageTab(const CommandContext& context, const Core::OpenItem& item,
+															   EditorSettings& settings,
+															   const std::filesystem::path& workspaceRoot,
+															   bool updatedAsShown)
 	{
 		// WARNING: A popup does not count: with the zoom menu open, a stroke belongs to the menu, not to the tab behind it.
 		const bool holdsKeyboard =
@@ -1198,15 +1275,44 @@ namespace Graphite {
 			Core::Redraw::Request();
 		}
 
-		return ShownPicture{.Status = frame.Status, .Area = frame.Area, .Focused = frame.Focused};
+		return ShownView{.Status = frame.Status, .Area = frame.Area, .Focused = frame.Focused};
 	}
 
-	void DocumentWindows::CheckPictureOnDisk(std::size_t index)
+	DocumentWindows::ShownView DocumentWindows::RenderHexTab(const CommandContext& context, const Core::OpenItem& item,
+															 float fontSize, const ResolvedScheme& scheme,
+															 const std::filesystem::path& workspaceRoot)
 	{
-		if (const Core::OpenItem& item = m_Documents.At(index); ShowsPicture(item))
+		// WARNING: Routed before the bytes are drawn, so a move or a Select All pressed this frame is drawn this frame.
+		// A popup does not count, as for a picture.
+		Core::FrameInput keys;
+
+		if (context.Input != nullptr &&
+			ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows | ImGuiFocusedFlags_NoPopupHierarchy))
+		{
+			bool ranRepeat = false;
+			keys = RouteFocusedEditorStrokes(context, *context.Input, ranRepeat);
+		}
+
+		const BreadcrumbModel path = BuildBreadcrumb(workspaceRoot, item.Path, {}, 0);
+		const EditorPalette palette = ReadEditorPalette(scheme);
+		const HexViewFrame frame =
+			DrawHexView(m_Hex.For(item.Path), m_HexViews[item.Path],
+						HexViewInput{.Path = &path, .Palette = &palette, .FontSize = fontSize, .Keys = &keys});
+
+		return ShownView{.Status = frame.Status, .Focused = frame.Focused};
+	}
+
+	// Bytes are asked about for every tab: only one that has shown them has any to check.
+	void DocumentWindows::CheckViewOnDisk(std::size_t index)
+	{
+		const Core::OpenItem& item = m_Documents.At(index);
+
+		if (ShowsPicture(item))
 		{
 			m_Images.CheckDisk(item.Path);
 		}
+
+		m_Hex.CheckDisk(item.Path);
 	}
 
 	std::optional<std::string> DocumentWindows::GetStatusMessage() const
@@ -1576,6 +1682,8 @@ namespace Graphite {
 		}
 
 		m_Images.Prune(openPaths);
+		m_Hex.Prune(openPaths);
+		std::erase_if(m_HexViews, [&openPaths](const auto& view) { return !openPaths.contains(view.first); });
 
 		m_ChangeMarkers.Retain(
 			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
@@ -2402,15 +2510,18 @@ namespace Graphite {
 		// pictures are updated as last frame showed them.
 		std::set<std::filesystem::path> updatedAsShown;
 
-		for (const auto& [path, picture] : m_ShownPictures)
+		for (const auto& [path, view] : m_ShownViews)
 		{
 			updatedAsShown.insert(path);
 		}
 
 		m_Images.Update(std::chrono::steady_clock::now(), updatedAsShown);
 
-		std::map<std::filesystem::path, ShownPicture> shownPictures;
-		std::optional<std::filesystem::path> focusedPicture;
+		// Once, before any hex view draws and asks for the rows it shows.
+		m_Hex.Update();
+
+		std::map<std::filesystem::path, ShownView> shownViews;
+		std::optional<std::filesystem::path> focusedView;
 		bool documentFocused = false;
 
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
@@ -2483,17 +2594,18 @@ namespace Graphite {
 				}
 			}
 
-			if (visible && ShowsPicture(item))
+			if (visible && (ShowsPicture(item) || ShowsBytes(item)))
 			{
-				ShownPicture picture =
-					RenderImageTab(context, item, settings, workspaceRoot, updatedAsShown.contains(item.Path));
+				ShownView view = ShowsPicture(item) ? RenderImageTab(context, item, settings, workspaceRoot,
+																	 updatedAsShown.contains(item.Path))
+													: RenderHexTab(context, item, fontSize, scheme, workspaceRoot);
 
-				if (picture.Focused)
+				if (view.Focused)
 				{
-					focusedPicture = item.Path;
+					focusedView = item.Path;
 				}
 
-				shownPictures.insert_or_assign(item.Path, std::move(picture));
+				shownViews.insert_or_assign(item.Path, std::move(view));
 			}
 			else if (visible)
 			{
@@ -2665,7 +2777,7 @@ namespace Graphite {
 			}
 
 			// WARNING: Checked again after the tab draws: a chord bound to the close command runs
-			// from inside its editor's or its picture's draw, after the check above had already looked.
+			// from inside its editor's, its picture's or its bytes' draw, after the check above had already looked.
 			if (m_CloseRequested && *m_CloseRequested == item.Path)
 			{
 				m_CloseRequested.reset();
@@ -2695,8 +2807,8 @@ namespace Graphite {
 			++index;
 		}
 
-		m_ShownPictures = std::move(shownPictures);
-		m_FocusedPicture = std::move(focusedPicture);
+		m_ShownViews = std::move(shownViews);
+		m_FocusedView = std::move(focusedView);
 		m_DocumentFocused = documentFocused;
 
 		// Edits a drawn tab made were sent as it drew. This sends the rest: a reload, or an edit
