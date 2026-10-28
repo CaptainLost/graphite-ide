@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 namespace Core {
 
@@ -54,7 +55,7 @@ namespace Core {
 		}
 
 		// A bitmap entry: a BITMAPINFOHEADER with a doubled height, the colour bitmap bottom-up, then the AND mask.
-		Result<RgbaImage> DecodeBitmapEntry(std::span<const std::uint8_t> data)
+		Result<RgbaImage> DecodeBitmapEntry(std::span<const std::uint8_t> data, const DecodeLimits& limits)
 		{
 			if (data.size() < kHeaderSize)
 			{
@@ -87,6 +88,12 @@ namespace Core {
 
 			const std::uint64_t height = static_cast<std::uint64_t>(doubledHeight) / 2;
 			const std::uint64_t columns = static_cast<std::uint64_t>(width);
+
+			// WARNING: Refused from the header alone, before anything is sized from it.
+			if (columns * height > limits.MaximumPixels)
+			{
+				return Error{ErrorCode::TooLarge, std::format("Image is too large to preview ({} × {})", width, height)};
+			}
 
 			std::uint64_t paletteSize = 0;
 			if (bitCount <= 8)
@@ -181,7 +188,7 @@ namespace Core {
 		}
 	}
 
-	Result<RgbaImage> DecodeIco(std::span<const std::uint8_t> bytes, std::size_t& entryCount)
+	Result<RgbaImage> DecodeIco(std::span<const std::uint8_t> bytes, std::size_t& entryCount, const DecodeLimits& limits)
 	{
 		if (bytes.size() < kDirectorySize || ReadU16(bytes, 0) != 0 || ReadU16(bytes, 2) != kIconType)
 		{
@@ -236,13 +243,16 @@ namespace Core {
 		const std::span<const std::uint8_t> data = bytes.subspan(chosen->Offset, chosen->Size);
 		if (IsPng(data))
 		{
-			Result<DecodedImage> decoded = DecodeImage(data, ImageFormat::Png, DecodeLimits{});
+			// WARNING: Not scaled here: the caller reports the entry's own size and scales it to the texture limit itself.
+			DecodeLimits unscaled = limits;
+			unscaled.MaximumSide = std::numeric_limits<int>::max();
+			Result<DecodedImage> decoded = DecodeImage(data, ImageFormat::Png, unscaled);
 			if (!decoded)
 			{
 				return decoded.GetError();
 			}
 			return std::move(decoded).GetValue().Frames.at(0).Image;
 		}
-		return DecodeBitmapEntry(data);
+		return DecodeBitmapEntry(data, limits);
 	}
 }

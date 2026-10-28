@@ -93,18 +93,13 @@ namespace Core {
 		Result<DecodedImage> DecodeIcoImage(std::span<const std::uint8_t> bytes, const DecodeLimits& limits)
 		{
 			std::size_t entryCount = 0;
-			Result<RgbaImage> decoded = DecodeIco(bytes, entryCount);
+			Result<RgbaImage> decoded = DecodeIco(bytes, entryCount, limits);
 			if (!decoded)
 			{
 				return decoded.GetError();
 			}
 
 			RgbaImage entry = std::move(decoded).GetValue();
-			const std::uint64_t pixelCount = static_cast<std::uint64_t>(entry.Width) * static_cast<std::uint64_t>(entry.Height);
-			if (pixelCount > limits.MaximumPixels)
-			{
-				return Error{ErrorCode::TooLarge, std::format("Image is too large to preview ({} × {})", entry.Width, entry.Height)};
-			}
 
 			DecodedImage image;
 			image.Format = ImageFormat::Ico;

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <span>
+#include <vector>
 
 using namespace Core;
 
@@ -37,7 +38,7 @@ TEST_CASE("An ico shows its largest entry")
 {
 	std::size_t entryCount = 0;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIcoTwoEntries), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIcoTwoEntries), entryCount, DecodeLimits{});
 
 	REQUIRE(decoded.HasValue());
 	const RgbaImage& image = decoded.GetValue();
@@ -83,7 +84,7 @@ TEST_CASE("A 32-bit ico entry keeps its alpha")
 {
 	std::size_t entryCount = 0;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco32Bit2x2), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco32Bit2x2), entryCount, DecodeLimits{});
 
 	REQUIRE(decoded.HasValue());
 	const RgbaImage& image = decoded.GetValue();
@@ -100,7 +101,7 @@ TEST_CASE("A 32-bit ico entry with no alpha at all takes its transparency from t
 {
 	std::size_t entryCount = 0;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco32BitNoAlpha2x2), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco32BitNoAlpha2x2), entryCount, DecodeLimits{});
 
 	REQUIRE(decoded.HasValue());
 	const RgbaImage& image = decoded.GetValue();
@@ -114,7 +115,7 @@ TEST_CASE("The AND mask makes pixels of a 24-bit entry transparent")
 {
 	std::size_t entryCount = 0;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco24Bit2x2), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco24Bit2x2), entryCount, DecodeLimits{});
 
 	REQUIRE(decoded.HasValue());
 	const RgbaImage& image = decoded.GetValue();
@@ -128,7 +129,7 @@ TEST_CASE("A paletted 8-bit ico entry decodes through its palette")
 {
 	std::size_t entryCount = 0;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco8Bit2x2), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco8Bit2x2), entryCount, DecodeLimits{});
 
 	REQUIRE(decoded.HasValue());
 	const RgbaImage& image = decoded.GetValue();
@@ -142,7 +143,7 @@ TEST_CASE("A 1-bit ico entry decodes with its mask")
 {
 	std::size_t entryCount = 0;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco1Bit2x2), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIco1Bit2x2), entryCount, DecodeLimits{});
 
 	REQUIRE(decoded.HasValue());
 	const RgbaImage& image = decoded.GetValue();
@@ -156,7 +157,7 @@ TEST_CASE("An ico with no entries is unreadable")
 {
 	std::size_t entryCount = 7;
 
-	auto decoded = DecodeIco(Bytes(ImageFixtures::kIcoNoEntries), entryCount);
+	auto decoded = DecodeIco(Bytes(ImageFixtures::kIcoNoEntries), entryCount, DecodeLimits{});
 
 	REQUIRE_FALSE(decoded.HasValue());
 	CHECK(decoded.GetError().Code == ErrorCode::InvalidArgument);
@@ -169,8 +170,28 @@ TEST_CASE("A truncated ico is unreadable")
 	std::size_t entryCount = 0;
 	const std::span<const std::uint8_t> whole = Bytes(ImageFixtures::kIco24Bit2x2);
 
-	auto decoded = DecodeIco(whole.first(whole.size() - 8), entryCount);
+	auto decoded = DecodeIco(whole.first(whole.size() - 8), entryCount, DecodeLimits{});
 
 	REQUIRE_FALSE(decoded.HasValue());
 	CHECK(decoded.GetError().Code == ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("An ico entry past the pixel limit is refused before its pixels are allocated")
+{
+	// A directory of one entry that holds only a bitmap header claiming 20000 x 20000.
+	std::vector<std::uint8_t> bytes = {0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 32, 0, 40, 0, 0, 0, 22, 0, 0, 0};
+	const std::uint32_t header[] = {40, 20000, 40000, 0x00200001, 0, 0, 0, 0, 0, 0};
+	for (const std::uint32_t value : header)
+	{
+		for (int shift = 0; shift < 32; shift += 8)
+		{
+			bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+		}
+	}
+
+	std::size_t entryCount = 0;
+	auto decoded = DecodeIco(bytes, entryCount, DecodeLimits{});
+
+	REQUIRE_FALSE(decoded.HasValue());
+	CHECK(decoded.GetError().Code == ErrorCode::TooLarge);
 }
