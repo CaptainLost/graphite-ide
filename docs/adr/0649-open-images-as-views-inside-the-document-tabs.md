@@ -103,15 +103,18 @@ the user means there; the active tab is the one they last worked in.
   are on screen is known only as their windows begin.
 - The wheel test in `ZoomFocusedPicture` reads ImGui's input: a zoom chord pressed
   in the same frame as a wheel turn zooms the font.
-- A tab that shows a failure, a missing image's included, routes no strokes, so
-  Ctrl+W does not close it, as for a text tab that could not be read; File →
-  Close Tab does.
+- A tab that shows an item-level failure, a missing file or a text file that
+  cannot be read, routes no strokes, so Ctrl+W does not close it; File → Close
+  Tab does. An image that could not be decoded or is too large to preview is
+  drawn as its bytes and routes them like any other view.
 
 ### Neutral
 
 - An image tab that holds the focus takes the zoom chords even while its picture
-  is loading or after it failed to load: nothing zooms and the font does not
-  change.
+  is loading or after its file failed to be read: nothing zooms and the font does
+  not change. The zoom menu entries do the same for the active tab. An image drawn
+  as its bytes has no picture to zoom, so the chords and the entries change the
+  font there.
 - An image tab whose file is missing draws the failure message and shows no
   picture, so the zoom chords and the zoom menu entries change the font while it
   has the focus or is active.
