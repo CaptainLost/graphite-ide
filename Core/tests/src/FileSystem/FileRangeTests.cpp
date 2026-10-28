@@ -112,7 +112,7 @@ TEST_CASE("A file held with no sharing is AccessDenied")
 	CHECK(range.GetError().Code == Core::ErrorCode::AccessDenied);
 }
 
-TEST_CASE("Reading leaves the file free to delete and rename")
+TEST_CASE("A read leaves no handle open, so the file can be renamed and deleted after it")
 {
 	TempDirectory directory;
 	const std::filesystem::path path = directory.GetPath() / "free.bin";

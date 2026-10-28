@@ -896,6 +896,24 @@ TEST_CASE("Dragging the scrollbar's grab to the bottom shows the last row")
 	const std::optional<VerticalExtent> resting = VerticalExtentInColour(HexScreen::Drawn(), idle);
 	REQUIRE(resting.has_value());
 	CHECK(resting->Bottom > kWindowSize.y - ImGui::GetStyle().ScrollbarSize);
+
+	SUBCASE("Ctrl+End from the top selects the last byte and shows its row")
+	{
+		// A page down from the first byte moves as many rows as are on screen, which tells how many that is.
+		screen.Stroke(KeyCode::Home, KeyModifier::Control);
+		REQUIRE(screen.State.Scroll.TopRow == 0);
+		screen.Stroke(KeyCode::PageDown);
+		const std::uint64_t visible = screen.State.Selection.Active / Graphite::kBytesPerRow;
+		REQUIRE(visible > 1);
+
+		screen.Stroke(KeyCode::End, KeyModifier::Control);
+		screen.Jobs.RunAll();
+		screen.Draw();
+
+		CheckSelection(screen.State.Selection, 0x13FFFFFFF, 0x13FFFFFFF);
+		CHECK(screen.State.Scroll.TopRow == rows - visible);
+		CHECK(screen.FindOffset("13FFFFFF0").has_value());
+	}
 }
 
 TEST_CASE("A one-byte file draws one row")
