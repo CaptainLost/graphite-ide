@@ -201,7 +201,7 @@ namespace {
 			}
 
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(kWindowSize);
+			ImGui::SetNextWindowSize(WindowSize);
 			ImGui::Begin(kWindow, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			const ImGuiWindow& window = *ImGui::GetCurrentWindow();
@@ -400,6 +400,7 @@ namespace {
 		std::string Notice;
 		std::function<void()> After;
 		bool Unfocused = false;
+		ImVec2 WindowSize = kWindowSize;
 
 		Graphite::HexViewFrame Last;
 		ImRect Row;
@@ -965,6 +966,38 @@ TEST_CASE("A read still waiting after a fifth of a second shows Reading… at th
 	screen.Draw();
 
 	CHECK_FALSE(screen.FindText("Reading…", kInterfaceFont).has_value());
+}
+
+TEST_CASE("The loader stands after the ASCII heading in a wide window and is left out of a narrow one")
+{
+	constexpr float kNarrowWidth = 400.0f;
+
+	HexScreen wide(DosStub());
+	wide.Draw();
+
+	for (int frame = 0; frame < kFramesPastTheLoaderWait; ++frame)
+	{
+		wide.Draw();
+	}
+
+	const std::optional<Found> wideLoader = wide.FindText("Reading…", kInterfaceFont);
+	const std::optional<Found> ascii = wide.FindText("ASCII");
+	REQUIRE(wideLoader.has_value());
+	REQUIRE(ascii.has_value());
+	CHECK(wideLoader->Box.Min.x > ascii->Box.Max.x);
+
+	HexScreen narrow(DosStub());
+	narrow.WindowSize = ImVec2(kNarrowWidth, kWindowSize.y);
+	narrow.Draw();
+
+	for (int frame = 0; frame < kFramesPastTheLoaderWait; ++frame)
+	{
+		narrow.Draw();
+	}
+
+	REQUIRE(narrow.Hex.IsWaiting());
+	CHECK_FALSE(narrow.FindText("Reading…", kInterfaceFont).has_value());
+	CHECK(narrow.FindText("Offset").has_value());
 }
 
 TEST_CASE("ImGui's keyboard navigation neither selects nor scrolls")

@@ -146,12 +146,22 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 		}
 
-		// The loader is in the interface font, so it is centred on the header's line rather than set on it.
-		void DrawReading(const ImRect& header)
+		// The loader is in the interface font, so it is centred on the header's line rather than set on it. It stands at
+		// the header's right end after the last heading, and is left out where it would not fit there: the placeholders
+		// show the wait.
+		void DrawReading(const ImRect& header, float headingsEnd)
 		{
-			const float right = header.Max.x - Core::Scaled(kBreadcrumbLeftPadding);
+			const float padding = Core::Scaled(kBreadcrumbLeftPadding);
+			const float right = header.Max.x - padding;
+			const float left = right - Core::LoadingLineWidth(kReadingText);
+
+			if (left < headingsEnd + padding)
+			{
+				return;
+			}
+
 			const float top = header.Min.y + std::floor((header.GetHeight() - ImGui::GetTextLineHeight()) * kHalf);
-			ImGui::SetCursorScreenPos(ImVec2(right - Core::LoadingLineWidth(kReadingText), top));
+			ImGui::SetCursorScreenPos(ImVec2(left, top));
 			Core::LoadingLine(kReadingText, Core::WhileLoaderWaits::TakeNoRoom);
 		}
 
@@ -412,7 +422,7 @@ namespace Graphite {
 		// Read before this frame asks for its rows, so it tells of the reads the frame before left running.
 		if (file.IsWaiting())
 		{
-			DrawReading(header);
+			DrawReading(header, grid.HeaderRight());
 			ImGui::SetCursorScreenPos(rowsCursor);
 		}
 

@@ -33,6 +33,9 @@ namespace Graphite {
 		float SlotRight(int column) const;
 
 		float CharacterLeft(int column) const;
+
+		// Where the header's last heading ends.
+		float HeaderRight() const;
 	};
 
 	HexGrid MeasureGrid(float left, std::uint64_t fileSize);

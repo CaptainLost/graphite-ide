@@ -212,6 +212,11 @@ namespace Graphite {
 		return AsciiLeft + Cell * static_cast<float>(column);
 	}
 
+	float HexGrid::HeaderRight() const
+	{
+		return AsciiLeft + Cell * static_cast<float>(kAsciiHeading.size());
+	}
+
 	HexGrid MeasureGrid(float left, std::uint64_t fileSize)
 	{
 		HexGrid grid;
