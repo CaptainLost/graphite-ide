@@ -44,6 +44,7 @@ namespace Graphite {
 
 		// The header's path is in the code face, smaller than the folder's name beside it.
 		constexpr float kHeaderPathScale = 0.8f;
+		constexpr float kHistoryTitleScale = 0.9f;
 		constexpr float kKeepFontSize = 0.0f;
 
 		// The ref every stash is kept under: while a stash's history is shown, no branch row reads as shown.
@@ -671,7 +672,13 @@ namespace Graphite {
 
 	void GitView::RenderHistoryHeader()
 	{
-		EmphasisedLine(FitToWidth(std::string(ICON_LC_HISTORY " ") + HistoryTitle(), ImGui::GetContentRegionAvail().x));
+		// A branch's history is named in the code face after the branch icon, a stash's after the archive's.
+		ImGui::TextUnformatted(m_SelectedStash.has_value() ? ICON_LC_ARCHIVE : ICON_LC_GIT_BRANCH);
+		ImGui::SameLine();
+
+		Core::PushCodeFont(ImGui::GetFontSize() * kHistoryTitleScale);
+		EmphasisedLine(FitToWidth(HistoryTitle(), ImGui::GetContentRegionAvail().x));
+		ImGui::PopFont();
 	}
 
 	void GitView::RenderBranchTable()
