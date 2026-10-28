@@ -195,11 +195,14 @@ namespace Graphite {
 			{
 				const Core::Branch& branch = branches[index];
 
+				// HEAD's history names no ref, and it is the history of HEAD's branch.
+				const bool shown = selection.Branch == branch.FullName || (selection.Branch.empty() && branch.IsHead);
+
 				rows.push_back({.Kind = NavigatorRowKind::Branch,
 								.Label = branch.IsHead ? "* " + branch.Name : branch.Name,
 								.Index = index,
 								.Branch = branch.FullName,
-								.Selected = selection.View == GitWindowView::History && selection.Branch == branch.FullName});
+								.Selected = selection.View == GitWindowView::History && shown});
 			}
 
 			rows.push_back({.Kind = NavigatorRowKind::ShowAllBranches,

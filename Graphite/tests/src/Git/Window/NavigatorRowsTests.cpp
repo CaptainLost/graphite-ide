@@ -208,6 +208,27 @@ TEST_CASE("The selected view's row is marked")
 	CHECK(selectedKinds({GitWindowView::History, "refs/heads/gone"}).empty());
 }
 
+TEST_CASE("HEAD's history marks HEAD's branch row")
+{
+	const WorkBoard board = BoardWithThreads(0);
+	const std::vector<Core::Branch> branches = {LocalBranch("topic", 20), LocalBranch("main", 10, true)};
+
+	const std::vector<NavigatorRow> rows = BuildNavigatorRows(
+		{.Board = &board, .ChangeCount = 1, .Branches = &branches, .Selection = {GitWindowView::History, ""}});
+
+	std::vector<std::string> selected;
+
+	for (const NavigatorRow& row : rows)
+	{
+		if (row.Selected)
+		{
+			selected.push_back(row.Branch);
+		}
+	}
+
+	CHECK(selected == std::vector<std::string>{"refs/heads/main"});
+}
+
 TEST_CASE("Changes shows its count once it is known")
 {
 	const WorkBoard board = BoardWithThreads(0);
