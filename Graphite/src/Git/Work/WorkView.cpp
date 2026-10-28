@@ -396,17 +396,20 @@ namespace Graphite {
 		const ListBodyScope listBody;
 
 		ImGui::SetNextItemOpen(m_ReadyExpanded, ImGuiCond_Always);
+		const std::string count = std::to_string(board.Ready.size());
 		m_ReadyExpanded = ChevronTreeNode("##readyGroup", ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_NoTreePushOnOpen,
-										  "Ready to remove", ReadySummary(board).c_str());
+										  "Ready to remove", count.c_str());
+
+		// The summary and the rows line up with the group's label.
+		const float indent = TreeRowLabelOffset();
+		ImGui::Indent(indent);
 
 		if (!m_ReadyExpanded)
 		{
+			ImGui::TextDisabled("%s", FitToWidth(ReadySummary(board), ImGui::GetContentRegionAvail().x).c_str());
+			ImGui::Unindent(indent);
 			return;
 		}
-
-		// The rows line up with the group's label.
-		const float indent = TreeRowLabelOffset();
-		ImGui::Indent(indent);
 
 		// Only the rows on screen are built and drawn: a repository can hold thousands of merged branches.
 		ImGuiListClipper clipper;
