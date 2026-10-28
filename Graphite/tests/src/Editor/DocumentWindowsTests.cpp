@@ -855,6 +855,31 @@ TEST_CASE("A binary file opens as a hex tab with its path row and rows")
 	CHECK_FALSE(drawn.TabDraws(program, "00000020", Face::Code));
 }
 
+TEST_CASE("Ctrl+wheel over a hex tab's rows changes the font and a plain notch scrolls")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(4096));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+
+	const float font = drawn.Settings.GetFontSize();
+	REQUIRE(drawn.TabDraws(program, "00000000", Face::Code));
+
+	drawn.CtrlWheelUpAt(MiddleOfWindowAt(ImVec2(0.0f, 0.0f)));
+
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+	CHECK(drawn.TabDraws(program, "00000000", Face::Code));
+
+	ImGui::GetIO().AddMouseWheelEvent(0.0f, -1.0f);
+	drawn.Frame();
+	drawn.Frame();
+
+	CHECK_FALSE(drawn.TabDraws(program, "00000000", Face::Code));
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+}
+
 TEST_CASE("A hex tab gives the status bar its offset, count, values and size")
 {
 	TempDirectory folder;

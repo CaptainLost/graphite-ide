@@ -8,6 +8,7 @@
 #include "Core/Events/FrameInput.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -39,6 +40,10 @@ namespace Graphite {
 
 		// One line above the header, such as why an image is shown as bytes; empty for none.
 		std::string_view Notice;
+
+		// Run while the pointer is over the rows and Ctrl is held with a wheel turn, which the view leaves unscrolled: the
+		// owner routes the turn to the chords bound to a hovered editor, such as the font zoom. Empty for none.
+		std::function<void()> RouteWheel;
 	};
 
 	struct HexViewFrame

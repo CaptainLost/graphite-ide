@@ -44,7 +44,9 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Events/EventBus.h"
+#include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
+#include "Core/Events/MouseEvent.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/FontSet.h"
@@ -1327,9 +1329,23 @@ namespace Graphite {
 
 		const BreadcrumbModel path = BuildBreadcrumb(workspaceRoot, item.Path, {}, 0);
 		const EditorPalette palette = ReadEditorPalette(scheme);
-		const HexViewFrame frame =
-			DrawHexView(m_Hex.For(item.Path), m_HexViews[item.Path],
-						HexViewInput{.Path = &path, .Palette = &palette, .FontSize = fontSize, .Keys = &keys, .Notice = notice});
+
+		// As a text editor routes the wheel: to the chords bound to a hovered editor, Ctrl+wheel's font zoom among them.
+		const auto routeWheel = [&context] {
+			if (context.Router != nullptr && context.Commands != nullptr && context.Keys != nullptr)
+			{
+				context.Router->OnMouseScrolled(*context.Commands, *context.Keys, Core::ShortcutScope::HoveredEditor,
+												Core::MouseScrolledEvent{ImGui::GetIO().MouseWheelH, ImGui::GetIO().MouseWheel});
+			}
+		};
+
+		const HexViewFrame frame = DrawHexView(m_Hex.For(item.Path), m_HexViews[item.Path],
+											   HexViewInput{.Path = &path,
+															.Palette = &palette,
+															.FontSize = fontSize,
+															.Keys = &keys,
+															.Notice = notice,
+															.RouteWheel = routeWheel});
 
 		return ShownView{.Status = frame.Status, .Focused = frame.Focused, .Bytes = true};
 	}

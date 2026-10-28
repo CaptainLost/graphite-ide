@@ -326,7 +326,18 @@ namespace Graphite {
 			if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
 				ImGui::IsMouseHoveringRect(whole.Min, whole.Max))
 			{
-				ApplyWheel(rowsId, state, rows);
+				// With Control held the turn is not the view's: the rows are drawn in the editor font, which it zooms.
+				if (ImGui::GetIO().KeyCtrl)
+				{
+					if (input.RouteWheel)
+					{
+						input.RouteWheel();
+					}
+				}
+				else
+				{
+					ApplyWheel(rowsId, state, rows);
+				}
 			}
 
 			const Scrollbar bar = UpdateScrollbar(state, rows);

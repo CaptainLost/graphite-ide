@@ -217,6 +217,7 @@ namespace {
 			input.FontSize = kFontSize;
 			input.Keys = &Keys;
 			input.Notice = Notice;
+			input.RouteWheel = RouteWheel;
 			Last = Graphite::DrawHexView(Hex, State, input);
 			ImGui::PopStyleColor();
 
@@ -399,6 +400,7 @@ namespace {
 		Core::FrameInput Keys;
 		std::string Notice;
 		std::function<void()> After;
+		std::function<void()> RouteWheel;
 		bool Unfocused = false;
 		ImVec2 WindowSize = kWindowSize;
 
@@ -752,6 +754,35 @@ TEST_CASE("The wheel scrolls three rows a notch and is not passed on")
 
 	screen.Wheel(5.0f);
 	CHECK(screen.State.Scroll.TopRow == 0);
+}
+
+TEST_CASE("Ctrl+wheel over the rows leaves the scroll and is routed to the hovered-editor chords")
+{
+	HexScreen screen(Pattern(4096));
+	int routed = 0;
+	screen.RouteWheel = [&routed] { ++routed; };
+	screen.Land();
+	screen.Draw();
+
+	const std::optional<Found> top = screen.FindOffset("00000000");
+	REQUIRE(top.has_value());
+	screen.MoveTo(top->Box.GetCenter());
+
+	screen.Wheel(-1.0f);
+	CHECK(screen.State.Scroll.TopRow == 3);
+	CHECK(routed == 0);
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.AddKeyEvent(ImGuiMod_Ctrl, true);
+	io.AddKeyEvent(ImGuiKey_LeftCtrl, true);
+	screen.Wheel(-1.0f);
+
+	CHECK(screen.State.Scroll.TopRow == 3);
+	CHECK(routed >= 1);
+
+	io.AddKeyEvent(ImGuiKey_LeftCtrl, false);
+	io.AddKeyEvent(ImGuiMod_Ctrl, false);
+	screen.Draw();
 }
 
 TEST_CASE("Dragging the scrollbar's grab to the bottom shows the last row")
