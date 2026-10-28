@@ -347,6 +347,10 @@ namespace Graphite {
 					ApplyWheel(rowsId, state, rows);
 				}
 			}
+			else
+			{
+				state.WheelPending = 0.0f;
+			}
 
 			const Scrollbar bar = UpdateScrollbar(state, rows);
 			ApplyPointer(state, size, grid, rows, pressed, held);
@@ -356,10 +360,6 @@ namespace Graphite {
 			if (state.Hovered)
 			{
 				ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
-			}
-			else
-			{
-				state.WheelPending = 0.0f;
 			}
 
 			WantRowsOnScreen(file, state.Scroll, rows);
