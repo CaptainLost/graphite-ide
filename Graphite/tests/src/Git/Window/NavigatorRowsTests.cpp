@@ -293,6 +293,20 @@ TEST_CASE("Work counts its threads once the facts have landed, and waits before"
 	CHECK(FirstOf(BuildNavigatorRows(input), NavigatorRowKind::Work)->Count == "3");
 }
 
+TEST_CASE("Work's count waits while only part of a first read has landed")
+{
+	WorkBoard board = BoardWithThreads(3);
+	board.Worktrees = 5;
+	board.FactsPartial = true;
+	const std::vector<Core::Branch> branches;
+	const NavigatorInput input{.Board = &board, .ChangeCount = std::nullopt, .Branches = &branches, .Selection = {}};
+
+	CHECK(FirstOf(BuildNavigatorRows(input), NavigatorRowKind::Work)->Count.empty());
+
+	board.FactsPartial = false;
+	CHECK(FirstOf(BuildNavigatorRows(input), NavigatorRowKind::Work)->Count == "3");
+}
+
 TEST_CASE("A branch row carries its age at the right and HEAD's has no mark in its label")
 {
 	const WorkBoard board = BoardWithThreads(0);

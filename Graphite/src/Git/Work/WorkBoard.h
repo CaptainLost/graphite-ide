@@ -104,6 +104,9 @@ namespace Graphite {
 		// No facts answer the current branches yet, or only part of a first read has: its branches resolve one by one.
 		bool FactsPending = false;
 
+		// Only part of a first read has landed; the branches not answered yet stand as unchecked cards.
+		bool FactsPartial = false;
+
 		// Every worktree of the repository, the main one too; unknown until the first facts land.
 		std::optional<std::size_t> Worktrees;
 	};

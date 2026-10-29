@@ -56,7 +56,7 @@ namespace Graphite {
 		class FactsIndex
 		{
 		public:
-			explicit FactsIndex(const WorkFacts* facts)
+			FactsIndex(const WorkFacts* facts, const WorktreeFacts* own)
 			{
 				if (facts == nullptr)
 				{
@@ -79,7 +79,9 @@ namespace Graphite {
 
 					// The main worktree counts too: open in a linked worktree, it holds a branch that is not HEAD's. The
 					// first worktree listed holding a branch is the one kept.
-					if (!entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch)
+					// WARNING: The open folder's own entry holds no branch. HEAD's branch is known from the branches, and
+					// a checkout there moves no tip the facts request names, so its entry can name the branch left.
+					if (&worktree != own && !entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch)
 					{
 						m_Holders.try_emplace(Core::LocalBranchReference(entry.Head.BranchName), &worktree);
 					}
@@ -220,6 +222,7 @@ namespace Graphite {
 			board.Trunk = trunk->FullName;
 		}
 
+		board.FactsPartial = facts != nullptr && facts->Partial;
 		board.FactsPending = facts == nullptr || facts->Partial ||
 							 facts->Answers != WorkFactsRequestFor(branches, facts->Answers.PatchBudget);
 		const WorktreeFacts* const own = WorkingCopyWorktree(facts, input.WorkingDirectory);
@@ -236,7 +239,7 @@ namespace Graphite {
 		}
 
 		std::vector<WorkCard> branchCards;
-		const FactsIndex index(facts);
+		const FactsIndex index(facts, own);
 
 		for (const Core::Branch& branch : branches)
 		{

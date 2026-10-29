@@ -146,8 +146,9 @@ namespace Graphite {
 		std::vector<NavigatorRow> rows;
 		const GitWindowSelection& selection = input.Selection;
 
-		// WARNING: Before the first facts land every branch stands as an unchecked card, so the count waits for them.
-		const bool workCounted = input.Board != nullptr && input.Board->Worktrees.has_value();
+		// WARNING: Until the whole first read lands, the branches it has not answered stand as unchecked cards, so the
+		// count waits for all of them rather than shrinking as they resolve.
+		const bool workCounted = input.Board != nullptr && input.Board->Worktrees.has_value() && !input.Board->FactsPartial;
 
 		rows.push_back({.Kind = NavigatorRowKind::Work,
 						.Label = kWorkLabel,

@@ -51,7 +51,7 @@ namespace {
 		bool HaveFacts = true;
 		bool StaleFacts = false;
 		bool Partial = false;
-			std::string MovedSinceFacts; // full name of a branch that is at another tip now than when the facts were read
+		std::string MovedSinceFacts; // full name of a branch that is at another tip now than when the facts were read
 		Core::HeadState MainHead{.Kind = Core::HeadKind::Branch, .BranchName = "feature"};
 
 		Scene()
@@ -786,4 +786,24 @@ TEST_CASE("The board counts every worktree of the repository once the facts land
 
 	scene.HaveFacts = false;
 	CHECK_FALSE(scene.Build().Worktrees.has_value());
+}
+
+TEST_CASE("A branch checked out of in the open folder since the facts were read is not given the open folder")
+{
+	// The facts still say the open folder holds feature; side is checked out there now. The request is the same
+	// either way, so nothing reads the facts again.
+	Scene scene;
+	scene.Add("side").IsHead = true;
+	scene.Branches[2].IsHead = false;
+	scene.Matches["refs/heads/feature"] = Match(0, 1, 0, 0);
+
+	const Graphite::WorkBoard board = scene.Build();
+
+	REQUIRE_FALSE(board.FactsPending);
+	CHECK_FALSE(board.FactsPartial);
+	CHECK(board.Cards.front().Branch == "refs/heads/side");
+	CHECK(CardFor(board, "feature") == nullptr);
+	const Graphite::ReadyEntry* feature = ReadyFor(board, "feature");
+	REQUIRE(feature != nullptr);
+	CHECK_FALSE(feature->Worktree.has_value());
 }
