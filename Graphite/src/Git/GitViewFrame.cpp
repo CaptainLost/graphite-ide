@@ -676,9 +676,12 @@ namespace Graphite {
 		const Core::Branch* const named =
 			m_SelectedRef.has_value() ? BranchWithFullName(listed, *m_SelectedRef) : CheckedOutBranch(listed);
 
+		// Keyed by the branch, so a menu left open while HEAD moves elsewhere closes rather than naming the new branch.
 		if (named != nullptr)
 		{
+			ImGui::PushID(named->FullName.c_str());
 			RenderRefMenu(*named);
+			ImGui::PopID();
 		}
 	}
 

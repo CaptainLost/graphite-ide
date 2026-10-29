@@ -11,6 +11,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Ref.h"
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
@@ -331,7 +332,11 @@ namespace Graphite {
 		DrawProgress(card);
 		DrawButtons(card, now);
 
-		if (DrawBranchMenu && CardNamesBranch(card) && ImGui::BeginPopupContextWindow("##cardMenu"))
+		// Over the card's buttons too, as anywhere on the card.
+		const bool clickedHere = ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+								 ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+
+		if (DrawBranchMenu && CardNamesBranch(card) && Core::BeginRightClickMenu("##cardMenu", clickedHere))
 		{
 			DrawBranchMenu(card.Branch);
 			ImGui::EndPopup();
