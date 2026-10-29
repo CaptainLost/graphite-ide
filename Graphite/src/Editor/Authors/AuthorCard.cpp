@@ -28,7 +28,9 @@ namespace Graphite {
 		constexpr float kTextWidthEms = 32.0f;
 		constexpr float kBodyLines = 12.0f;
 		constexpr float kBothSides = 2.0f;
+		constexpr float kHalf = 0.5f;
 		constexpr float kKeepFontSize = 0.0f;
+		constexpr float kDividerAlpha = 0.25f;
 
 		void MutedText(const std::string& text)
 		{
@@ -70,11 +72,27 @@ namespace Graphite {
 			ImGui::EndChild();
 		}
 
+		// WARNING: Not the theme's separator colour. That is its border colour, within a level of a popup's fill, and a
+		// line drawn in it could not be seen; the muted text colour, faded, reads on the card in a dark scheme and a light
+		// one alike.
+		void DrawDivider()
+		{
+			ImVec4 divider = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+			divider.w *= kDividerAlpha;
+
+			ImGui::PushStyleColor(ImGuiCol_Separator, divider);
+			ImGui::Separator();
+			ImGui::PopStyleColor();
+		}
+
 		std::optional<AuthorCardAction::Kind> DrawActions(const AuthorCardContent& content)
 		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const bool startsWithButton = content.ShortHash.empty();
+
 			std::optional<AuthorCardAction::Kind> clicked;
 
-			if (!content.ShortHash.empty())
+			if (!startsWithButton)
 			{
 				ImGui::AlignTextToFramePadding();
 				MutedText(content.ShortHash);
@@ -83,13 +101,22 @@ namespace Graphite {
 			else
 			{
 				// The row starts with a button's word rather than the hash, so the button's frame goes out by its padding
-				// and the word lines up with the text above, where a committed card's hash starts.
-				ImGui::SetCursorPosX(ImGui::GetCursorPosX() - ImGui::GetStyle().FramePadding.x);
+				// and the word lines up with the text above, where a committed card's hash starts. Its padding is cut to
+				// half the card's first, so its hover fill stays inside the card's padding instead of touching its edge.
+				const float pull = std::min(style.FramePadding.x, style.WindowPadding.x * kHalf);
+
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(pull, style.FramePadding.y));
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() - pull);
 			}
 
 			if (Core::TextButton("History of this line"))
 			{
 				clicked = AuthorCardAction::Kind::LineHistory;
+			}
+
+			if (startsWithButton)
+			{
+				ImGui::PopStyleVar();
 			}
 
 			if (content.Uncommitted)
@@ -332,8 +359,7 @@ namespace Graphite {
 			DrawBody(content.Body, maxContentWidth, appearing);
 		}
 
-		// A divider above the actions, which the theme draws in its border colour.
-		ImGui::Separator();
+		DrawDivider();
 
 		const std::optional<AuthorCardAction::Kind> clicked = DrawActions(content);
 

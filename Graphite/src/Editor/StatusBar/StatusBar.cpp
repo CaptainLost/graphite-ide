@@ -66,6 +66,12 @@ namespace Graphite {
 			Loader
 		};
 
+		enum class ItemFace
+		{
+			Interface,
+			Code
+		};
+
 		struct Piece
 		{
 			PieceKind Kind = PieceKind::Text;
@@ -77,12 +83,9 @@ namespace Graphite {
 			float GapBefore = kNoGap;
 
 			Core::WhileLoaderWaits WhileLoaderWaits = Core::WhileLoaderWaits::ShowText;
-		};
 
-		enum class ItemFace
-		{
-			Interface,
-			Code
+			// A text piece's own face, in place of its item's; none for the item's.
+			std::optional<ItemFace> Face;
 		};
 
 		struct StatusItem
@@ -226,6 +229,27 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
+		// Pushed over the item's face, which stays pushed while its pieces are measured and drawn.
+		void PushPieceFace(const Piece& piece)
+		{
+			if (piece.Face == ItemFace::Code)
+			{
+				Core::PushCodeFont(kStatusBarFontSize);
+			}
+			else if (piece.Face == ItemFace::Interface)
+			{
+				Core::PushInterfaceFont(kStatusBarFontSize);
+			}
+		}
+
+		void PopPieceFace(const Piece& piece)
+		{
+			if (piece.Face.has_value())
+			{
+				ImGui::PopFont();
+			}
+		}
+
 		float PieceWidth(const Piece& piece)
 		{
 			if (piece.Kind == PieceKind::Swatch)
@@ -243,7 +267,11 @@ namespace Graphite {
 				return Core::LoadingLineWidth(piece.Text.c_str());
 			}
 
-			return ImGui::CalcTextSize(piece.Text.c_str()).x;
+			PushPieceFace(piece);
+			const float width = ImGui::CalcTextSize(piece.Text.c_str()).x;
+			PopPieceFace(piece);
+
+			return width;
 		}
 
 		float PiecesWidth(const std::vector<Piece>& pieces)
@@ -312,7 +340,9 @@ namespace Graphite {
 				}
 				else
 				{
+					PushPieceFace(piece);
 					drawList->AddText(ImVec2(x, lineStart.y), colour, piece.Text.c_str());
+					PopPieceFace(piece);
 				}
 
 				x += width;
@@ -589,6 +619,11 @@ namespace Graphite {
 			if (view.Code)
 			{
 				item.Face = ItemFace::Code;
+			}
+
+			if (!view.Label.empty())
+			{
+				item.Pieces.insert(item.Pieces.begin(), Piece{.Text = view.Label, .Face = ItemFace::Interface});
 			}
 
 			if (view.Swatch)

@@ -106,6 +106,41 @@ namespace {
 	}
 }
 
+TEST_CASE("Line author waits for the caret to rest when a delay is set")
+{
+	constexpr double kLongSinceAnEdit = 60.0;
+	constexpr double kDelay = 0.5;
+
+	const std::optional<double> justArrived = Graphite::LineAuthorHiddenFor(kLongSinceAnEdit, 0.1, kDelay);
+
+	REQUIRE(justArrived.has_value());
+	CHECK(*justArrived == doctest::Approx(0.4));
+	CHECK_FALSE(Graphite::LineAuthorHiddenFor(kLongSinceAnEdit, kDelay, kDelay).has_value());
+	CHECK_FALSE(Graphite::LineAuthorHiddenFor(kLongSinceAnEdit, 2.0, kDelay).has_value());
+}
+
+TEST_CASE("Line author shows at once on a new line when no delay is set")
+{
+	constexpr double kLongSinceAnEdit = 60.0;
+	constexpr double kNoDelay = 0.0;
+
+	CHECK_FALSE(Graphite::LineAuthorHiddenFor(kLongSinceAnEdit, 0.0, kNoDelay).has_value());
+	CHECK(Graphite::LineAuthorHiddenFor(0.1, 0.0, kNoDelay).has_value());
+}
+
+TEST_CASE("Line author waits for whichever of typing and resting ends later")
+{
+	constexpr double kDelay = 0.5;
+
+	const std::optional<double> typingEndsLater = Graphite::LineAuthorHiddenFor(0.0, 0.4, kDelay);
+	const std::optional<double> restingEndsLater = Graphite::LineAuthorHiddenFor(0.4, 0.0, kDelay);
+
+	REQUIRE(typingEndsLater.has_value());
+	REQUIRE(restingEndsLater.has_value());
+	CHECK(*typingEndsLater == doctest::Approx(Graphite::kAuthorQuietSeconds));
+	CHECK(*restingEndsLater == doctest::Approx(kDelay));
+}
+
 TEST_CASE("Author text shows everything when it fits")
 {
 	const auto parts = AnnaParts();

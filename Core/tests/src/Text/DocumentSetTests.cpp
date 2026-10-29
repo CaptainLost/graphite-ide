@@ -133,7 +133,7 @@ TEST_CASE("Opening the same file twice activates it instead of duplicating it")
 	CHECK(documents.GetActiveIndex() == std::optional<std::size_t>{0});
 }
 
-TEST_CASE("A binary file opens as an item with a reason rather than nothing at all")
+TEST_CASE("A binary file that is not an image opens as a hex item")
 {
 	TempDirectory directory;
 	const std::filesystem::path path = directory.GetPath() / "object.obj";
@@ -141,11 +141,51 @@ TEST_CASE("A binary file opens as an item with a reason rather than nothing at a
 
 	DocumentSet documents;
 
+	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+	REQUIRE(documents.GetCount() == 1);
+	CHECK(documents.GetActiveIndex() == std::optional<std::size_t>{0});
+	CHECK(documents.At(0).View == ItemView::Hex);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+	CHECK(documents.At(0).Document == nullptr);
+	CHECK(documents.At(0).FileSize == kBinaryFileBytes.size());
+	CHECK_FALSE(IsLoading(documents.At(0)));
+}
+
+TEST_CASE("A binary file over 512 MB still opens as a hex item")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "huge.bin";
+
+	if (!TryWriteLargeBinaryFile(path, MaximumFileSize + 1))
+	{
+		return;
+	}
+
+	DocumentSet documents;
+
+	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+	REQUIRE(documents.GetCount() == 1);
+	CHECK(documents.At(0).View == ItemView::Hex);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+	CHECK(documents.At(0).FileSize == MaximumFileSize + 1);
+}
+
+TEST_CASE("A text file over 512 MB is still too large to open")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "huge.log";
+
+	if (!TryWriteLargeTextFile(path, MaximumFileSize + 1))
+	{
+		return;
+	}
+
+	DocumentSet documents;
+
 	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK_FALSE(documents.At(0).Document != nullptr);
-	CHECK(documents.At(0).Failure == OpenFailure::Binary);
-	CHECK(FailureMessage(documents.At(0)).find("Binary") != std::string::npos);
+	CHECK(documents.At(0).View == ItemView::Text);
+	CHECK(documents.At(0).Failure == OpenFailure::TooLarge);
 }
 
 TEST_CASE("A UTF-16 file opens as a document with its text decoded")
@@ -688,17 +728,21 @@ TEST_CASE("A missing file that comes back stops being marked deleted")
 TEST_CASE("MarkPresent leaves a failure that is not about the file being gone since that tab never loaded content")
 {
 	TempDirectory directory;
-	const std::filesystem::path path = directory.GetPath() / "binary.obj";
-	WriteFileBytes(path, kBinaryFileBytes);
+	const std::filesystem::path path = directory.GetPath() / "huge.log";
+
+	if (!TryWriteLargeTextFile(path, MaximumFileSize + 1))
+	{
+		return;
+	}
 
 	DocumentSet documents;
 	documents.Open(path, TabKind::Permanent);
 
-	REQUIRE(documents.At(0).Failure == OpenFailure::Binary);
+	REQUIRE(documents.At(0).Failure == OpenFailure::TooLarge);
 
 	documents.MarkPresent(path);
 
-	CHECK(documents.At(0).Failure == OpenFailure::Binary);
+	CHECK(documents.At(0).Failure == OpenFailure::TooLarge);
 }
 
 TEST_CASE("Loading fills an item that opened before its file existed")
@@ -719,7 +763,7 @@ TEST_CASE("Loading fills an item that opened before its file existed")
 	CHECK(documents.At(0).FailureDetail.empty());
 }
 
-TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a document")
+TEST_CASE("Loading a file that turned out to be binary shows it as hex, not a document")
 {
 	TempDirectory directory;
 	const std::filesystem::path path = directory.GetPath() / "appears.obj";
@@ -729,9 +773,10 @@ TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a 
 
 	WriteFileBytes(path, kBinaryFileBytes);
 
-	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Unconfirmed) == ItemLoad::Failed);
+	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Unconfirmed) == ItemLoad::Loaded);
 	CHECK_FALSE(documents.At(0).Document != nullptr);
-	CHECK(documents.At(0).Failure == OpenFailure::Binary);
+	CHECK(documents.At(0).View == ItemView::Hex);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
 }
 
 // The classification needs only a NUL in the first bytes and the extension, so these files hold the
@@ -764,7 +809,7 @@ TEST_CASE("A png that holds text, such as a Git LFS pointer, opens as text")
 	CHECK(documents.At(0).Document != nullptr);
 }
 
-TEST_CASE("A binary file of another kind still fails as binary")
+TEST_CASE("A binary file of another kind opens as hex, not as an image")
 {
 	TempDirectory directory;
 	const std::filesystem::path path = directory.GetPath() / "program.exe";
@@ -772,9 +817,9 @@ TEST_CASE("A binary file of another kind still fails as binary")
 
 	DocumentSet documents;
 
-	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
-	CHECK(documents.At(0).View == ItemView::Text);
-	CHECK(documents.At(0).Failure == OpenFailure::Binary);
+	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+	CHECK(documents.At(0).View == ItemView::Hex);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
 }
 
 TEST_CASE("An image that went missing and came back opens as an image again")
@@ -869,7 +914,7 @@ TEST_CASE("BufferOfOpenDocument finds a tab's buffer only when the tab holds a d
 	REQUIRE(buffer != nullptr);
 	CHECK(buffer->Materialize() == "Hello");
 
-	REQUIRE(documents.Open(binary, TabKind::Permanent) == OpenOutcome::Failed);
+	REQUIRE(documents.Open(binary, TabKind::Permanent) == OpenOutcome::Opened);
 	CHECK(BufferOfOpenDocument(documents, binary) == nullptr);
 
 	const std::filesystem::path upperCaseSpellingOfText = directory.GetPath() / "A.TXT";
@@ -889,7 +934,7 @@ TEST_CASE("GetActiveItemPath names the active tab whether or not it holds a docu
 	CHECK(*documents.GetActiveItemPath() == text);
 
 	const std::filesystem::path binary = directory.MakeFile("b.obj", std::string{kExecutableHeaderBytes});
-	REQUIRE(documents.Open(binary, TabKind::Permanent) == OpenOutcome::Failed);
+	REQUIRE(documents.Open(binary, TabKind::Permanent) == OpenOutcome::Opened);
 	REQUIRE(documents.GetActiveItemPath() != nullptr);
 	CHECK(*documents.GetActiveItemPath() == binary);
 }
@@ -1104,7 +1149,7 @@ TEST_CASE("A read that fails says why in its tab and can be asked again")
 
 TEST_CASE("Only a read that failed offers to try again")
 {
-	const OpenItem refusedAsBinary{.Failure = OpenFailure::Binary};
+	const OpenItem refusedAsBinary{.Failure = OpenFailure::TooLarge};
 	const OpenItem gone{.Failure = OpenFailure::Missing};
 	const OpenItem unreadable{.Failure = OpenFailure::ReadFailed};
 

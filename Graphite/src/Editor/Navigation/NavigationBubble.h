@@ -79,6 +79,12 @@ namespace Graphite {
 
 		bool IsOpen() const;
 
+		// WARNING: Open is not seen. A wait shows only after kShowAfterSeconds and an outcome fades after
+		// kOutcomeSeconds, yet both stay open until the reader moves on; and nothing is drawn at a caret off its
+		// editor's surface or not drawn in `frame`, nor a wait while a modal is open. Whatever takes a key from in front
+		// of the editor asks this, not IsOpen.
+		bool IsSeenAt(double now, const CaretPlacement& caret, int frame, bool modalOpen) const;
+
 		std::optional<ShownBubble> ShownAt(double now) const;
 
 		std::optional<double> NextChangeAfter(double now) const;
@@ -111,6 +117,9 @@ namespace Graphite {
 		double m_StartedAt = 0.0;
 		double m_EndsAt = 0.0;
 	};
+
+	// Whether a shown bubble is drawn at this caret: one inside its editor's surface, and for a wait, no modal open.
+	bool IsBubbleDrawnAt(const ShownBubble& shown, const CaretPlacement& caret, bool modalOpen);
 
 	// WARNING: The bubble is placed by the size it had last frame, so the caller keeps what this returns for the next.
 	ImVec2 DrawNavigationBubble(const ShownBubble& shown, const CaretPlacement& caret, ImVec2 lastSize);

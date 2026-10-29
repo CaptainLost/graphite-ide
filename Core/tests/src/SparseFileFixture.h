@@ -39,6 +39,25 @@ inline bool MarkFileSparse(const std::filesystem::path& path)
 }
 #endif
 
+// A NUL in the sample is what makes the probe call a file Binary, whatever its size.
+inline bool TryWriteLargeBinaryFile(const std::filesystem::path& path, std::uint64_t fileSize)
+{
+	WriteFileBytes(path, std::string(Core::ProbeSampleSize, '\0'));
+
+#ifdef CORE_PLATFORM_WINDOWS
+	if (!MarkFileSparse(path))
+	{
+		return false;
+	}
+#endif
+
+	std::error_code resizeError;
+	std::filesystem::resize_file(path, fileSize, resizeError);
+	REQUIRE_FALSE(resizeError);
+
+	return true;
+}
+
 // The probe classifies a file by its first ProbeSampleSize bytes, and growing a file fills it
 // with zeros, so the sample is written as text first or its NUL bytes would read as Binary.
 inline bool TryWriteLargeTextFile(const std::filesystem::path& path, std::uint64_t fileSize)

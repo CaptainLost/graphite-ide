@@ -48,6 +48,7 @@ namespace Graphite {
 		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
 		constexpr const char* kHighlightOccurrencesKey = "highlightOccurrences";
 		constexpr const char* kLineAuthorKey = "lineAuthor";
+		constexpr const char* kLineAuthorDelayKey = "lineAuthorDelayMs";
 		constexpr const char* kHoverInfoKey = "hoverInfo";
 		constexpr const char* kHoverPreviewKey = "hoverPreview";
 		constexpr const char* kHoverDelayKey = "hoverDelayMs";
@@ -502,6 +503,17 @@ namespace Graphite {
 	void AppSettings::SetLineAuthor(bool show)
 	{
 		Set(kLineAuthorKey, Flag(show));
+	}
+
+	// Absent reads as 0, the default: the author shows as soon as the caret reaches a line.
+	int AppSettings::GetLineAuthorDelayMs() const
+	{
+		return NumberOrZero<int>(Get(kLineAuthorDelayKey));
+	}
+
+	void AppSettings::SetLineAuthorDelayMs(int milliseconds)
+	{
+		Set(kLineAuthorDelayKey, std::to_string(milliseconds));
 	}
 
 	bool AppSettings::IsHoverInfoEnabled() const

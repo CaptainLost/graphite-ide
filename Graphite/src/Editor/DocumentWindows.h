@@ -24,6 +24,7 @@
 
 #include "Editor/Authors/LinePeekContent.h"
 
+#include "Hex/HexView.h"
 #include "Image/Zoom.h"
 
 #include "Git/Blame/BlameModel.h"
@@ -68,6 +69,7 @@ namespace Core {
 
 namespace Graphite {
 	class EditorSettings;
+	class HexFiles;
 	class ImageTabs;
 
 	struct EditorFrame
@@ -79,6 +81,7 @@ namespace Graphite {
 		ChangeMarkerDisplay ChangeMarkers;
 		bool HighlightOccurrences;
 		bool LineAuthor;
+		int LineAuthorDelayMs = 0;   // how long the caret rests on a line before its author shows
 		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
@@ -93,10 +96,11 @@ namespace Graphite {
 						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
 						ChangeMarkersModel& changeMarkers, BlameModel& blame, PreviewSemantics& previewSemantics,
 						AnalysisCache& analysis, AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis,
-						Core::EventBus& events, ActiveEditorTarget& activeEditor, ImageTabs& images)
+						Core::EventBus& events, ActiveEditorTarget& activeEditor, ImageTabs& images, HexFiles& hex)
 			: m_Documents(documents),
 			  m_ActiveEditor(activeEditor),
 			  m_Images(images),
+			  m_Hex(hex),
 			  m_Events(events),
 			  m_Server(server),
 			  m_Diagnostics(diagnostics),
@@ -167,7 +171,7 @@ namespace Graphite {
 		// frame, or, when no tab had it, the active tab's.
 		bool ZoomFocusedPicture(PictureZoom zoom);
 
-		// What the active tab's picture put in the status bar last frame; nothing when it shows no picture.
+		// What the active tab's picture or bytes put in the status bar last frame; nothing when it shows neither.
 		std::vector<ViewStatusItem> GetViewStatusItems() const;
 
 		void SetTransientMessage(std::string text);
@@ -377,6 +381,10 @@ namespace Graphite {
 
 		Core::OpenItem* FindActiveTextItem();
 
+		std::optional<std::filesystem::path> FindActiveHexTab() const;
+
+		void RunOnHexTab(const std::filesystem::path& path, EditorAction action, bool fromMenu);
+
 		void QueueOnActiveDocument(EditorAction action, bool fromMenu);
 
 		bool CanRunOnActiveDocument(EditorAction action);
@@ -417,19 +425,38 @@ namespace Graphite {
 								   Core::TabCloseRequests& closeRequests,
 								   const std::filesystem::path& workspaceRoot, EditorSettings& settings);
 
-		struct ShownPicture
+		// A picture or the bytes of a file, as a tab drew it.
+		struct ShownView
 		{
 			std::vector<ViewStatusItem> Status;
+
+			// Where a picture is laid out; empty for bytes.
 			ImRect Area;
 			bool Focused = false;
+
+			// True when the tab drew bytes: a hex tab, or an image that cannot be shown.
+			bool Bytes = false;
 		};
 
-		ShownPicture RenderImageTab(const CommandContext& context, const Core::OpenItem& item, EditorSettings& settings,
-									const std::filesystem::path& workspaceRoot, bool updatedAsShown);
+		ShownView RenderImageTab(const CommandContext& context, const Core::OpenItem& item, EditorSettings& settings,
+								 float fontSize, const ResolvedScheme& scheme, const std::filesystem::path& workspaceRoot,
+								 bool updatedAsShown);
 
-		std::optional<std::filesystem::path> PictureTakingTheZoom() const;
+		ShownView RenderHexTab(const CommandContext& context, const Core::OpenItem& item, float fontSize,
+							   const ResolvedScheme& scheme, const std::filesystem::path& workspaceRoot,
+							   std::string_view notice = {});
 
-		void CheckPictureOnDisk(std::size_t index);
+		// Readies the bytes of every image that cannot be shown, before the frame's hex files are updated, and lets go of
+		// those of an image that can.
+		void PrepareImageFallbacks();
+
+		bool DrewPicture(const std::filesystem::path& path) const;
+
+		bool DrewBytes(const std::filesystem::path& path) const;
+
+		std::optional<std::filesystem::path> ViewTakingTheZoom() const;
+
+		void CheckViewOnDisk(std::size_t index);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
 
@@ -465,6 +492,7 @@ namespace Graphite {
 		Core::DocumentSet& m_Documents;
 		ActiveEditorTarget& m_ActiveEditor;
 		ImageTabs& m_Images;
+		HexFiles& m_Hex;
 
 		Core::EventBus& m_Events;
 
@@ -506,7 +534,10 @@ namespace Graphite {
 		// open, so no blame is held for a file nobody is looking at the authors of.
 		bool m_LineAuthor = false;
 
-		// This frame's Escape belongs to the open navigation bubble, so no document's peek or find bar closes on it.
+		// The Line author delay setting as of the last frame.
+		int m_LineAuthorDelayMs = 0;
+
+		// This frame's Escape belongs to the navigation bubble on screen, so no document's peek or find bar closes on it.
 		bool m_BubbleTakesEscape = false;
 
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;
@@ -580,6 +611,11 @@ namespace Graphite {
 			// ImGui::GetTime() of the last edit made through the editor; the lowest double when there was none.
 			double LastEditAt = std::numeric_limits<double>::lowest();
 
+			// The caret's line as the line author last saw it, and the ImGui::GetTime() it came to that line, for the
+			// rest the author waits for.
+			std::optional<std::size_t> AuthorCaretLine;
+			double AuthorCaretLineSince = 0.0;
+
 			// At most one peek a view; it survives switching to another tab and back.
 			std::optional<LinePeekState> Peek;
 		};
@@ -590,11 +626,15 @@ namespace Graphite {
 
 		std::set<std::filesystem::path> m_Shown;
 
-		// The pictures drawn last frame, the one whose window had the keyboard focus, and whether any tab had it. All
-		// are kept as they were for the whole of the next frame, so a command run while it draws sees what the user saw.
-		std::map<std::filesystem::path, ShownPicture> m_ShownPictures;
-		std::optional<std::filesystem::path> m_FocusedPicture;
+		// The pictures and bytes drawn last frame, the one whose window had the keyboard focus, and whether any tab had
+		// it. All are kept as they were for the whole of the next frame, so a command run while it draws sees what the
+		// user saw.
+		std::map<std::filesystem::path, ShownView> m_ShownViews;
+		std::optional<std::filesystem::path> m_FocusedView;
 		bool m_DocumentFocused = false;
+
+		// The selection and scroll of every tab that has shown bytes, by the tab's path, until the tab closes.
+		std::map<std::filesystem::path, HexViewState> m_HexViews;
 
 		// WARNING: Constructed after m_Server, which it holds.
 		LspAnswerRouter m_Router;

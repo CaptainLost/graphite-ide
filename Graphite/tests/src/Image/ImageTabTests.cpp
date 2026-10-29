@@ -22,6 +22,7 @@
 #include <string_view>
 #include <vector>
 
+using Graphite::ImageFailure;
 using Graphite::ImageTab;
 using Graphite::ImageTabState;
 using Graphite::PixelPoint;
@@ -278,6 +279,82 @@ TEST_CASE("An image past the pixel limit fails as too large to preview")
 	CHECK(tab.GetFacts() == nullptr);
 	CHECK(tab.GetTexture() == nullptr);
 	CHECK_FALSE(tab.CanRetry());
+}
+
+TEST_CASE("An image tab names the kind of its failure")
+{
+	TempDirectory directory;
+	DeferredJobs jobs;
+	FakeTextureFactory textures;
+
+	SUBCASE("A tab that has not failed names none")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "fine.png", Bytes(ImageFixtures::kPng2x2)), jobs.Submitter(), textures);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+
+		LoadAndLand(tab, jobs);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+	}
+
+	SUBCASE("Bytes that do not decode are a decode failure")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "broken.png", Bytes(kNotAPicture)), jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::Decode);
+	}
+
+	SUBCASE("An extension that names no image format is a decode failure")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "picture.xyz", Bytes(ImageFixtures::kPng2x2)), jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::Decode);
+	}
+
+	SUBCASE("A picture past the pixel limit is too large")
+	{
+		ImageTab tab(WriteFile(directory.GetPath() / "huge.png", Bytes(ImageFixtures::kPngHeader20000x12000)), jobs.Submitter(),
+					 textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::TooLarge);
+	}
+
+	SUBCASE("A file that is not there is a read failure")
+	{
+		ImageTab tab(directory.GetPath() / "missing.png", jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		CHECK(tab.GetFailureKind() == ImageFailure::Read);
+	}
+
+	SUBCASE("A fixed file clears the kind")
+	{
+		const std::filesystem::path path = WriteFile(directory.GetPath() / "broken.png", Bytes(kNotAPicture));
+		ImageTab tab(path, jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+		REQUIRE(tab.GetFailureKind() == ImageFailure::Decode);
+
+		Rewrite(path, Bytes(ImageFixtures::kPng2x2));
+		ReloadAndLand(tab, jobs);
+
+		CHECK(tab.GetState() == ImageTabState::Ready);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+	}
+
+	SUBCASE("A reload that fails while a picture is shown keeps no failure")
+	{
+		const std::filesystem::path path = WriteFile(directory.GetPath() / "picture.png", Bytes(ImageFixtures::kPng2x2));
+		ImageTab tab(path, jobs.Submitter(), textures);
+		LoadAndLand(tab, jobs);
+
+		Rewrite(path, Bytes(kNotAPicture));
+		ReloadAndLand(tab, jobs);
+
+		CHECK(tab.GetState() == ImageTabState::Ready);
+		CHECK(tab.GetFailureKind() == ImageFailure::None);
+	}
 }
 
 TEST_CASE("A changed file reloads and keeps the old picture until the new one is ready")
@@ -692,4 +769,26 @@ TEST_CASE("The pixel under the pointer is read from a picture scaled down to the
 	CHECK(right->B > 200);
 
 	CHECK_FALSE(tab.PixelAt({16, 0}).has_value());
+}
+
+TEST_CASE("An image tab whose file could not be opened tries again on the next check")
+{
+	TempDirectory directory;
+	DeferredJobs jobs;
+	FakeTextureFactory textures;
+	const std::filesystem::path path = WriteFile(directory.GetPath() / "picture.png", Bytes(ImageFixtures::kPng2x2));
+	ImageTab tab(path, jobs.Submitter(), textures);
+
+	std::FILE* const held = _wfsopen(path.c_str(), L"rb", _SH_DENYRW);
+	REQUIRE(held != nullptr);
+
+	LoadAndLand(tab, jobs);
+	REQUIRE(tab.GetState() == ImageTabState::Failed);
+	REQUIRE(tab.GetFailureKind() == ImageFailure::Read);
+
+	std::fclose(held);
+
+	ReloadAndLand(tab, jobs);
+
+	CHECK(tab.GetState() == ImageTabState::Ready);
 }

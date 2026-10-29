@@ -115,19 +115,19 @@ TEST_CASE("A tab whose file is still being read is not asked to load it again wh
 	CHECK(IsLoading(documents.At(0)));
 }
 
-TEST_CASE("A tab refused as binary has no document either but is not asked to load")
+TEST_CASE("A hex tab has no document either but is not asked to load")
 {
 	TempDirectory directory;
 	const std::filesystem::path path = directory.GetPath() / "object.obj";
 	WriteFileBytes(path, std::string_view{"MZ\0\0binary", 10});
 
 	DocumentSet documents;
-	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
-	REQUIRE(documents.At(0).Failure == OpenFailure::Binary);
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+	REQUIRE(documents.At(0).View == ItemView::Hex);
 	REQUIRE_FALSE(documents.At(0).Document != nullptr);
 
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::Unchanged);
-	CHECK(documents.At(0).Failure == OpenFailure::Binary);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
 }
 
 TEST_CASE("A file that is still not there is not reported as needing loading")

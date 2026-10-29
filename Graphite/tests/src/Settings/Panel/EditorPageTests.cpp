@@ -20,7 +20,7 @@ namespace {
 
 	constexpr float kWideWindowWidth = 900.0f;
 	constexpr float kNarrowWindowWidth = 320.0f;
-	constexpr std::size_t kRowCount = 11;
+	constexpr std::size_t kRowCount = 12;
 
 	struct EditorScreen
 	{
@@ -42,7 +42,7 @@ TEST_CASE("The editor page lists its settings under Text, Indentation, Hover and
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Text", "Indentation", "Hover", "Git changes"});
 	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Highlight occurrences", "Indent with", "Tab width", "Symbol information",
 																"Definition preview", "Hover delay", "Markers in the gutter",
-																"Markers on the scrollbar", "Line author"});
+																"Markers on the scrollbar", "Line author", "Line author delay"});
 }
 
 TEST_CASE("The word wrap toggle runs the command the View menu runs")
@@ -95,6 +95,17 @@ TEST_CASE("Line author setting is found by searching blame")
 
 	REQUIRE(row.has_value());
 	CHECK(std::find(row->Keywords.begin(), row->Keywords.end(), "blame") != row->Keywords.end());
+}
+
+TEST_CASE("Line author delay setting is found by searching blame or delay")
+{
+	EditorScreen screen;
+	const std::optional<Graphite::SettingsRow> row = screen.Frames.FindRow("Line author delay");
+
+	REQUIRE(row.has_value());
+	CHECK(row->Description == "How long the caret rests on a line before its author shows. 0 shows it at once.");
+	CHECK(std::find(row->Keywords.begin(), row->Keywords.end(), "blame") != row->Keywords.end());
+	CHECK(std::find(row->Keywords.begin(), row->Keywords.end(), "delay") != row->Keywords.end());
 }
 
 TEST_CASE("The editor page draws wide and narrow without an ImGui assertion")

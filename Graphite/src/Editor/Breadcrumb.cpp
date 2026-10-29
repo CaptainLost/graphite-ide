@@ -253,6 +253,31 @@ namespace Graphite {
 			return rowWidth - Core::Scaled(kBreadcrumbLeftPadding) - Core::Scaled(kBreadcrumbRightPadding) - toolsWidth;
 		}
 
+		// The tools that leave the file name whole in the row, widest first, or none.
+		const BreadcrumbTools* ToolsFitting(const BreadcrumbModel& model, float rowWidth, const BreadcrumbTools& tools)
+		{
+			const float fileName = WidthOf(SegmentsOf(model, model.Folders.size()));
+
+			const auto fits = [&](const BreadcrumbTools& candidate) {
+				return candidate.Draw && candidate.Width > 0.0f && fileName <= RoomIn(rowWidth, candidate.Width);
+			};
+
+			if (fits(tools))
+			{
+				return &tools;
+			}
+
+			for (const BreadcrumbTools& narrower : tools.Narrower)
+			{
+				if (fits(narrower))
+				{
+					return &narrower;
+				}
+			}
+
+			return nullptr;
+		}
+
 		float ToolsLeftIn(const ImRect& row, float toolsWidth)
 		{
 			return row.Max.x - Core::Scaled(kBreadcrumbRightPadding) - toolsWidth;
@@ -345,7 +370,9 @@ namespace Graphite {
 
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 
-		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(row.GetWidth(), tools.Width)));
+		const BreadcrumbTools* const shownTools = ToolsFitting(model, row.GetWidth(), tools);
+		const float toolsWidth = shownTools != nullptr ? shownTools->Width : 0.0f;
+		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(row.GetWidth(), toolsWidth)));
 
 		ImGui::PushClipRect(row.Min, row.Max, kClipWithinTheWindow);
 		DrawSegments(segments, row.Min.x + Core::Scaled(kBreadcrumbLeftPadding), row);
@@ -353,14 +380,14 @@ namespace Graphite {
 
 		ImGui::PopFont();
 
-		const bool hasTools = tools.Draw && tools.Width > 0.0f;
-		const float toolsLeft = ToolsLeftIn(row, hasTools ? tools.Width : 0.0f);
+		const bool hasTools = shownTools != nullptr;
+		const float toolsLeft = ToolsLeftIn(row, toolsWidth);
 
 		if (hasTools)
 		{
 			ImGui::PushClipRect(row.Min, row.Max, kClipWithinTheWindow);
 			ImGui::SetCursorScreenPos(ImVec2(toolsLeft, row.Min.y));
-			tools.Draw();
+			shownTools->Draw();
 			ImGui::PopClipRect();
 		}
 

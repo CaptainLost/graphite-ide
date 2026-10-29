@@ -113,7 +113,7 @@ namespace {
 		void DrawWindow()
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(kWindowSize);
+			ImGui::SetNextWindowSize(ImVec2(Width, kWindowSize.y));
 			ImGui::Begin(kWindow, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			Row = ImRect(ImGui::GetCurrentWindow()->InnerRect.Min,
@@ -206,6 +206,7 @@ namespace {
 		Graphite::ImageTabFrame Last;
 		ImRect Row;
 		float ToolsWidth = 0.0f;
+		float Width = kWindowSize.x;
 		std::vector<DrawnGlyph> Glyphs;
 		std::optional<ImRect> Picture;
 
@@ -448,7 +449,7 @@ TEST_CASE("Zooming an image tab steps around the middle of its area and fits the
 
 	screen.Tab.GetZoom().Pan = ImVec2(5.0f, -3.0f);
 	Graphite::ZoomImageTab(screen.Tab, PictureZoom::Fit, area);
-	CHECK(screen.Tab.GetZoom().Zoom == doctest::Approx(Graphite::FitZoom(kPictureSize, area.GetSize())));
+	CHECK(screen.Tab.GetZoom().Zoom == doctest::Approx(Graphite::FitZoom(kPictureSize, area.GetSize(), Graphite::FitMargin())));
 	CHECK(screen.Tab.GetZoom().Pan.x == 0.0f);
 	CHECK(screen.Tab.GetZoom().Pan.y == 0.0f);
 
@@ -461,5 +462,43 @@ TEST_CASE("Zooming an image tab steps around the middle of its area and fits the
 		Graphite::ZoomImageTab(loading, PictureZoom::In, area);
 
 		CHECK(loading.GetZoom().Zoom == before);
+	}
+}
+
+TEST_CASE("In a 300 px pane the image tools never overlap the file name")
+{
+	constexpr float kNarrowPane = 300.0f;
+	const std::string fileName = "beach.png";
+
+	ImageScreen screen(fileName, Contents(ImageFixtures::kPng2x2));
+	screen.Width = kNarrowPane;
+	screen.Path.Folders = {"images", "holiday"};
+	screen.Land();
+
+	REQUIRE(screen.Tab.GetState() == ImageTabState::Ready);
+
+	float nameWidth = 0.0f;
+	float narrowestWidth = 0.0f;
+	screen.Frames.Next([&] {
+		nameWidth = Graphite::BreadcrumbWidth(screen.Path, screen.Path.Folders.size());
+		narrowestWidth = Graphite::ImageToolsWidth(Graphite::ImageToolsSet::StepButtons);
+	});
+
+	const float nameRight = screen.Row.Min.x + Core::Scaled(Graphite::kBreadcrumbLeftPadding) + nameWidth;
+	const float room = kNarrowPane - 2.0f * Core::Scaled(Graphite::kBreadcrumbLeftPadding);
+
+	// The whole set would not leave the name its room, and the narrowest set would.
+	REQUIRE(nameWidth + screen.ToolsWidth > room);
+	REQUIRE(nameWidth + narrowestWidth <= room);
+
+	const std::vector<Span> across =
+		HoveredSpans(screen, ImVec2(0.0f, screen.RowMiddle().y), ImVec2(1.0f, 0.0f), static_cast<int>(kNarrowPane));
+
+	// The first span is the row itself; whatever follows is a tool, and some tools are still drawn.
+	REQUIRE(across.size() > 1);
+
+	for (std::size_t index = 1; index < across.size(); ++index)
+	{
+		CHECK(across[index].From >= nameRight - 1.0f);
 	}
 }

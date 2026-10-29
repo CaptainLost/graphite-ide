@@ -1,5 +1,7 @@
 #include "Image/PictureCanvas.h"
 
+#include "UI/WheelNotches.h"
+
 #include "Core/ImGui/ImageTexture.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -16,12 +18,6 @@ namespace Graphite {
 		constexpr float kGridLineWidth = 1.0f;
 		constexpr float kCheckerSide = 8.0f;
 		constexpr float kSmallestItemSide = 1.0f;
-
-		// A touchpad reports a fraction of a notch, which still counts as one, as the terminal counts it.
-		int WholeNotches(float wheel)
-		{
-			return static_cast<int>(wheel > 0.0f ? std::ceil(wheel) : std::floor(wheel));
-		}
 
 		float SteppedZoom(float zoom, int notches)
 		{
@@ -41,11 +37,12 @@ namespace Graphite {
 			{
 				zoom.Pan.x += io.MouseDelta.x;
 				zoom.Pan.y += io.MouseDelta.y;
-				zoom = ClampPan(zoom, picture, area);
+				zoom = ClampPan(zoom, picture, area, PanKeepVisible());
 			}
 
 			if (!hovered)
 			{
+				zoom.WheelPending = 0.0f;
 				return;
 			}
 
@@ -53,14 +50,14 @@ namespace Graphite {
 			// wheel to the window's own scroll at the start of the next frame and tests the ownership set during this one.
 			ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGui::GetItemID());
 
-			if (const int notches = WholeNotches(io.MouseWheel); notches != 0)
+			if (const int notches = TakeWholeNotches(zoom.WheelPending, io.MouseWheel); notches != 0)
 			{
-				zoom = ZoomAround(zoom, SteppedZoom(zoom.Zoom, notches), io.MousePos, picture, area);
+				zoom = ZoomAround(zoom, SteppedZoom(zoom.Zoom, notches), io.MousePos, picture, area, PanKeepVisible());
 			}
 
 			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 			{
-				zoom.Zoom = zoom.Zoom == 1.0f ? FitZoom(picture, area.GetSize()) : 1.0f;
+				zoom.Zoom = zoom.Zoom == 1.0f ? FitZoom(picture, area.GetSize(), FitMargin()) : 1.0f;
 				zoom.Pan = ImVec2(0.0f, 0.0f);
 			}
 		}
@@ -218,7 +215,7 @@ namespace Graphite {
 				return result;
 			}
 
-			zoom.Zoom = OpeningZoom(input.Picture, area.GetSize());
+			zoom.Zoom = OpeningZoom(input.Picture, area.GetSize(), FitMargin());
 			zoom.Pan = ImVec2(0.0f, 0.0f);
 			zoom.Opened = true;
 		}

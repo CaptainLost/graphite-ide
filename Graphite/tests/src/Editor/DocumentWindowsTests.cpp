@@ -2,6 +2,7 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorCommandTarget.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Navigation/SelectInDocument.h"
 #include "Editor/Overlays/AnalysisCache.h"
@@ -10,6 +11,7 @@
 #include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeBases.h"
 #include "Git/Changes/ChangeMarkersModel.h"
+#include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
 #include "Language/Analysis/AnalysisStore.h"
 #include "Language/Analysis/FileTextSource.h"
@@ -22,13 +24,16 @@
 #include "Theme/BuiltInSchemes.h"
 #include "UI/Dialogs/ModalGate.h"
 #include "UI/FileIcons.h"
+#include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
 #include "DeferredJobs.h"
+#include "DrawnGlyphs.h"
 #include "FakeImageTexture.h"
 #include "FileFixtures.h"
 #include "ImGuiFrames.h"
 #include "ImageFixtures.h"
+#include "SparseFile.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
@@ -41,6 +46,7 @@
 #include "Core/Events/FrameInput.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
@@ -49,14 +55,19 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <optional>
+#include <share.h>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -103,6 +114,22 @@ namespace {
 	constexpr ImVec2 kPictureSize(2.0f, 2.0f);
 	constexpr ImVec2 kMenuPlace(0.0f, 450.0f);
 	constexpr const char* kMenuPopup = "##menu";
+	constexpr ImVec2 kReferencePlace(0.0f, 600.0f);
+	constexpr ImVec2 kReferenceSize(1280.0f, 100.0f);
+	constexpr const char* kReferenceWindow = "Reference";
+	constexpr const char* kUntouchedClipboard = "untouched";
+
+	enum class Face
+	{
+		Interface,
+		Code
+	};
+
+	// WARNING: A copy would otherwise replace whatever the person running the tests had on the system clipboard.
+	void KeepClipboardText(ImGuiContext*, const char* text)
+	{
+		*static_cast<std::string*>(ImGui::GetPlatformIO().Platform_ClipboardUserData) = text;
+	}
 
 	template<std::size_t Count>
 	std::string Contents(const std::uint8_t (&bytes)[Count])
@@ -191,6 +218,10 @@ namespace {
 			Settings.RegisterCommands(Commands, Keys);
 			Windows.RegisterCommands(Commands, Keys);
 			Settings.SetPictureZoom([this](Graphite::PictureZoom zoom) { return Windows.ZoomFocusedPicture(zoom); });
+
+			ImGui::GetPlatformIO().Platform_ClipboardUserData = &Clipboard;
+			ImGui::GetPlatformIO().Platform_SetClipboardTextFn = &KeepClipboardText;
+			Events.Subscribe<Graphite::ToastEvent>([this](const Graphite::ToastEvent& toast) { Toasts.push_back(toast); });
 		}
 
 		void Frame(const std::function<void()>& beforeTheWindows = {})
@@ -256,6 +287,32 @@ namespace {
 			Frame();
 		}
 
+		// As a click on the text does: the editor's surface, a child of the tab's window, takes the keyboard.
+		void FocusText(const std::filesystem::path& path)
+		{
+			const std::optional<std::size_t> index = Documents.Find(path);
+			REQUIRE(index.has_value());
+			const std::string name = Graphite::DocumentWindowName(Documents, *index);
+			bool found = false;
+
+			Frame([&name, &found] {
+				ImGuiWindow* const tab = ImGui::FindWindowByName(name.c_str());
+				REQUIRE(tab != nullptr);
+
+				for (ImGuiWindow* const child : tab->DC.ChildWindows)
+				{
+					if (std::string_view(child->Name).find("##EditorSurface") != std::string_view::npos)
+					{
+						ImGui::FocusWindow(child);
+						found = true;
+					}
+				}
+			});
+			Frame();
+
+			REQUIRE(found);
+		}
+
 		Graphite::ImageTab& Picture(const std::filesystem::path& path) { return Images.For(path); }
 
 		// Ctrl held and the wheel turned one notch away from the user, over `at`.
@@ -318,6 +375,62 @@ namespace {
 			return ran;
 		}
 
+		// Whether the tab's window drew `text` below its title bar, matched glyph for glyph against the same text drawn in
+		// a window of its own in the same frames, in the interface font or in the code face at the editor's size.
+		bool TabDraws(const std::filesystem::path& path, const std::string& text, Face face)
+		{
+			const std::optional<std::size_t> index = Documents.Find(path);
+			REQUIRE(index.has_value());
+			const std::string name = Graphite::DocumentWindowName(Documents, *index);
+			const float codeSize = Settings.GetFontSize();
+
+			const auto reference = [&text, face, codeSize] {
+				ImGui::SetNextWindowPos(kReferencePlace);
+				ImGui::SetNextWindowSize(kReferenceSize);
+				ImGui::Begin(kReferenceWindow, nullptr,
+							 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
+								 ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs);
+
+				if (face == Face::Code)
+				{
+					ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), codeSize);
+				}
+
+				ImGui::TextUnformatted(text.c_str());
+
+				if (face == Face::Code)
+				{
+					ImGui::PopFont();
+				}
+
+				ImGui::End();
+			};
+
+			Frame(reference);
+			Frame(reference);
+
+			const ImGuiWindow* const tab = ImGui::FindWindowByName(name.c_str());
+			REQUIRE(tab != nullptr);
+			std::vector<DrawnGlyph> drawn = DrawnGlyphs(*tab->DrawList);
+			std::erase_if(drawn, [tab](const DrawnGlyph& glyph) { return glyph.Box.Min.y < tab->InnerRect.Min.y; });
+			const std::vector<DrawnGlyph> wanted = DrawnGlyphs(*ImGui::FindWindowByName(kReferenceWindow)->DrawList);
+			REQUIRE_FALSE(wanted.empty());
+
+			const auto sameGlyph = [](const DrawnGlyph& a, const DrawnGlyph& b) { return a.Uv.x == b.Uv.x && a.Uv.y == b.Uv.y; };
+			return std::search(drawn.begin(), drawn.end(), wanted.begin(), wanted.end(), sameGlyph) != drawn.end();
+		}
+
+		// Extends the selection of the tab holding the keyboard by `bytes` to the right.
+		void ShiftRight(int bytes)
+		{
+			for (int moved = 0; moved < bytes; ++moved)
+			{
+				Press(Core::KeyCode::Right, Core::KeyModifier::Shift);
+			}
+		}
+
+		std::vector<Graphite::ViewStatusItem> StatusItems() const { return Windows.GetViewStatusItems(); }
+
 		ImGuiFrames Frames;
 		std::filesystem::path Root;
 		TempAppSettings Store;
@@ -343,8 +456,9 @@ namespace {
 		DeferredJobs Jobs;
 		FakeTextureFactory Textures;
 		Graphite::ImageTabs Images{Jobs.Submitter(), Textures};
+		Graphite::HexFiles Hex{Jobs.Submitter()};
 		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Blame, Preview,
-										  Analysis, AnalysisStore, Pass, Events, ActiveEditor, Images};
+										  Analysis, AnalysisStore, Pass, Events, ActiveEditor, Images, Hex};
 		Graphite::EditorSettings Settings{Store.Get()};
 		Graphite::ActiveScheme Scheme;
 		Graphite::ReferencesPanel References{Workspace, Documents, Scheme, Settings, Preview};
@@ -354,6 +468,8 @@ namespace {
 		Core::ShortcutRouter Router;
 		Core::FrameInput Input;
 		std::map<std::filesystem::path, ImVec2> Places;
+		std::string Clipboard = kUntouchedClipboard;
+		std::vector<Graphite::ToastEvent> Toasts;
 	};
 
 	ImVec2 MiddleOfWindowAt(ImVec2 place)
@@ -400,6 +516,39 @@ TEST_CASE("An image tab is kept across a restart")
 	const std::optional<std::size_t> restoredPreview = after.Documents.Find(preview);
 	REQUIRE(restoredPreview.has_value());
 	CHECK(after.Documents.At(*restoredPreview).Preview);
+}
+
+TEST_CASE("A hex tab is kept across a restart")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", std::string("MZ\0\0binary", 10));
+
+	Graphite::WorkspaceState state;
+
+	{
+		DrawnDocuments before(folder.GetPath());
+		before.Windows.RequestOpen(program, true);
+
+		state = before.Windows.CaptureState();
+	}
+
+	REQUIRE(state.Tabs.size() == 1);
+	CHECK(state.Tabs[0].Path == program);
+
+	DrawnDocuments after(folder.GetPath());
+	after.Windows.RestoreState(state);
+
+	REQUIRE(after.Documents.GetCount() == 1);
+	CHECK(after.Documents.At(0).View == Core::ItemView::Hex);
+	CHECK(after.Documents.At(0).Failure == Core::OpenFailure::None);
+
+	after.ShowLanded();
+
+	const std::vector<Graphite::ViewStatusItem> status = after.StatusItems();
+	REQUIRE_FALSE(status.empty());
+	CHECK(status.front().Text == "0x00000000");
+	CHECK(status.back().Text == "10 B");
+	CHECK(after.TabDraws(program, "00000000", Face::Code));
 }
 
 TEST_CASE("Closing an image tab frees its picture")
@@ -672,6 +821,304 @@ TEST_CASE("Zoom In from a menu changes the font while a text tab is active")
 
 namespace {
 
+	// The start of a Windows executable, 4D 5A 90 00 03 00 00 00, then letters, so no row's offset is spelt among the
+	// bytes after it.
+	std::string ProgramBytes(std::size_t size)
+	{
+		std::string bytes("MZ\x90\0\x03\0\0\0", 8);
+
+		for (std::size_t at = bytes.size(); at < size; ++at)
+		{
+			bytes += static_cast<char>('A' + at % 26);
+		}
+
+		return bytes;
+	}
+
+	// Moves the modified time on as well, so the change is seen whatever the clock's resolution.
+	void Rewrite(const std::filesystem::path& path, const std::string& contents)
+	{
+		const std::filesystem::file_time_type before = std::filesystem::last_write_time(path);
+
+		{
+			std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+			stream << contents;
+		}
+
+		std::filesystem::last_write_time(path, before + std::chrono::seconds(60));
+	}
+
+	bool HasToastSaying(const std::vector<Graphite::ToastEvent>& toasts, const std::string& message)
+	{
+		return std::ranges::any_of(toasts, [&message](const Graphite::ToastEvent& toast) { return toast.Message == message; });
+	}
+}
+
+TEST_CASE("A binary file opens as a hex tab with its path row and rows")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(32));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+
+	REQUIRE(drawn.Documents.GetCount() == 1);
+	REQUIRE(drawn.Documents.At(0).View == Core::ItemView::Hex);
+
+	CHECK(drawn.TabDraws(program, "program.exe", Face::Interface));
+	CHECK(drawn.TabDraws(program, "Offset", Face::Code));
+	CHECK(drawn.TabDraws(program, "00000000", Face::Code));
+	CHECK(drawn.TabDraws(program, "4D 5A 90 00", Face::Code));
+	CHECK(drawn.TabDraws(program, "00000010", Face::Code));
+	CHECK_FALSE(drawn.TabDraws(program, "00000020", Face::Code));
+}
+
+TEST_CASE("Ctrl+wheel over a hex tab's rows changes the font and a plain notch scrolls")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(4096));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+
+	const float font = drawn.Settings.GetFontSize();
+	REQUIRE(drawn.TabDraws(program, "00000000", Face::Code));
+
+	drawn.CtrlWheelUpAt(MiddleOfWindowAt(ImVec2(0.0f, 0.0f)));
+
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+	CHECK(drawn.TabDraws(program, "00000000", Face::Code));
+
+	ImGui::GetIO().AddMouseWheelEvent(0.0f, -1.0f);
+	drawn.Frame();
+	drawn.Frame();
+
+	CHECK_FALSE(drawn.TabDraws(program, "00000000", Face::Code));
+	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+}
+
+TEST_CASE("A hex tab gives the status bar its offset, count, values and size")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(32));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+
+	using Graphite::ViewStatusItem;
+
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
+															 {"1 byte", false, std::nullopt},
+															 {"u8 77  u16 23117  u32 9460301", true, std::nullopt},
+															 {"32 B", false, std::nullopt}});
+
+	drawn.Focus(program);
+	drawn.ShiftRight(2);
+
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
+															 {"3 bytes", false, std::nullopt},
+															 {"u8 77  u16 23117  u32 9460301", true, std::nullopt},
+															 {"32 B", false, std::nullopt}});
+
+	drawn.Focus(notes);
+
+	CHECK(drawn.StatusItems().empty());
+}
+
+TEST_CASE("Ctrl+C copies the selected bytes as hex pairs")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(32));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+	drawn.Focus(program);
+	drawn.ShiftRight(3);
+
+	CHECK(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
+	CHECK(drawn.Windows.CanRun(Graphite::EditorAction::SelectAll));
+	CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Cut));
+	CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Paste));
+	CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Undo));
+	CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Redo));
+
+	drawn.Press(Core::KeyCode::C, Core::KeyModifier::Control);
+
+	CHECK(drawn.Clipboard == "4D 5A 90 00");
+	CHECK(drawn.Toasts.empty());
+
+	SUBCASE("Ctrl+A then Ctrl+C copies every byte")
+	{
+		drawn.Press(Core::KeyCode::A, Core::KeyModifier::Control);
+		drawn.Press(Core::KeyCode::C, Core::KeyModifier::Control);
+
+		REQUIRE(drawn.StatusItems().size() > 1);
+		CHECK(drawn.StatusItems()[1].Text == "32 bytes");
+		CHECK(drawn.Clipboard.starts_with("4D 5A 90 00 03 00 00 00 49 4A"));
+		CHECK(drawn.Clipboard.ends_with("5A 41 42 43 44 45 46"));
+		CHECK(drawn.Clipboard.size() == 32 * 3 - 1);
+	}
+}
+
+TEST_CASE("Ctrl+A then Ctrl+C on a large file is refused with a toast and reads nothing")
+{
+	TempDirectory folder;
+	std::filesystem::path large;
+	std::string count;
+
+	SUBCASE("One byte past 1 MiB")
+	{
+		large = folder.MakeFile("large.bin", std::string(1024 * 1024 + 1, '\0'));
+		count = "1,048,577 bytes";
+	}
+
+	SUBCASE("5 GiB")
+	{
+		large = folder.GetPath() / "huge.bin";
+		count = "5,368,709,120 bytes";
+
+		if (!TryWriteSparseFile(large, 5ull * 1024 * 1024 * 1024))
+		{
+			MESSAGE("Skipped: the temporary directory's filesystem cannot make a file sparse");
+			return;
+		}
+	}
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(large, true);
+	drawn.ShowLanded();
+	drawn.Focus(large);
+
+	REQUIRE(drawn.Jobs.Count() == 0);
+
+	drawn.Press(Core::KeyCode::A, Core::KeyModifier::Control);
+	REQUIRE(drawn.StatusItems().size() > 1);
+	CHECK(drawn.StatusItems()[1].Text == count);
+
+	drawn.Press(Core::KeyCode::C, Core::KeyModifier::Control);
+
+	CHECK(drawn.Clipboard == kUntouchedClipboard);
+	CHECK(HasToastSaying(drawn.Toasts, "Select at most 1 MB to copy"));
+	CHECK(drawn.Jobs.Count() == 0);
+}
+
+TEST_CASE("Copy from the menu reports the copy")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(32));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+	drawn.Focus(program);
+	drawn.ShiftRight(3);
+
+	CHECK(drawn.RunFromMenu(Graphite::kCopyCommand));
+
+	CHECK(drawn.Clipboard == "4D 5A 90 00");
+	REQUIRE(drawn.Toasts.size() == 1);
+	CHECK(drawn.Toasts.front().Kind == Core::ToastKind::Success);
+	CHECK(drawn.Toasts.front().Title == "Copied");
+	CHECK(drawn.Toasts.front().Message == "bytes: 4D 5A 90 00");
+}
+
+TEST_CASE("A file that grows while its hex tab is open shows its new rows")
+{
+	TempDirectory folder;
+	const std::filesystem::path log = folder.MakeFile("growing.bin", ProgramBytes(32));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(log, true);
+	drawn.ShowLanded();
+
+	REQUIRE(drawn.TabDraws(log, "00000010", Face::Code));
+	REQUIRE_FALSE(drawn.TabDraws(log, "00000020", Face::Code));
+
+	Rewrite(log, ProgramBytes(48));
+
+	SUBCASE("The workspace reports the change")
+	{
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+	}
+
+	SUBCASE("The application comes back to the front")
+	{
+		drawn.Windows.NotifyWindowFocus(false);
+		drawn.Windows.NotifyWindowFocus(true);
+	}
+
+	drawn.Jobs.RunAll();
+	drawn.Frame();
+	drawn.Frame();
+
+	CHECK(drawn.TabDraws(log, "00000020", Face::Code));
+	CHECK(drawn.TabDraws(log, "47 48 49 4A", Face::Code));
+	REQUIRE_FALSE(drawn.StatusItems().empty());
+	CHECK(drawn.StatusItems().back().Text == "48 B");
+}
+
+TEST_CASE("Ctrl+W closes a focused hex tab")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(32));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+	drawn.Focus(program);
+
+	REQUIRE(drawn.Documents.GetCount() == 2);
+
+	drawn.Press(Core::KeyCode::W, Core::KeyModifier::Control);
+
+	CHECK_FALSE(drawn.Documents.Find(program).has_value());
+	CHECK(drawn.Documents.Find(notes).has_value());
+	CHECK(drawn.StatusItems().empty());
+}
+
+TEST_CASE("Arrow keys in a hex tab do not reach a text tab")
+{
+	TempDirectory folder;
+	const std::filesystem::path program = folder.MakeFile("program.exe", ProgramBytes(32));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "first line\nsecond line\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(program, true);
+	drawn.ShowLanded();
+
+	const std::optional<std::size_t> notesIndex = drawn.Documents.Find(notes);
+	REQUIRE(notesIndex.has_value());
+	const std::size_t secondLine = std::string("first line\n").size();
+
+	// The text tab takes the arrows while its text holds the keyboard, so they have somewhere else to go.
+	drawn.FocusText(notes);
+	drawn.Press(Core::KeyCode::Down, Core::KeyModifier::None);
+	REQUIRE(drawn.Documents.At(*notesIndex).Caret.Offset == secondLine);
+
+	drawn.Focus(program);
+	drawn.Press(Core::KeyCode::Up, Core::KeyModifier::None);
+	drawn.Press(Core::KeyCode::Down, Core::KeyModifier::None);
+	drawn.Press(Core::KeyCode::Right, Core::KeyModifier::None);
+
+	REQUIRE_FALSE(drawn.StatusItems().empty());
+	CHECK(drawn.StatusItems().front().Text == "0x00000011");
+	CHECK(drawn.Documents.At(*notesIndex).Caret.Offset == secondLine);
+}
+
+namespace {
+
 	constexpr float kEditorFontSize = 16.0f;
 	const ImVec2 kHeldReadWindowSize{900.0f, 600.0f};
 
@@ -698,9 +1145,10 @@ namespace {
 		Graphite::ActiveEditorTarget ActiveEditor;
 		FakeTextureFactory Textures;
 		Graphite::ImageTabs Images{Jobs.Submitter(), Textures};
+		Graphite::HexFiles Hex{Jobs.Submitter()};
 		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Blame,
 										  PreviewSemantics, Analysis, AnalysisStore, WorkspaceAnalysis, Events,
-										  ActiveEditor, Images};
+										  ActiveEditor, Images, Hex};
 
 		TempAppSettings Settings;
 		Graphite::Workspace Workspace{Events, Settings.Get()};
@@ -791,6 +1239,246 @@ namespace {
 
 		return nullptr;
 	}
+}
+
+namespace {
+
+	// The image tab's load fails, then the hex view of the same file asks for its first rows.
+	void ShowFailedImage(DrawnDocuments& drawn)
+	{
+		drawn.ShowLanded();
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+	}
+}
+
+TEST_CASE("An image that cannot be decoded is shown as hex under the reason")
+{
+	TempDirectory folder;
+	// A NUL makes it binary, which is what sends a file named .png to an image tab rather than a text one.
+	const std::filesystem::path broken = folder.MakeFile("broken.png", std::string("this\0is not a picture", 21));
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Places[notes] = kBesideTheFirst;
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.Windows.RequestOpen(broken, true);
+	ShowFailedImage(drawn);
+
+	REQUIRE(drawn.Documents.At(*drawn.Documents.Find(broken)).View == Core::ItemView::Image);
+	REQUIRE(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Failed);
+
+	const std::string notice = drawn.Picture(broken).GetFailure();
+	REQUIRE(notice.starts_with("Could not read this image: "));
+
+	CHECK(drawn.TabDraws(broken, "broken.png", Face::Interface));
+	CHECK(drawn.TabDraws(broken, notice, Face::Interface));
+	CHECK(drawn.TabDraws(broken, "Offset", Face::Code));
+	CHECK(drawn.TabDraws(broken, "74 68 69 73", Face::Code));
+	CHECK_FALSE(drawn.TabDraws(broken, "Retry", Face::Interface));
+
+	using Graphite::ViewStatusItem;
+
+	CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"0x00000000", true, std::nullopt, "Offset "},
+															 {"1 byte", false, std::nullopt},
+															 {"u8 116  u16 26740  u32 1936287860", true, std::nullopt},
+															 {"21 B", false, std::nullopt}});
+
+	SUBCASE("The zoom chords and the menu zoom go to the font")
+	{
+		drawn.Focus(broken);
+		const float font = drawn.Settings.GetFontSize();
+
+		drawn.Press(Core::KeyCode::Equal, Core::KeyModifier::Control);
+		CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
+
+		CHECK(drawn.RunFromMenu("editor.zoomIn"));
+		CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 2.0f));
+	}
+
+	SUBCASE("Copy and Select All work on its bytes")
+	{
+		drawn.Focus(broken);
+
+		CHECK(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
+		CHECK(drawn.Windows.CanRun(Graphite::EditorAction::SelectAll));
+
+		drawn.ShiftRight(3);
+		drawn.Press(Core::KeyCode::C, Core::KeyModifier::Control);
+		CHECK(drawn.Clipboard == "74 68 69 73");
+
+		drawn.Press(Core::KeyCode::A, Core::KeyModifier::Control);
+		REQUIRE(drawn.StatusItems().size() > 1);
+		CHECK(drawn.StatusItems()[1].Text == "21 bytes");
+	}
+
+	SUBCASE("The file mended on disk comes back as a picture")
+	{
+		Rewrite(broken, Contents(ImageFixtures::kPng2x2));
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+		drawn.Focus(broken);
+
+		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Ready);
+		CHECK(drawn.StatusItems() == std::vector<ViewStatusItem>{{"2 × 2 · PNG · 77 B", false, std::nullopt}});
+		CHECK_FALSE(drawn.TabDraws(broken, "Offset", Face::Code));
+
+		const float font = drawn.Settings.GetFontSize();
+		drawn.Press(Core::KeyCode::Equal, Core::KeyModifier::Control);
+		CHECK(drawn.Picture(broken).GetZoom().Zoom == 1.5f);
+		CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font));
+		CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
+	}
+}
+
+TEST_CASE("A broken image shown as hex keeps its rows, scroll and selection while its file changes")
+{
+	TempDirectory folder;
+	std::string contents = ProgramBytes(2000);
+	contents.replace(0, 8, std::string("not\0 png", 8));
+	const std::filesystem::path broken = folder.MakeFile("broken.png", contents);
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(broken, true);
+	ShowFailedImage(drawn);
+	drawn.Focus(broken);
+
+	drawn.Press(Core::KeyCode::End, Core::KeyModifier::Control);
+	const std::vector<Graphite::ViewStatusItem> before = drawn.StatusItems();
+	REQUIRE_FALSE(before.empty());
+	REQUIRE(before.front().Text == "0x000007CF");
+	REQUIRE(drawn.TabDraws(broken, "000007C0", Face::Code));
+
+	const auto showsBytes = [&drawn, &broken] {
+		return !drawn.StatusItems().empty() && drawn.StatusItems().front().Label == "Offset ";
+	};
+
+	SUBCASE("A rewrite that is still broken")
+	{
+		Rewrite(broken, contents + "tail");
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+
+		drawn.Frame();
+		CHECK(showsBytes());
+		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		CHECK(showsBytes());
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Failed);
+		CHECK(showsBytes());
+		CHECK(drawn.StatusItems().front().Text == "0x000007CF");
+		CHECK(drawn.StatusItems().back().Text == "2.0 KB");
+		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+	}
+
+	SUBCASE("A rewrite read while a writer still holds the file, then one read once it lets go")
+	{
+		// As a writer that keeps the file to itself while it writes: the change is seen, but neither read can open it.
+		Rewrite(broken, contents + "tail");
+		std::FILE* const held = ::_wfsopen(broken.c_str(), L"rb", _SH_DENYRW);
+		REQUIRE(held != nullptr);
+
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		const bool failedToRead = drawn.Picture(broken).GetFailureKind() == Graphite::ImageFailure::Read;
+		const bool stillShowsBytes = showsBytes();
+		const std::vector<Graphite::ViewStatusItem> whileHeld = drawn.StatusItems();
+		const bool drawsHeader = drawn.TabDraws(broken, "Offset", Face::Code);
+		const bool drawsReason = drawn.TabDraws(broken, "the file cannot be opened", Face::Interface);
+		std::fclose(held);
+
+		REQUIRE(failedToRead);
+		CHECK(stillShowsBytes);
+		REQUIRE_FALSE(whileHeld.empty());
+		CHECK(whileHeld.front() == before.front());
+		CHECK(drawsHeader);
+		CHECK(drawsReason);
+
+		Rewrite(broken, contents + "tail, still broken");
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		CHECK(drawn.Picture(broken).GetFailureKind() == Graphite::ImageFailure::Decode);
+		CHECK(showsBytes());
+		CHECK(drawn.StatusItems().front() == before.front());
+		CHECK(drawn.TabDraws(broken, "000007C0", Face::Code));
+		CHECK_FALSE(drawn.TabDraws(broken, "the file cannot be opened", Face::Interface));
+	}
+
+	SUBCASE("A rewrite that is a picture")
+	{
+		Rewrite(broken, Contents(ImageFixtures::kPng2x2));
+		drawn.Windows.HandleFilesChanged({folder.GetPath()}, false);
+		REQUIRE(drawn.Jobs.Count() > 0);
+
+		drawn.Frame();
+		CHECK(showsBytes());
+
+		drawn.Jobs.RunAll();
+		drawn.Frame();
+		drawn.Frame();
+
+		CHECK(drawn.Picture(broken).GetState() == Graphite::ImageTabState::Ready);
+		CHECK(drawn.StatusItems() == std::vector<Graphite::ViewStatusItem>{{"2 × 2 · PNG · 77 B", false, std::nullopt}});
+	}
+}
+
+TEST_CASE("An image past the pixel limit is shown as hex under its size")
+{
+	TempDirectory folder;
+	const std::filesystem::path huge = folder.MakeFile("huge.png", Contents(ImageFixtures::kPngHeader20000x12000));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(huge, true);
+	ShowFailedImage(drawn);
+
+	REQUIRE(drawn.Picture(huge).GetState() == Graphite::ImageTabState::Failed);
+
+	CHECK(drawn.TabDraws(huge, "Image is too large to preview (20000 × 12000)", Face::Interface));
+	CHECK(drawn.TabDraws(huge, "89 50 4E 47", Face::Code));
+	CHECK_FALSE(drawn.TabDraws(huge, "Retry", Face::Interface));
+	REQUIRE_FALSE(drawn.StatusItems().empty());
+	CHECK(drawn.StatusItems().front().Text == "0x00000000");
+}
+
+TEST_CASE("An image that cannot be read keeps its failure with Retry")
+{
+	TempDirectory folder;
+	const std::filesystem::path picture = folder.MakeFile("logo.png", Contents(ImageFixtures::kPng2x2));
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(picture, true);
+	drawn.Frame();
+	std::filesystem::remove(picture);
+	ShowFailedImage(drawn);
+
+	REQUIRE(drawn.Picture(picture).GetState() == Graphite::ImageTabState::Failed);
+	REQUIRE(drawn.Picture(picture).GetFailureKind() == Graphite::ImageFailure::Read);
+
+	CHECK(drawn.TabDraws(picture, drawn.Picture(picture).GetFailure(), Face::Interface));
+	CHECK(drawn.TabDraws(picture, "Retry", Face::Interface));
+	CHECK_FALSE(drawn.TabDraws(picture, "Offset", Face::Code));
+	CHECK(drawn.StatusItems().empty());
+	CHECK_FALSE(drawn.Windows.CanRun(Graphite::EditorAction::Copy));
 }
 
 TEST_CASE("A tab whose large file is still being read is remembered as open and active")

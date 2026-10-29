@@ -260,7 +260,7 @@ TEST_CASE("The canvas opens a picture that does not fit at Fit")
 	screen.Draw();
 
 	CHECK(screen.Zoom.Opened);
-	CHECK(screen.Zoom.Zoom == doctest::Approx(Graphite::FitZoom(kTooLargeToFit, screen.Result.Area.GetSize())));
+	CHECK(screen.Zoom.Zoom == doctest::Approx(Graphite::FitZoom(kTooLargeToFit, screen.Result.Area.GetSize(), Graphite::FitMargin())));
 	CHECK(screen.Zoom.Zoom < 1.0f);
 }
 
@@ -329,7 +329,7 @@ TEST_CASE("Dragging the picture pans it")
 	screen.MoveTo(ImVec2(again.x + 900.0f, again.y));
 	screen.Press(false);
 
-	CHECK(screen.Placed().Min.x == doctest::Approx(screen.Result.Area.Max.x - Graphite::kPanKeepVisible));
+	CHECK(screen.Placed().Min.x == doctest::Approx(screen.Result.Area.Max.x - Graphite::PanKeepVisible()));
 }
 
 TEST_CASE("A double click switches between Fit and 100%")
@@ -338,7 +338,7 @@ TEST_CASE("A double click switches between Fit and 100%")
 	screen.Draw();
 	screen.Zoom.Pan = ImVec2(10.0f, 5.0f);
 	screen.Draw();
-	const float fit = Graphite::FitZoom(kFitsAtFullSize, screen.Result.Area.GetSize());
+	const float fit = Graphite::FitZoom(kFitsAtFullSize, screen.Result.Area.GetSize(), Graphite::FitMargin());
 	REQUIRE(fit > 1.0f);
 
 	screen.DoubleClick(screen.Placed().GetCenter());
@@ -530,4 +530,52 @@ TEST_CASE("The canvas reports the pixel under the pointer")
 	screen.MoveTo(kFarAway);
 
 	CHECK_FALSE(screen.Result.Hovered.has_value());
+}
+
+TEST_CASE("Quarter wheel notches zoom one step after four")
+{
+	CanvasScreen screen(kFitsAtFullSize);
+	screen.Draw();
+	screen.MoveTo(screen.Placed().GetCenter());
+
+	for (int quarter = 0; quarter < 3; ++quarter)
+	{
+		ImGui::GetIO().AddMouseWheelEvent(0.0f, 0.25f);
+		screen.Draw();
+		CHECK(screen.Zoom.Zoom == doctest::Approx(1.0f));
+	}
+
+	ImGui::GetIO().AddMouseWheelEvent(0.0f, 0.25f);
+	screen.Draw();
+
+	CHECK(screen.Zoom.Zoom == doctest::Approx(1.5f));
+}
+
+TEST_CASE("At 150% interface scale the fit margin is 36 px")
+{
+	CanvasScreen screen(kTooLargeToFit);
+	ImGui::GetStyle().FontScaleMain = 1.5f;
+
+	screen.Draw();
+
+	const ImVec2 area = screen.Result.Area.GetSize();
+	const float expected = std::min((area.x - 72.0f) / kTooLargeToFit.x, (area.y - 72.0f) / kTooLargeToFit.y);
+
+	CHECK(Graphite::FitMargin() == doctest::Approx(36.0f));
+	CHECK(screen.Zoom.Zoom == doctest::Approx(expected));
+}
+
+TEST_CASE("At 150% interface scale the pan keeps 48 px of the picture in view")
+{
+	CanvasScreen screen(kFitsAtFullSize);
+	ImGui::GetStyle().FontScaleMain = 1.5f;
+	screen.Draw();
+
+	const ImVec2 start = screen.Placed().GetCenter();
+	screen.MoveTo(start);
+	screen.Press(true);
+	screen.MoveTo(ImVec2(start.x + 900.0f, start.y));
+	screen.Press(false);
+
+	CHECK(screen.Placed().Min.x == doctest::Approx(screen.Result.Area.Max.x - 48.0f));
 }

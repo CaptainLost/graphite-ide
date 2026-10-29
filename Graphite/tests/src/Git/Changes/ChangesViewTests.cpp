@@ -13,6 +13,7 @@
 #include "Git/Changes/ChangesView.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitModel.h"
+#include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
 #include "Language/Analysis/AnalysisStore.h"
 #include "Language/Analysis/FileTextSource.h"
@@ -179,8 +180,9 @@ namespace {
 		Graphite::ActiveEditorTarget ActiveEditor;
 		FakeTextureFactory Textures;
 		Graphite::ImageTabs Images{[](std::function<void()>) {}, Textures};
+		Graphite::HexFiles Hex{[](std::function<void()>) {}};
 		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Blame, Preview,
-										  Analysis, AnalysisStore, Pass, Events, ActiveEditor, Images};
+										  Analysis, AnalysisStore, Pass, Events, ActiveEditor, Images, Hex};
 		Graphite::ActiveScheme Scheme;
 		Graphite::ChangesShared Shared;
 		Graphite::DiffWindows Diffs;

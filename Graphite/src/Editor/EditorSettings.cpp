@@ -158,6 +158,7 @@ namespace Graphite {
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 		m_HighlightOccurrences = m_Store.IsHighlightingOccurrences();
 		m_LineAuthor = m_Store.HasLineAuthor();
+		m_LineAuthorDelayMs = std::clamp(m_Store.GetLineAuthorDelayMs(), kMinimumLineAuthorDelayMs, kMaximumLineAuthorDelayMs);
 
 		m_Hover.ShowInfo = m_Store.IsHoverInfoEnabled();
 		m_Hover.Preview = PreviewModeFrom(m_Store.GetHoverPreview());
@@ -253,6 +254,12 @@ namespace Graphite {
 	{
 		m_LineAuthor = show;
 		m_Store.SetLineAuthor(m_LineAuthor);
+	}
+
+	void EditorSettings::SetLineAuthorDelayMs(int milliseconds)
+	{
+		m_LineAuthorDelayMs = std::clamp(milliseconds, kMinimumLineAuthorDelayMs, kMaximumLineAuthorDelayMs);
+		m_Store.SetLineAuthorDelayMs(m_LineAuthorDelayMs);
 	}
 
 	void EditorSettings::SetHoverInfo(bool show)

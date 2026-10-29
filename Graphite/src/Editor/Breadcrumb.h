@@ -36,11 +36,13 @@ namespace Graphite {
 	};
 
 	// What a tab's view puts on the right of the row: Width is in screen pixels, and Draw runs with the cursor at the
-	// tools' left edge, inside the row.
+	// tools' left edge, inside the row. Narrower holds the same tools in less room, the widest first; the row draws
+	// the first of these that leaves the file name whole beside it, and none when not even the last does.
 	struct BreadcrumbTools
 	{
 		float Width = 0.0f;
 		std::function<void()> Draw;
+		std::vector<BreadcrumbTools> Narrower;
 	};
 
 	BreadcrumbModel BuildBreadcrumb(const std::filesystem::path& root, const std::filesystem::path& path,

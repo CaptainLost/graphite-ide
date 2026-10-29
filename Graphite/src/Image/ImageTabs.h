@@ -24,6 +24,9 @@ namespace Graphite {
 		// Made on first use; it loads once it is first updated as shown.
 		ImageTab& For(const std::filesystem::path& path);
 
+		// Null for a path no tab was made for.
+		const ImageTab* Find(const std::filesystem::path& path) const;
+
 		// Drops the picture of every tab not in `open`, which frees its texture.
 		void Prune(const std::set<std::filesystem::path>& open);
 

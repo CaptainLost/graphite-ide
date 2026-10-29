@@ -25,6 +25,20 @@ namespace {
 	{
 		return Graphite::ReaderPosition{.ActiveDocument = kSource, .BubbleDocumentShown = true, .CaretOffset = kAskedAt, .Revision = kRevision};
 	}
+
+	constexpr int kFrame = 40;
+	constexpr bool kNoModal = false;
+	constexpr bool kModalOpen = true;
+
+	Graphite::CaretPlacement CaretDrawnIn(int frame)
+	{
+		return Graphite::CaretPlacement{.X = 100.0f,
+										.Y = 200.0f,
+										.LineHeight = 20.0f,
+										.SurfaceMin = ImVec2(50.0f, 100.0f),
+										.SurfaceMax = ImVec2(800.0f, 600.0f),
+										.DrawnInFrame = frame};
+	}
 }
 
 TEST_CASE("A navigation wait shows only once it has lasted a fifth of a second")
@@ -187,4 +201,44 @@ TEST_CASE("A caret scrolled out of its editor's surface has no bubble")
 	caret.Y = 200.0f;
 	caret.X = 900.0f;
 	CHECK_FALSE(Graphite::IsCaretInSurface(caret));
+}
+
+TEST_CASE("Navigation bubble is seen only once its wait shows at a caret drawn in that frame")
+{
+	const Graphite::NavigationBubble bubble = WaitingBubble();
+	const double shows = kStart + Graphite::NavigationBubble::kShowAfterSeconds;
+
+	CHECK(bubble.IsOpen());
+	CHECK_FALSE(bubble.IsSeenAt(kStart, CaretDrawnIn(kFrame), kFrame, kNoModal));
+	CHECK(bubble.IsSeenAt(shows, CaretDrawnIn(kFrame), kFrame, kNoModal));
+	CHECK_FALSE(bubble.IsSeenAt(shows, CaretDrawnIn(kFrame - 1), kFrame, kNoModal));
+
+	Graphite::CaretPlacement scrolledAway = CaretDrawnIn(kFrame);
+	scrolledAway.Y = 90.0f;
+
+	CHECK_FALSE(bubble.IsSeenAt(shows, scrolledAway, kFrame, kNoModal));
+}
+
+TEST_CASE("Navigation bubble is not seen once its outcome has faded though it stays open")
+{
+	Graphite::NavigationBubble bubble = WaitingBubble();
+	bubble.End(Graphite::NavigationCommand::Definition, "No definition found", kStart);
+
+	const double fades = kStart + Graphite::NavigationBubble::kOutcomeSeconds;
+
+	CHECK(bubble.IsSeenAt(fades - kJustBefore, CaretDrawnIn(kFrame), kFrame, kNoModal));
+	CHECK(bubble.IsOpen());
+	CHECK_FALSE(bubble.IsSeenAt(fades, CaretDrawnIn(kFrame), kFrame, kNoModal));
+}
+
+TEST_CASE("Navigation bubble waiting behind a modal is not seen but how a command ended is")
+{
+	Graphite::NavigationBubble bubble = WaitingBubble();
+	const double shows = kStart + Graphite::NavigationBubble::kShowAfterSeconds;
+
+	CHECK_FALSE(bubble.IsSeenAt(shows, CaretDrawnIn(kFrame), kFrame, kModalOpen));
+
+	bubble.End(Graphite::NavigationCommand::Definition, std::string{Graphite::kCloseTheDialogFirst}, shows);
+
+	CHECK(bubble.IsSeenAt(shows, CaretDrawnIn(kFrame), kFrame, kModalOpen));
 }

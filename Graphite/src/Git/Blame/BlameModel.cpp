@@ -57,7 +57,7 @@ namespace Graphite {
 			// on each commit or fetch would hold the shared job queue for seconds a file.
 			for (auto& [path, entry] : m_Entries)
 			{
-				if (std::exchange(entry.Shown, false))
+				if (entry.Shown)
 				{
 					RequestHead(path, entry);
 				}
@@ -68,8 +68,11 @@ namespace Graphite {
 			}
 		}
 
+		// WARNING: Forgotten every frame, not when a change settles. Kept until then, it named every tab shown since the
+		// change before, and the first change after a quiet spell re-read all of them.
 		for (auto& [path, entry] : m_Entries)
 		{
+			entry.Shown = false;
 			entry.QuietFor += seconds;
 		}
 

@@ -38,6 +38,27 @@ namespace Graphite {
 			return Core::Error{error.Code, "reading the file failed"};
 		}
 
+		// The reader's codes are the three the file can fail with; the decoder says anything else.
+		ImageFailure KindOf(const Core::Error& error)
+		{
+			switch (error.Code)
+			{
+			case Core::ErrorCode::TooLarge:
+				return ImageFailure::TooLarge;
+			case Core::ErrorCode::NotFound:
+			case Core::ErrorCode::AccessDenied:
+			case Core::ErrorCode::IoFailure:
+				return ImageFailure::Read;
+			case Core::ErrorCode::None:
+			case Core::ErrorCode::InvalidArgument:
+			case Core::ErrorCode::Unsupported:
+			case Core::ErrorCode::Cancelled:
+				break;
+			}
+
+			return ImageFailure::Decode;
+		}
+
 		std::string FailureLine(const Core::Error& error)
 		{
 			if (error.Code == Core::ErrorCode::TooLarge)
@@ -67,8 +88,9 @@ namespace Graphite {
 
 		if (m_State == ImageTabState::Failed)
 		{
+			// WARNING: The failure stays while the new version is read, so a view of the bytes does not blank; the result
+			// that lands replaces it.
 			m_State = ImageTabState::Loading;
-			m_Failure.clear();
 		}
 
 		Core::DecodeLimits limits;
@@ -140,6 +162,11 @@ namespace Graphite {
 	const std::string& ImageTab::GetFailure() const
 	{
 		return m_Failure;
+	}
+
+	ImageFailure ImageTab::GetFailureKind() const
+	{
+		return m_FailureKind;
 	}
 
 	bool ImageTab::CanRetry() const
@@ -286,11 +313,16 @@ namespace Graphite {
 
 	void ImageTab::Apply(LoadedPicture picture)
 	{
-		m_Stamp = picture.Stamp;
-
 		if (!picture.Decoded)
 		{
 			const Core::Error& error = picture.Decoded.GetError();
+
+			// A file that could not be read keeps the stamp it had, so the next check tries it again by itself; only bytes
+			// the decoder refused are not worth reading again until the file changes.
+			if (KindOf(error) != ImageFailure::Read)
+			{
+				m_Stamp = picture.Stamp;
+			}
 
 			if (!m_Frames.empty())
 			{
@@ -301,10 +333,13 @@ namespace Graphite {
 			// The facts of a released picture would describe one that is no longer shown.
 			m_Facts.reset();
 			m_Failure = FailureLine(error);
+			m_FailureKind = KindOf(error);
 			m_CanRetry = error.Code != Core::ErrorCode::TooLarge;
 			m_State = ImageTabState::Failed;
 			return;
 		}
+
+		m_Stamp = picture.Stamp;
 
 		Core::DecodedImage decoded = std::move(picture.Decoded).GetValue();
 
@@ -329,6 +364,7 @@ namespace Graphite {
 		m_Texture.reset();
 
 		m_Failure.clear();
+		m_FailureKind = ImageFailure::None;
 		m_ReloadFailure.clear();
 		m_State = ImageTabState::Ready;
 	}

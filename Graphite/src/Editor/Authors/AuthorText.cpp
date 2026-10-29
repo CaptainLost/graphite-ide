@@ -3,6 +3,7 @@
 #include "Git/History/CommitLabels.h"
 #include "UI/TypographicMarks.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace Graphite {
@@ -71,6 +72,18 @@ namespace Graphite {
 		parts.Lead = parts.Name + ", " + RelativeAge(commit->second.Author.When, now);
 		parts.Title = commit->second.Summary;
 		return parts;
+	}
+
+	std::optional<double> LineAuthorHiddenFor(double sinceEdit, double sinceCaretLineChanged, double restDelay)
+	{
+		const double hiddenFor = std::max(kAuthorQuietSeconds - sinceEdit, restDelay - sinceCaretLineChanged);
+
+		if (hiddenFor <= 0.0)
+		{
+			return std::nullopt;
+		}
+
+		return hiddenFor;
 	}
 
 	std::optional<std::string> FitAuthorText(const AuthorTextParts& parts, float available,

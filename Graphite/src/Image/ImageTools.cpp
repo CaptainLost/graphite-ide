@@ -32,7 +32,6 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kSameZoom = 0.0001f;
 		constexpr std::size_t kSwatchCount = 3;
-		constexpr int kToolCountBetweenGaps = 7;
 		constexpr const char* kZoomMenuId = "##ImageZoomMenu";
 		constexpr const char* kFitLabel = ICON_LC_MAXIMIZE " Fit";
 		constexpr const char* kFitId = "##imageFit";
@@ -285,7 +284,22 @@ namespace Graphite {
 			return result;
 		}
 
-		ImageToolResult DrawTools(float zoom, PictureBackground background)
+		bool HasZoomLabel(ImageToolsSet shown)
+		{
+			return shown != ImageToolsSet::StepButtons;
+		}
+
+		bool HasActions(ImageToolsSet shown)
+		{
+			return shown == ImageToolsSet::All || shown == ImageToolsSet::WithoutBackground;
+		}
+
+		bool HasBackground(ImageToolsSet shown)
+		{
+			return shown == ImageToolsSet::All;
+		}
+
+		ImageToolResult DrawTools(float zoom, PictureBackground background, ImageToolsSet shown)
 		{
 			ImageToolResult result;
 
@@ -294,13 +308,16 @@ namespace Graphite {
 				result = Chosen(ImageToolAction::ZoomOut);
 			}
 
-			ImGui::SameLine();
-
-			const ImageToolResult fromMenu = DrawZoomButton(zoom);
-
-			if (fromMenu.Action != ImageToolAction::None)
+			if (HasZoomLabel(shown))
 			{
-				result = fromMenu;
+				ImGui::SameLine();
+
+				const ImageToolResult fromMenu = DrawZoomButton(zoom);
+
+				if (fromMenu.Action != ImageToolAction::None)
+				{
+					result = fromMenu;
+				}
 			}
 
 			ImGui::SameLine();
@@ -310,44 +327,69 @@ namespace Graphite {
 				result = Chosen(ImageToolAction::ZoomIn);
 			}
 
-			ImGui::SameLine();
-			Core::DrawIconSeparator();
-			ImGui::SameLine();
-
-			if (Core::TextButton((std::string(kFitLabel) + kFitId).c_str(), ImVec2(FitButtonWidth(), 0.0f)))
+			if (HasActions(shown))
 			{
-				result = Chosen(ImageToolAction::Fit);
+				ImGui::SameLine();
+				Core::DrawIconSeparator();
+				ImGui::SameLine();
+
+				if (Core::TextButton((std::string(kFitLabel) + kFitId).c_str(), ImVec2(FitButtonWidth(), 0.0f)))
+				{
+					result = Chosen(ImageToolAction::Fit);
+				}
+
+				ImGui::SameLine();
+
+				if (Core::TextButton("1:1", ImVec2(ActualSizeButtonWidth(), 0.0f)))
+				{
+					result = Chosen(ImageToolAction::ActualSize);
+				}
+
+				ImGui::SetItemTooltip("Actual size");
 			}
 
-			ImGui::SameLine();
-
-			if (Core::TextButton("1:1", ImVec2(ActualSizeButtonWidth(), 0.0f)))
+			if (HasBackground(shown))
 			{
-				result = Chosen(ImageToolAction::ActualSize);
-			}
+				ImGui::SameLine();
 
-			ImGui::SetItemTooltip("Actual size");
-
-			ImGui::SameLine();
-
-			if (const ImageToolResult fromSegment = DrawBackgroundSegment(background);
-				fromSegment.Action != ImageToolAction::None)
-			{
-				result = fromSegment;
+				if (const ImageToolResult fromSegment = DrawBackgroundSegment(background);
+					fromSegment.Action != ImageToolAction::None)
+				{
+					result = fromSegment;
+				}
 			}
 
 			return result;
 		}
 	}
 
-	float ImageToolsWidth()
+	float ImageToolsWidth(ImageToolsSet shown)
 	{
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 		const ToolFrame frame;
 
-		const float gaps = ImGui::GetStyle().ItemSpacing.x * static_cast<float>(kToolCountBetweenGaps - 1);
-		const float width = IconSide() * 2.0f + ZoomButtonWidth() + FitButtonWidth() + ActualSizeButtonWidth() +
-							SegmentWidth() + Core::Scaled(Core::kIconSeparatorWidth) + gaps;
+		float width = IconSide() * 2.0f;
+		int items = 2;
+
+		if (HasZoomLabel(shown))
+		{
+			width += ZoomButtonWidth();
+			++items;
+		}
+
+		if (HasActions(shown))
+		{
+			width += FitButtonWidth() + ActualSizeButtonWidth() + Core::Scaled(Core::kIconSeparatorWidth);
+			items += 3;
+		}
+
+		if (HasBackground(shown))
+		{
+			width += SegmentWidth();
+			++items;
+		}
+
+		width += ImGui::GetStyle().ItemSpacing.x * static_cast<float>(items - 1);
 
 		ImGui::PopFont();
 		return width;
@@ -363,11 +405,11 @@ namespace Graphite {
 		return height;
 	}
 
-	ImageToolResult DrawImageTools(float zoom, PictureBackground background)
+	ImageToolResult DrawImageTools(float zoom, PictureBackground background, ImageToolsSet shown)
 	{
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 		const ToolFrame frame;
-		const ImageToolResult result = DrawTools(zoom, background);
+		const ImageToolResult result = DrawTools(zoom, background, shown);
 		ImGui::PopFont();
 
 		return result;

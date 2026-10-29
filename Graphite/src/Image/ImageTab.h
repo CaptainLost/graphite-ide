@@ -27,6 +27,16 @@ namespace Graphite {
 		Failed
 	};
 
+	// Why a tab is Failed. Read: the file could not be read, which reading it again may mend. TooLarge: the file or its
+	// picture is past what is previewed. Decode: the bytes are not a picture this program shows.
+	enum class ImageFailure
+	{
+		None,
+		Read,
+		Decode,
+		TooLarge
+	};
+
 	// One open picture: read and decoded in a job, swapped in without blanking when its file changes, and given up
 	// under memory pressure. Every call is made on the UI thread, which is where its textures are made and released.
 	class ImageTab
@@ -51,8 +61,12 @@ namespace Graphite {
 
 		ImageTabState GetState() const;
 
-		// The whole line shown in place of the picture.
+		// The whole line shown in place of the picture, or as the notice above its bytes when they are shown instead. Kept
+		// while the file is read again, until the new result lands.
 		const std::string& GetFailure() const;
+
+		// None unless the tab is Failed or is loading again after a failure, whose kind it keeps until the new result lands.
+		ImageFailure GetFailureKind() const;
 
 		// False for a picture too large to preview, which reading the same file again cannot change; a change to the
 		// file is read without asking.
@@ -109,6 +123,7 @@ namespace Graphite {
 		ImageTabState m_State = ImageTabState::Loading;
 		std::string m_Failure;
 		bool m_CanRetry = true;
+		ImageFailure m_FailureKind = ImageFailure::None;
 		std::string m_ReloadFailure;
 
 		std::optional<ImageFacts> m_Facts;

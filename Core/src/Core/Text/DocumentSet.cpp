@@ -22,7 +22,7 @@ namespace Core {
 		enum class ProbeVerdict
 		{
 			ReadText,
-			ShowImage,
+			ShowView,
 			NeedsConfirmation,
 			Refused
 		};
@@ -62,11 +62,13 @@ namespace Core {
 					// A text file named .png, such as a Git LFS pointer, never gets here: only a NUL makes it Binary.
 					item.View = ItemView::Image;
 					item.Document.reset();
-					return ProbeVerdict::ShowImage;
+					return ProbeVerdict::ShowView;
 				}
 
-				item.Failure = OpenFailure::Binary;
-				return ProbeVerdict::Refused;
+				// The probe sees a NUL before it sees the size, so a binary file of any size is shown here.
+				item.View = ItemView::Hex;
+				item.Document.reset();
+				return ProbeVerdict::ShowView;
 			case FileKind::TooLarge:
 				item.Failure = OpenFailure::TooLarge;
 				return ProbeVerdict::Refused;
@@ -279,8 +281,6 @@ namespace Core {
 
 		switch (item.Failure)
 		{
-		case OpenFailure::Binary:
-			return "Binary file — " + FormatWholeKilobytes(item.FileSize);
 		case OpenFailure::TooLarge:
 			return "This file is " + FormatWholeMegabytes(item.FileSize) + ", too large to open";
 		case OpenFailure::Missing:
@@ -350,7 +350,7 @@ namespace Core {
 			return ItemLoad::NeedsConfirmation;
 		case ProbeVerdict::Refused:
 			return ItemLoad::Failed;
-		case ProbeVerdict::ShowImage:
+		case ProbeVerdict::ShowView:
 			return ItemLoad::Loaded;
 		case ProbeVerdict::ReadText:
 			break;
@@ -402,7 +402,7 @@ namespace Core {
 			return ItemLoad::NeedsConfirmation;
 		case ProbeVerdict::Refused:
 			return ItemLoad::Failed;
-		case ProbeVerdict::ShowImage:
+		case ProbeVerdict::ShowView:
 			return ItemLoad::Loaded;
 		case ProbeVerdict::ReadText:
 			break;

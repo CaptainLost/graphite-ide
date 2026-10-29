@@ -2897,7 +2897,7 @@ namespace Graphite {
 		{
 			const bool atCaretLineEnd = slice.Line == caret.Line && slice.LastRowOfLine;
 
-			if (author.Authors == nullptr || author.HiddenWhileTyping || !atCaretLineEnd ||
+			if (author.Authors == nullptr || author.Hidden || !atCaretLineEnd ||
 				slice.Line >= author.Authors->Lines.size())
 			{
 				return std::nullopt;
@@ -3020,7 +3020,7 @@ namespace Graphite {
 		// BeginChild sizes its item like any other and would push the surface's CursorMaxPos out to the peek's far
 		// corner; ReserveDocumentExtent has already reserved its rows, so the extent is restored after EndChild.
 		std::optional<PeekAction> DrawPeekBlock(const LinePeekContent& content, std::size_t selected, const ImRect& block,
-												const ResolvedScheme& scheme)
+												const ResolvedScheme& scheme, bool justOpened)
 		{
 			ImGuiWindow* const surface = ImGui::GetCurrentWindow();
 			const ImVec2 extentBeforePeek = surface->DC.CursorMaxPos;
@@ -3047,7 +3047,7 @@ namespace Graphite {
 
 			if (peekVisible)
 			{
-				answer = DrawLinePeek(content, selected, ImGui::GetContentRegionAvail(), scheme);
+				answer = DrawLinePeek(content, selected, ImGui::GetContentRegionAvail(), scheme, justOpened);
 				peekFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
 			}
 
@@ -3375,6 +3375,7 @@ namespace Graphite {
 
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
+		const std::size_t caretLineAtFrameStart = buffer.ToPosition(caretAtFrameStart).Line;
 		const EditorMetrics metrics = MeasureEditor(buffer, view.ChangeDisplay.Gutter);
 
 		const bool documentHoldsFocus =
@@ -3609,8 +3610,11 @@ namespace Graphite {
 
 			// WARNING: An edit made this frame has not reached the caller's quiet period yet, which starts from
 			// the result. Drawn now, the text would jump right with the keystroke for one frame and then vanish.
+			// Nor has a caret moved to another line this frame reached the rest the caller waits for.
+			const bool leftLineThisFrame = buffer.ToPosition(item.Caret.Offset).Line != caretLineAtFrameStart;
+
 			LineAuthorView author = view.Author;
-			author.HiddenWhileTyping = author.HiddenWhileTyping || result.Edited;
+			author.Hidden = author.Hidden || result.Edited || (author.WaitsForRest && leftLineThisFrame);
 
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, rowAreaWidth, view.WordWrap,
 							focused, view.Syntax, scheme, screenRows, drawnLenses, view.Semantic,
@@ -3659,7 +3663,7 @@ namespace Graphite {
 			if (peekOnScreen && view.Peek->Content != nullptr)
 			{
 				const std::optional<PeekAction> answer =
-					DrawPeekBlock(*view.Peek->Content, view.Peek->Selected, *peekBlock, scheme);
+					DrawPeekBlock(*view.Peek->Content, view.Peek->Selected, *peekBlock, scheme, view.Peek->JustOpened);
 
 				if (answer && !result.PeekAnswer)
 				{

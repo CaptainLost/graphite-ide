@@ -23,10 +23,10 @@ namespace Graphite {
 						  centre.y + state.Pan.y - picture.y * state.Zoom * 0.5f);
 		}
 
-		float ClampAxis(float pan, float size, float areaMin, float areaMax)
+		float ClampAxis(float pan, float size, float areaMin, float areaMax, float keepVisible)
 		{
 			const float centre = (areaMin + areaMax) * 0.5f;
-			const float keep = std::min(kPanKeepVisible, size);
+			const float keep = std::min(keepVisible, size);
 			const float low = areaMin + keep - size * 0.5f - centre;
 			const float high = areaMax - keep + size * 0.5f - centre;
 			return std::clamp(pan, low, std::max(low, high));
@@ -58,17 +58,17 @@ namespace Graphite {
 		return zoom;
 	}
 
-	float FitZoom(ImVec2 picture, ImVec2 area)
+	float FitZoom(ImVec2 picture, ImVec2 area, float margin)
 	{
-		const float across = std::max(area.x - 2.0f * kFitMargin, 1.0f) / picture.x;
-		const float down = std::max(area.y - 2.0f * kFitMargin, 1.0f) / picture.y;
+		const float across = std::max(area.x - 2.0f * margin, 1.0f) / picture.x;
+		const float down = std::max(area.y - 2.0f * margin, 1.0f) / picture.y;
 		return std::min(across, down);
 	}
 
-	float OpeningZoom(ImVec2 picture, ImVec2 area)
+	float OpeningZoom(ImVec2 picture, ImVec2 area, float margin)
 	{
-		const bool fits = picture.x <= area.x - 2.0f * kFitMargin && picture.y <= area.y - 2.0f * kFitMargin;
-		return fits ? 1.0f : FitZoom(picture, area);
+		const bool fits = picture.x <= area.x - 2.0f * margin && picture.y <= area.y - 2.0f * margin;
+		return fits ? 1.0f : FitZoom(picture, area, margin);
 	}
 
 	ImRect PlacePicture(const ZoomState& state, ImVec2 picture, const ImRect& area)
@@ -78,15 +78,16 @@ namespace Graphite {
 		return ImRect(ImVec2(std::round(min.x), std::round(min.y)), ImVec2(std::round(max.x), std::round(max.y)));
 	}
 
-	ZoomState ClampPan(const ZoomState& state, ImVec2 picture, const ImRect& area)
+	ZoomState ClampPan(const ZoomState& state, ImVec2 picture, const ImRect& area, float keepVisible)
 	{
 		ZoomState result = state;
-		result.Pan.x = ClampAxis(state.Pan.x, picture.x * state.Zoom, area.Min.x, area.Max.x);
-		result.Pan.y = ClampAxis(state.Pan.y, picture.y * state.Zoom, area.Min.y, area.Max.y);
+		result.Pan.x = ClampAxis(state.Pan.x, picture.x * state.Zoom, area.Min.x, area.Max.x, keepVisible);
+		result.Pan.y = ClampAxis(state.Pan.y, picture.y * state.Zoom, area.Min.y, area.Max.y, keepVisible);
 		return result;
 	}
 
-	ZoomState ZoomAround(const ZoomState& state, float zoom, ImVec2 point, ImVec2 picture, const ImRect& area)
+	ZoomState ZoomAround(const ZoomState& state, float zoom, ImVec2 point, ImVec2 picture, const ImRect& area,
+						 float keepVisible)
 	{
 		const ImVec2 oldMin = ExactMin(state, picture, area);
 		const ImVec2 inPicture((point.x - oldMin.x) / state.Zoom, (point.y - oldMin.y) / state.Zoom);
@@ -97,7 +98,7 @@ namespace Graphite {
 		ZoomState result = state;
 		result.Zoom = zoom;
 		result.Pan = ImVec2(newMin.x + picture.x * zoom * 0.5f - centre.x, newMin.y + picture.y * zoom * 0.5f - centre.y);
-		return ClampPan(result, picture, area);
+		return ClampPan(result, picture, area, keepVisible);
 	}
 
 	std::optional<PixelPoint> PixelUnder(ImVec2 point, const ZoomState& state, ImVec2 picture, const ImRect& area)
