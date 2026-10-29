@@ -46,7 +46,10 @@ operation in progress, and an information row otherwise. A worktree whose
 folder is gone is an information row. Facts count as current only when they
 answer the request that the present branch list would make
 (`WorkFactsRequestFor`, which does not compare the budget, since the board has
-none); stale facts are still used, and the board says they are pending.
+none); stale facts are still used, and the board says they are pending. So
+are the facts a first read hands out before it ends: a branch it has not
+answered yet is unchecked, and a worktree it has not counted yet has an
+unknown count.
 
 ## Rationale
 
