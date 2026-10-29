@@ -84,7 +84,7 @@ namespace Graphite {
 												  const std::filesystem::path& newPath) override;
 		Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) override;
 
-		Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request) override;
+		Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request, const WorkFactsProgress& progress) override;
 		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override;
 
 		void SetRoot(std::filesystem::path root);

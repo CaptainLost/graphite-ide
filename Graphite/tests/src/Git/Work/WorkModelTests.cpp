@@ -148,6 +148,56 @@ TEST_CASE("A failed read keeps the last facts and reports the error")
 	CHECK_FALSE(model.IsReading());
 }
 
+TEST_CASE("A first read hands out its facts as they come and a later read only once it lands whole")
+{
+	FakeWorkPort port;
+	port.Facts = FactsWithWorktree(2);
+	port.Steps = {FactsWithWorktree(0)};
+	port.Steps.front().Worktrees.front().Uncommitted.reset();
+	DeferredJobs jobs;
+	WorkModel model{port, jobs.Submitter()};
+
+	// The fake reads on this thread, so what the model shows between the read's steps is looked at from inside it.
+	Core::Ref<const Graphite::WorkFacts> shownMidRead;
+	port.AfterStep = [&] {
+		model.OnUpdate(kFrame);
+		shownMidRead = model.GetFacts();
+	};
+
+	model.FollowBranches(BranchesWithSideAt(10));
+	Settle(model, jobs);
+
+	CHECK(port.LastHadProgress);
+	REQUIRE(shownMidRead != nullptr);
+	CHECK(shownMidRead->Partial);
+	CHECK_FALSE(shownMidRead->Worktrees.at(0).Uncommitted.has_value());
+	REQUIRE(model.GetFacts() != nullptr);
+	CHECK_FALSE(model.GetFacts()->Partial);
+	const Core::Ref<const Graphite::WorkFacts> whole = model.GetFacts();
+
+	model.Refresh();
+	Settle(model, jobs);
+
+	CHECK_FALSE(port.LastHadProgress);
+	CHECK(shownMidRead == whole);
+}
+
+TEST_CASE("A first read that fails takes what it handed out with it")
+{
+	FakeWorkPort port;
+	port.Steps = {FactsWithWorktree(1)};
+	port.FactsFailure = Core::Error{.Message = "could not read"};
+	DeferredJobs jobs;
+	WorkModel model{port, jobs.Submitter()};
+
+	model.FollowBranches(BranchesWithSideAt(10));
+	Settle(model, jobs);
+
+	CHECK(model.GetFacts() == nullptr);
+	REQUIRE(model.GetError().has_value());
+	CHECK(model.GetError()->Message == "could not read");
+}
+
 TEST_CASE("Polled worktrees are counted again every three seconds while on screen")
 {
 	FakeWorkPort port;

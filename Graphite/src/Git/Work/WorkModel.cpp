@@ -66,11 +66,34 @@ namespace Graphite {
 
 		const std::uint64_t generation = m_Facts.Begin();
 
-		m_Submit([this, generation, request = std::move(request)]() {
-			Core::Result<WorkFacts> answer = m_Port.ReadWorkFacts(request);
+		// WARNING: Only a first read hands out what it has so far. A later one would swap whole facts for partial ones,
+		// and every card it had answered would go back to unchecked until the read ends.
+		WorkFactsProgress progress;
+
+		if (m_Facts.Get() == nullptr)
+		{
+			progress = [this, generation](const WorkFacts& soFar) {
+				m_Inbox.Post([this, generation, soFar]() { LandPartial(generation, soFar); });
+			};
+		}
+
+		m_Submit([this, generation, request = std::move(request), progress = std::move(progress)]() {
+			Core::Result<WorkFacts> answer = m_Port.ReadWorkFacts(request, progress);
 
 			m_Inbox.Post([this, generation, answer = std::move(answer)]() mutable { LandFacts(generation, std::move(answer)); });
 		});
+	}
+
+	void WorkModel::LandPartial(std::uint64_t generation, const WorkFacts& soFar)
+	{
+		// A partial answer of a read already landed, cleared or overtaken is dropped.
+		if (!m_Facts.IsInFlight() || generation != m_Facts.GetRequested() || m_Facts.Get() != nullptr)
+		{
+			return;
+		}
+
+		m_Partial = Core::CreateRef<const WorkFacts>(soFar);
+		FoldCounts();
 	}
 
 	void WorkModel::LandFacts(std::uint64_t generation, Core::Result<WorkFacts> answer)
@@ -81,7 +104,16 @@ namespace Graphite {
 		{
 			// The read counted every worktree afresh, so counts polled before it are older than its own.
 			m_Counts.clear();
+			m_Partial.reset();
 			m_Folded = m_Facts.Get();
+		}
+
+		// WARNING: A first read that failed has landed no facts, so what it handed out on the way goes with it, and the
+		// failure is the whole answer.
+		if (landing == SlotLanding::Failed && m_Facts.Get() == nullptr)
+		{
+			m_Partial.reset();
+			m_Folded.reset();
 		}
 
 		if (landing != SlotLanding::Stale)
@@ -156,7 +188,14 @@ namespace Graphite {
 
 	void WorkModel::FoldCounts()
 	{
-		WorkFacts folded = *m_Facts.Get();
+		const Core::Ref<const WorkFacts> base = m_Facts.Get() != nullptr ? m_Facts.Get() : m_Partial;
+
+		if (base == nullptr)
+		{
+			return;
+		}
+
+		WorkFacts folded = *base;
 
 		for (WorktreeFacts& worktree : folded.Worktrees)
 		{
@@ -175,6 +214,7 @@ namespace Graphite {
 	{
 		// WARNING: The slot's generations move on, so a facts read still in flight is dropped when it lands.
 		m_Facts.Clear();
+		m_Partial.reset();
 		m_Folded.reset();
 		m_LastAsked.reset();
 		m_Waiting.reset();

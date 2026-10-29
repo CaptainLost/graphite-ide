@@ -50,6 +50,7 @@ namespace {
 		std::map<std::filesystem::path, std::string> Titles;
 		bool HaveFacts = true;
 		bool StaleFacts = false;
+		bool Partial = false;
 			std::string MovedSinceFacts; // full name of a branch that is at another tip now than when the facts were read
 		Core::HeadState MainHead{.Kind = Core::HeadKind::Branch, .BranchName = "feature"};
 
@@ -114,6 +115,7 @@ namespace {
 		{
 			Graphite::WorkFacts facts;
 			facts.Answers = Graphite::WorkFactsRequestFor(Branches, kBudget);
+			facts.Partial = Partial;
 
 			if (StaleFacts)
 			{
@@ -380,6 +382,23 @@ TEST_CASE("Before any facts land every branch is an unchecked card and the board
 	CHECK_FALSE(CardFor(board, "one")->Checked);
 	CHECK_FALSE(CardFor(board, "two")->Checked);
 	CHECK(board.Ready.empty());
+}
+
+TEST_CASE("Part of a first read is used as far as it goes and the board says the facts are pending")
+{
+	Scene scene;
+	scene.Add("done");
+	scene.Add("unanswered");
+	scene.Matches["refs/heads/done"] = Match(0, 1, 0, 0);
+	scene.Partial = true;
+
+	const Graphite::WorkBoard board = scene.Build();
+
+	CHECK(board.FactsPending);
+	CHECK(ReadyFor(board, "done") != nullptr);
+	const Graphite::WorkCard* unanswered = CardFor(board, "unanswered");
+	REQUIRE(unanswered != nullptr);
+	CHECK_FALSE(unanswered->Checked);
 }
 
 TEST_CASE("Facts that answer other branches are used but the board says they are pending")

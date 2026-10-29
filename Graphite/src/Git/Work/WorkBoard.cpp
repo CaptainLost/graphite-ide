@@ -220,7 +220,8 @@ namespace Graphite {
 			board.Trunk = trunk->FullName;
 		}
 
-		board.FactsPending = facts == nullptr || facts->Answers != WorkFactsRequestFor(branches, facts->Answers.PatchBudget);
+		board.FactsPending = facts == nullptr || facts->Partial ||
+							 facts->Answers != WorkFactsRequestFor(branches, facts->Answers.PatchBudget);
 		const WorktreeFacts* const own = WorkingCopyWorktree(facts, input.WorkingDirectory);
 		board.Cards.push_back(WorkingCopyCard(input, head, own));
 

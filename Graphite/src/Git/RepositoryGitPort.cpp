@@ -1215,7 +1215,8 @@ namespace Graphite {
 		return status.GetValue().Entries.size();
 	}
 
-	Core::Result<WorkFacts> RepositoryGitPort::ReadWorkFacts(const WorkFactsRequest& request)
+	Core::Result<WorkFacts> RepositoryGitPort::ReadWorkFacts(const WorkFactsRequest& request,
+															 const WorkFactsProgress& progress)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
@@ -1236,27 +1237,21 @@ namespace Graphite {
 		WorkFacts facts;
 		facts.Answers = request;
 
-		// WARNING: The open folder's own worktree is counted by GitModel's status, which may be a linked one; the main
-		// checkout is then a worktree like any other and is counted here.
-		const Core::PathKeyText ownKey = Core::PathKey(repository->GetWorkingDirectory());
-
 		for (Core::WorktreeEntry& entry : entries.GetValue())
 		{
-			WorktreeFacts worktree;
-
-			if (!entry.FolderMissing && Core::PathKey(entry.Path) != ownKey)
-			{
-				const Core::Result<std::size_t> count = CountUncommitted(entry.Path);
-
-				if (count.HasValue())
-				{
-					worktree.Uncommitted = count.GetValue();
-				}
-			}
-
-			worktree.Entry = std::move(entry);
-			facts.Worktrees.push_back(std::move(worktree));
+			facts.Worktrees.push_back(WorktreeFacts{.Entry = std::move(entry)});
 		}
+
+		const auto handOut = [&progress, &facts] {
+			if (progress)
+			{
+				WorkFacts soFar = facts;
+				soFar.Partial = true;
+				progress(soFar);
+			}
+		};
+
+		handOut();
 
 		for (const BranchTip& branch : request.Branches)
 		{
@@ -1276,6 +1271,26 @@ namespace Graphite {
 			}
 
 			facts.Branches.push_back(std::move(answer));
+			handOut();
+		}
+
+		// WARNING: The open folder's own worktree is counted by GitModel's status, which may be a linked one; the main
+		// checkout is then a worktree like any other and is counted here.
+		const Core::PathKeyText ownKey = Core::PathKey(repository->GetWorkingDirectory());
+
+		for (WorktreeFacts& worktree : facts.Worktrees)
+		{
+			if (worktree.Entry.FolderMissing || Core::PathKey(worktree.Entry.Path) == ownKey)
+			{
+				continue;
+			}
+
+			if (const Core::Result<std::size_t> count = CountUncommitted(worktree.Entry.Path); count.HasValue())
+			{
+				worktree.Uncommitted = count.GetValue();
+			}
+
+			handOut();
 		}
 
 		return facts;

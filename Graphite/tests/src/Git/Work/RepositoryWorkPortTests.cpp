@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -49,7 +50,7 @@ TEST_CASE("Work facts list the worktrees and count each linked worktree's uncomm
 	ReviewRepository::WriteFileAt(worktree / "y.txt", "y\n");
 	Graphite::RepositoryGitPort port{repository.GetPath()};
 
-	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(RequestFor(masterTip, sideTip));
+	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(RequestFor(masterTip, sideTip), {});
 
 	REQUIRE(facts.HasValue());
 	REQUIRE(facts.GetValue().Worktrees.size() == 2);
@@ -70,7 +71,7 @@ TEST_CASE("Opened in a linked worktree, work facts count the main checkout's unc
 	ReviewRepository::WriteFileAt(worktree / "x.txt", "x\n");
 	Graphite::RepositoryGitPort port{worktree};
 
-	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(RequestFor(masterTip, sideTip));
+	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(RequestFor(masterTip, sideTip), {});
 
 	REQUIRE(facts.HasValue());
 	REQUIRE(facts.GetValue().Worktrees.size() == 2);
@@ -78,6 +79,38 @@ TEST_CASE("Opened in a linked worktree, work facts count the main checkout's unc
 	REQUIRE(facts.GetValue().Worktrees[0].Uncommitted.has_value());
 	CHECK(*facts.GetValue().Worktrees[0].Uncommitted == 1);
 	CHECK_FALSE(facts.GetValue().Worktrees[1].Uncommitted.has_value());
+}
+
+TEST_CASE("Work facts are handed out as they are read, the branches answered before the worktrees are counted")
+{
+	ReviewRepository repository;
+	Core::Oid masterTip;
+	Core::Oid sideTip;
+	const std::filesystem::path worktree = MakeSideWorktree(repository, masterTip, sideTip);
+	ReviewRepository::WriteFileAt(worktree / "x.txt", "x\n");
+	ReviewRepository::WriteFileAt(worktree / "y.txt", "y\n");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	std::vector<Graphite::WorkFacts> handedOut;
+
+	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(
+		RequestFor(masterTip, sideTip), [&handedOut](const Graphite::WorkFacts& soFar) { handedOut.push_back(soFar); });
+
+	REQUIRE(facts.HasValue());
+	CHECK_FALSE(facts.GetValue().Partial);
+	REQUIRE(handedOut.size() == 3);
+
+	for (const Graphite::WorkFacts& soFar : handedOut)
+	{
+		CHECK(soFar.Partial);
+		REQUIRE(soFar.Worktrees.size() == 2);
+	}
+
+	CHECK(handedOut[0].Branches.empty());
+	CHECK_FALSE(handedOut[0].Worktrees[1].Uncommitted.has_value());
+	CHECK(handedOut[1].Branches.size() == 1);
+	CHECK_FALSE(handedOut[1].Worktrees[1].Uncommitted.has_value());
+	REQUIRE(handedOut[2].Worktrees[1].Uncommitted.has_value());
+	CHECK(*handedOut[2].Worktrees[1].Uncommitted == 2);
 }
 
 TEST_CASE("Work facts match each branch's commits against the trunk")
@@ -89,7 +122,7 @@ TEST_CASE("Work facts match each branch's commits against the trunk")
 	Graphite::RepositoryGitPort port{repository.GetPath()};
 	const Graphite::WorkFactsRequest request = RequestFor(masterTip, sideTip);
 
-	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(request);
+	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(request, {});
 
 	REQUIRE(facts.HasValue());
 	REQUIRE(facts.GetValue().Branches.size() == 1);
@@ -115,7 +148,7 @@ TEST_CASE("A branch whose tip is missing fails alone and the others still answer
 	}
 	request.Branches.push_back({.FullName = "refs/heads/gone", .Tip = missing});
 
-	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(request);
+	const Core::Result<Graphite::WorkFacts> facts = port.ReadWorkFacts(request, {});
 
 	REQUIRE(facts.HasValue());
 	REQUIRE(facts.GetValue().Branches.size() == 2);

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -52,14 +53,25 @@ namespace Graphite {
 		WorkFactsRequest Answers;
 		std::vector<WorktreeFacts> Worktrees;
 		std::vector<BranchFacts> Branches; // in the request's order
+
+		// Handed out while the read still runs: the branches not answered yet are missing, and the worktrees not
+		// counted yet have no count.
+		bool Partial = false;
 	};
+
+	// Called on the worker with what a facts read has so far: once the worktrees are listed, after each branch is
+	// answered and after each worktree is counted.
+	using WorkFactsProgress = std::function<void(const WorkFacts& soFar)>;
 
 	// WARNING: Every method is called on a worker thread.
 	class WorkPort
 	{
 	public:
 		virtual ~WorkPort() = default;
-		virtual Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request) = 0;
+
+		// The branches are answered before the worktrees are counted: an answer takes a moment once its commits'
+		// patch ids are known, and a count reads a whole worktree. `progress` may be empty.
+		virtual Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request, const WorkFactsProgress& progress) = 0;
 		virtual Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) = 0;
 	};
 }

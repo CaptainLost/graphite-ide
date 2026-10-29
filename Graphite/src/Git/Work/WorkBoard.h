@@ -101,7 +101,7 @@ namespace Graphite {
 		std::vector<ReadyEntry> Ready;
 		std::vector<WorkInfo> Info;
 
-		// No facts answer the current branches yet.
+		// No facts answer the current branches yet, or only part of a first read has: its branches resolve one by one.
 		bool FactsPending = false;
 
 		// Every worktree of the repository, the main one too; unknown until the first facts land.

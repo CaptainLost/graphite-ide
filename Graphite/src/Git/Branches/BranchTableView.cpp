@@ -257,8 +257,9 @@ namespace Graphite {
 		{
 			DrawFittedDisabled(TrunkText(*row.Trunk));
 		}
-		else if (input.Facts == nullptr && row.Local.has_value())
+		else if ((input.Facts == nullptr || input.Facts->Partial) && row.Local.has_value())
 		{
+			// A first read answers its branches one by one, so one not answered yet is still waited on.
 			Core::LoadingLine("");
 		}
 		else

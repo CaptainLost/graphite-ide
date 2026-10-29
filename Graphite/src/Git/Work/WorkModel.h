@@ -38,7 +38,7 @@ namespace Graphite {
 		void Refresh();
 		void Clear();
 
-		// The last answer, with polled counts folded in.
+		// The last answer, with polled counts folded in; while a first read runs, what it has so far (Partial set).
 		Core::Ref<const WorkFacts> GetFacts() const { return m_Folded; }
 
 		const std::optional<Core::Error>& GetError() const { return m_Facts.GetError(); }
@@ -51,6 +51,7 @@ namespace Graphite {
 	private:
 		// WARNING: At most one facts read runs at a time; whatever is asked meanwhile waits here, and only the newest.
 		void AskWaiting();
+		void LandPartial(std::uint64_t generation, const WorkFacts& soFar);
 		void LandFacts(std::uint64_t generation, Core::Result<WorkFacts> answer);
 		void PollCounts();
 		void LandCount(std::uint64_t epoch, const std::filesystem::path& worktree, Core::Result<std::size_t> answer);
@@ -63,6 +64,9 @@ namespace Graphite {
 		DeliveryInbox m_Inbox;
 
 		GenerationSlot<WorkFacts> m_Facts;
+
+		// What the first read has handed out so far, until it lands.
+		Core::Ref<const WorkFacts> m_Partial;
 		Core::Ref<const WorkFacts> m_Folded;
 		std::optional<WorkFactsRequest> m_LastAsked;
 		std::optional<WorkFactsRequest> m_Waiting;
