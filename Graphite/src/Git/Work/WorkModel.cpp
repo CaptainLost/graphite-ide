@@ -15,7 +15,9 @@ namespace Graphite {
 	{
 		m_Inbox.Drain();
 
-		if (!m_OnScreen || m_Polled.empty())
+		// WARNING: A first read still under way is counting every worktree itself; polling beside it would count them
+		// twice over on the same workers while the window starts.
+		if (!m_OnScreen || m_Polled.empty() || m_Partial != nullptr)
 		{
 			return;
 		}

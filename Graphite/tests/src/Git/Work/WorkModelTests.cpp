@@ -223,6 +223,30 @@ TEST_CASE("Polled worktrees are counted again every three seconds while on scree
 	CHECK(before->Worktrees.at(0).Uncommitted == 2);
 }
 
+TEST_CASE("Nothing is polled while a first read is still counting the worktrees")
+{
+	FakeWorkPort port;
+	port.Facts = FactsWithWorktree(2);
+	port.Steps = {FactsWithWorktree(0)};
+	port.CountAnswer = 7;
+	DeferredJobs jobs;
+	WorkModel model{port, jobs.Submitter()};
+
+	port.AfterStep = [&] {
+		model.OnUpdate(kFrame);
+		model.SetPolled({kWorktree}, true);
+		model.OnUpdate(kPollInterval);
+	};
+
+	model.FollowBranches(BranchesWithSideAt(10));
+	Settle(model, jobs);
+	Settle(model, jobs);
+
+	CHECK(port.CountReads == 0);
+	REQUIRE(model.GetFacts() != nullptr);
+	CHECK(model.GetFacts()->Worktrees.at(0).Uncommitted == 2);
+}
+
 TEST_CASE("Nothing is polled off screen")
 {
 	FakeWorkPort port;
