@@ -1,4 +1,4 @@
-# 0655. Draw Changes as one view hosted by the side panel and the Git window, sharing one commit draft
+# 0656. Draw Changes as one view hosted by the side panel and the Git window, sharing one commit draft
 
 Status: proposed
 Date: 2026-10-28

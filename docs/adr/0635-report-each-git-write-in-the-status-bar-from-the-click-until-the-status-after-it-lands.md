@@ -72,7 +72,7 @@ the screen still shows the old state.
   [0636](0636-run-git-writes-on-a-worker-of-their-own.md),
   [0633](0633-show-every-wait-with-the-core-loader-and-say-nothing-is-there-only-after-an-answer-said-so.md)
 
-Superseded in part by [0657](0657-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md):
+Superseded in part by [0658](0658-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md):
 the branch row that carried the checkout's loader is gone with the old refs column; the
 Git window's navigator header names the checkout with the loader instead, as the status
 bar does.

@@ -1,4 +1,4 @@
-# 0654. Start a branch review on its first viewed mark and keep drafts out of reviews.json
+# 0655. Start a branch review on its first viewed mark and keep drafts out of reviews.json
 
 Status: proposed
 Date: 2026-10-28

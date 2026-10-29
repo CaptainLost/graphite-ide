@@ -65,6 +65,6 @@ A review is a session: one branch, its base, its settings and its marks. A sessi
 - [0583](0583-keep-review-marks-in-their-own-file-beside-the-window-state.md): where sessions are kept.
 - [0587](0587-show-a-changed-file-s-diff-since-the-version-that-was-viewed.md): a setting of the session.
 
-Amended by [0654](0654-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md): a branch that is only looked at holds its base and settings in a draft, and the first viewed mark starts the session.
+Amended by [0655](0655-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md): a branch that is only looked at holds its base and settings in a draft, and the first viewed mark starts the session.
 
-Superseded in part by [0657](0657-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md): the badge went with the branch rows it sat on. A work card and the thread header show the files viewed out of the committed range instead, counted for a kept session as the badge was, and the branch menu's "Open review" opens the branch's thread in the Git window rather than a tab.
+Superseded in part by [0658](0658-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md): the badge went with the branch rows it sat on. A work card and the thread header show the files viewed out of the committed range instead, counted for a kept session as the badge was, and the branch menu's "Open review" opens the branch's thread in the Git window rather than a tab.

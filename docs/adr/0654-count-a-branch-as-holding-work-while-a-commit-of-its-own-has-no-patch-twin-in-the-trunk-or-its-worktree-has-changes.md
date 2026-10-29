@@ -1,4 +1,4 @@
-# 0653. Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes
+# 0654. Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes
 
 Status: proposed
 Date: 2026-10-28

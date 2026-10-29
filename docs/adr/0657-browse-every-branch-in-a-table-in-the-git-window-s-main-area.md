@@ -1,4 +1,4 @@
-# 0656. Browse every branch in a table in the Git window's main area
+# 0657. Browse every branch in a table in the Git window's main area
 
 Status: proposed
 Date: 2026-10-28
