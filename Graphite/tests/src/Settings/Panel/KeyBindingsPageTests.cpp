@@ -11,6 +11,10 @@
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
+#include "Core/Command/Trigger.h"
+#include "Core/ImGui/UiScale.h"
+
+#include "UI/TickBox.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -230,6 +234,7 @@ namespace {
 	constexpr float kIntoTheFirstLine = 8.0f;
 	constexpr float kIntoTheSlot = 10.0f;
 	constexpr int kShortcutColumn = 1;
+	constexpr int kWhenColumn = 3;
 	constexpr int kSettleFrames = 3;
 
 	struct BindingsTableShape
@@ -238,6 +243,7 @@ namespace {
 		float LastRowTop = 0.0f;
 		float LastRowBottom = 0.0f;
 		ImVec2 OnLastRowsShortcut;
+		ImVec2 OnLastRowsWhen;
 		const ImDrawList* Drawing = nullptr;
 	};
 
@@ -259,6 +265,7 @@ namespace {
 				.LastRowTop = table->RowPosY1,
 				.LastRowBottom = table->RowPosY2,
 				.OnLastRowsShortcut = ImVec2(table->Columns[kShortcutColumn].WorkMinX + kIntoTheSlot, table->RowPosY1 + kIntoTheFirstLine),
+				.OnLastRowsWhen = ImVec2(table->Columns[kWhenColumn].WorkMinX + kIntoTheSlot, table->RowPosY1 + kIntoTheFirstLine),
 				.Drawing = table->InnerWindow->DrawList};
 		}
 
@@ -361,4 +368,79 @@ TEST_CASE("A key binding row whose shortcut is being recorded rests in the accen
 	REQUIRE(selected.has_value());
 	CheckSpansTheRow(*selected, *shape);
 	CHECK_FALSE(DrawsInColour(*shape->Drawing, ImGui::GetColorU32(ImGuiCol_Header)));
+}
+
+namespace {
+
+	void ClickAt(KeyBindingsScreen& screen, ImVec2 at)
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.AddMousePosEvent(at.x, at.y);
+		screen.Frames.DrawPage();
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		screen.Frames.DrawPage();
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		screen.Frames.DrawPage();
+		screen.Frames.DrawPage();
+	}
+
+	const ImGuiWindow* OpenWhenMenu()
+	{
+		const ImGuiWindow* menu = ImGui::FindWindowByName("##Combo_00");
+
+		return menu != nullptr && menu->WasActive ? menu : nullptr;
+	}
+}
+
+TEST_CASE("Ticking a place in a command's When menu lets its shortcut fire there and keeps the menu open")
+{
+	KeyBindingsScreen screen;
+	screen.Commands.Add(Core::Command{.Id = "panel.explorer", .Label = "Explorer"});
+	screen.Keys.SetDefault("panel.explorer", Core::Binding{.Primary = Core::Chord::Key(ImGuiKey_F)});
+	screen.Frames.DrawPageTwice();
+
+	const std::optional<BindingsTableShape> table = ShapeOfBindingsTable();
+	REQUIRE(table.has_value());
+
+	ClickAt(screen, table->OnLastRowsWhen);
+
+	const ImGuiWindow* menu = OpenWhenMenu();
+	REQUIRE(menu != nullptr);
+
+	// The heading takes the first line, and the first tick, for the editor, the next.
+	const float tickCentre = Core::Scaled(Graphite::kTickBoxSize) * 0.5f;
+	const ImVec2 onEditorTick(menu->DC.CursorStartPos.x + tickCentre, menu->DC.CursorStartPos.y + ImGui::GetTextLineHeightWithSpacing() + tickCentre);
+
+	ClickAt(screen, onEditorTick);
+
+	const Core::Binding* binding = screen.Keys.For("panel.explorer");
+	REQUIRE(binding != nullptr);
+	CHECK(binding->Primary.IsSameGesture(Core::Chord::Key(ImGuiKey_F)));
+	CHECK(binding->Primary.GetFlags() == Core::ChordFlags{.FiresInEditor = true});
+	CHECK(screen.Keys.IsOverridden("panel.explorer"));
+	CHECK(screen.Changes == 1);
+	CHECK(OpenWhenMenu() != nullptr);
+
+	SUBCASE("Ticking it off again leaves the chord following its default")
+	{
+		ClickAt(screen, onEditorTick);
+
+		CHECK(screen.Keys.For("panel.explorer")->Primary.GetFlags().IsEmpty());
+		CHECK(screen.Changes == 2);
+	}
+}
+
+TEST_CASE("A command with no shortcut, or only a wheel turn, has no When menu")
+{
+	KeyBindingsScreen screen;
+	screen.Commands.Add(Core::Command{.Id = "editor.zoomIn", .Label = "Zoom In"});
+	screen.Keys.SetDefault("editor.zoomIn", Core::Binding{.Primary = Core::Chord::Wheel(ImGuiMod_Ctrl, Core::Trigger::WheelUp, Core::ShortcutScope::HoveredEditor)});
+	screen.Frames.DrawPageTwice();
+
+	const std::optional<BindingsTableShape> table = ShapeOfBindingsTable();
+	REQUIRE(table.has_value());
+
+	ClickAt(screen, table->OnLastRowsWhen);
+
+	CHECK(OpenWhenMenu() == nullptr);
 }

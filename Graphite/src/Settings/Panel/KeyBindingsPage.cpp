@@ -9,22 +9,29 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Command/ModifierName.h"
 #include "Core/Command/Trigger.h"
+#include "Core/Command/TypingRules.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/ImGuiKeys.h"
 #include "Core/ImGui/TextButton.h"
+#include "Core/ImGui/UiScale.h"
 
 #include "Settings/Panel/SettingsLayout.h"
 #include "Settings/Panel/SettingsSearch.h"
+#include "Settings/Panel/ShortcutWhen.h"
+#include "Theme/EditorPalette.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
+#include "UI/TickBox.h"
 
 #include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <array>
+#include <cfloat>
 #include <cstddef>
 #include <format>
 #include <span>
@@ -44,12 +51,22 @@ namespace Graphite {
 
 		constexpr std::size_t kPrimarySlotIndex = 0;
 
-		constexpr int kTableColumnCount = 4;
+		constexpr int kTableColumnCount = 5;
 
 		constexpr float kCommandColumnWeight = 3.0f;
 		constexpr float kShortcutColumnWeight = 2.0f;
 		constexpr float kAlternatesColumnWeight = 3.0f;
+		constexpr float kWhenColumnWeight = 2.5f;
 		constexpr float kDefaultColumnWeight = 1.0f;
+
+		constexpr const char* kEditorOnly = "Editor only";
+		constexpr const char* kRepeatLabel = "Repeat while held";
+		constexpr const char* kRepeatHeading = "Repeat";
+		constexpr const char* kEditorOnlyNote = "Fires only while the editor holds the keyboard.";
+		constexpr const char* kDefaultRestoresNote = "The row's Default restores these too.";
+
+		constexpr float kWhenMenuWidth = 300.0f;
+		constexpr int kWhenGridColumnCount = static_cast<int>(kTypingTargets.size()) + 2;
 
 		constexpr const char* kWindowSwitcherReason = "the window switcher uses it";
 
@@ -223,7 +240,7 @@ namespace Graphite {
 			{
 				const std::size_t chordIndex = reverseIndex - 1;
 
-				if (chordIndex != keptSlotIndex && chords[chordIndex] == chord)
+				if (chordIndex != keptSlotIndex && chords[chordIndex].IsSameGesture(chord))
 				{
 					chords.erase(chords.begin() + static_cast<std::ptrdiff_t>(chordIndex));
 
@@ -238,6 +255,153 @@ namespace Graphite {
 		bool IsEmptyChord(const Core::Chord& chord)
 		{
 			return chord.IsEmpty();
+		}
+
+		// What the When menu offers for a chord: an editor command fires only in the editor, so all it can be told is
+		// whether it repeats.
+		bool HasWhenFlags(const Core::Chord& chord, bool editorOnly)
+		{
+			return editorOnly ? Core::CanRepeat(chord) : Core::HasTypingFlags(chord);
+		}
+
+		bool DrawFiresInTick(const char* label, Core::Chord& chord, Core::TypingTarget target)
+		{
+			bool fires = Core::FiresIn(chord, target);
+
+			if (!DrawTickBox(label, &fires))
+			{
+				return false;
+			}
+
+			Core::ChordFlags flags = chord.GetFlags();
+			Core::SetFiresIn(flags, chord, target, fires);
+			chord = chord.WithFlags(flags);
+
+			return true;
+		}
+
+		bool DrawRepeatTick(const char* label, Core::Chord& chord, bool commandRepeats)
+		{
+			bool repeats = Core::RepeatsWhileHeld(chord, commandRepeats);
+
+			if (!DrawTickBox(label, &repeats))
+			{
+				return false;
+			}
+
+			Core::ChordFlags flags = chord.GetFlags();
+			Core::SetRepeatsWhileHeld(flags, repeats, commandRepeats);
+			chord = chord.WithFlags(flags);
+
+			return true;
+		}
+
+		void DrawMutedWrapped(const std::string& text, float wrapWidth)
+		{
+			ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrapWidth);
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+			ImGui::TextUnformatted(text.c_str());
+			ImGui::PopStyleColor();
+			ImGui::PopTextWrapPos();
+		}
+
+		// One chord: a tick per place it may fire in, then whether it repeats.
+		bool DrawWhenList(Core::Chord& chord, bool editorOnly, bool commandRepeats)
+		{
+			bool changed = false;
+
+			if (!editorOnly)
+			{
+				for (const Core::TypingTarget target : kTypingTargets)
+				{
+					changed |= DrawFiresInTick(TypingTargetLabel(target), chord, target);
+				}
+			}
+
+			if (Core::CanRepeat(chord))
+			{
+				if (!editorOnly)
+				{
+					ImGui::Separator();
+				}
+
+				changed |= DrawRepeatTick(kRepeatLabel, chord, commandRepeats);
+			}
+
+			return changed;
+		}
+
+		void DrawEmptyCell()
+		{
+			ImGui::TableNextColumn();
+		}
+
+		// Several chords: a row each, so F can wait while Ctrl+Shift+E of the same command does not.
+		bool DrawWhenGrid(std::vector<Core::Chord>& chords, bool editorOnly, bool commandRepeats)
+		{
+			if (!ImGui::BeginTable("##whenGrid", kWhenGridColumnCount, ImGuiTableFlags_SizingFixedFit))
+			{
+				return false;
+			}
+
+			ImGui::TableNextRow();
+			DrawEmptyCell();
+
+			for (const Core::TypingTarget target : kTypingTargets)
+			{
+				ImGui::TableNextColumn();
+
+				if (!editorOnly)
+				{
+					ImGui::TextDisabled("%s", TypingTargetHeading(target));
+				}
+			}
+
+			ImGui::TableNextColumn();
+			ImGui::TextDisabled("%s", kRepeatHeading);
+
+			bool changed = false;
+
+			for (std::size_t index = 0; index < chords.size(); ++index)
+			{
+				Core::Chord& chord = chords[index];
+
+				if (!HasWhenFlags(chord, editorOnly))
+				{
+					continue;
+				}
+
+				ImGui::PushID(static_cast<int>(index));
+				ImGui::TableNextRow();
+
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(chord.ToString().c_str());
+
+				for (const Core::TypingTarget target : kTypingTargets)
+				{
+					ImGui::TableNextColumn();
+
+					if (!editorOnly && Core::HasTypingFlags(chord))
+					{
+						ImGui::PushID(static_cast<int>(target));
+						changed |= DrawFiresInTick("##fires", chord, target);
+						ImGui::PopID();
+					}
+				}
+
+				ImGui::TableNextColumn();
+
+				if (Core::CanRepeat(chord))
+				{
+					changed |= DrawRepeatTick("##repeat", chord, commandRepeats);
+				}
+
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+
+			return changed;
 		}
 
 		Core::Binding Rebuild(std::vector<Core::Chord> chords)
@@ -335,6 +499,7 @@ namespace Graphite {
 		ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, kCommandColumnWeight);
 		ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, kShortcutColumnWeight);
 		ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, kAlternatesColumnWeight);
+		ImGui::TableSetupColumn("When", ImGuiTableColumnFlags_WidthStretch, kWhenColumnWeight);
 		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, kDefaultColumnWeight);
 		ImGui::TableHeadersRow();
 
@@ -501,6 +666,9 @@ namespace Graphite {
 		}
 
 		ImGui::TableNextColumn();
+		RenderWhen(command, binding);
+
+		ImGui::TableNextColumn();
 
 		const bool overridden = m_Keys.IsOverridden(command.Id);
 		ImGui::BeginDisabled(!overridden);
@@ -517,6 +685,83 @@ namespace Graphite {
 		DrawTableRowHighlight(recordingInThisRow, IsRowUnderThePointer());
 
 		ImGui::PopID();
+	}
+
+	void KeyBindingsPage::RenderWhen(const Core::Command& command, const Core::Binding* binding)
+	{
+		std::vector<Core::Chord> chords = Flatten(binding);
+		const bool editorOnly = command.KeyScope == Core::ShortcutScope::FocusedEditor;
+		const auto hasFlags = [editorOnly](const Core::Chord& chord) { return HasWhenFlags(chord, editorOnly); };
+		const std::size_t flaggedCount = static_cast<std::size_t>(std::ranges::count_if(chords, hasFlags));
+
+		if (flaggedCount == 0)
+		{
+			return;
+		}
+
+		const std::string summary = editorOnly ? std::string{kEditorOnly} : DescribeWhen(chords);
+		const bool waitsSomewhere = !editorOnly && summary != kFiresEverywhere;
+
+		// WARNING: The summary is drawn over an empty preview rather than as it, because a colour pushed around
+		// BeginCombo would still be on the stack inside the popup it opens, and popped from there would unbalance it.
+		ImDrawList* const drawList = ImGui::GetWindowDrawList();
+		const ImVec2 frameTopLeft = ImGui::GetCursorScreenPos();
+		const float frameWidth = ImGui::GetContentRegionAvail().x;
+		const float frameHeight = ImGui::GetFrameHeight();
+		const ImVec2 padding = ImGui::GetStyle().FramePadding;
+		const float previewRight = frameTopLeft.x + frameWidth - frameHeight;
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(Core::Scaled(kWhenMenuWidth), 0.0f), ImVec2(FLT_MAX, FLT_MAX));
+		const bool open = ImGui::BeginCombo("##when", "");
+
+		const ImU32 summaryColour = waitsSomewhere ? ReadEditorPalette(m_Scheme.Get()).DiagnosticWarning : ImGui::GetColorU32(ImGuiCol_Text);
+		const ImVec2 summaryAt(frameTopLeft.x + padding.x, frameTopLeft.y + padding.y);
+		drawList->PushClipRect(frameTopLeft, ImVec2(previewRight, frameTopLeft.y + frameHeight), true);
+		drawList->AddText(summaryAt, summaryColour, summary.c_str());
+		drawList->PopClipRect();
+
+		if (!open)
+		{
+			return;
+		}
+
+		const float wrapWidth = Core::Scaled(kWhenMenuWidth) - ImGui::GetStyle().WindowPadding.x * 2.0f;
+
+		ImGui::TextUnformatted(std::format("{} fires", ListLabelOf(command)).c_str());
+
+		if (editorOnly)
+		{
+			DrawMutedWrapped(kEditorOnlyNote, wrapWidth);
+		}
+
+		bool changed = false;
+
+		if (flaggedCount == 1)
+		{
+			const auto flagged = std::ranges::find_if(chords, hasFlags);
+			changed = DrawWhenList(*flagged, editorOnly, command.RepeatsWhileHeld);
+		}
+		else
+		{
+			changed = DrawWhenGrid(chords, editorOnly, command.RepeatsWhileHeld);
+		}
+
+		if (!editorOnly)
+		{
+			ImGui::Separator();
+
+			const std::string defaultWait = DescribeDefaultWait(chords);
+			DrawMutedWrapped(defaultWait.empty() ? kDefaultRestoresNote : defaultWait + " " + kDefaultRestoresNote, wrapWidth);
+		}
+
+		if (changed)
+		{
+			m_Keys.Override(command.Id, Rebuild(std::move(chords)));
+			m_OnChanged();
+		}
+
+		ImGui::EndCombo();
 	}
 
 	void KeyBindingsPage::RenderSlot(const std::string& commandId, std::size_t slotIndex, const std::string& chordText)
@@ -754,7 +999,7 @@ namespace Graphite {
 		if (const Core::Binding* current = m_Keys.For(conflict.OwnerCommandId); current != nullptr)
 		{
 			std::vector<Core::Chord> chords = Flatten(current);
-			std::erase(chords, conflict.Chord);
+			std::erase_if(chords, [&conflict](const Core::Chord& chord) { return chord.IsSameGesture(conflict.Chord); });
 
 			// WARNING: Stored even when empty, as an override that binds nothing: clearing the override
 			// would hand the previous owner its factory chord straight back.

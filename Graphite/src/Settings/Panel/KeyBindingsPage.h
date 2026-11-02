@@ -17,6 +17,7 @@ namespace Core {
 
 	class CommandRegistry;
 	class Keymap;
+	struct Binding;
 	struct Command;
 }
 
@@ -69,6 +70,8 @@ namespace Graphite {
 		std::optional<Core::Chord> CaptureWheelChord(bool pointerOverCell);
 
 		void RenderRow(const Core::Command& command);
+
+		void RenderWhen(const Core::Command& command, const Core::Binding* binding);
 
 		void RenderSlot(const std::string& commandId, std::size_t slotIndex, const std::string& chordText);
 
