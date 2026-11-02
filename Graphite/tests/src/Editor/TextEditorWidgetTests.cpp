@@ -440,6 +440,14 @@ namespace {
 		return scheme;
 	}
 
+	Graphite::ResolvedScheme DarkSchemeWith(Graphite::EditorColor slot, Core::Color colour)
+	{
+		Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
+		scheme.Editor[static_cast<std::size_t>(slot)] = colour;
+
+		return scheme;
+	}
+
 	float TextTopOfRow(float rowTop)
 	{
 		return rowTop + kTextOffset;
@@ -1075,6 +1083,30 @@ TEST_CASE("A line number is centred in its line")
 	CHECK(number->Bottom - face.Ink.Bottom == doctest::Approx(secondLineTop + kTextOffset));
 }
 
+TEST_CASE("The caret line's number is drawn in the current line number colour, the others in the line number colour")
+{
+	constexpr Core::Color kCurrentNumber{.R = 0.0f, .G = 1.0f, .B = 0.0f};
+
+	EditorFrames editor("M\nM");
+	const Graphite::ResolvedScheme scheme = DarkSchemeWith(Graphite::EditorColor::CurrentLineNumber, kCurrentNumber);
+	editor.View.Scheme = &scheme;
+	editor.Next();
+	editor.Next();
+
+	const float caretLineTop = editor.CaretScreenPos().y;
+	const Graphite::EditorPalette palette = Graphite::ReadEditorPalette(scheme);
+	REQUIRE(palette.CurrentNumber != palette.Text);
+
+	const std::vector<DrawnGlyph> current = SurfaceGlyphsIn(palette.CurrentNumber);
+	const std::vector<DrawnGlyph> others = SurfaceGlyphsIn(palette.Number);
+	REQUIRE(current.size() == 1);
+	REQUIRE(others.size() == 1);
+
+	CHECK(WithinRow(current.front(), caretLineTop));
+	CHECK(WithinRow(others.front(), caretLineTop + kEditorLineHeight));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("A selection rectangle covers the full line height")
 {
 	constexpr std::size_t kSelectionEnd = 5;
@@ -1681,7 +1713,7 @@ TEST_CASE("Line author is drawn after the caret line's text in the lens colour")
 
 	REQUIRE(textRight > editor.CaretScreenPos().x);
 
-	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().Lens);
+	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().LineAuthor);
 	REQUIRE_FALSE(author.empty());
 	REQUIRE(widget.AuthorTextRect.has_value());
 
@@ -1706,7 +1738,7 @@ TEST_CASE("Line author is not drawn on other lines")
 	editor.Next();
 
 	const float secondLineTop = editor.CaretScreenPos().y;
-	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().Lens);
+	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().LineAuthor);
 	REQUIRE_FALSE(author.empty());
 
 	for (const DrawnGlyph& glyph : author)
@@ -1730,7 +1762,7 @@ TEST_CASE("Line author is hidden while typing")
 	editor.View.Author.Hidden = true;
 	editor.Next();
 
-	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().LineAuthor).empty());
 	CHECK_FALSE(widget.AuthorTextRect.has_value());
 }
 
@@ -1756,7 +1788,7 @@ TEST_CASE("Line author waiting for a rest is not drawn in the frame the caret re
 	editor.Next();
 
 	REQUIRE(CaretLine(editor.Item) == kSecondLine);
-	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().LineAuthor).empty());
 	CHECK_FALSE(widget.AuthorTextRect.has_value());
 
 	ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
@@ -1774,7 +1806,7 @@ TEST_CASE("Line author draws nothing past a stale table")
 	editor.Next();
 	editor.Next();
 
-	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().LineAuthor).empty());
 }
 
 TEST_CASE("Line author leaves the horizontal scroll range alone")
@@ -1795,7 +1827,7 @@ TEST_CASE("Line author leaves the horizontal scroll range alone")
 	editor.Next();
 	editor.Next();
 
-	REQUIRE_FALSE(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	REQUIRE_FALSE(SurfaceGlyphsIn(DarkEditorPalette().LineAuthor).empty());
 	const float withAuthor = EditorSurface()->ScrollMax.x;
 
 	editor.View.Author.Authors = nullptr;

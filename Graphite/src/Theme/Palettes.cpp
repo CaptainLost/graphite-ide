@@ -53,6 +53,7 @@ namespace Graphite {
 		palette.Background = ImU32FromScheme(scheme, EditorColor::Background);
 		palette.Text = ImU32FromScheme(scheme, EditorColor::Text);
 		palette.Number = ImU32FromScheme(scheme, EditorColor::LineNumber);
+		palette.CurrentNumber = ImU32FromScheme(scheme, EditorColor::CurrentLineNumber);
 		palette.Selection = ImU32FromScheme(scheme, EditorColor::Selection);
 		palette.SelectionOccurrence = ImU32FromScheme(scheme, EditorColor::SelectionOccurrence);
 		palette.CurrentLine = ImU32FromScheme(scheme, EditorColor::CurrentLine);
@@ -62,6 +63,7 @@ namespace Graphite {
 		palette.FindMatch = ImU32FromScheme(scheme, EditorColor::FindMatch);
 		palette.FindCurrentMatch = ImU32FromScheme(scheme, EditorColor::FindCurrentMatch);
 		palette.Lens = ImU32FromScheme(scheme, EditorColor::Lens);
+		palette.LineAuthor = ImU32FromScheme(scheme, EditorColor::LineAuthor);
 		palette.MatchingBracket = ImU32FromScheme(scheme, EditorColor::MatchingBracket);
 		palette.UnmatchedBracket = ImU32FromScheme(scheme, EditorColor::UnmatchedBracket);
 		palette.DiagnosticError = ImU32FromScheme(scheme, EditorColor::DiagnosticError);

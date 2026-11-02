@@ -65,6 +65,8 @@ namespace Graphite {
 			return {"gutterFill", "Gutter"};
 		case EditorColor::LineNumber:
 			return {"lineNumber", "Line number"};
+		case EditorColor::CurrentLineNumber:
+			return {"currentLineNumber", "Current line number"};
 		case EditorColor::Caret:
 			return {"caret", "Caret"};
 		case EditorColor::FindMatch:
@@ -73,6 +75,8 @@ namespace Graphite {
 			return {"findCurrentMatch", "Current find match"};
 		case EditorColor::Lens:
 			return {"lens", "Reference count"};
+		case EditorColor::LineAuthor:
+			return {"lineAuthor", "Line author"};
 		case EditorColor::MatchingBracket:
 			return {"matchingBracket", "Matching bracket"};
 		case EditorColor::UnmatchedBracket:

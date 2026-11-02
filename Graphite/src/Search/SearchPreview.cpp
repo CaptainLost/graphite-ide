@@ -199,7 +199,7 @@ namespace Graphite {
 			const float lineNumberLeft = numbers.NumberLeft(lineOrigin.x, line + 1);
 
 			drawList->AddText(ImVec2(lineNumberLeft, lineOrigin.y),
-							  line == hitLine ? palette.Text : palette.Number,
+							  line == hitLine ? palette.CurrentNumber : palette.Number,
 							  lineNumber.c_str());
 
 			const std::vector<Token>& tokens = content.TokensOf(line);

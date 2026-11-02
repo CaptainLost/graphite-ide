@@ -1720,7 +1720,7 @@ namespace Graphite {
 			const float numberX = canvas.Metrics.Gutter.Numbers.NumberLeft(numberColumnLeft, slice.Line + 1);
 
 			canvas.Draw->AddText(ImVec2(numberX, TextTopOf(canvas.Metrics, slice.Y)),
-								 onCaretLine ? canvas.Palette.Text : canvas.Palette.Number,
+								 onCaretLine ? canvas.Palette.CurrentNumber : canvas.Palette.Number,
 								 number.c_str());
 		}
 
@@ -2929,7 +2929,7 @@ namespace Graphite {
 				const float top = slice.Y + CentredTextOffset(canvas.Metrics.LineHeight, ImGui::GetFontSize());
 				const float right = left + WidthInCurrentFont(*text);
 
-				canvas.Draw->AddText(ImVec2(left, top), canvas.Palette.Lens, text->data(), text->data() + text->size());
+				canvas.Draw->AddText(ImVec2(left, top), canvas.Palette.LineAuthor, text->data(), text->data() + text->size());
 
 				// The gutter is painted over whatever part has scrolled under it, so that part is not offered.
 				const float textAreaLeft = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.TotalWidth;

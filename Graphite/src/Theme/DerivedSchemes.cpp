@@ -300,7 +300,9 @@ namespace Graphite {
 			SetEditor(scheme, EditorColor::Text, FromHex(palette.Text));
 			SetEditor(scheme, EditorColor::Caret, FromHex(palette.Text));
 			SetEditor(scheme, EditorColor::LineNumber, FromHex(palette.LineNumber));
+			SetEditor(scheme, EditorColor::CurrentLineNumber, FromHex(palette.Text));
 			SetEditor(scheme, EditorColor::Lens, FromHex(palette.TextDisabled));
+			SetEditor(scheme, EditorColor::LineAuthor, FromHex(palette.TextDisabled));
 			SetEditor(scheme, EditorColor::Selection, FromHex(palette.Accent, palette.Light ? kLightSelectionAlpha : kDarkSelectionAlpha));
 			SetEditor(scheme, EditorColor::SelectionOccurrence,
 					  FromHex(palette.Accent, palette.Light ? kLightOccurrenceAlpha : kDarkOccurrenceAlpha));

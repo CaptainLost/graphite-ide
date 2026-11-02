@@ -14,12 +14,14 @@ namespace Graphite {
 		Guide,
 		GutterFill,
 		LineNumber,
+		CurrentLineNumber,
 		Caret,
 
 		FindMatch,
 		FindCurrentMatch,
 
 		Lens,
+		LineAuthor,
 
 		MatchingBracket,
 		UnmatchedBracket,

@@ -5,6 +5,8 @@
 
 #include "Core/Base/Color.h"
 
+#include <ostream>
+
 namespace {
 
 	Core::Color GitColorOf(const Graphite::ResolvedScheme& scheme, Graphite::GitColor color)
@@ -224,6 +226,21 @@ TEST_CASE("The light editor dims its line numbers, guides and lens labels")
 	CheckEditorColour(light, Graphite::EditorColor::CurrentLine, {0, 0, 0, kCurrentLineAlpha});
 	CheckEditorColour(light, Graphite::EditorColor::Guide, {0, 0, 0, kLightGuideAlpha});
 	CheckEditorColour(light, Graphite::EditorColor::Lens, {160, 160, 160, kOpaque});
+}
+
+TEST_CASE("In every built-in scheme the current line number starts as the editor text and the line author as the lens")
+{
+	for (const Graphite::BuiltInScheme which : Graphite::AllBuiltInSchemes())
+	{
+		const Graphite::ResolvedScheme& scheme = Graphite::SchemeFor(which);
+
+		CAPTURE(Graphite::NameOf(which));
+
+		CHECK_FALSE(ColorsDiffer(Graphite::ColourFromScheme(scheme, Graphite::EditorColor::CurrentLineNumber),
+								 Graphite::ColourFromScheme(scheme, Graphite::EditorColor::Text)));
+		CHECK_FALSE(ColorsDiffer(Graphite::ColourFromScheme(scheme, Graphite::EditorColor::LineAuthor),
+								 Graphite::ColourFromScheme(scheme, Graphite::EditorColor::Lens)));
+	}
 }
 
 TEST_CASE("A user scheme's editor colours win over the built-in ones")

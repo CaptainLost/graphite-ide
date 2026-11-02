@@ -9,6 +9,7 @@ namespace Graphite {
 		ImU32 Background = 0;
 		ImU32 Text = 0;
 		ImU32 Number = 0;
+		ImU32 CurrentNumber = 0;
 		ImU32 Selection = 0;
 		ImU32 SelectionOccurrence = 0;
 		ImU32 CurrentLine = 0;
@@ -18,6 +19,7 @@ namespace Graphite {
 		ImU32 FindMatch = 0;
 		ImU32 FindCurrentMatch = 0;
 		ImU32 Lens = 0;
+		ImU32 LineAuthor = 0;
 		ImU32 MatchingBracket = 0;
 		ImU32 UnmatchedBracket = 0;
 		ImU32 DiagnosticError = 0;
