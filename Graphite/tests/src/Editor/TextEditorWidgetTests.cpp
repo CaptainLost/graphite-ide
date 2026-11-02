@@ -1727,6 +1727,25 @@ TEST_CASE("Line author is drawn after the caret line's text in the lens colour")
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Line author is drawn in the line author colour, not the reference count's")
+{
+	constexpr Core::Color kLineAuthor{.R = 0.0f, .G = 1.0f, .B = 0.0f};
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	const Graphite::ResolvedScheme scheme = DarkSchemeWith(Graphite::EditorColor::LineAuthor, kLineAuthor);
+	const Graphite::EditorPalette palette = Graphite::ReadEditorPalette(scheme);
+	REQUIRE(palette.LineAuthor != palette.Lens);
+
+	ShowAuthors(editor, authors);
+	editor.View.Scheme = &scheme;
+	editor.Next();
+	editor.Next();
+
+	CHECK_FALSE(SurfaceGlyphsIn(palette.LineAuthor).empty());
+	CHECK(SurfaceGlyphsIn(palette.Lens).empty());
+}
+
 TEST_CASE("Line author is not drawn on other lines")
 {
 	EditorFrames editor{std::string{kTwoLines}};
