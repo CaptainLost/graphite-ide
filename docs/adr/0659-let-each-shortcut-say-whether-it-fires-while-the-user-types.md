@@ -63,8 +63,8 @@ TextField.
   the keyboard is the only place it ever fires.
 
 The terminal asks `Keymap::BoundTo` with `TypingTarget::Terminal`, the same
-question the router asks, so a stroke goes to exactly one of the shell and the
-command.
+question the router asks, so a key's bytes go to exactly one of the shell and
+the command. Typed characters reach the shell on their own path (see Negative).
 
 **The text** of a binding writes a chord's flags in braces after it, only when
 any is set: `F {-editor +terminal}|Ctrl+Shift+E`. The words are `editor`,
@@ -82,6 +82,8 @@ key name already does. A binding saved before flags existed reads unchanged.
 - An editor-scoped command shows "Editor only" and offers only repeating.
 - A command with no key or tap chord has no menu.
 - The row's Default restores the flags with the chords.
+- Recording a new chord into a slot starts it with no flags, even when the
+  same gesture is recorded again.
 
 ## Rationale
 
@@ -108,13 +110,25 @@ every character, with the field.
 ### Negative
 
 - A behaviour change: shortcuts that never fired in a text field now do by
-  default, unless they edit text there. Alt+O in a rename box switches to the
-  header or source file.
-- The claim is one frame old, so a stroke arriving in the same instant as the
-  click that moves focus is routed against where the keyboard was.
-- A letter the user explicitly lets fire in the editor still types its
-  character as well, because the character arrives as its own event. This was
-  already the case for every letter binding before this record.
+  default, unless they edit text there. From a rename box or a search query:
+  - Alt+O switches to the header or source file;
+  - Ctrl+F opens the editor's find bar;
+  - F12 and Shift+F12 act on the last editor;
+  - Ctrl+= and Ctrl+- zoom the editor font;
+  - Ctrl+` opens a terminal.
+- The claim is one frame old, and `WantTextInput` one frame older still. A
+  stroke arriving in the same instant as the click that moves focus is routed
+  against where the keyboard was.
+- A letter the user explicitly lets fire in the editor or the terminal still
+  types its character there as well, because the character arrives as its own
+  event. In the terminal the same goes for an AltGr letter whose Ctrl+Alt
+  chord fires there. This was already the case for every such binding before
+  this record.
+- Ticking "In text fields" for a chord the field edits with (Enter, Ctrl+Z)
+  makes both the command and the field act on it.
+- A modifier tap can fire after a Shift+click or Ctrl+click in a text field or
+  the editor. The mouse press that should cancel the tap is taken by the GUI
+  before the layer sees it. No tap is bound by default.
 - AltGr is not treated as typing. Windows reports it as Ctrl+Alt, so a binding
   on Ctrl+Alt+S still fires while typing "ś". The flag can switch it off.
 - Strokes typed into a text field inside a popup still reach no shortcut.
@@ -122,6 +136,12 @@ every character, with the field.
 ### Neutral
 
 - Wheel chords have no typing flags. The pointer aims them, not the keyboard.
+- A read-only document claims the keyboard like any editor, so a letter
+  shortcut waits there too.
+- The layer's text-field branch, its release of the claim and the terminal's
+  claim are not covered by the suites. They were checked on a running instance
+  instead: F in the editor, the terminal and a filter field did not fire, and F
+  with a panel focused did.
 - `GuiConsumesKeyboard` now takes only whether a popup is open.
 
 ## Alternatives Considered

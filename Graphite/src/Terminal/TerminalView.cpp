@@ -860,7 +860,7 @@ namespace Graphite {
 
 			const Core::Chord chord = Core::Chord::Key(imguiIo.KeyMods | key);
 
-			// WARNING: Asked as typed into the terminal, as the router asks, so a stroke goes to exactly one of the shell and the command it runs.
+			// WARNING: Asked as typed into the terminal, as the router asks, so a key's bytes go to exactly one of the shell and the command it runs. The typed text above went to the shell already.
 			if (!m_Keys.BoundTo(chord, Core::ShortcutScope::Global, Core::TypingTarget::Terminal, m_Commands).empty())
 			{
 				continue;

@@ -44,8 +44,8 @@ namespace Core {
 
 		bool IsEmpty() const;
 
-		// The keys and the trigger alone. What owns a stroke, and whether two slots hold the same shortcut, is a
-		// question about the gesture; the flags only say where it may fire.
+		// The keys, the trigger and the wheel's scope, without the flags. What owns a stroke, and whether two slots
+		// hold the same shortcut, is a question about the gesture; the flags only say where it may fire.
 		bool IsSameGesture(const Chord& other) const;
 
 		// The gesture alone, as menus and tooltips show it; Core::ToString(Binding) writes the flags as well.
