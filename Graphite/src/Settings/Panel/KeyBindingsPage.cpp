@@ -375,6 +375,7 @@ namespace Graphite {
 				ImGui::TableNextRow();
 
 				ImGui::TableNextColumn();
+				ImGui::AlignTextToFramePadding();
 				ImGui::TextUnformatted(chord.ToString().c_str());
 
 				for (const Core::TypingTarget target : kTypingTargets)
@@ -702,8 +703,12 @@ namespace Graphite {
 		const std::string summary = editorOnly ? std::string{kEditorOnly} : DescribeWhen(chords);
 		const bool waitsSomewhere = !editorOnly && summary != kFiresEverywhere;
 
-		// WARNING: The summary is drawn over an empty preview rather than as it, because a colour pushed around
-		// BeginCombo would still be on the stack inside the popup it opens, and popped from there would unbalance it.
+		// WARNING: No taller than a line of text, or every row with a When menu would stand taller than the rows
+		// without one.
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+
+		// WARNING: The summary is drawn over an empty preview rather than as it, so the warning colour reaches its
+		// words and not the arrow beside them.
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 		const ImVec2 frameTopLeft = ImGui::GetCursorScreenPos();
 		const float frameWidth = ImGui::GetContentRegionAvail().x;
@@ -714,6 +719,10 @@ namespace Graphite {
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		ImGui::SetNextWindowSizeConstraints(ImVec2(Core::Scaled(kWhenMenuWidth), 0.0f), ImVec2(FLT_MAX, FLT_MAX));
 		const bool open = ImGui::BeginCombo("##when", "");
+
+		// WARNING: Popped inside the menu when it is open, which ImGui allows: the menu's window began with it
+		// pushed, and a window only checks that nothing pushed inside it is left behind.
+		ImGui::PopStyleVar();
 
 		const ImU32 summaryColour = waitsSomewhere ? ReadEditorPalette(m_Scheme.Get()).DiagnosticWarning : ImGui::GetColorU32(ImGuiCol_Text);
 		const ImVec2 summaryAt(frameTopLeft.x + padding.x, frameTopLeft.y + padding.y);
