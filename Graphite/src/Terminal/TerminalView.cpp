@@ -790,6 +790,8 @@ namespace Graphite {
 			return;
 		}
 
+		m_Typing.Claim(Core::TypingTarget::Terminal);
+
 		constexpr bool kRepeatWhileHeld = true;
 
 		ImGuiIO& imguiIo = ImGui::GetIO();
@@ -858,7 +860,8 @@ namespace Graphite {
 
 			const Core::Chord chord = Core::Chord::Key(imguiIo.KeyMods | key);
 
-			if (!m_Keys.BoundTo(chord, Core::ShortcutScope::Global, m_Commands).empty())
+			// WARNING: Asked as typed into the terminal, as the router asks, so a stroke goes to exactly one of the shell and the command it runs.
+			if (!m_Keys.BoundTo(chord, Core::ShortcutScope::Global, Core::TypingTarget::Terminal, m_Commands).empty())
 			{
 				continue;
 			}

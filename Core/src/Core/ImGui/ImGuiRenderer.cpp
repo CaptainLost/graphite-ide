@@ -235,9 +235,9 @@ namespace Core {
 		return Result<void>::Ok();
 	}
 
-	bool GuiConsumesKeyboard(bool wantsTextInput, bool popupOpen)
+	bool GuiConsumesKeyboard(bool popupOpen)
 	{
-		return wantsTextInput || popupOpen;
+		return popupOpen;
 	}
 
 	void ImGuiRenderer::OnEvent(Event& event)
@@ -247,8 +247,7 @@ namespace Core {
 		const bool popupOpen = ImGui::IsPopupOpen(
 			kAnyPopupName, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
-		if (event.IsInCategory(EventCategory::Keyboard) &&
-			GuiConsumesKeyboard(inputOutput.WantTextInput, popupOpen))
+		if (event.IsInCategory(EventCategory::Keyboard) && GuiConsumesKeyboard(popupOpen))
 		{
 			event.Handled = true;
 		}

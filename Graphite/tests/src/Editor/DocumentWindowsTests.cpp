@@ -234,7 +234,8 @@ namespace {
 					beforeTheWindows();
 				}
 
-				Windows.Render(Graphite::CommandContext{.Commands = &Commands, .Keys = &Keys, .Router = &Router, .Input = &Input},
+				Typing.Release();
+				Windows.Render(Graphite::CommandContext{.Commands = &Commands, .Keys = &Keys, .Router = &Router, .Typing = &Typing, .Input = &Input},
 							   Graphite::EditorFrame{.FontSize = Settings.GetFontSize(),
 													 .Indent = Settings.GetIndentStyle(),
 													 .FallbackDockNode = 0,
@@ -336,7 +337,7 @@ namespace {
 		void Press(Core::KeyCode key, Core::KeyModifier modifiers)
 		{
 			const Core::KeyPressedEvent pressed{key, modifiers, false};
-			Router.OnKeyPressed(Commands, Keys, Core::ShortcutScope::Global, pressed);
+			Router.OnKeyPressed(Commands, Keys, Core::ShortcutScope::Global, Typing.GetTarget(), pressed);
 			Input.PushKey(key, modifiers, false);
 			Frame();
 			Input.Clear();
@@ -466,6 +467,7 @@ namespace {
 		Core::CommandRegistry Commands;
 		Core::Keymap Keys;
 		Core::ShortcutRouter Router;
+		Core::TypingClaim Typing;
 		Core::FrameInput Input;
 		std::map<std::filesystem::path, ImVec2> Places;
 		std::string Clipboard = kUntouchedClipboard;
@@ -728,6 +730,40 @@ TEST_CASE("Ctrl+= in a text tab still changes the font")
 	CHECK(drawn.Settings.GetFontSize() == doctest::Approx(font + 1.0f));
 	CHECK(drawn.Picture(picture).GetZoom().Zoom == zoom);
 	CHECK(drawn.Windows.GetViewStatusItems().empty());
+}
+
+TEST_CASE("A command bound to a letter waits while a text tab's editor holds the keyboard and fires once nothing is typed into")
+{
+	TempDirectory folder;
+	const std::filesystem::path notes = folder.MakeFile("notes.txt", "some notes\n");
+
+	DrawnDocuments drawn(folder.GetPath());
+	int explorerRuns = 0;
+	drawn.Commands.Add({.Id = "panel.explorer", .Label = "Explorer", .Run = [&explorerRuns] { ++explorerRuns; }});
+	drawn.Keys.Override("panel.explorer", {.Primary = Core::Chord::Key(ImGuiKey_F)});
+	drawn.Windows.RequestOpen(notes, true);
+	drawn.ShowLanded();
+	drawn.FocusText(notes);
+
+	drawn.Press(Core::KeyCode::F, Core::KeyModifier::None);
+	CHECK(explorerRuns == 0);
+
+	SUBCASE("A letter the user lets fire in the editor fires there")
+	{
+		drawn.Keys.Override("panel.explorer", {.Primary = Core::Chord::Key(ImGuiKey_F).WithFlags({.FiresInEditor = true})});
+
+		drawn.Press(Core::KeyCode::F, Core::KeyModifier::None);
+		CHECK(explorerRuns == 1);
+	}
+
+	SUBCASE("The letter fires once the keyboard has left the editor")
+	{
+		drawn.Frame([] { ImGui::FocusWindow(nullptr); });
+		drawn.Frame();
+
+		drawn.Press(Core::KeyCode::F, Core::KeyModifier::None);
+		CHECK(explorerRuns == 1);
+	}
 }
 
 TEST_CASE("Ctrl+wheel over a picture zooms the picture and not the font")

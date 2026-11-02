@@ -121,6 +121,19 @@ namespace Core {
 		return chord;
 	}
 
+	Chord Chord::WithFlags(const ChordFlags& flags) const
+	{
+		Chord flagged = *this;
+		flagged.m_Flags = flags;
+
+		return flagged;
+	}
+
+	bool Chord::IsSameGesture(const Chord& other) const
+	{
+		return m_Keys == other.m_Keys && m_Trigger == other.m_Trigger && m_Scope == other.m_Scope;
+	}
+
 	bool Chord::IsEmpty() const
 	{
 		switch (m_Trigger)

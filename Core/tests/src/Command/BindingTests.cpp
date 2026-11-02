@@ -82,3 +82,40 @@ TEST_CASE("Every kind of chord in a binding survives a round trip through text i
 	CHECK(parsed->Alternates[0] == binding.Alternates[0]);
 	CHECK(parsed->Alternates[1] == binding.Alternates[1]);
 }
+
+TEST_CASE("A chord's flags follow it in braces, and a chord with none set is written as before")
+{
+	const Binding binding{.Primary = Chord::Key(ImGuiKey_F).WithFlags({.FiresInEditor = false, .FiresInTerminal = true}),
+						  .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_E),
+										 Chord::Key(ImGuiKey_F9).WithFlags({.FiresInTextFields = true, .RepeatsWhileHeld = false})}};
+
+	CHECK(Core::ToString(binding) == "F {-editor +terminal}|Ctrl+Shift+E|F9 {+fields -repeat}");
+
+	const std::optional<Binding> parsed = ParseBinding(Core::ToString(binding));
+
+	REQUIRE(parsed.has_value());
+	CHECK(parsed->Primary == binding.Primary);
+	REQUIRE(parsed->Alternates.size() == 2);
+	CHECK(parsed->Alternates[0] == binding.Alternates[0]);
+	CHECK(parsed->Alternates[1] == binding.Alternates[1]);
+}
+
+TEST_CASE("Flags in the hand-edited settings file are read whatever their case and spacing")
+{
+	const std::optional<Binding> parsed = ParseBinding("F{ +Editor  -TERMINAL }|Ctrl+Shift+E {}");
+
+	REQUIRE(parsed.has_value());
+	CHECK(parsed->Primary.IsSameGesture(Chord::Key(ImGuiKey_F)));
+	CHECK(parsed->Primary.GetFlags() == Core::ChordFlags{.FiresInEditor = true, .FiresInTerminal = false});
+	REQUIRE(parsed->Alternates.size() == 1);
+	CHECK(parsed->Alternates[0].GetFlags().IsEmpty());
+}
+
+TEST_CASE("A binding with a flag this build does not know, or flags not closed, is refused whole")
+{
+	CHECK_FALSE(ParseBinding("F {+editor +sideways}").has_value());
+	CHECK_FALSE(ParseBinding("F {editor}").has_value());
+	CHECK_FALSE(ParseBinding("F {+editor").has_value());
+	CHECK_FALSE(ParseBinding("F {+editor} G").has_value());
+	CHECK_FALSE(ParseBinding("{+editor}").has_value());
+}

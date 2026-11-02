@@ -128,9 +128,9 @@ namespace Graphite {
 
 	TerminalWindows::TerminalWindows(Workspace& workspace, const Core::Keymap& keys,
 									 const Core::CommandRegistry& commands, AppSettings& settings,
-									 Core::EventBus& events)
+									 Core::EventBus& events, Core::TypingClaim& typing)
 		: m_Workspace(workspace), m_Settings(settings), m_Keys(keys), m_Commands(commands), m_Events(events),
-		  m_Shells(Core::DiscoverShells())
+		  m_Typing(typing), m_Shells(Core::DiscoverShells())
 	{
 	}
 
@@ -604,7 +604,7 @@ namespace Graphite {
 
 		Core::Scope<Entry> entry = Core::CreateScope<Entry>();
 		entry->Session = std::move(startResult).GetValue();
-		entry->View = Core::CreateScope<TerminalView>(*entry->Session, m_Keys, m_Commands, m_Events);
+		entry->View = Core::CreateScope<TerminalView>(*entry->Session, m_Keys, m_Commands, m_Events, m_Typing);
 		entry->Record = std::move(record);
 		entry->Window.Restored = restored;
 		entry->Window.Focus = !restored;

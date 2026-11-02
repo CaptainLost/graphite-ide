@@ -144,6 +144,33 @@ TEST_CASE("BoundTo with a scope ignores commands that cannot fire in it")
 	CHECK(keymap.BoundTo(findInFiles, ShortcutScope::FocusedEditor, commands).empty());
 }
 
+TEST_CASE("BoundTo finds a chord by its gesture whatever flags the binding gave it")
+{
+	Keymap keymap;
+	keymap.SetDefault("panel.explorer", {.Primary = Chord::Key(ImGuiKey_F).WithFlags({.FiresInTerminal = true})});
+
+	CHECK(keymap.BoundTo(Chord::Key(ImGuiKey_F)) == "panel.explorer");
+}
+
+TEST_CASE("BoundTo asked where the keyboard is held skips a chord that waits there")
+{
+	Core::CommandRegistry commands;
+	commands.Add({.Id = "panel.explorer"});
+	commands.Add({.Id = "view.findInFiles"});
+
+	Keymap keymap;
+	keymap.SetDefault("panel.explorer", {.Primary = Chord::Key(ImGuiKey_F)});
+	keymap.SetDefault("view.findInFiles", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_R).WithFlags({.FiresInTerminal = false})});
+
+	const Core::Chord f = Chord::Key(ImGuiKey_F);
+	const Core::Chord ctrlR = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_R);
+
+	CHECK(keymap.BoundTo(f, ShortcutScope::Global, Core::TypingTarget::Nothing, commands) == "panel.explorer");
+	CHECK(keymap.BoundTo(f, ShortcutScope::Global, Core::TypingTarget::Terminal, commands).empty());
+	CHECK(keymap.BoundTo(ctrlR, ShortcutScope::Global, Core::TypingTarget::Editor, commands) == "view.findInFiles");
+	CHECK(keymap.BoundTo(ctrlR, ShortcutScope::Global, Core::TypingTarget::Terminal, commands).empty());
+}
+
 TEST_CASE("BoundTo with a scope treats a command nobody registered as Global")
 {
 	Core::CommandRegistry commands;

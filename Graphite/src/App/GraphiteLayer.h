@@ -60,6 +60,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuBar.h"
 #include "Core/Command/ShortcutRouter.h"
+#include "Core/Command/TypingClaim.h"
 #include "Core/Events/EventBus.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/DockSpaceHost.h"
@@ -139,7 +140,7 @@ namespace Graphite {
 
 		void OpenStartupFolder();
 
-		void RouteShortcuts(Core::Event& event);
+		void RouteShortcuts(Core::Event& event, Core::TypingTarget typingTarget);
 
 		void HandleFileDrop(Core::Event& event);
 
@@ -419,8 +420,11 @@ namespace Graphite {
 
 		Core::Keymap m_Keys;
 
-		// WARNING: Declared after m_Keys and m_Workspace, which it refers to; it joins a reader thread per terminal in its destructor.
-		TerminalWindows m_Terminals{m_Workspace, m_Keys, m_Commands, m_AppSettings, m_Events};
+		// Claimed by the editor or the terminal holding the keyboard as it draws, read as the next strokes arrive.
+		Core::TypingClaim m_Typing;
+
+		// WARNING: Declared after m_Keys, m_Workspace and m_Typing, which it refers to; it joins a reader thread per terminal in its destructor.
+		TerminalWindows m_Terminals{m_Workspace, m_Keys, m_Commands, m_AppSettings, m_Events, m_Typing};
 
 		// WARNING: Declared after every member whose commands it holds, because each command captures its owner,
 		// so it is destroyed before any of them. Nothing reads it from a member initialiser;

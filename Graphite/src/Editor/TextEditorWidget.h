@@ -7,6 +7,7 @@
 #include "Editor/ScrollAnchor.h"
 
 #include "Core/Command/MenuItem.h"
+#include "Core/Command/TypingClaim.h"
 #include "Core/Text/Editing.h"
 
 #include <chrono>
@@ -44,6 +45,10 @@ namespace Graphite {
 		Core::CommandRegistry* Commands = nullptr;
 		Core::Keymap* Keys = nullptr;
 		Core::ShortcutRouter* Router = nullptr;
+
+		// Told while drawing that the focused editor holds the keyboard, so a stroke arriving before the next frame
+		// is routed as typed into it.
+		Core::TypingClaim* Typing = nullptr;
 
 		const Core::FrameInput* Input = nullptr;
 

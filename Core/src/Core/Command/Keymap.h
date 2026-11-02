@@ -3,6 +3,7 @@
 #include "Core/Command/Binding.h"
 #include "Core/Command/BindingConflict.h"
 #include "Core/Command/Chord.h"
+#include "Core/Command/ChordFlags.h"
 
 #include <functional>
 #include <map>
@@ -33,6 +34,11 @@ namespace Core {
 		std::string_view BoundTo(const Chord& chord) const;
 
 		std::string_view BoundTo(const Chord& chord, ShortcutScope scope,
+								 const CommandRegistry& commands) const;
+
+		// The command a stroke of this gesture runs where the keyboard is held, so a widget that reads keys itself
+		// leaves to the router exactly the strokes the router will run.
+		std::string_view BoundTo(const Chord& chord, ShortcutScope scope, TypingTarget typingTarget,
 								 const CommandRegistry& commands) const;
 
 		std::vector<BindingConflict> FindConflicts() const;

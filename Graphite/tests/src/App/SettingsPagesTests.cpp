@@ -57,7 +57,8 @@ namespace {
 		Graphite::ActiveScheme Scheme;
 		Graphite::ModalGate Modals;
 		Graphite::WorkspaceTrust Trust{Temp.GetPath() / "trust.json"};
-		Graphite::TerminalWindows Terminals{Workspace, Keys, Commands, Settings.Get(), Events};
+		Core::TypingClaim Typing;
+		Graphite::TerminalWindows Terminals{Workspace, Keys, Commands, Settings.Get(), Events, Typing};
 		DeferredJobs Jobs;
 		Graphite::ServerInstalls Installs{Core::CreateRef<FakeHttpClient>(), Temp.GetPath() / "servers", Jobs.Submitter()};
 		Graphite::LanguageServices Services{Temp.GetPath()};

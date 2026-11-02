@@ -5,6 +5,7 @@
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
+#include "Core/Command/TypingRules.h"
 #include "Core/ImGui/ImGuiKeys.h"
 
 #include <algorithm>
@@ -20,47 +21,54 @@ namespace Core {
 
 		constexpr float kFewestNotchesOfAGesture = 1.0f;
 
-		bool HasMatchingChord(const Binding& binding, const ChordMatcher& matchesChord)
+		// The chord that matched travels with its command, because where a stroke may fire is the chord's to say.
+		struct BoundStroke
+		{
+			std::string CommandId;
+			Chord MatchedChord;
+		};
+
+		const Chord* MatchingChord(const Binding& binding, const ChordMatcher& matchesChord)
 		{
 			if (matchesChord(binding.Primary))
 			{
-				return true;
+				return &binding.Primary;
 			}
 
 			for (const Chord& alternate : binding.Alternates)
 			{
 				if (matchesChord(alternate))
 				{
-					return true;
+					return &alternate;
 				}
 			}
 
-			return false;
+			return nullptr;
 		}
 
 		// Collected first and run afterwards, because a command run inside the walk could change
 		// the keymap being iterated, as registering a command with a default binding does.
-		std::vector<std::string> CommandIdsBoundTo(const Keymap& keymap, const ChordMatcher& matchesChord)
+		std::vector<BoundStroke> StrokesBoundTo(const Keymap& keymap, const ChordMatcher& matchesChord)
 		{
-			std::vector<std::string> commandIds;
+			std::vector<BoundStroke> strokes;
 
-			keymap.ForEachBinding([&commandIds, &matchesChord](const std::string& commandId, const Binding& binding) {
-				if (HasMatchingChord(binding, matchesChord))
+			keymap.ForEachBinding([&strokes, &matchesChord](const std::string& commandId, const Binding& binding) {
+				if (const Chord* matched = MatchingChord(binding, matchesChord); matched != nullptr)
 				{
-					commandIds.push_back(commandId);
+					strokes.push_back({.CommandId = commandId, .MatchedChord = *matched});
 				}
 			});
 
-			return commandIds;
+			return strokes;
 		}
 
-		void RunAll(CommandRegistry& commands, const std::vector<std::string>& commandIds, int runsPerCommand = 1)
+		void RunAll(CommandRegistry& commands, const std::vector<BoundStroke>& strokes, int runsPerCommand = 1)
 		{
-			for (const std::string& commandId : commandIds)
+			for (const BoundStroke& stroke : strokes)
 			{
 				for (int runIndex = 0; runIndex < runsPerCommand; ++runIndex)
 				{
-					commands.Run(commandId);
+					commands.Run(stroke.CommandId);
 				}
 			}
 		}
@@ -95,23 +103,28 @@ namespace Core {
 			return firesOnDirection && scopeMatches && modifiersMatch;
 		}
 
-		bool IsSkippedForStroke(const CommandRegistry& commands, const std::string& commandId,
-								ShortcutScope routedScope, bool strokeIsRepeat)
+		bool IsSkippedForStroke(const CommandRegistry& commands, const BoundStroke& stroke, ShortcutScope routedScope,
+								TypingTarget typingTarget, bool strokeIsRepeat)
 		{
-			const Command* command = commands.Find(commandId);
+			const Command* command = commands.Find(stroke.CommandId);
 			const bool commandIsRegistered = command != nullptr;
 			const bool commandRepeats = !commandIsRegistered || command->RepeatsWhileHeld;
+			const bool chordRepeats = RepeatsWhileHeld(stroke.MatchedChord, commandRepeats);
 
-			const ShortcutScope commandScope = commands.KeyScopeOf(commandId);
+			const ShortcutScope commandScope = commands.KeyScopeOf(stroke.CommandId);
 			const bool firesInAnotherScope = commandScope != routedScope;
-			const bool isUnwantedRepeat = strokeIsRepeat && !commandRepeats;
+			const bool isUnwantedRepeat = strokeIsRepeat && !chordRepeats;
 
-			return firesInAnotherScope || isUnwantedRepeat;
+			// WARNING: Only a Global command asks where the keyboard is held. An editor-scoped one is routed by the
+			// editor holding it, the one place it ever fires, so a flag saying otherwise would only switch it off.
+			const bool waitsWhileTyping = commandScope == ShortcutScope::Global && !FiresIn(stroke.MatchedChord, typingTarget);
+
+			return firesInAnotherScope || isUnwantedRepeat || waitsWhileTyping;
 		}
 	}
 
-	bool ShortcutRouter::OnKeyPressed(CommandRegistry& commands, const Keymap& keymap,
-									  ShortcutScope routedScope, const KeyPressedEvent& event)
+	bool ShortcutRouter::OnKeyPressed(CommandRegistry& commands, const Keymap& keymap, ShortcutScope routedScope,
+									  TypingTarget typingTarget, const KeyPressedEvent& event)
 	{
 		const ImGuiKey pressedKey = ToImGuiKey(event.GetKeyCode());
 
@@ -147,20 +160,20 @@ namespace Core {
 
 		const ImGuiKeyChord pressedKeys = ToImGuiModifiers(event.GetModifiers()) | pressedKey;
 
-		std::vector<std::string> commandIdsToRun =
-			CommandIdsBoundTo(keymap, [pressedKeys](const Chord& chord) { return IsChordForKeyPress(chord, pressedKeys); });
+		std::vector<BoundStroke> strokesToRun =
+			StrokesBoundTo(keymap, [pressedKeys](const Chord& chord) { return IsChordForKeyPress(chord, pressedKeys); });
 
-		std::erase_if(commandIdsToRun, [&commands, routedScope, strokeIsRepeat](const std::string& commandId) {
-			return IsSkippedForStroke(commands, commandId, routedScope, strokeIsRepeat);
+		std::erase_if(strokesToRun, [&commands, routedScope, typingTarget, strokeIsRepeat](const BoundStroke& stroke) {
+			return IsSkippedForStroke(commands, stroke, routedScope, typingTarget, strokeIsRepeat);
 		});
 
-		RunAll(commands, commandIdsToRun);
+		RunAll(commands, strokesToRun);
 
-		const bool eventWasHandled = !commandIdsToRun.empty();
+		const bool eventWasHandled = !strokesToRun.empty();
 		return eventWasHandled;
 	}
 
-	bool ShortcutRouter::OnKeyReleased(CommandRegistry& commands, const Keymap& keymap,
+	bool ShortcutRouter::OnKeyReleased(CommandRegistry& commands, const Keymap& keymap, TypingTarget typingTarget,
 									   const KeyReleasedEvent& event)
 	{
 		const bool releasedAModifier = ModifierBitOf(event.GetKeyCode()) != ImGuiMod_None;
@@ -177,12 +190,14 @@ namespace Core {
 		const ImGuiKeyChord tappedModifiers = m_PendingTapModifiers;
 		m_PendingTapModifiers = ImGuiMod_None;
 
-		const std::vector<std::string> commandIdsToRun = CommandIdsBoundTo(
+		std::vector<BoundStroke> strokesToRun = StrokesBoundTo(
 			keymap, [tappedModifiers](const Chord& chord) { return IsChordForModifierTap(chord, tappedModifiers); });
 
-		RunAll(commands, commandIdsToRun);
+		std::erase_if(strokesToRun, [typingTarget](const BoundStroke& stroke) { return !FiresIn(stroke.MatchedChord, typingTarget); });
 
-		const bool eventWasHandled = !commandIdsToRun.empty();
+		RunAll(commands, strokesToRun);
+
+		const bool eventWasHandled = !strokesToRun.empty();
 		return eventWasHandled;
 	}
 
@@ -205,14 +220,14 @@ namespace Core {
 
 		const ImGuiKeyChord heldModifiers = ImGui::GetIO().KeyMods;
 
-		const std::vector<std::string> commandIdsToRun =
-			CommandIdsBoundTo(keymap, [direction, scopeUnderPointer, heldModifiers](const Chord& chord) {
+		const std::vector<BoundStroke> strokesToRun =
+			StrokesBoundTo(keymap, [direction, scopeUnderPointer, heldModifiers](const Chord& chord) {
 				return IsChordForWheelTurn(chord, direction, scopeUnderPointer, heldModifiers);
 			});
 
-		RunAll(commands, commandIdsToRun, notchCount);
+		RunAll(commands, strokesToRun, notchCount);
 
-		const bool eventWasHandled = !commandIdsToRun.empty();
+		const bool eventWasHandled = !strokesToRun.empty();
 		return eventWasHandled;
 	}
 }

@@ -52,7 +52,7 @@ namespace Graphite {
 	{
 	public:
 		TerminalWindows(Workspace& workspace, const Core::Keymap& keys, const Core::CommandRegistry& commands,
-						AppSettings& settings, Core::EventBus& events);
+						AppSettings& settings, Core::EventBus& events, Core::TypingClaim& typing);
 
 		const std::vector<Core::ShellProfile>& GetShells() const { return m_Shells; }
 
@@ -152,6 +152,7 @@ namespace Graphite {
 		const Core::Keymap& m_Keys;
 		const Core::CommandRegistry& m_Commands;
 		Core::EventBus& m_Events;
+		Core::TypingClaim& m_Typing;
 		std::vector<Core::ShellProfile> m_Shells;
 
 		// WARNING: Scoped so closing one never moves the others: a TerminalView holds its session by reference.

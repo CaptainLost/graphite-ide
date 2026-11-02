@@ -20,7 +20,9 @@ namespace Core {
 
 	// WARNING: ImGui's WantCaptureKeyboard is true for any focused window that allows
 	// navigation, so consuming on it swallows every keystroke in the application.
-	bool GuiConsumesKeyboard(bool wantsTextInput, bool popupOpen);
+	// A text field being typed into is not consumed here: ImGui reads its keys on its own,
+	// and the application decides which shortcuts may still fire there.
+	bool GuiConsumesKeyboard(bool popupOpen);
 
 	class ImGuiRenderer final : NonCopyable
 	{

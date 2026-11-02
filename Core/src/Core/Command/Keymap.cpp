@@ -3,6 +3,7 @@
 #include "Core/Command/Keymap.h"
 
 #include "Core/Command/CommandRegistry.h"
+#include "Core/Command/TypingRules.h"
 
 #include <utility>
 
@@ -17,22 +18,27 @@ namespace Core {
 			std::string CommandId;
 		};
 
-		bool ContainsChord(const Binding& binding, const Chord& chord)
+		const Chord* FindGesture(const Binding& binding, const Chord& gesture)
 		{
-			if (binding.Primary == chord)
+			if (binding.Primary.IsSameGesture(gesture))
 			{
-				return true;
+				return &binding.Primary;
 			}
 
 			for (const Chord& alternate : binding.Alternates)
 			{
-				if (alternate == chord)
+				if (alternate.IsSameGesture(gesture))
 				{
-					return true;
+					return &alternate;
 				}
 			}
 
-			return false;
+			return nullptr;
+		}
+
+		bool ContainsChord(const Binding& binding, const Chord& gesture)
+		{
+			return FindGesture(binding, gesture) != nullptr;
 		}
 
 		const Binding* FindBinding(const BindingsById& bindings, std::string_view commandId)
@@ -49,10 +55,12 @@ namespace Core {
 			return &binding;
 		}
 
-		bool ContainsChordInScope(const Binding& binding, const std::string& commandId, const Chord& chord,
-								  ShortcutScope scope, const CommandRegistry& commands)
+		bool FiresInScope(const Binding& binding, const std::string& commandId, const Chord& gesture, ShortcutScope scope,
+						  TypingTarget typingTarget, const CommandRegistry& commands)
 		{
-			return ContainsChord(binding, chord) && commands.KeyScopeOf(commandId) == scope;
+			const Chord* bound = FindGesture(binding, gesture);
+
+			return bound != nullptr && commands.KeyScopeOf(commandId) == scope && FiresIn(*bound, typingTarget);
 		}
 
 		void ClaimChord(const Chord& chord, const std::string& commandId, std::vector<ChordOwner>& owners,
@@ -65,7 +73,7 @@ namespace Core {
 
 			for (const ChordOwner& owner : owners)
 			{
-				const bool heldByAnotherCommand = owner.HeldChord == chord && owner.CommandId != commandId;
+				const bool heldByAnotherCommand = owner.HeldChord.IsSameGesture(chord) && owner.CommandId != commandId;
 				if (heldByAnotherCommand)
 				{
 					conflicts.push_back({.SharedChord = chord, .FirstCommandId = owner.CommandId, .SecondCommandId = commandId});
@@ -155,12 +163,18 @@ namespace Core {
 	std::string_view Keymap::BoundTo(const Chord& chord, ShortcutScope scope,
 									 const CommandRegistry& commands) const
 	{
+		return BoundTo(chord, scope, TypingTarget::Nothing, commands);
+	}
+
+	std::string_view Keymap::BoundTo(const Chord& chord, ShortcutScope scope, TypingTarget typingTarget,
+									 const CommandRegistry& commands) const
+	{
 		std::string_view owningCommandId;
 
 		ForEachBinding(
-			[&owningCommandId, &chord, scope, &commands](const std::string& id, const Binding& binding) {
+			[&owningCommandId, &chord, scope, typingTarget, &commands](const std::string& id, const Binding& binding) {
 				const bool ownerFound = !owningCommandId.empty();
-				if (!ownerFound && ContainsChordInScope(binding, id, chord, scope, commands))
+				if (!ownerFound && FiresInScope(binding, id, chord, scope, typingTarget, commands))
 				{
 					owningCommandId = id;
 				}

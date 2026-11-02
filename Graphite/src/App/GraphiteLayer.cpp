@@ -1007,6 +1007,9 @@ namespace Graphite {
 
 	void GraphiteLayer::OnImGuiRender()
 	{
+		// WARNING: Released before anything draws: the editor or terminal holding the keyboard claims it again as it draws, and one that stopped drawing must stop holding it.
+		m_Typing.Release();
+
 		// WARNING: Apply the chrome first, before any window is begun: ImGuiStyle::Colors must not change between a Begin and its End.
 		ApplyChromeIfSchemeChanged();
 
@@ -1262,6 +1265,7 @@ namespace Graphite {
 		const CommandContext commandContext{.Commands = &m_Commands,
 											.Keys = &m_Keys,
 											.Router = &m_Router,
+											.Typing = &m_Typing,
 											.Input = &m_FrameInput,
 											.ContextMenu = &m_EditorContextMenu};
 
@@ -1351,6 +1355,14 @@ namespace Graphite {
 			return;
 		}
 
+		// WARNING: A text field being typed into reads its keys from ImGui on its own. Only a shortcut that fires in text fields may act on the stroke as well; the panels and the editor queue must not, as the user is typing into the field.
+		if (event.IsInCategory(Core::EventCategory::Keyboard) && ImGui::GetIO().WantTextInput)
+		{
+			RouteShortcuts(event, Core::TypingTarget::TextField);
+			event.Handled = true;
+			return;
+		}
+
 		// WARNING: Panels see the event before the router: a chord being recorded is consumed there, and capturing Ctrl+Shift+S would otherwise bind it and save everything in the same keystroke.
 		m_Panels.OnEvent(event);
 
@@ -1359,7 +1371,7 @@ namespace Graphite {
 			return;
 		}
 
-		RouteShortcuts(event);
+		RouteShortcuts(event, m_Typing.GetTarget());
 
 		if (event.Handled)
 		{
@@ -1611,16 +1623,16 @@ namespace Graphite {
 		m_DropQuestion.End();
 	}
 
-	void GraphiteLayer::RouteShortcuts(Core::Event& event)
+	void GraphiteLayer::RouteShortcuts(Core::Event& event, Core::TypingTarget typingTarget)
 	{
 		Core::EventDispatcher dispatcher{event};
 
-		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
-			return m_Router.OnKeyPressed(m_Commands, m_Keys, Core::ShortcutScope::Global, pressed);
+		dispatcher.Dispatch<Core::KeyPressedEvent>([this, typingTarget](Core::KeyPressedEvent& pressed) {
+			return m_Router.OnKeyPressed(m_Commands, m_Keys, Core::ShortcutScope::Global, typingTarget, pressed);
 		});
 
-		dispatcher.Dispatch<Core::KeyReleasedEvent>([this](Core::KeyReleasedEvent& released) {
-			return m_Router.OnKeyReleased(m_Commands, m_Keys, released);
+		dispatcher.Dispatch<Core::KeyReleasedEvent>([this, typingTarget](Core::KeyReleasedEvent& released) {
+			return m_Router.OnKeyReleased(m_Commands, m_Keys, typingTarget, released);
 		});
 
 		dispatcher.Dispatch<Core::MouseButtonPressedEvent>([this](Core::MouseButtonPressedEvent&) {

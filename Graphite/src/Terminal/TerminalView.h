@@ -2,6 +2,7 @@
 
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
+#include "Core/Command/TypingClaim.h"
 #include "Core/ImGui/SelectionGesture.h"
 #include "Core/Terminal/TerminalSession.h"
 #include "Core/Text/TextSelection.h"
@@ -29,8 +30,8 @@ namespace Graphite {
 	{
 	public:
 		TerminalView(Core::TerminalSession& session, const Core::Keymap& keys,
-					 const Core::CommandRegistry& commands, Core::EventBus& events)
-			: m_Session(session), m_Keys(keys), m_Commands(commands), m_Events(events)
+					 const Core::CommandRegistry& commands, Core::EventBus& events, Core::TypingClaim& typing)
+			: m_Session(session), m_Keys(keys), m_Commands(commands), m_Events(events), m_Typing(typing)
 		{
 		}
 
@@ -90,6 +91,7 @@ namespace Graphite {
 		const Core::Keymap& m_Keys;
 		const Core::CommandRegistry& m_Commands;
 		Core::EventBus& m_Events;
+		Core::TypingClaim& m_Typing;
 		int m_ScrollOffset = 0;
 		std::size_t m_Columns = 0;
 		float m_ScrollbarGrab = kNoScrollbarGrab;

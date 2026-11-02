@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Command/ChordFlags.h"
 #include "Core/Command/Trigger.h"
 
 #include <imgui.h>
@@ -37,8 +38,17 @@ namespace Core {
 
 		ImGuiKeyChord GetKeys() const { return m_Keys; }
 
+		const ChordFlags& GetFlags() const { return m_Flags; }
+
+		Chord WithFlags(const ChordFlags& flags) const;
+
 		bool IsEmpty() const;
 
+		// The keys and the trigger alone. What owns a stroke, and whether two slots hold the same shortcut, is a
+		// question about the gesture; the flags only say where it may fire.
+		bool IsSameGesture(const Chord& other) const;
+
+		// The gesture alone, as menus and tooltips show it; Core::ToString(Binding) writes the flags as well.
 		std::string ToString() const;
 
 		static std::optional<Chord> Parse(std::string_view text);
@@ -49,5 +59,6 @@ namespace Core {
 		ImGuiKeyChord m_Keys = 0;
 		Trigger m_Trigger = Trigger::Key;
 		ShortcutScope m_Scope = ShortcutScope::Global;
+		ChordFlags m_Flags;
 	};
 }

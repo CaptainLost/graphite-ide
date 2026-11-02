@@ -41,7 +41,8 @@ namespace {
 		Graphite::Workspace Workspace{Events, Settings.Get()};
 		Core::Keymap Keys;
 		Core::CommandRegistry Commands;
-		Graphite::TerminalWindows Terminals{Workspace, Keys, Commands, Settings.Get(), Events};
+		Core::TypingClaim Typing;
+		Graphite::TerminalWindows Terminals{Workspace, Keys, Commands, Settings.Get(), Events, Typing};
 		std::vector<Graphite::ToastEvent> Toasts;
 	};
 }

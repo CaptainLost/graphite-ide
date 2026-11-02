@@ -688,4 +688,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0656](0656-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md) | Draw Changes as one view hosted by the side panel and the Git window, sharing one commit draft | proposed | 2026-10-28 |
 | [0657](0657-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md) | Browse every branch in a table in the Git window's main area | proposed | 2026-10-28 |
 | [0658](0658-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md) | Open the Git window on a navigator of work, changes, branches and stashes beside one main area | proposed | 2026-10-28 |
+| [0659](0659-let-each-shortcut-say-whether-it-fires-while-the-user-types.md) | Let each shortcut say whether it fires while the user types | proposed | 2026-11-02 |
 <!-- /adr-index -->

@@ -3332,7 +3332,7 @@ namespace Graphite {
 			const bool ran = routable &&
 							 context.Router->OnKeyPressed(*context.Commands, *context.Keys,
 														  Core::ShortcutScope::FocusedEditor,
-														  pressed);
+														  Core::TypingTarget::Editor, pressed);
 
 			if (!ran)
 			{
@@ -3520,6 +3520,11 @@ namespace Graphite {
 
 			if (focused)
 			{
+				if (context.Typing != nullptr)
+				{
+					context.Typing->Claim(Core::TypingTarget::Editor);
+				}
+
 				const int frame = ImGui::GetFrameCount();
 
 				if (CaretBlinkRestarts(widget.LastFocusedFrame, frame))
