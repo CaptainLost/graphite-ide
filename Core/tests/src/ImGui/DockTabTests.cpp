@@ -72,6 +72,8 @@ namespace {
 		bool FloatingPair = false;
 		// More documents docked beside the first in the centre node.
 		std::vector<std::string> MoreDocuments;
+		// The share of the dock space the two panels' node takes; the document's node has the rest.
+		float LeftShare = kLeftNodeShare;
 	};
 
 	// A window of the floating pair, and every close its owner was told of.
@@ -114,7 +116,7 @@ namespace {
 			Explorer = m_Panels.Add(std::make_unique<TitledPanel>("explorer", "Explorer"));
 			Changes = m_Panels.Add(std::make_unique<TitledPanel>("changes", "Changes"));
 			m_Layout.Left = {Explorer->GetWindowName(), Changes->GetWindowName()};
-			m_Layout.LeftRatio = kLeftNodeShare;
+			m_Layout.LeftRatio = options.LeftShare;
 			m_Layout.Center = {kDocumentWindow};
 			m_Layout.Center.insert(m_Layout.Center.end(), m_MoreDocuments.begin(), m_MoreDocuments.end());
 
@@ -441,6 +443,57 @@ TEST_CASE("In a bar too narrow for its tabs each tab keeps the start of its name
 	}
 
 	CHECK(crowdedTabs == kDocuments);
+}
+
+TEST_CASE("A lone tab in a node narrower than the shrink floor keeps its close button inside the node")
+{
+	constexpr float kNarrowCentreShare = 0.08f;
+	constexpr float kShrinkFloor = 160.0f;
+
+	ScreenOptions options;
+	options.LeftShare = 1.0f - kNarrowCentreShare;
+	TabBarScreen screen(options);
+
+	float fullWidth = 0.0f;
+	screen.DuringFrame = [&] { fullWidth = Core::DockTabWidth(screen.DocumentLook); };
+	screen.Frame();
+
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(TabBarScreen::DocumentWindow());
+	REQUIRE(node.TabBar->Tabs.Size == 1);
+	REQUIRE(node.Size.x < kShrinkFloor);
+	REQUIRE(fullWidth > node.Size.x);
+
+	const float barRight = node.TabBar->BarRect.Max.x;
+	const ImVec2 closeCentre(barRight - 8.0f - 8.0f, node.TabBar->BarRect.GetCenter().y);
+
+	screen.Click(closeCentre, ImGuiMouseButton_Left);
+
+	CHECK_FALSE(screen.DocumentOpen);
+}
+
+TEST_CASE("On a monitor at 150 % a floating node's tabs shrink to the floor the dock space's do, at the monitor's scale")
+{
+	constexpr float kShrinkFloor = 160.0f;
+	constexpr float kMonitorScale = 1.5f;
+
+	TabBarScreen screen({.MonitorScale = kMonitorScale, .FloatingPair = true});
+
+	// Registered after the dock space's own hook, so it reads the style the floating bars are laid out in.
+	float floatingFloor = 0.0f;
+	ImGuiContextHook reader;
+	reader.Type = ImGuiContextHookType_NewFramePre;
+	reader.UserData = &floatingFloor;
+	reader.Callback = [](ImGuiContext*, ImGuiContextHook* hook) {
+		*static_cast<float*>(hook->UserData) = ImGui::GetStyle().TabMinWidthShrink;
+	};
+	ImGui::AddContextHook(ImGui::GetCurrentContext(), &reader);
+
+	float dockSpaceFloor = 0.0f;
+	screen.DuringFrame = [&] { dockSpaceFloor = Core::Scaled(kShrinkFloor); };
+	screen.Settle();
+
+	CHECK(dockSpaceFloor == doctest::Approx(kShrinkFloor * kMonitorScale));
+	CHECK(floatingFloor == doctest::Approx(dockSpaceFloor));
 }
 
 TEST_CASE("Tab bars are laid out with borderless overflow arrows, no gaps and no close button of ImGui's, and the style is put back")

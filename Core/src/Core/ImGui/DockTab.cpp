@@ -47,11 +47,13 @@ namespace Core {
 			return style;
 		}
 
-		// The frame padding the dock space's bars were last laid out with, and the context they were laid out in.
+		// The frame padding and shrink floor the dock space's bars were last laid out with, and the context they were
+		// laid out in.
 		struct DockSpacePadding
 		{
 			const ImGuiContext* Context = nullptr;
 			float PaddingY = 0.0f;
+			float NarrowestShrunkenTab = 0.0f;
 		};
 
 		std::optional<DockSpacePadding>& LastDockSpacePadding()
@@ -72,7 +74,8 @@ namespace Core {
 
 			if (padding.has_value() && padding->Context == ImGui::GetCurrentContext())
 			{
-				FloatingTabBarStyle().emplace(DockTabBarEdge::InsideTheWindowBorder, padding->PaddingY);
+				FloatingTabBarStyle().emplace(DockTabBarEdge::InsideTheWindowBorder, padding->PaddingY,
+											  padding->NarrowestShrunkenTab);
 			}
 		}
 
@@ -96,6 +99,18 @@ namespace Core {
 			}
 
 			return look.Glyph.empty() ? 0.0f : ImGui::CalcTextSize(look.Glyph.c_str()).x;
+		}
+
+		// WARNING: ImGui widens a lone tab that does not fit its bar to the shrink floor, past the bar's end, where its
+		// close button would be cut off, so such a tab is drawn only as wide as the bar.
+		ImRect WithinLoneTabBar(const ImGuiTabBar& bar, const ImRect& tab)
+		{
+			if (bar.Tabs.Size != 1)
+			{
+				return tab;
+			}
+
+			return ImRect(tab.Min, ImVec2(std::min(tab.Max.x, bar.BarRect.Max.x), tab.Max.y));
 		}
 
 		bool IsDrawnTabBar(const ImGuiDockNode& node)
@@ -345,12 +360,20 @@ namespace Core {
 	{
 		if (edge == DockTabBarEdge::AtTheNode)
 		{
-			LastDockSpacePadding() =
-				DockSpacePadding{.Context = ImGui::GetCurrentContext(), .PaddingY = ImGui::GetStyle().FramePadding.y};
+			const ImGuiStyle& style = ImGui::GetStyle();
+
+			LastDockSpacePadding() = DockSpacePadding{.Context = ImGui::GetCurrentContext(),
+													  .PaddingY = style.FramePadding.y,
+													  .NarrowestShrunkenTab = style.TabMinWidthShrink};
 		}
 	}
 
 	DockTabBarStyle::DockTabBarStyle(DockTabBarEdge edge, float framePaddingY)
+		: DockTabBarStyle(edge, framePaddingY, Scaled(kNarrowestShrunkenTab))
+	{
+	}
+
+	DockTabBarStyle::DockTabBarStyle(DockTabBarEdge edge, float framePaddingY, float narrowestShrunkenTab)
 	{
 		ImGuiStyle& style = ImGui::GetStyle();
 
@@ -367,7 +390,7 @@ namespace Core {
 		style.FrameBorderSize = kNoBorder;
 		style.TabCloseButtonMinWidthSelected = kNeverShown;
 		style.TabCloseButtonMinWidthUnselected = kNeverShown;
-		style.TabMinWidthShrink = Scaled(kNarrowestShrunkenTab);
+		style.TabMinWidthShrink = narrowestShrunkenTab;
 
 		if (edge == DockTabBarEdge::AtTheNode)
 		{
@@ -487,7 +510,7 @@ namespace Core {
 			return;
 		}
 
-		DrawTab(*window, *node.TabBar, tabRect, look, closeRequests);
+		DrawTab(*window, *node.TabBar, WithinLoneTabBar(*node.TabBar, tabRect), look, closeRequests);
 		ImGui::DockNodeEndAmendTabBar();
 
 		context.LastItemData = tabItem;

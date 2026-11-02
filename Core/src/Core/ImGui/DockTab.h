@@ -59,8 +59,8 @@ namespace Core {
 
 	// The style dock tab bars are laid out in while it lives: tab against tab from the bar's start, as tall as
 	// kDockTabBarHeight, with borderless overflow arrows and without ImGui's own close button, which DrawDockTab draws
-	// in its place. At the node it is the dock space's, and the padding it applies is the one the floating nodes'
-	// bars are laid out with on the frames after.
+	// in its place. At the node it is the dock space's, and the padding and shrink floor it applies are the ones the
+	// floating nodes' bars are laid out with on the frames after.
 	class DockTabBarStyle final : NonCopyable
 	{
 	public:
@@ -68,6 +68,9 @@ namespace Core {
 
 		// Laid out with this frame padding above and below the font rather than DockTabBarFramePaddingY's.
 		DockTabBarStyle(DockTabBarEdge edge, float framePaddingY);
+
+		// Laid out with this padding, and shrinking a crowded bar's tabs no narrower than this.
+		DockTabBarStyle(DockTabBarEdge edge, float framePaddingY, float narrowestShrunkenTab);
 
 		~DockTabBarStyle();
 
