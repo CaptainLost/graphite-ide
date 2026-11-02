@@ -36,6 +36,7 @@ namespace Graphite {
 		constexpr const char* kFitLabel = ICON_LC_MAXIMIZE " Fit";
 		constexpr const char* kFitId = "##imageFit";
 		constexpr bool kNotEngaged = false;
+		constexpr const char* kPixelGridTooltip = "Pixel grid, from 800%";
 
 		struct ZoomChoice
 		{
@@ -299,7 +300,7 @@ namespace Graphite {
 			return shown == ImageToolsSet::All;
 		}
 
-		ImageToolResult DrawTools(float zoom, PictureBackground background, ImageToolsSet shown)
+		ImageToolResult DrawTools(const ImageToolsState& state, ImageToolsSet shown)
 		{
 			ImageToolResult result;
 
@@ -312,7 +313,7 @@ namespace Graphite {
 			{
 				ImGui::SameLine();
 
-				const ImageToolResult fromMenu = DrawZoomButton(zoom);
+				const ImageToolResult fromMenu = DrawZoomButton(state.Zoom);
 
 				if (fromMenu.Action != ImageToolAction::None)
 				{
@@ -352,7 +353,14 @@ namespace Graphite {
 			{
 				ImGui::SameLine();
 
-				if (const ImageToolResult fromSegment = DrawBackgroundSegment(background);
+				if (Core::DrawIconButton("##imagePixelGrid", ICON_LC_GRID_3X3, state.PixelGrid, kPixelGridTooltip))
+				{
+					result = Chosen(ImageToolAction::SwitchPixelGrid);
+				}
+
+				ImGui::SameLine();
+
+				if (const ImageToolResult fromSegment = DrawBackgroundSegment(state.Background);
 					fromSegment.Action != ImageToolAction::None)
 				{
 					result = fromSegment;
@@ -385,8 +393,8 @@ namespace Graphite {
 
 		if (HasBackground(shown))
 		{
-			width += SegmentWidth();
-			++items;
+			width += IconSide() + SegmentWidth();
+			items += 2;
 		}
 
 		width += ImGui::GetStyle().ItemSpacing.x * static_cast<float>(items - 1);
@@ -405,11 +413,11 @@ namespace Graphite {
 		return height;
 	}
 
-	ImageToolResult DrawImageTools(float zoom, PictureBackground background, ImageToolsSet shown)
+	ImageToolResult DrawImageTools(const ImageToolsState& state, ImageToolsSet shown)
 	{
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 		const ToolFrame frame;
-		const ImageToolResult result = DrawTools(zoom, background, shown);
+		const ImageToolResult result = DrawTools(state, shown);
 		ImGui::PopFont();
 
 		return result;

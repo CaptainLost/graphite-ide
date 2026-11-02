@@ -90,6 +90,9 @@ namespace Graphite {
 			case ImageToolAction::SetBackground:
 				settings.SetImageBackground(tool.Background);
 				break;
+			case ImageToolAction::SwitchPixelGrid:
+				settings.SetImagePixelGrid(!settings.HasImagePixelGrid());
+				break;
 			}
 
 			Core::Redraw::Request();
@@ -117,6 +120,7 @@ namespace Graphite {
 			input.Texture = tab.GetTexture();
 			input.Picture = PictureSizeOf(*tab.GetFacts());
 			input.Background = settings.GetImageBackground();
+			input.PixelGrid = settings.HasImagePixelGrid();
 
 			const PictureCanvasResult canvas = DrawPictureCanvas(kCanvasId, tab.GetZoom(), input);
 			ApplyTool(tool, tab, settings, canvas.Area);
@@ -149,7 +153,10 @@ namespace Graphite {
 				set.Width = ImageToolsWidth(shown);
 				set.Draw = [&tool, &tab, &settings, shown] {
 					CentreInRow();
-					tool = DrawImageTools(tab.GetZoom().Zoom, settings.GetImageBackground(), shown);
+					tool = DrawImageTools({.Zoom = tab.GetZoom().Zoom,
+										   .Background = settings.GetImageBackground(),
+										   .PixelGrid = settings.HasImagePixelGrid()},
+										  shown);
 				};
 				return set;
 			};

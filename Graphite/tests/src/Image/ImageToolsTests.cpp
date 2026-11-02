@@ -31,15 +31,17 @@ namespace {
 	constexpr std::size_t kZoomInIndex = 2;
 	constexpr std::size_t kFitIndex = 3;
 	constexpr std::size_t kActualSizeIndex = 4;
-	constexpr std::size_t kCheckerboardIndex = 5;
-	constexpr std::size_t kDarkIndex = 6;
-	constexpr std::size_t kLightIndex = 7;
-	constexpr std::size_t kButtonCount = 8;
+	constexpr std::size_t kPixelGridIndex = 5;
+	constexpr std::size_t kCheckerboardIndex = 6;
+	constexpr std::size_t kDarkIndex = 7;
+	constexpr std::size_t kLightIndex = 8;
+	constexpr std::size_t kButtonCount = 9;
 
 	struct ToolsScreen
 	{
 		float Zoom = 1.0f;
 		PictureBackground Background = PictureBackground::Checkerboard;
+		bool PixelGrid = true;
 		ImageToolResult Last;
 		float LastItemRight = 0.0f;
 		std::vector<ImVec2> Glyphs;
@@ -53,7 +55,7 @@ namespace {
 			ImGui::PopStyleVar();
 
 			ImGui::SetCursorScreenPos(ImVec2(0.0f, 0.0f));
-			const ImageToolResult result = Graphite::DrawImageTools(Zoom, Background);
+			const ImageToolResult result = Graphite::DrawImageTools({.Zoom = Zoom, .Background = Background, .PixelGrid = PixelGrid});
 
 			if (result.Action != ImageToolAction::None)
 			{
@@ -225,6 +227,13 @@ TEST_CASE("A swatch sets the background")
 	const Clicked checkerboard = ClickButton(kCheckerboardIndex);
 	CHECK(checkerboard.Result.Action == ImageToolAction::SetBackground);
 	CHECK(checkerboard.Result.Background == PictureBackground::Checkerboard);
+}
+
+TEST_CASE("The grid button switches the pixel grid")
+{
+	const Clicked grid = ClickButton(kPixelGridIndex);
+	REQUIRE(grid.Found);
+	CHECK(grid.Result.Action == ImageToolAction::SwitchPixelGrid);
 }
 
 TEST_CASE("The image tools' frames fit inside the path row")

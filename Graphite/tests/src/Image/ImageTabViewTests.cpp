@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "DeferredJobs.h"
+#include "DrawnColours.h"
 #include "DrawnGlyphs.h"
 #include "FakeImageTexture.h"
 #include "ImGuiFrames.h"
@@ -48,10 +49,11 @@ namespace {
 	constexpr ImVec2 kPictureSize(2.0f, 2.0f);
 	constexpr float kHalf = 0.5f;
 	constexpr float kLargeZoom = 32.0f;
-	constexpr int kToolButtonCount = 8;
+	constexpr int kToolButtonCount = 9;
 	constexpr int kFramesPastTheLoaderWait = 15;
 	constexpr const char* kWindow = "Image";
 	constexpr const char* kReferenceWindow = "Reference";
+	constexpr ImU32 kPixelGridColour = IM_COL32(0, 0, 0, 128);
 
 	template<std::size_t Count>
 	std::string Contents(const std::uint8_t (&bytes)[Count])
@@ -416,7 +418,7 @@ TEST_CASE("The image tools zoom the picture around its middle and keep the backg
 	REQUIRE(across.size() == kToolButtonCount);
 
 	constexpr std::size_t kZoomIn = 2;
-	constexpr std::size_t kDarkSwatch = 6;
+	constexpr std::size_t kDarkSwatch = 7;
 
 	screen.Frames.Click(ImVec2(across[kZoomIn].Middle(), screen.RowMiddle().y), screen.Drawing());
 	screen.Draw();
@@ -428,6 +430,39 @@ TEST_CASE("The image tools zoom the picture around its middle and keep the backg
 	screen.Frames.Click(ImVec2(across[kDarkSwatch].Middle(), screen.RowMiddle().y), screen.Drawing());
 
 	CHECK(screen.Settings.GetImageBackground() == PictureBackground::Dark);
+}
+
+TEST_CASE("The grid button turns the pixel grid off in the settings and on again")
+{
+	constexpr std::size_t kPixelGrid = 5;
+
+	ImageScreen screen("picture.png", Contents(ImageFixtures::kPng2x2));
+	screen.Land();
+	REQUIRE(screen.Settings.HasImagePixelGrid());
+
+	const std::vector<Span> across =
+		HoveredSpans(screen, ImVec2(screen.ToolsLeft(), screen.RowMiddle().y), ImVec2(1.0f, 0.0f),
+					 static_cast<int>(screen.Row.Max.x - screen.ToolsLeft()));
+	REQUIRE(across.size() == kToolButtonCount);
+
+	const ImVec2 gridButton(across[kPixelGrid].Middle(), screen.RowMiddle().y);
+	const auto gridDrawn = [&screen] {
+		screen.Draw();
+		const ImGuiWindow* window = ImGui::FindWindowByName(kWindow);
+		REQUIRE(window != nullptr);
+		return DrawsInColour(*window->DrawList, kPixelGridColour);
+	};
+
+	screen.Tab.GetZoom() = Graphite::ZoomState{.Zoom = kLargeZoom, .Pan = ImVec2(0.0f, 0.0f), .Opened = true};
+	CHECK(gridDrawn());
+
+	screen.Frames.Click(gridButton, screen.Drawing());
+	CHECK_FALSE(screen.Settings.HasImagePixelGrid());
+	CHECK_FALSE(gridDrawn());
+
+	screen.Frames.Click(gridButton, screen.Drawing());
+	CHECK(screen.Settings.HasImagePixelGrid());
+	CHECK(gridDrawn());
 }
 
 TEST_CASE("Zooming an image tab steps around the middle of its area and fits the whole picture")

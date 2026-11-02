@@ -394,6 +394,24 @@ TEST_CASE("The image background is kept in the settings")
 	CHECK(store.Get().GetImageBackground() == "light");
 }
 
+TEST_CASE("The pixel grid of a zoomed picture is on by default and kept in the settings when turned off")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.Load();
+		CHECK(settings.HasImagePixelGrid());
+
+		settings.SetImagePixelGrid(kDisabled);
+		CHECK_FALSE(settings.HasImagePixelGrid());
+	}
+
+	Graphite::EditorSettings reloaded{store.Reload()};
+	reloaded.Load();
+	CHECK_FALSE(reloaded.HasImagePixelGrid());
+}
+
 TEST_CASE("An unknown image background reads as the checkerboard")
 {
 	TempAppSettings store;

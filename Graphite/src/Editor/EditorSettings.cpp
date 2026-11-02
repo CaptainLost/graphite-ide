@@ -154,6 +154,7 @@ namespace Graphite {
 									 .ColourSyntax = m_Store.IsDiffSyntaxColoured(),
 									 .WordWrap = m_Store.IsDiffWordWrapEnabled()};
 		m_ImageBackground = ImageBackgroundFrom(m_Store.GetImageBackground());
+		m_ImagePixelGrid = m_Store.HasImagePixelGrid();
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 		m_HighlightOccurrences = m_Store.IsHighlightingOccurrences();
@@ -230,6 +231,12 @@ namespace Graphite {
 	{
 		m_ImageBackground = background;
 		m_Store.SetImageBackground(ImageBackgroundName(background));
+	}
+
+	void EditorSettings::SetImagePixelGrid(bool show)
+	{
+		m_ImagePixelGrid = show;
+		m_Store.SetImagePixelGrid(show);
 	}
 
 	void EditorSettings::SetGutterChangeMarkers(bool show)

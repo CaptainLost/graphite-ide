@@ -12,7 +12,16 @@ namespace Graphite {
 		Fit,
 		ActualSize,
 		SetZoom,
-		SetBackground
+		SetBackground,
+		SwitchPixelGrid
+	};
+
+	// What the tools show as current.
+	struct ImageToolsState
+	{
+		float Zoom = 1.0f;
+		PictureBackground Background = PictureBackground::Checkerboard;
+		bool PixelGrid = true;
 	};
 
 	struct ImageToolResult
@@ -22,8 +31,8 @@ namespace Graphite {
 		PictureBackground Background = PictureBackground::Checkerboard;
 	};
 
-	// Which of the tools are drawn. A narrow row gives them up from the right: the background switch first, then Fit
-	// and 1:1, then the zoom label, which leaves the two step buttons.
+	// Which of the tools are drawn. A narrow row gives them up from the right: the grid button and the background
+	// switch first, then Fit and 1:1, then the zoom label, which leaves the two step buttons.
 	enum class ImageToolsSet
 	{
 		All,
@@ -38,7 +47,7 @@ namespace Graphite {
 	// The height of the tools' frame, in screen pixels, in the path row's face; it fits inside the path row.
 	float ImageToolsHeight();
 
-	// Zoom buttons, a zoom menu and the background swatches, drawn from the cursor along the path row. They only
-	// report what was clicked; the caller applies it.
-	ImageToolResult DrawImageTools(float zoom, PictureBackground background, ImageToolsSet shown = ImageToolsSet::All);
+	// Zoom buttons, a zoom menu, the pixel grid button and the background swatches, drawn from the cursor along the
+	// path row. They only report what was clicked; the caller applies it.
+	ImageToolResult DrawImageTools(const ImageToolsState& state, ImageToolsSet shown = ImageToolsSet::All);
 }

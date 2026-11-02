@@ -76,6 +76,9 @@ namespace Graphite {
 		std::string GetImageBackground() const;
 		void SetImageBackground(std::string_view background);
 
+		bool HasImagePixelGrid() const;
+		void SetImagePixelGrid(bool show);
+
 		std::string GetDiffScope() const;
 		void SetDiffScope(std::string_view scope);
 

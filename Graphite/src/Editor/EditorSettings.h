@@ -74,6 +74,10 @@ namespace Graphite {
 		PictureBackground GetImageBackground() const { return m_ImageBackground; }
 		void SetImageBackground(PictureBackground background);
 
+		// Whether a picture zoomed far enough in is drawn with a line between its pixels.
+		bool HasImagePixelGrid() const { return m_ImagePixelGrid; }
+		void SetImagePixelGrid(bool show);
+
 		bool HasGutterChangeMarkers() const { return m_GutterChangeMarkers; }
 		bool HasScrollbarChangeMarkers() const { return m_ScrollbarChangeMarkers; }
 
@@ -123,6 +127,7 @@ namespace Graphite {
 		bool m_WordWrap = false;
 		DiffViewOptions m_DiffView;
 		PictureBackground m_ImageBackground = PictureBackground::Checkerboard;
+		bool m_ImagePixelGrid = true;
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;
