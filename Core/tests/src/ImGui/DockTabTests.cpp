@@ -445,6 +445,53 @@ TEST_CASE("In a bar too narrow for its tabs each tab keeps the start of its name
 	CHECK(crowdedTabs == kDocuments);
 }
 
+TEST_CASE("A document docked into a crowded bar and focused has its tab scrolled into view")
+{
+	constexpr int kDocuments = 30;
+	constexpr int kFramesToScroll = 240;
+	constexpr const char* kLate = ICON_LC_FILE "  Late.cs###late";
+
+	ScreenOptions options;
+
+	for (int document = 0; document < kDocuments; ++document)
+	{
+		options.MoreDocuments.push_back(std::string{ICON_LC_FILE} + "  ControllingDateResolver.cs###crowded" + std::to_string(document));
+	}
+
+	TabBarScreen screen(options);
+	const ImGuiID centre = TabBarScreen::NodeOf(TabBarScreen::DocumentWindow()).ID;
+
+	Core::TabCloseRequests closeRequests;
+	bool docked = false;
+	screen.DuringFrame = [&] {
+		if (!docked)
+		{
+			ImGui::DockBuilderDockWindow(kLate, centre);
+			ImGui::SetNextWindowFocus();
+			docked = true;
+		}
+
+		Core::BeginDockedWindow(kLate, nullptr, ImGuiWindowFlags_None);
+		Core::DrawDockTab(Core::DockTabLookOf(kLate), closeRequests);
+		ImGui::End();
+		closeRequests.EndFrame();
+	};
+
+	for (int frame = 0; frame < kFramesToScroll; ++frame)
+	{
+		screen.Frame();
+	}
+
+	const ImGuiWindow& late = TabBarScreen::WindowNamed(kLate);
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(late);
+	const ImRect tab = TabBarScreen::TabOf(late);
+
+	REQUIRE(node.TabBar->ScrollButtonEnabled);
+	CHECK(node.TabBar->SelectedTabId == late.TabId);
+	CHECK(tab.Min.x >= node.TabBar->ScrollingRectMinX);
+	CHECK(tab.Max.x <= node.TabBar->ScrollingRectMaxX);
+}
+
 TEST_CASE("A lone tab in a node narrower than the shrink floor keeps its close button inside the node")
 {
 	constexpr float kNarrowCentreShare = 0.08f;

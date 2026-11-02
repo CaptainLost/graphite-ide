@@ -39,6 +39,7 @@ namespace Core {
 		constexpr unsigned int kLastPrivateUseCodepoint = 0xF8FF;
 		constexpr std::string_view kIdMarker = "##";
 		constexpr const char* kCloseButtonId = "#DockTabClose";
+		constexpr const char* kLastSelectedKey = "Core::DockTab::LastSelected";
 
 		// NewFrame's span opens in one hook and closes in another, so the style it is laid out in lives here between them.
 		std::optional<DockTabBarStyle>& FloatingTabBarStyle()
@@ -111,6 +112,28 @@ namespace Core {
 			}
 
 			return ImRect(tab.Min, ImVec2(std::min(tab.Max.x, bar.BarRect.Max.x), tab.Max.y));
+		}
+
+		// WARNING: ImGui scrolls a bar to a tab selected through the bar or added in its own update, but a window docked
+		// into the node as it begins is selected by its focus alone, and its tab can stay scrolled out of sight. A tab
+		// that has just become the selected one is scrolled into view here; one the bar was scrolled away from is left.
+		void ScrollToNewlySelected(ImGuiDockNode& node, const ImGuiTabItem& tab)
+		{
+			ImGuiTabBar& bar = *node.TabBar;
+
+			if (bar.SelectedTabId != tab.ID || node.HostWindow == nullptr)
+			{
+				return;
+			}
+
+			ImGuiStorage& storage = node.HostWindow->StateStorage;
+			const ImGuiID key = ImHashStr(kLastSelectedKey, 0, bar.ID);
+
+			if (storage.GetInt(key) != static_cast<int>(tab.ID))
+			{
+				storage.SetInt(key, static_cast<int>(tab.ID));
+				bar.NextScrollToTabId = tab.ID;
+			}
 		}
 
 		bool IsDrawnTabBar(const ImGuiDockNode& node)
@@ -492,6 +515,7 @@ namespace Core {
 		// WARNING: ImGui lays a tab bar out at its first tab, from each tab's requested width, and forgets the request
 		// once the tab is drawn, so it is asked again every frame for the next layout.
 		tab->RequestedWidth = DockTabWidth(look);
+		ScrollToNewlySelected(node, *tab);
 
 		const ImRect tabRect = window->DC.DockTabItemRect;
 		const bool drawnThisFrame = tab->LastFrameVisible == context.FrameCount && tabRect.GetWidth() > 0.0f;
