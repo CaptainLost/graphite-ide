@@ -31,6 +31,9 @@ namespace Core {
 		constexpr float kHalf = 0.5f;
 		constexpr float kNoBorder = 0.0f;
 		constexpr float kNeverShown = FLT_MAX;
+		// A crowded bar shrinks its tabs no narrower than this and scrolls the rest. ImGui's own floor leaves nothing
+		// of a name beside its glyph and close button; this one leaves about a dozen characters.
+		constexpr float kNarrowestShrunkenTab = 160.0f;
 		constexpr const char* kFloatingTabBarsHook = "Core::KeepFloatingTabBarsFlat";
 		constexpr unsigned int kFirstPrivateUseCodepoint = 0xE000;
 		constexpr unsigned int kLastPrivateUseCodepoint = 0xF8FF;
@@ -357,12 +360,14 @@ namespace Core {
 		m_WindowBorderSize = style.WindowBorderSize;
 		m_CloseButtonMinWidthSelected = style.TabCloseButtonMinWidthSelected;
 		m_CloseButtonMinWidthUnselected = style.TabCloseButtonMinWidthUnselected;
+		m_TabMinWidthShrink = style.TabMinWidthShrink;
 
 		style.FramePadding = ImVec2(0.0f, framePaddingY);
 		style.ItemInnerSpacing.x = 0.0f;
 		style.FrameBorderSize = kNoBorder;
 		style.TabCloseButtonMinWidthSelected = kNeverShown;
 		style.TabCloseButtonMinWidthUnselected = kNeverShown;
+		style.TabMinWidthShrink = Scaled(kNarrowestShrunkenTab);
 
 		if (edge == DockTabBarEdge::AtTheNode)
 		{
@@ -380,6 +385,7 @@ namespace Core {
 		style.WindowBorderSize = m_WindowBorderSize;
 		style.TabCloseButtonMinWidthSelected = m_CloseButtonMinWidthSelected;
 		style.TabCloseButtonMinWidthUnselected = m_CloseButtonMinWidthUnselected;
+		style.TabMinWidthShrink = m_TabMinWidthShrink;
 	}
 
 	void KeepFloatingTabBarsFlat()

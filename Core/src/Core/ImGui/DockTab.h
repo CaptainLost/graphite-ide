@@ -78,6 +78,7 @@ namespace Core {
 		float m_WindowBorderSize = 0.0f;
 		float m_CloseButtonMinWidthSelected = 0.0f;
 		float m_CloseButtonMinWidthUnselected = 0.0f;
+		float m_TabMinWidthShrink = 0.0f;
 	};
 
 	// Lays out the tab bars of floating dock nodes, which ImGui updates in NewFrame, in DockTabBarStyle too, at the

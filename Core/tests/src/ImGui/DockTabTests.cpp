@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -69,6 +70,8 @@ namespace {
 		// The monitor's scale, which ImGui gives the fonts of the windows on it, as the application has it do.
 		float MonitorScale = 1.0f;
 		bool FloatingPair = false;
+		// More documents docked beside the first in the centre node.
+		std::vector<std::string> MoreDocuments;
 	};
 
 	// A window of the floating pair, and every close its owner was told of.
@@ -85,7 +88,7 @@ namespace {
 	{
 	public:
 		explicit TabBarScreen(const ScreenOptions& options = {})
-			: m_Context(ImGui::CreateContext()), m_FloatingPair(options.FloatingPair)
+			: m_Context(ImGui::CreateContext()), m_FloatingPair(options.FloatingPair), m_MoreDocuments(options.MoreDocuments)
 		{
 			ImGuiIO& inputOutput = ImGui::GetIO();
 			inputOutput.DisplaySize = ImVec2(1000.0f, 600.0f);
@@ -113,6 +116,7 @@ namespace {
 			m_Layout.Left = {Explorer->GetWindowName(), Changes->GetWindowName()};
 			m_Layout.LeftRatio = kLeftNodeShare;
 			m_Layout.Center = {kDocumentWindow};
+			m_Layout.Center.insert(m_Layout.Center.end(), m_MoreDocuments.begin(), m_MoreDocuments.end());
 
 			Settle();
 		}
@@ -150,6 +154,13 @@ namespace {
 				DocumentTabHovered = ImGui::IsItemHovered();
 				Core::DrawTabContextMenu(m_CloseRequests);
 				DocumentOpen = documentOpen && !m_CloseRequests.Take(kDocumentWindow);
+				ImGui::End();
+			}
+
+			for (const std::string& name : m_MoreDocuments)
+			{
+				Core::BeginDockedWindow(name.c_str(), nullptr, ImGuiWindowFlags_None);
+				Core::DrawDockTab(Core::DockTabLookOf(name), m_CloseRequests);
 				ImGui::End();
 			}
 
@@ -270,6 +281,7 @@ namespace {
 		ImGuiContext* m_Context = nullptr;
 		bool m_FloatingPair = false;
 		bool m_FloatingNodeBuilt = false;
+		std::vector<std::string> m_MoreDocuments;
 		Core::DockSpaceHost m_Host;
 		Core::DockLayout m_Layout;
 		Core::PanelManager m_Panels;
@@ -382,6 +394,55 @@ TEST_CASE("A tab is as wide as its padding, glyph, name, gaps and close button")
 	CHECK(TabBarScreen::TabOf(TabBarScreen::WindowOf(*screen.Explorer)).GetWidth() == doctest::Approx(expected));
 }
 
+TEST_CASE("In a bar too narrow for its tabs each tab keeps the start of its name and the bar scrolls")
+{
+	constexpr int kDocuments = 30;
+	constexpr std::string_view kNameStartKept = "Controllin";
+
+	ScreenOptions options;
+
+	for (int document = 0; document < kDocuments; ++document)
+	{
+		options.MoreDocuments.push_back(std::string{ICON_LC_FILE} + "  ControllingDateResolver.cs###crowded" + std::to_string(document));
+	}
+
+	TabBarScreen screen(options);
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(TabBarScreen::DocumentWindow());
+	const std::string& crowded = options.MoreDocuments.front();
+
+	Core::DockTabLook nameless = Core::DockTabLookOf(crowded);
+	nameless.Name.clear();
+
+	float aroundTheName = 0.0f;
+	float nameStartWidth = 0.0f;
+	float fullWidth = 0.0f;
+	screen.DuringFrame = [&] {
+		aroundTheName = Core::DockTabWidth(nameless);
+		nameStartWidth = ImGui::CalcTextSize(kNameStartKept.data(), kNameStartKept.data() + kNameStartKept.size()).x;
+		fullWidth = Core::DockTabWidth(Core::DockTabLookOf(crowded));
+	};
+	screen.Frame();
+
+	REQUIRE(fullWidth * static_cast<float>(kDocuments) > node.Size.x);
+	CHECK(node.TabBar->ScrollButtonEnabled);
+
+	int crowdedTabs = 0;
+
+	for (const ImGuiTabItem& tab : node.TabBar->Tabs)
+	{
+		if (tab.Window == nullptr || std::string_view{tab.Window->Name}.find("###crowded") == std::string_view::npos)
+		{
+			continue;
+		}
+
+		++crowdedTabs;
+		CHECK(tab.Width < fullWidth);
+		CHECK(tab.Width - aroundTheName >= nameStartWidth);
+	}
+
+	CHECK(crowdedTabs == kDocuments);
+}
+
 TEST_CASE("Tab bars are laid out with borderless overflow arrows, no gaps and no close button of ImGui's, and the style is put back")
 {
 	TabBarScreen screen;
@@ -409,6 +470,7 @@ TEST_CASE("Tab bars are laid out with borderless overflow arrows, no gaps and no
 		CHECK(style.WindowBorderSize == doctest::Approx(before.WindowBorderSize));
 		CHECK(style.TabCloseButtonMinWidthSelected == doctest::Approx(before.TabCloseButtonMinWidthSelected));
 		CHECK(style.TabCloseButtonMinWidthUnselected == doctest::Approx(before.TabCloseButtonMinWidthUnselected));
+		CHECK(style.TabMinWidthShrink == doctest::Approx(before.TabMinWidthShrink));
 	}
 }
 
