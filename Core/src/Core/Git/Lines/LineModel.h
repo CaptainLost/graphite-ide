@@ -45,7 +45,8 @@ namespace Core {
 		bool Active = false; // its tip is within kActiveWindow of Now
 	};
 
-	// A server default that is an ancestor of another base: Ref and Of index the input refs.
+	// A server default that another remote's base has gone on from: Ref and Of index the input refs. Of is the base
+	// whose line holds Ref's tip.
 	struct OldCopy
 	{
 		std::size_t Ref = 0;
@@ -76,6 +77,11 @@ namespace Core {
 		ComparedKind Kind = ComparedKind::None;
 		std::optional<std::size_t> ComparedWith; // index into the input refs
 		bool ByAnswer = false;                   // LineAnswers::Comparisons decided it
+
+		// What the rule gives without the user's answer; equal to ComparedWith and Kind when ByAnswer is false.
+		std::optional<std::size_t> AutomaticComparedWith;
+		ComparedKind AutomaticKind = ComparedKind::None;
+
 		BranchState State = BranchState::NotMerged;
 		std::size_t Ahead = 0;                   // commits it has that ComparedWith lacks
 		std::optional<std::size_t> SameRowAs;    // its upstream, when the short names match

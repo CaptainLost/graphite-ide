@@ -517,6 +517,97 @@ TEST_CASE("Lines: the user's comparison wins and an empty one leaves the branch 
 	}
 }
 
+TEST_CASE("Lines: the rule's comparison is kept beside the user's")
+{
+	GraphBuilder builder;
+	AddTrunk(builder, 20);
+	AddRelease(builder);
+	builder.Chain("a", 2, "m18", 21, {"d@example.com"});
+	builder.Ref("refs/remotes/origin/feature/a", "a2");
+	builder.Chain("b", 1, "m17", 21, {"d@example.com"});
+	builder.Ref("refs/remotes/origin/feature/b", "b1");
+	builder.SetNow(30);
+	Core::LineAnswers answers;
+	answers.Comparisons["refs/remotes/origin/feature/a"] = "refs/remotes/origin/feature/b";
+
+	const Core::LineModel model = Compute(builder, answers);
+	const Core::BranchLine answered = RequireBranch(model, builder.RefIndex("refs/remotes/origin/feature/a"));
+	const Core::BranchLine byRule = RequireBranch(model, builder.RefIndex("refs/remotes/origin/feature/b"));
+
+	CHECK(answered.ByAnswer);
+	CHECK(ComparedRef(answered) == builder.RefIndex("refs/remotes/origin/feature/b"));
+	CHECK(answered.Kind == Core::ComparedKind::Branch);
+	CHECK(answered.AutomaticComparedWith.value_or(GraphBuilder::kNoRef) == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(answered.AutomaticKind == Core::ComparedKind::Base);
+
+	CHECK_FALSE(byRule.ByAnswer);
+	CHECK(byRule.AutomaticComparedWith == byRule.ComparedWith);
+	CHECK(byRule.AutomaticKind == byRule.Kind);
+	CHECK(byRule.AutomaticKind == Core::ComparedKind::Base);
+}
+
+TEST_CASE("Lines: a release made a base before its first commit leaves the trunk's line whole")
+{
+	// main m1..m17, b1 forked from m5 and merged at m18, then m19 and m20. release/3 was cut at m15 and made a base
+	// by the user before it had a commit of its own; feature/a forked from m12.
+	GraphBuilder builder;
+	builder.Chain("m", 17, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+	builder.Commit("b1", {"m5"}, 6, "d@example.com");
+	builder.Commit("m18", {"m17", "b1"}, 18, "a@example.com");
+	builder.Commit("m19", {"m18"}, 19, "b@example.com");
+	builder.Commit("m20", {"m19"}, 20, "c@example.com");
+	builder.Chain("a", 2, "m12", 21, {"d@example.com"});
+	builder.Ref("refs/remotes/origin/main", "m20", true);
+	builder.Ref("refs/remotes/origin/release/3", "m15");
+	builder.Ref("refs/remotes/origin/feature/a", "a2");
+	builder.Ref("refs/remotes/origin/feature/b", "b1");
+	builder.SetNow(30);
+
+	SUBCASE("added with Use as base")
+	{
+		Core::LineAnswers answers;
+		answers.AddedBases = {"refs/remotes/origin/release/3"};
+
+		const Core::LineModel model = Compute(builder, answers);
+
+		REQUIRE(model.Bases.size() == 2);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(model.Bases[0].Qualities.Commits == 20);
+		CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/3"));
+		CHECK(model.Bases[1].Reason == Core::BaseReason::AddedByUser);
+
+		const Core::BranchLine featureA = RequireBranch(model, builder.RefIndex("refs/remotes/origin/feature/a"));
+		CHECK(ComparedRef(featureA) == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(featureA.State == Core::BranchState::NotMerged);
+		CHECK(featureA.Ahead == 2);
+
+		const Core::BranchLine featureB = RequireBranch(model, builder.RefIndex("refs/remotes/origin/feature/b"));
+		CHECK(ComparedRef(featureB) == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(featureB.State == Core::BranchState::MergedByHistory);
+	}
+
+	SUBCASE("a kept staging line reset to the trunk before its first commit")
+	{
+		Core::LineAnswers answers;
+		answers.KeptBases = {"refs/remotes/origin/release/3"};
+
+		const Core::LineModel model = Compute(builder, answers);
+
+		REQUIRE(model.Bases.size() == 2);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(model.Bases[0].Qualities.Commits == 20);
+		CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/3"));
+		CHECK(model.Bases[1].Reason == Core::BaseReason::Kept);
+		CHECK(model.Bases[1].Qualities.Commits == 0);
+
+		const Core::BranchLine featureA = RequireBranch(model, builder.RefIndex("refs/remotes/origin/feature/a"));
+		CHECK(ComparedRef(featureA) == builder.RefIndex("refs/remotes/origin/main"));
+
+		const Core::BranchLine featureB = RequireBranch(model, builder.RefIndex("refs/remotes/origin/feature/b"));
+		CHECK(featureB.State == Core::BranchState::MergedByHistory);
+	}
+}
+
 TEST_CASE("Lines: an orphan branch has no common history and a shallow one is cut off")
 {
 	GraphBuilder builder;

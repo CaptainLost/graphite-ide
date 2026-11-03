@@ -229,6 +229,7 @@ TEST_CASE("Lines: a fork's stale default is an old copy when both remotes report
 
 TEST_CASE("Lines: a fork's stale default is an old copy when only the fork reports a default")
 {
+	// With the only default set aside no base stands for the main line, so upstream's main line is guessed and asked.
 	GraphBuilder builder;
 	AddFork(builder, false);
 
@@ -236,10 +237,59 @@ TEST_CASE("Lines: a fork's stale default is an old copy when only the fork repor
 
 	REQUIRE(model.Bases.size() == 1);
 	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
-	CHECK(model.Bases[0].Reason == Core::BaseReason::Authors);
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+	CHECK(model.Bases[0].Qualities.Commits == 30);
 	REQUIRE(model.OldCopies.size() == 1);
 	CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
 	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
+	CHECK(model.MainLineGuessed);
+}
+
+TEST_CASE("Lines: a stale default is an old copy of upstream's main line even when an upstream release line is listed first")
+{
+	// Only the fork reports a default. upstream/release/1 forked from u10 by two people and is kept from an earlier
+	// read, so it is listed before upstream/main, which the rules find; both first-parent chains hold u5.
+	GraphBuilder builder;
+	AddFork(builder, false);
+	builder.Chain("r", 4, "u10", 11, {"p@example.com", "q@example.com"});
+	builder.Ref("refs/remotes/upstream/release/1", "r4");
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/upstream/release/1"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.OldCopies.size() == 1);
+	CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
+	REQUIRE_FALSE(model.Bases.empty());
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
+	CHECK(IsBase(model, builder.RefIndex("refs/remotes/upstream/release/1")));
+	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/main")));
+}
+
+TEST_CASE("Lines: an integration branch on a remote with fewer branches does not make the default an old copy")
+{
+	// origin has the default and two features; a colleague's remote has one integration branch built on origin/main's
+	// tip by three people over eight days, which the rules find as a base.
+	GraphBuilder builder;
+	builder.Chain("u", 20, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+	builder.Commit("f1", {"u10"}, 11, "d@example.com");
+	builder.Commit("g1", {"u12"}, 13, "d@example.com");
+	builder.Chain("i", 9, "u20", 21, {"p@example.com", "q@example.com", "r@example.com"});
+	builder.Ref("refs/remotes/origin/main", "u20", true);
+	builder.Ref("refs/remotes/origin/feature/1", "f1");
+	builder.Ref("refs/remotes/origin/feature/2", "g1");
+	builder.Ref("refs/remotes/alice/integration", "i9");
+	builder.SetNow(40);
+
+	const Core::LineModel model = Compute(builder);
+
+	CHECK(model.OldCopies.empty());
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::ServerDefault);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/alice/integration"));
+	CHECK(model.Bases[1].Reason == Core::BaseReason::Authors);
 	CHECK_FALSE(model.MainLineGuessed);
 }
 

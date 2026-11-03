@@ -728,8 +728,9 @@ namespace Core {
 			return defaultRef.Remote > otherDefault.Remote;
 		}
 
-		// A fork's stale default: a server default that another remote's base has gone on from along its first
-		// parents, or another remote's default at the same commit on a busier remote.
+		// A fork's stale default: a server default that a base on another remote with at least as many refs has gone
+		// on from along its first parents, or another remote's default at the same commit on a busier remote. A
+		// colleague's remote with one integration branch built on the default's tip leaves the default alone.
 		bool IsOldCopyOf(const AncestryGraph& graph, const RefTable& table, const LineBase& candidate, const LineBase& other)
 		{
 			const LineRef& candidateRef = table.Refs[candidate.Ref];
@@ -749,7 +750,8 @@ namespace Core {
 				return other.Reason == BaseReason::ServerDefault && LosesToDefaultAtSameCommit(table, candidateRef, otherRef);
 			}
 
-			return IsOnFirstParentChainBelow(graph, candidateTip, otherTip);
+			const bool otherRemoteHasAsManyRefs = RefsOnRemote(table, otherRef.Remote) >= RefsOnRemote(table, candidateRef.Remote);
+			return otherRemoteHasAsManyRefs && IsOnFirstParentChainBelow(graph, candidateTip, otherTip);
 		}
 
 		// The first base, other than the one at `position` and those marked skipped, that it is an old copy of.
@@ -767,7 +769,8 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		// An old copy stops being a base. True when any did.
+		// An old copy stops being a base. True when any did. Of names the first base it copies until
+		// NameWhatOldCopiesCopy has the split without the old copies.
 		bool SetAsideOldCopies(const AncestryGraph& graph, const RefTable& table, BaseList& list, std::vector<OldCopy>& oldCopies)
 		{
 			const std::vector<LineBase>& bases = list.Bases;
@@ -804,15 +807,67 @@ namespace Core {
 			return anySetAside;
 		}
 
-		// Each base's line as the final split draws it. A kept base its line still qualifies for reports the rule.
-		void DescribeBases(const AncestryGraph& graph, const RefTable& table, const LineSplit& split, std::int64_t now, std::vector<LineBase>& bases)
+		// An old copy is a copy of the base whose line holds its tip once the old copies are no bases; a base listed
+		// before that one, such as a release line forked above the copy's tip, does not take it.
+		void NameWhatOldCopiesCopy(const RefTable& table, const IndexedSplit& indexed, std::vector<OldCopy>& oldCopies)
+		{
+			for (OldCopy& copy : oldCopies)
+			{
+				const std::uint32_t line = indexed.Split.LineOf[table.Tips[copy.Ref]];
+
+				if (line != kNoLine && indexed.BaseOfLine[line].has_value())
+				{
+					copy.Of = *indexed.BaseOfLine[line];
+				}
+			}
+		}
+
+		std::vector<bool> RemovedOrOldCopies(const std::vector<bool>& removed, const std::vector<OldCopy>& oldCopies)
+		{
+			std::vector<bool> excluded = removed;
+
+			for (const OldCopy& copy : oldCopies)
+			{
+				excluded[copy.Ref] = true;
+			}
+
+			return excluded;
+		}
+
+		// No default and no answer, or only ones the graph lacks, the user removed, that name no branch or that are
+		// old copies. True when a guess was made.
+		bool GuessUnlessAMainLineStands(const AncestryGraph& graph, const RefTable& table, const std::vector<bool>& notToGuess,
+										std::int64_t now, BaseList& list)
+		{
+			if (HasMainLineBase(list))
+			{
+				return false;
+			}
+
+			const std::optional<std::size_t> guess = GuessMainLine(graph, table, notToGuess, now);
+
+			if (!guess.has_value())
+			{
+				return false;
+			}
+
+			MakeGuessedMainLine(list, *guess);
+			return true;
+		}
+
+		// Each base's line as the final split draws it. A kept base its line still qualifies for reports the rule. A
+		// base whose tip sits on a line another base listed before it owns has no stretch of its own to measure until
+		// it has a commit of its own.
+		void DescribeBases(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed, std::int64_t now, std::vector<LineBase>& bases)
 		{
 			const std::vector<Index> baseTips = BaseTipsOf(table, bases);
 
 			for (LineBase& base : bases)
 			{
 				const Index tip = table.Tips[base.Ref];
-				base.Qualities = MeasureLine(graph, split, split.LineOf[tip], baseTips, now);
+				const std::uint32_t line = indexed.Split.LineOf[tip];
+				const bool ownsItsLine = line != kNoLine && indexed.BaseOfLine[line] == base.Ref;
+				base.Qualities = ownsItsLine ? MeasureLine(graph, indexed.Split, line, baseTips, now) : LineQualities{};
 				base.Active = IsActive(graph, tip, now);
 
 				if (base.Reason == BaseReason::Kept && QualifiesAsBase(base.Qualities))
@@ -941,6 +996,16 @@ namespace Core {
 			return graph.ParentsCutAt(split.Lines[line].Bottom) ? BranchState::HistoryCutOff : BranchState::NoCommonHistory;
 		}
 
+		ComparedKind KindOf(const std::vector<bool>& isBase, std::optional<std::size_t> comparedWith)
+		{
+			if (!comparedWith.has_value())
+			{
+				return ComparedKind::None;
+			}
+
+			return isBase[*comparedWith] ? ComparedKind::Base : ComparedKind::Branch;
+		}
+
 		// Everything but the count. A branch compared with a ref whose first parents do not hold its tip is left
 		// NotMerged for CountAhead, which decides between that and MergedByHistory.
 		BranchLine DescribeBranch(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
@@ -955,9 +1020,13 @@ namespace Core {
 				return branch;
 			}
 
+			branch.AutomaticComparedWith = ComparisonByRule(table, indexed, isBase, ref);
+			branch.AutomaticKind = KindOf(isBase, branch.AutomaticComparedWith);
+
 			const ComparisonAnswer answer = AnswerFor(table, answers, ref);
 			branch.ByAnswer = answer.Applies;
-			branch.ComparedWith = answer.Applies ? answer.ComparedWith : ComparisonByRule(table, indexed, isBase, ref);
+			branch.ComparedWith = answer.Applies ? answer.ComparedWith : branch.AutomaticComparedWith;
+			branch.Kind = KindOf(isBase, branch.ComparedWith);
 
 			if (!branch.ComparedWith.has_value())
 			{
@@ -965,9 +1034,7 @@ namespace Core {
 				return branch;
 			}
 
-			const std::size_t comparedWith = *branch.ComparedWith;
-			const bool hasNoOwnCommits = IsOnFirstParentChainOf(indexed.Split, tip, table.Tips[comparedWith]);
-			branch.Kind = isBase[comparedWith] ? ComparedKind::Base : ComparedKind::Branch;
+			const bool hasNoOwnCommits = IsOnFirstParentChainOf(indexed.Split, tip, table.Tips[*branch.ComparedWith]);
 			branch.State = hasNoOwnCommits ? BranchState::NoOwnCommits : BranchState::NotMerged;
 			return branch;
 		}
@@ -1323,27 +1390,20 @@ namespace Core {
 		const std::vector<bool> removed = MarkRemovedBases(table, input.Answers);
 		LineModel model;
 		BaseList list = StartingBases(table, input.Answers, removed);
-
-		// No default and no answer, or only ones the graph lacks, the user removed or that name no branch.
-		if (!HasMainLineBase(list))
-		{
-			const std::optional<std::size_t> guess = GuessMainLine(graph, table, removed, input.Now);
-
-			if (guess.has_value())
-			{
-				MakeGuessedMainLine(list, *guess);
-				model.MainLineGuessed = true;
-			}
-		}
+		model.MainLineGuessed = GuessUnlessAMainLineStands(graph, table, removed, input.Now, list);
 
 		IndexedSplit indexed = FindBasesByRules(graph, table, removed, input.Now, list);
 
+		// Run once, after the rules. A fork's default set aside can leave no base standing for the main line.
 		if (SetAsideOldCopies(graph, table, list, model.OldCopies))
 		{
+			const bool guessed = GuessUnlessAMainLineStands(graph, table, RemovedOrOldCopies(removed, model.OldCopies), input.Now, list);
+			model.MainLineGuessed = model.MainLineGuessed || guessed;
 			indexed = SplitAndIndex(graph, table, list.Bases);
+			NameWhatOldCopiesCopy(table, indexed, model.OldCopies);
 		}
 
-		DescribeBases(graph, table, indexed.Split, input.Now, list.Bases);
+		DescribeBases(graph, table, indexed, input.Now, list.Bases);
 		model.Branches = DescribeBranches(graph, table, indexed, list.IsBase, input.Answers);
 		model.Bases = std::move(list.Bases);
 		return model;
