@@ -107,14 +107,13 @@ namespace Graphite {
 			return newest;
 		}
 
-		SolutionRead ReadSolutionWithStamp(const std::filesystem::path& solutionPath, std::uint64_t generation,
-										   const SolutionReading& readSolution)
+		SolutionRead ReadSolutionWithStamp(const std::filesystem::path& solutionPath, const SolutionReading& readSolution)
 		{
 			Core::Result<Solution> read = readSolution(solutionPath);
 			const Solution* readSolutionModel = read ? &read.GetValue() : nullptr;
 			const std::filesystem::file_time_type stamp = SolutionStampOf(solutionPath, readSolutionModel);
 
-			return SolutionRead{.Generation = generation, .Read = std::move(read), .StampWithProjectsNamed = stamp};
+			return SolutionRead{.Read = std::move(read), .StampWithProjectsNamed = stamp};
 		}
 
 		IgnoreSourceStamp StampOf(const std::filesystem::path& file)
@@ -141,29 +140,27 @@ namespace Graphite {
 			return stamp;
 		}
 
-		SolutionRead ThrownRead(std::uint64_t generation, std::string_view reason)
+		SolutionRead ThrownRead(std::string_view reason)
 		{
-			return SolutionRead{.Generation = generation,
-								.Read = Core::Error{.Code = Core::ErrorCode::IoFailure,
+			return SolutionRead{.Read = Core::Error{.Code = Core::ErrorCode::IoFailure,
 													.Message = std::format("the read stopped: {}", reason)},
 								.ReaderThrew = true};
 		}
 
 		// WARNING: A read that throws posts nothing, which would leave the solution view waiting for good.
-		SolutionRead ReadSolutionCatchingThrows(const std::filesystem::path& solutionPath, std::uint64_t generation,
-												const SolutionReading& readSolution)
+		SolutionRead ReadSolutionCatchingThrows(const std::filesystem::path& solutionPath, const SolutionReading& readSolution)
 		{
 			try
 			{
-				return ReadSolutionWithStamp(solutionPath, generation, readSolution);
+				return ReadSolutionWithStamp(solutionPath, readSolution);
 			}
 			catch (const std::exception& thrown)
 			{
-				return ThrownRead(generation, thrown.what());
+				return ThrownRead(thrown.what());
 			}
 			catch (...)
 			{
-				return ThrownRead(generation, "unknown failure");
+				return ThrownRead("unknown failure");
 			}
 		}
 	}
@@ -351,7 +348,7 @@ namespace Graphite {
 
 		m_Events.Publish(SolutionOpenedEvent{chosen});
 
-		const bool readFailed = !m_Solution && !m_ReadingSolution;
+		const bool readFailed = !m_Solution && !m_SolutionRead.IsInFlight();
 
 		if (readFailed)
 		{
@@ -771,12 +768,8 @@ namespace Graphite {
 
 	void Workspace::StartReadingSolution()
 	{
-		const std::uint64_t generation = ++m_SolutionReadGeneration;
-		m_ReadingSolution = true;
-
-		m_SubmitJob([solutionPath = m_SelectedSolution, generation, readSolution = m_ReadSolution,
-					 finished = m_FinishedSolutionReads] {
-			finished->Post(ReadSolutionCatchingThrows(solutionPath, generation, readSolution));
+		m_SolutionRead.Ask([solutionPath = m_SelectedSolution, readSolution = m_ReadSolution](const Core::CancellationToken&) {
+			return ReadSolutionCatchingThrows(solutionPath, readSolution);
 		});
 
 		// WARNING: A job that runs where it is submitted has already finished here.
@@ -786,22 +779,15 @@ namespace Graphite {
 	// WARNING: A read already running cannot be stopped, so its answer is dropped when it lands instead.
 	void Workspace::StopReadingSolution()
 	{
-		++m_SolutionReadGeneration;
-		m_ReadingSolution = false;
+		m_SolutionRead.Forget();
 		m_ReadingAgainAfterAThrow = false;
 	}
 
 	void Workspace::TakeFinishedSolutionReads()
 	{
-		for (SolutionRead& finished : m_FinishedSolutionReads->TakeAll())
+		if (std::optional<SolutionRead> finished = m_SolutionRead.TakeNewest())
 		{
-			const bool answersTheLatestRead = m_ReadingSolution && finished.Generation == m_SolutionReadGeneration;
-
-			if (answersTheLatestRead)
-			{
-				m_ReadingSolution = false;
-				ApplySolutionRead(std::move(finished));
-			}
+			ApplySolutionRead(std::move(*finished));
 		}
 	}
 

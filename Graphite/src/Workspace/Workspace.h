@@ -9,7 +9,7 @@
 #include "Core/FileSystem/FileTree.h"
 #include "Core/Git/Repository.h"
 #include "Core/Jobs/JobSubmitter.h"
-#include "Core/Jobs/Mailbox.h"
+#include "Core/Jobs/LatestAnswer.h"
 #include "Core/Platform/AsyncDialog.h"
 #include "Solution/SolutionReader.h"
 
@@ -91,7 +91,6 @@ namespace Graphite {
 
 	struct SolutionRead
 	{
-		std::uint64_t Generation = 0;
 		Core::Result<Solution> Read;
 		std::filesystem::file_time_type StampWithProjectsNamed;
 		bool ReaderThrew = false;
@@ -112,7 +111,7 @@ namespace Graphite {
 		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::DirectoryWatcher::Start,
 				  Core::JobSubmitter submitJob = RunJobWhereSubmitted, SolutionReading readSolution = ReadSolution)
 			: m_Events(events), m_AppSettings(settings), m_StartWatcher(std::move(startWatcher)),
-			  m_SubmitJob(std::move(submitJob)), m_ReadSolution(std::move(readSolution))
+			  m_SolutionRead(std::move(submitJob)), m_ReadSolution(std::move(readSolution))
 		{
 		}
 
@@ -154,7 +153,7 @@ namespace Graphite {
 
 		std::uint64_t GetSolutionLoad() const { return m_SolutionLoads; }
 
-		bool IsReadingSolution() const { return m_ReadingSolution; }
+		bool IsReadingSolution() const { return m_SolutionRead.IsInFlight(); }
 		const std::optional<std::string>& GetSolutionReadFailure() const { return m_SolutionReadFailure; }
 		const std::filesystem::path& GetSelectedSolution() const { return m_SelectedSolution; }
 
@@ -218,11 +217,8 @@ namespace Graphite {
 		Core::EventBus& m_Events;
 		AppSettings& m_AppSettings;
 		WatcherStart m_StartWatcher;
-		Core::JobSubmitter m_SubmitJob;
+		Core::LatestAnswer<SolutionRead> m_SolutionRead;
 		SolutionReading m_ReadSolution;
-		Core::Ref<Core::Mailbox<SolutionRead>> m_FinishedSolutionReads = Core::CreateRef<Core::Mailbox<SolutionRead>>();
-		std::uint64_t m_SolutionReadGeneration = 0;
-		bool m_ReadingSolution = false;
 		bool m_ReadingAgainAfterAThrow = false;
 		std::optional<Core::Repository> m_Repository;
 		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;

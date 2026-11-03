@@ -1,11 +1,9 @@
 #include "Explorer/FolderListing.h"
 
-#include "Core/App/Redraw.h"
 #include "Core/Base/Result.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 
-#include <mutex>
 #include <utility>
 
 namespace Graphite {
@@ -99,24 +97,8 @@ namespace Graphite {
 		return entries;
 	}
 
-	struct FolderListing::FinishedRead
+	FolderListing::FolderListing(Core::JobSubmitter submit) : m_Read(std::move(submit))
 	{
-		std::mutex Mutex;
-
-		std::uint64_t WantedGeneration = 0;
-		std::uint64_t Generation = 0;
-		bool Ready = false;
-		std::vector<ListedEntry> Entries;
-	};
-
-	FolderListing::FolderListing(Core::JobSubmitter submit)
-		: m_Submit(std::move(submit)), m_Finished(std::make_shared<FinishedRead>())
-	{
-	}
-
-	FolderListing::~FolderListing()
-	{
-		m_Cancellation.Cancel();
 	}
 
 	void FolderListing::SetRoot(const std::filesystem::path& root)
@@ -126,20 +108,12 @@ namespace Graphite {
 			return;
 		}
 
-		m_Cancellation.Cancel();
-
-		{
-			const std::lock_guard<std::mutex> lock(m_Finished->Mutex);
-			m_Finished->WantedGeneration = 0;
-			m_Finished->Ready = false;
-			m_Finished->Entries.clear();
-		}
+		m_Read.Forget();
 
 		m_Root = root;
 		m_Entries.clear();
 		m_UnreadFolders.clear();
 		m_HasListing = false;
-		m_Reading = false;
 		m_OutOfDate = true;
 		++m_Version;
 	}
@@ -165,7 +139,7 @@ namespace Graphite {
 	{
 		TakeFinishedRead();
 
-		if (m_OutOfDate && !m_Reading && !m_Root.empty())
+		if (m_OutOfDate && !m_Read.IsInFlight() && !m_Root.empty())
 		{
 			StartRead();
 
@@ -196,61 +170,23 @@ namespace Graphite {
 
 	void FolderListing::StartRead()
 	{
-		m_Cancellation = Core::CancellationToken{};
 		m_OutOfDate = false;
-		m_Reading = true;
 
-		const std::uint64_t generation = ++m_ReadGeneration;
-
-		{
-			const std::lock_guard<std::mutex> lock(m_Finished->Mutex);
-			m_Finished->WantedGeneration = generation;
-			m_Finished->Ready = false;
-		}
-
-		m_Submit([root = m_Root, cancellation = m_Cancellation, finished = m_Finished, generation] {
-			std::vector<ListedEntry> entries = ListFolder(root, cancellation);
-
-			{
-				const std::lock_guard<std::mutex> lock(finished->Mutex);
-
-				if (finished->WantedGeneration != generation)
-				{
-					return;
-				}
-
-				finished->Generation = generation;
-				finished->Entries = std::move(entries);
-				finished->Ready = true;
-			}
-
-			Core::Redraw::Request();
-		});
+		m_Read.Ask([root = m_Root](const Core::CancellationToken& cancellation) { return ListFolder(root, cancellation); });
 	}
 
 	void FolderListing::TakeFinishedRead()
 	{
-		if (!m_Reading)
+		std::optional<std::vector<ListedEntry>> entries = m_Read.TakeNewest();
+
+		if (!entries.has_value())
 		{
 			return;
 		}
 
-		{
-			const std::lock_guard<std::mutex> lock(m_Finished->Mutex);
-
-			if (!m_Finished->Ready || m_Finished->Generation != m_ReadGeneration)
-			{
-				return;
-			}
-
-			m_Entries = std::move(m_Finished->Entries);
-			m_Finished->Entries.clear();
-			m_Finished->Ready = false;
-		}
-
+		m_Entries = std::move(*entries);
 		m_UnreadFolders = FoldersNotEntered(m_Entries);
 		m_HasListing = true;
-		m_Reading = false;
 		++m_Version;
 	}
 }

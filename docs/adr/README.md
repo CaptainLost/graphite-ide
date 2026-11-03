@@ -691,4 +691,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0659](0659-let-each-shortcut-say-whether-it-fires-while-the-user-types.md) | Let each shortcut say whether it fires while the user types | proposed | 2026-11-02 |
 | [0660](0660-carry-a-folder-s-trust-with-it-when-it-moves-while-open.md) | Carry a folder's trust with it when it moves while open | proposed | 2026-11-03 |
 | [0661](0661-take-the-open-folder-through-its-transitions-in-one-module-whose-participants-decide-every-step.md) | Take the open folder through its transitions in one module whose participants decide every step | proposed | 2026-11-03 |
+| [0662](0662-ask-background-work-through-core-latestanswer-when-only-the-newest-answer-counts.md) | Ask background work through Core::LatestAnswer when only the newest answer counts | proposed | 2026-11-03 |
 <!-- /adr-index -->

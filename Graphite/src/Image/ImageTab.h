@@ -5,7 +5,7 @@
 #include "Core/Image/ImageDecoding.h"
 #include "Core/ImGui/ImageTexture.h"
 #include "Core/Jobs/JobSubmitter.h"
-#include "Core/Jobs/Mailbox.h"
+#include "Core/Jobs/LatestAnswer.h"
 #include "Image/ImageStatus.h"
 #include "Image/Zoom.h"
 
@@ -99,26 +99,21 @@ namespace Graphite {
 
 		struct LoadedPicture
 		{
-			std::uint64_t Generation = 0;
 			Core::Result<Core::DecodedImage> Decoded;
 			std::optional<DiskStamp> Stamp;
 			std::uint64_t FileSize = 0;
 		};
 
 		static std::optional<DiskStamp> ReadStamp(const std::filesystem::path& path);
-		static LoadedPicture ReadAndDecode(const std::filesystem::path& path, std::uint64_t generation,
-										   const Core::DecodeLimits& limits);
+		static LoadedPicture ReadAndDecode(const std::filesystem::path& path, const Core::DecodeLimits& limits);
 
 		void TakeLanded();
 		void Apply(LoadedPicture picture);
 		void Animate(std::chrono::steady_clock::time_point now, bool shown);
 
 		std::filesystem::path m_Path;
-		Core::JobSubmitter m_Submit;
+		Core::LatestAnswer<LoadedPicture> m_Load;
 		Core::TextureFactory& m_Textures;
-
-		// WARNING: Held through a shared_ptr so a job still finishing after the tab was closed has somewhere to post.
-		Core::Ref<Core::Mailbox<LoadedPicture>> m_Landed = Core::CreateRef<Core::Mailbox<LoadedPicture>>();
 
 		ImageTabState m_State = ImageTabState::Loading;
 		std::string m_Failure;
@@ -136,8 +131,6 @@ namespace Graphite {
 		// The version last read, whether it was shown or failed, so a broken file is not read again on every check.
 		std::optional<DiskStamp> m_Stamp;
 
-		std::uint64_t m_Generation = 0;
-		bool m_LoadRunning = false;
 		bool m_NeedsLoad = true;
 		bool m_CheckAfterLoad = false;
 	};

@@ -71,18 +71,17 @@ namespace Graphite {
 	}
 
 	ImageTab::ImageTab(std::filesystem::path path, Core::JobSubmitter submit, Core::TextureFactory& textures)
-		: m_Path(std::move(path)), m_Submit(std::move(submit)), m_Textures(textures)
+		: m_Path(std::move(path)), m_Load(std::move(submit)), m_Textures(textures)
 	{
 	}
 
 	void ImageTab::Load()
 	{
-		if (m_LoadRunning)
+		if (m_Load.IsInFlight())
 		{
 			return;
 		}
 
-		m_LoadRunning = true;
 		m_NeedsLoad = false;
 		m_CheckAfterLoad = false;
 
@@ -96,9 +95,7 @@ namespace Graphite {
 		Core::DecodeLimits limits;
 		limits.MaximumSide = m_Textures.GetMaximumSide();
 
-		m_Submit([path = m_Path, generation = ++m_Generation, limits, landed = m_Landed] {
-			landed->Post(ReadAndDecode(path, generation, limits));
-		});
+		m_Load.Ask([path = m_Path, limits](const Core::CancellationToken&) { return ReadAndDecode(path, limits); });
 	}
 
 	void ImageTab::Update(std::chrono::steady_clock::time_point now, bool shown)
@@ -121,7 +118,7 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_LoadRunning)
+		if (m_Load.IsInFlight())
 		{
 			m_CheckAfterLoad = true;
 			return;
@@ -143,8 +140,7 @@ namespace Graphite {
 		m_FrameShownAt.reset();
 		m_ReloadFailure.clear();
 
-		++m_Generation;
-		m_LoadRunning = false;
+		m_Load.Forget();
 		m_CheckAfterLoad = false;
 
 		if (m_State != ImageTabState::Failed)
@@ -259,8 +255,7 @@ namespace Graphite {
 		return DiskStamp{time, size};
 	}
 
-	ImageTab::LoadedPicture ImageTab::ReadAndDecode(const std::filesystem::path& path, std::uint64_t generation,
-													const Core::DecodeLimits& limits)
+	ImageTab::LoadedPicture ImageTab::ReadAndDecode(const std::filesystem::path& path, const Core::DecodeLimits& limits)
 	{
 		// Taken before the read, so a change during it shows as a newer stamp at the next check.
 		const std::optional<DiskStamp> stamp = ReadStamp(path);
@@ -269,7 +264,7 @@ namespace Graphite {
 
 		if (!format)
 		{
-			return {generation, Core::Error{Core::ErrorCode::Unsupported, "its extension names no image format"}, stamp};
+			return {Core::Error{Core::ErrorCode::Unsupported, "its extension names no image format"}, stamp};
 		}
 
 		try
@@ -279,32 +274,27 @@ namespace Graphite {
 
 			if (!bytes)
 			{
-				return {generation, ReadFailure(bytes.GetError()), stamp};
+				return {ReadFailure(bytes.GetError()), stamp};
 			}
 
 			const std::string& contents = bytes.GetValue();
 			const std::span<const std::uint8_t> read{reinterpret_cast<const std::uint8_t*>(contents.data()), contents.size()};
-			return {generation, Core::DecodeImage(read, *format, limits), stamp, read.size()};
+			return {Core::DecodeImage(read, *format, limits), stamp, read.size()};
 		}
 		catch (const std::bad_alloc&)
 		{
-			return {generation, Core::Error{Core::ErrorCode::IoFailure, "there is not enough memory to read it"}, stamp};
+			return {Core::Error{Core::ErrorCode::IoFailure, "there is not enough memory to read it"}, stamp};
 		}
 	}
 
 	void ImageTab::TakeLanded()
 	{
-		for (LoadedPicture& picture : m_Landed->TakeAll())
+		if (std::optional<LoadedPicture> picture = m_Load.TakeNewest())
 		{
-			// Only the newest load counts; one asked for before a release or another load lands as nothing.
-			if (picture.Generation == m_Generation)
-			{
-				m_LoadRunning = false;
-				Apply(std::move(picture));
-			}
+			Apply(std::move(*picture));
 		}
 
-		if (m_CheckAfterLoad && !m_LoadRunning)
+		if (m_CheckAfterLoad && !m_Load.IsInFlight())
 		{
 			m_CheckAfterLoad = false;
 			CheckDisk();
