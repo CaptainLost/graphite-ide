@@ -71,3 +71,23 @@ TEST_CASE("Lines: a missing or malformed or newer answers file reads as no answe
 		directory.MakeFile("newer.json", R"({"version": 2, "addedBases": ["refs/heads/x"], "mainLine": "refs/heads/y"})");
 	CHECK(LoadLineAnswers(newer) == Core::LineAnswers{});
 }
+
+TEST_CASE("Lines: a fixed directory gives a fixed folder name")
+{
+	// FNV-1a 64 of "c:/repo/.git", computed apart from the code under test.
+	CHECK(LineStoreFor("C:/Repo/.git", "C:/Store").Answers.parent_path().filename() == "28b19bcbf6674468");
+}
+
+TEST_CASE("Lines: only an existing readable file of another version is foreign")
+{
+	TempDirectory directory;
+
+	CHECK(HasForeignVersion(directory.GetPath() / "missing.json") == false);
+	CHECK(HasForeignVersion(directory.MakeFile("malformed.json", "{not json")) == false);
+	CHECK(HasForeignVersion(directory.MakeFile("two.json", R"({"version": 2})")) == true);
+	CHECK(HasForeignVersion(directory.MakeFile("text.json", R"({"version": "x"})")) == true);
+
+	const std::filesystem::path saved = directory.GetPath() / "saved.json";
+	REQUIRE(SaveLineAnswers(saved, Core::LineAnswers{}));
+	CHECK(HasForeignVersion(saved) == false);
+}

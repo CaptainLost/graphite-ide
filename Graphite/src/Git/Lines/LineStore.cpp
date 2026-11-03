@@ -7,7 +7,11 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace Graphite {
 
@@ -150,6 +154,27 @@ namespace Graphite {
 		}
 
 		return answers;
+	}
+
+	bool HasForeignVersion(const std::filesystem::path& file)
+	{
+		const Core::Result<std::string> bytes = Core::ReadFileBytes(file);
+
+		if (!bytes)
+		{
+			return false;
+		}
+
+		const nlohmann::json document = nlohmann::json::parse(bytes.GetValue(), nullptr, false);
+
+		if (document.is_discarded() || !document.is_object())
+		{
+			return false;
+		}
+
+		const auto version = document.find("version");
+
+		return version != document.end() && !(version->is_number_integer() && version->get<std::int64_t>() == kAnswersVersion);
 	}
 
 	Core::Result<void> SaveLineAnswers(const std::filesystem::path& file, const Core::LineAnswers& answers)
