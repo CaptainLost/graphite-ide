@@ -536,9 +536,16 @@ namespace Graphite {
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
+			// WARNING: Every root the folder's open and close set is set again here. The git port and
+			// the language servers otherwise keep reading the old path, which no longer exists.
+			m_LanguageServices.SetFallbackRoot(event.To);
+
 			m_DocumentWindows.HandleRootMoved(event.From, event.To);
 			m_StateKeeper.MoveWorkspace(event.To);
 			m_ReviewStore.MoveTo(event.To);
+
+			m_GitPort.SetRoot(event.To);
+			LetGoOfOldRepositoryOnWriteWorker();
 		});
 
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
