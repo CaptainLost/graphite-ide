@@ -62,7 +62,8 @@ namespace Core {
 		std::size_t CountMergedLines(const AncestryGraph& graph, const std::vector<Index>& stretch,
 									 std::span<const Index> baseTips, std::int64_t now)
 		{
-			const std::vector<bool> onBase = MarkBaseChains(graph, baseTips);
+			std::vector<bool> onBase; // built on the first candidate: most lines have no merge to judge
+			bool onBaseBuilt = false;
 			const std::int64_t windowStart = now - kActiveWindow;
 			std::vector<Index> lines; // one commit per distinct merged line
 
@@ -78,6 +79,12 @@ namespace Core {
 				for (std::size_t i = 1; i < parents.size(); ++i)
 				{
 					const Index candidate = parents[i];
+
+					if (!onBaseBuilt)
+					{
+						onBase = MarkBaseChains(graph, baseTips);
+						onBaseBuilt = true;
+					}
 
 					if (onBase[candidate])
 					{
