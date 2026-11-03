@@ -2,7 +2,7 @@
 
 #include "Core/Git/Repository.h"
 
-#include "Git/GitFixture.h"
+#include "GitFixture.h"
 #include "Git/WorktreeFixture.h"
 #include "TempDirectory.h"
 

@@ -3,7 +3,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 
-#include "Git/GitFixture.h"
+#include "GitFixture.h"
 
 #include <git2.h>
 

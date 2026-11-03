@@ -3,7 +3,7 @@
 #include "Core/Git/PatchMatch.h"
 #include "Core/Git/Repository.h"
 
-#include "Git/GitFixture.h"
+#include "GitFixture.h"
 
 #include <cstddef>
 #include <cstdint>
