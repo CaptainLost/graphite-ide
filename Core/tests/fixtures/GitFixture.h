@@ -104,39 +104,15 @@ public:
 
 	std::string CommitAs(const std::string& message, const std::string& authorName, const std::string& authorEmail)
 	{
-		git_oid treeId = StageEverything();
+		return CommitWithSignatureTime(message, authorName, authorEmail, NextCommitTime());
+	}
 
-		git_tree* tree = nullptr;
-		REQUIRE(git_tree_lookup(&tree, m_Repository, &treeId) == 0);
-
-		git_signature* signature = MakeSignature(authorName, authorEmail);
-
-		git_oid parentId{};
-		const bool hasParent = git_reference_name_to_id(&parentId, m_Repository, "HEAD") == 0;
-
-		git_commit* parent = nullptr;
-		if (hasParent)
-		{
-			REQUIRE(git_commit_lookup(&parent, m_Repository, &parentId) == 0);
-		}
-
-		const git_commit* parents[1] = {parent};
-		const std::size_t parentCount = hasParent ? 1u : 0u;
-		const git_commit** parentsOrNone = hasParent ? parents : nullptr;
-
-		git_oid commitId{};
-		REQUIRE(git_commit_create(&commitId, m_Repository, "HEAD", signature, signature, "UTF-8",
-								  message.c_str(), tree, parentCount, parentsOrNone) == 0);
-
-		if (parent != nullptr)
-		{
-			git_commit_free(parent);
-		}
-
-		git_signature_free(signature);
-		git_tree_free(tree);
-
-		return HexTextOf(commitId);
+	// Like CommitAs, but author and committer time are day `day` after 2026-01-01T00:00Z, so a test can spread history over days.
+	std::string CommitAt(const std::string& message, const std::string& authorEmail, int day)
+	{
+		const git_time_t kFirstDayStart = 1767225600;
+		const git_time_t kSecondsPerDay = 86400;
+		return CommitWithSignatureTime(message, kDefaultAuthorName, authorEmail, kFirstDayStart + kSecondsPerDay * day);
 	}
 
 	void Branch(const std::string& name)
@@ -334,6 +310,43 @@ public:
 	}
 
 private:
+	std::string CommitWithSignatureTime(const std::string& message, const std::string& authorName, const std::string& authorEmail, git_time_t commitTime)
+	{
+		git_oid treeId = StageEverything();
+
+		git_tree* tree = nullptr;
+		REQUIRE(git_tree_lookup(&tree, m_Repository, &treeId) == 0);
+
+		git_signature* signature = MakeSignature(authorName, authorEmail, commitTime);
+
+		git_oid parentId{};
+		const bool hasParent = git_reference_name_to_id(&parentId, m_Repository, "HEAD") == 0;
+
+		git_commit* parent = nullptr;
+		if (hasParent)
+		{
+			REQUIRE(git_commit_lookup(&parent, m_Repository, &parentId) == 0);
+		}
+
+		const git_commit* parents[1] = {parent};
+		const std::size_t parentCount = hasParent ? 1u : 0u;
+		const git_commit** parentsOrNone = hasParent ? parents : nullptr;
+
+		git_oid commitId{};
+		REQUIRE(git_commit_create(&commitId, m_Repository, "HEAD", signature, signature, "UTF-8",
+								  message.c_str(), tree, parentCount, parentsOrNone) == 0);
+
+		if (parent != nullptr)
+		{
+			git_commit_free(parent);
+		}
+
+		git_signature_free(signature);
+		git_tree_free(tree);
+
+		return HexTextOf(commitId);
+	}
+
 	// git_index_add_all picks up only new and modified paths; git_index_update_all is what
 	// notices a deletion.
 	git_oid StageEverything()
@@ -353,16 +366,26 @@ private:
 
 	// The caller names the author; a clock that moves one minute per commit, rather than the real
 	// time, keeps the commit order and the log a failing test prints the same on every run.
-	git_signature* MakeSignature(const std::string& authorName, const std::string& authorEmail)
+	git_time_t NextCommitTime()
 	{
 		const git_time_t kFirstCommitTime = 1000000000;
 		const git_time_t kSecondsBetweenCommits = 60;
+
+		const git_time_t commitTime = kFirstCommitTime + kSecondsBetweenCommits * m_CommitCount;
+		++m_CommitCount;
+		return commitTime;
+	}
+
+	git_signature* MakeSignature(const std::string& authorName, const std::string& authorEmail)
+	{
+		return MakeSignature(authorName, authorEmail, NextCommitTime());
+	}
+
+	git_signature* MakeSignature(const std::string& authorName, const std::string& authorEmail, git_time_t commitTime)
+	{
 		const int kUtcOffsetMinutes = 0;
 
 		git_signature* signature = nullptr;
-		const git_time_t commitTime = kFirstCommitTime + kSecondsBetweenCommits * m_CommitCount;
-		++m_CommitCount;
-
 		REQUIRE(git_signature_new(&signature, authorName.c_str(), authorEmail.c_str(), commitTime, kUtcOffsetMinutes) == 0);
 		return signature;
 	}
