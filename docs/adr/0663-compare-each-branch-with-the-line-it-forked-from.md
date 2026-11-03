@@ -22,12 +22,19 @@ Compare each branch with the line it forked from, found from the commit graph al
 - **Paths.** Take the first-parent chain of every branch tip; together they form a tree.
 - **Weight.** Each commit on the tree gets the number of distinct author e-mails along its heaviest continuation. At a
   fork the continuation is the child with the most distinct authors; ties go to the child with more tips above it,
-  then to the newer commit.
+  then to the newer commit, then to the lower commit id. The last tie is broken by id and not by the commit's place
+  in the cache, which follows the order git returned the commits in, so a cache rebuilt from nothing splits the same.
 - **Split into lines.** From the root up, the continuation keeps its parent's line and every other child starts a new
-  line. Two overrides: the first-parent chain of every base always continues, and a line never continues past a base's
-  tip; and at another branch's tip the line stops when the line below has three or more authors and the work above has
-  fewer than two, because that work is built on the busy line (a stack, an unmerged cherry-pick) and is not the line
-  going on.
+  line. Two overrides: the first-parent chain of every base always continues, and a line stops at a base's tip; and at
+  another branch's tip the line stops when the line below has three or more authors and the work above has fewer than
+  two, because that work is built on the busy line (a stack, an unmerged cherry-pick) and is not the line going on.
+- **Where a base's tip sits on another base's chain.** The bases are listed in order (server defaults or the main line
+  first). At a base's tip the line goes on only along the chain of a base listed before every base whose tip that
+  commit is; otherwise it stops there, so that work built on a base, such as a staging line with commits on the trunk,
+  is a line of its own. The earlier base's chain wins: a release made a base just after it was cut, or a kept staging
+  line reset to the trunk, does not cut the trunk's line in two while it has no commit of its own. Until it has one,
+  such a base owns no line, has no stretch of its own to measure, and a branch forked exactly at its tip is compared
+  with the earlier base.
 - **A branch's line.** Walk down from its tip along its own line. The nearest other branch tip below it, other than a
   copy at the same commit, is what it is built on. Otherwise, at the bottom of its line, it joins another line: a
   base's line gives that base; any other line gives the lowest branch tip at or above the join point. A branch whose
@@ -36,7 +43,8 @@ Compare each branch with the line it forked from, found from the commit graph al
   is a base compares with that base before any walk, in both directions (a local copy of a base belongs in the base's
   row). A diverged local and upstream pair never compares with itself: the branch takes its partner's comparison.
 - **The user's comparison.** It wins. A comparison naming a missing ref, or a ref whose tip the graph lacks, cannot be
-  honoured and is ignored: the automatic rule above decides.
+  honoured and is ignored: the automatic rule above decides. What the rule gives is kept beside the user's answer, so
+  the window can show both.
 - **Counts and merged.** Ahead is the commits reachable from the branch and not from its line. A branch is merged by
   history when its tip is reachable from its line's tip. A branch that only points into the line, that is, whose tip
   is on the line's first-parent chain, has no own commits, which is its own state: a fresh branch is never shown as
@@ -47,9 +55,8 @@ Compare each branch with the line it forked from, found from the commit graph al
 - Names are carried and compared for equality only. The user may override any branch's line; the override wins and is
   stored with the repository's answers ([0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md)).
 
-This supersedes the single trunk of 0654 and the origin-only review base of 0589 for the Git window and for the
-callers that used them. It is a partial supersession, and the house practice for one is to say so in the new record
-and leave the old records' statuses alone (both are still proposed); no status line was changed.
+This supersedes the single trunk of 0654 and the origin-only review base of 0589, in part: for the Git window and for
+the callers that used them.
 
 ## Rationale
 

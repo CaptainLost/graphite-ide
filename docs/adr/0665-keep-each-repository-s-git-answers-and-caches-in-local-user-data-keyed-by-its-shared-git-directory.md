@@ -28,11 +28,19 @@ Keep both in Graphite's per-user data, in a folder per repository, named by the 
 - Nothing is written into the repository or a working tree. Reading a repository never changes it.
 - An incremental read asks git only for what the cache lacks: it hides the cache's own heads (every cached commit that
   no other cached commit has as a parent), not the current branch tips, so a branch that moved does not make the
-  commits below its old tip be read again. If git cannot hide a cached head (it was pruned after its branch was
-  deleted), the cache is discarded and the whole graph is read once.
-- An answers file written by a newer version reads as empty and is not overwritten. A malformed file reads as empty
-  and is logged. The graph is rewritten whenever it changed, and read in full again when it holds commits cut off by a
-  shallow clone that has since been deepened.
+  commits below its old tip be read again. A cached head git no longer has (pruned after its branch was deleted) is
+  passed over, and what only it would have hidden is read again; only if the read still fails is the cache discarded
+  and the whole graph read once. A branch whose tip git cannot read as a commit (a missing object, or an object that is
+  no commit) is not read and is reported as such; it never fails the read.
+- A read changes the answers by itself in two ways: it adds the bases the rules found to the kept bases, and it drops
+  kept bases and comparisons that name refs no longer there (removed bases stay removed). Before it saves, it reads the
+  file again and applies only those changes to what the file then holds, so an answer the user gave while the read ran
+  survives. It never writes over a file from a newer version, nor over one that exists but cannot be read, such as a
+  hand edit with a typo. Either reads as empty, and a malformed one is logged.
+- The graph is rewritten whenever it changed, parents before children, and a file in which a parent does not come
+  before its child is damaged and is not loaded. It is read in full again when it holds commits cut off by a shallow
+  clone that is no longer shallow (`--unshallow`); a clone deepened but still shallow (`--deepen`) keeps its cut
+  commits cached until the cache is discarded.
 
 ## Rationale
 
@@ -54,7 +62,10 @@ one name every worktree agrees on.
 - Moving or renaming the repository's directory gives it a new folder, and the answers and the cache are lost; the old
   folder is left behind.
 - Nothing prunes the folders of repositories that no longer exist.
-- Two Graphite processes on one repository can write the same files; each write replaces a file as a whole.
+- Two Graphite processes on one repository can write the same files; each write replaces a file as a whole. An answer
+  saved between a read's second look at the answers file and its write is still lost; that window is a few
+  milliseconds, not the length of the read.
+- Commits of deleted branches stay in the cached graph; nothing prunes them.
 
 ### Neutral
 

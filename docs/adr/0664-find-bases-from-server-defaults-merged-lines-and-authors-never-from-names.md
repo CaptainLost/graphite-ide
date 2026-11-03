@@ -19,12 +19,19 @@ branches into bases.
 Find the bases from the data, in `Core::ComputeLines`, with the thresholds named in `LineThresholds.h`.
 
 - **Server defaults.** Each remote's default branch (its symbolic HEAD) is a base, unless it is an old copy. A default
-  is an old copy only of a base on a different, non-empty remote whose first-parent chain holds the default's tip
-  strictly below that base's tip. When two defaults from different remotes are at the same commit, the one whose
-  remote has fewer refs becomes the old copy of the other. Old copies are listed as such and never used. The test is
-  made again against every base after the other rules have run, and the lines are computed once more without the new
-  old copies. Old copies exist for forks, which are a matter of remotes and not of names: a fork whose `origin`
-  reports a stale default finds the real main line from the rules below and asks no question.
+  is an old copy only of a base on a different, non-empty remote that has at least as many refs as the default's own
+  remote (counting every ref of each remote in the input), and whose first-parent chain holds the default's tip
+  strictly below that base's tip; a colleague's remote with one integration branch built on the default's tip does
+  not demote the default. The walk down that chain reads commit times as numbers and gives up a day below the
+  default's commit time, so a badly skewed clock can hide an old copy but never make one. When two defaults from
+  different remotes are at the same commit, the one whose remote has fewer refs becomes the old copy of the other;
+  with as many refs on each, the one whose remote name sorts later does. Old copies are listed as such and never used.
+  The test runs once, against every base, after the other rules have run; the lines are then computed once more
+  without the old copies, and each old copy is named a copy of the base whose line holds its tip in that split, so a
+  release line forked above the stale tip and listed earlier does not take it from the main line. Old copies exist
+  for forks, which are a matter of remotes and not of names: a fork whose `origin` reports a stale default keeps the
+  upstream's default as its main line when the upstream reports one, and otherwise guesses the upstream's main line
+  found by the rules below and asks once (see "No main line").
 - **The user's answers.** Bases the user added are bases; bases the user removed are not. The user's choice of the main
   line is a base.
 - **Merged lines.** A line into whose own stretch (its commits up to where it joins another line) three or more
@@ -40,13 +47,15 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
   qualify are added as bases, and the split is run again, until a pass adds none. Real repositories settle in two
   passes; a cap of six keeps a pathological history from going round for ever.
 - **No main line.** The model guesses whenever no ServerDefault or MainLineByUser base exists: no remote default, a
-  default whose tip is missing, a main-line answer naming a missing ref, or the only default removed by the user.
+  default whose tip is missing, a main-line answer naming a missing ref, or the only default removed by the user; and
+  again after the old copies are set aside when every default was one, never guessing an old copy.
   Added and Kept bases do not stop the guess. The guess counts per line: each active branch votes for the line of the
   ref it is compared with in a split with no base pinned, branches at one commit vote once, and the guess is that
   line's first ref that the user has not removed, at its top. A removed ref passes its count to the next ref at the same
   commit, and when every top ref of the busiest line is removed the next line is tried. The guess is marked as guessed
   everywhere it is shown, and the window asks once which branch is the main line. The answer is stored per repository.
-- No rule reads a name. Names are carried and compared for equality only.
+- No rule reads a name. Names are carried and compared for equality only; the one tie a remote name settles (two
+  defaults at one commit on remotes with as many refs) compares names for order, not for meaning.
 
 ## Rationale
 
@@ -69,7 +78,8 @@ The guess has to be a question because in a copy of this repository the plain he
 - Agent and integration branches that many people merge into appear as bases while they are active. They are not wrong
   by the rules and the user can stop one; the window cannot tell them from a release line.
 - A repository with no remote default and no stated main line is asked once, and its guess is shown as a guess until
-  then.
+  then; so is a fork whose own default is an old copy and whose upstream reports no default.
+- A stale default in a fork whose upstream has fewer refs than the fork stays a base.
 
 ### Neutral
 
