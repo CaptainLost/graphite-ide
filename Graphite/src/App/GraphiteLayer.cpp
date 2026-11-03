@@ -34,7 +34,6 @@
 #include "Search/ReferencesPanel.h"
 #include "Sessions/SessionsPanel.h"
 #include "Terminal/TerminalWindows.h"
-#include "Persistence/RestrictedRestore.h"
 
 #include <format>
 #include <functional>
@@ -46,6 +45,7 @@
 #include "Settings/AppSettings.h"
 #include "Settings/Panel/SettingsPanel.h"
 
+#include "App/FolderParticipants.h"
 #include "App/GraphiteMenu.h"
 #include "App/LanguageServerChoice.h"
 #include "App/SampleToasts.h"
@@ -451,40 +451,9 @@ namespace Graphite {
 		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
 
-		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
-			// WARNING: Set the fallback root before RestoreState: a tab opened with a server resolves its root once and keeps it.
-			m_LanguageServices.SetFallbackRoot(event.Root);
+		AddFolderParticipants();
 
-			// WARNING: A folder dropped over another replaces it without a WorkspaceClosedEvent, so everything belonging to the replaced folder is let go here, before this folder's state comes back.
-			m_StateKeeper.CloseWorkspace();
-
-			m_DocumentWindows.CarryOverOpenDocuments();
-
-			m_SessionWindows.CarryOverOpenSessions();
-			m_Terminals.CarryOverOpenTerminals();
-
-			const bool trusted = m_Trust.IsTrusted(event.Root);
-
-			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
-			const WorkspaceState restorable = RestorableState(stored, event.Root, trusted);
-			m_DocumentWindows.RestoreState(restorable);
-			m_SessionWindows.RestoreState(restorable.Sessions);
-			m_Terminals.RestoreState(restorable.Terminals, trusted);
-			m_GitView->RestoreWindowState(restorable.GitWindow);
-			m_StateKeeper.AdoptWorkspace(event.Root, stored);
-
-			m_GitPort.SetRoot(event.Root);
-			LetGoOfOldRepositoryOnWriteWorker();
-
-			LetGoOfFolderWindows();
-
-			// WARNING: Restore the diffs and reviews after letting go of the last folder's, never before: only the ones this
-			// folder had open last time belong to it.
-			m_DiffWindows.RestoreState(restorable.Diffs);
-
-			m_ReviewStore.Open(event.Root);
-			m_ReviewWindows.RestoreState(restorable.Reviews, m_ReviewStore.GetSessions());
-		});
+		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) { m_Folder.Open(event.Root); });
 
 		// WARNING: Cleared on WorkspaceOpeningEvent, not WorkspaceOpenedEvent: by then the new folder has reported its own failures, and clearing would take those with it.
 		m_Events.Subscribe<WorkspaceOpeningEvent>([this](const WorkspaceOpeningEvent&) {
@@ -514,41 +483,12 @@ namespace Graphite {
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
-			const std::filesystem::path noRoot;
-
-			m_LanguageServices.SetFallbackRoot(noRoot);
-
-			// WARNING: StateKeeper writes from the last frame's snapshot, so closing the documents below does not affect what it writes.
-			m_StateKeeper.CloseWorkspace();
-
-			m_Terminals.CarryOverOpenTerminals();
-
-			m_Documents.CloseAll();
-
-			// WARNING: Clearing the root releases the port's cached repository handles, which otherwise block the user from deleting .git on Windows.
-			m_GitPort.SetRoot(noRoot);
-			LetGoOfOldRepositoryOnWriteWorker();
-
-			LetGoOfFolderWindows();
-
+			m_Folder.Close();
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
 
-		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
-			// WARNING: Trust follows first: the documents moved below ask it whether their server may run.
-			m_Trust.FollowFolderMove(event.From, event.To);
-
-			// WARNING: Every root the folder's open and close set is set again here. The git port and
-			// the language servers otherwise keep reading the old path, which no longer exists.
-			m_LanguageServices.SetFallbackRoot(event.To);
-
-			m_DocumentWindows.HandleRootMoved(event.From, event.To);
-			m_StateKeeper.MoveWorkspace(event.To);
-			m_ReviewStore.MoveTo(event.To);
-
-			m_GitPort.SetRoot(event.To);
-			LetGoOfOldRepositoryOnWriteWorker();
-		});
+		m_Events.Subscribe<WorkspaceRootMovedEvent>(
+			[this](const WorkspaceRootMovedEvent& event) { m_Folder.Move(event.From, event.To); });
 
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& event) {
@@ -561,16 +501,24 @@ namespace Graphite {
 		m_GitWrites.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
 	}
 
-	void GraphiteLayer::LetGoOfFolderWindows()
+	void GraphiteLayer::AddFolderParticipants()
 	{
-		m_DiffWindows.CloseAll();
-
-		m_ReviewWindows.CloseAll(m_Reviews);
-		m_ReviewProgress.Clear();
-		m_ReviewStore.Close();
-		m_ReviewedBranches.reset();
-
-		m_DocumentWindows.ClearExpectedWrites();
+		// WARNING: The order is the order of every transition. The servers' root comes before the documents, which
+		// resolve their server's root once when restored and keep it; the saved state comes before the documents,
+		// since it writes from the last frame's snapshot and must not see them closed.
+		m_Folder.Add(Core::CreateScope<ServerRootOfFolder>(m_LanguageServices));
+		m_Folder.Add(Core::CreateScope<SavedStateOfFolder>(m_StateKeeper));
+		m_Folder.Add(Core::CreateScope<DocumentsOfFolder>(m_DocumentWindows, m_Documents));
+		m_Folder.Add(Core::CreateScope<SessionsOfFolder>(m_SessionWindows));
+		m_Folder.Add(Core::CreateScope<TerminalsOfFolder>(m_Terminals));
+		m_Folder.Add(Core::CreateScope<GitWindowOfFolder>(*m_GitView));
+		m_Folder.Add(Core::CreateScope<RepositoryOfFolder>(m_GitPort, [this] { LetGoOfOldRepositoryOnWriteWorker(); }));
+		m_Folder.Add(Core::CreateScope<DiffsOfFolder>(m_DiffWindows));
+		m_Folder.Add(Core::CreateScope<ReviewsOfFolder>(ReviewParts{.Windows = m_ReviewWindows,
+																	.Model = m_Reviews,
+																	.Progress = m_ReviewProgress,
+																	.Store = m_ReviewStore,
+																	.ReviewedBranches = m_ReviewedBranches}));
 	}
 
 	void GraphiteLayer::OpenStartupFolder()
@@ -632,7 +580,7 @@ namespace Graphite {
 
 		const GlobalState globalState = CaptureGlobalState();
 		const std::optional<WorkspaceState> workspaceState =
-			m_Workspace.IsOpen() ? std::optional<WorkspaceState>{CaptureWorkspaceState()} : std::nullopt;
+			m_Workspace.IsOpen() ? std::optional<WorkspaceState>{m_Folder.Capture()} : std::nullopt;
 
 		m_StateKeeper.Observe(timestep.GetSeconds(), globalState, workspaceState);
 	}
@@ -806,18 +754,6 @@ namespace Graphite {
 		});
 
 		state.TerminalsHidden = m_Terminals.IsHidden();
-
-		return state;
-	}
-
-	WorkspaceState GraphiteLayer::CaptureWorkspaceState() const
-	{
-		WorkspaceState state = m_DocumentWindows.CaptureState();
-		state.Sessions = m_SessionWindows.CaptureState();
-		state.Diffs = m_DiffWindows.CaptureState();
-		state.Reviews = m_ReviewWindows.CaptureState();
-		state.Terminals = m_Terminals.CaptureState();
-		state.GitWindow = m_GitView->CaptureWindowState();
 
 		return state;
 	}

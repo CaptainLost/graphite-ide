@@ -51,6 +51,7 @@
 #include "Theme/ActiveScheme.h"
 #include "Settings/UserDirectories.h"
 #include "Workspace/DroppedPaths.h"
+#include "Workspace/FolderTransitions.h"
 #include "Workspace/Workspace.h"
 #include "Workspace/WorkspaceTrust.h"
 
@@ -131,8 +132,7 @@ namespace Graphite {
 
 		void SubscribeToWorkspaceEvents();
 
-		// The windows and caches of the folder being left, whether another opens after it or none does.
-		void LetGoOfFolderWindows();
+		void AddFolderParticipants();
 
 		// WARNING: An idle worker keeps its last folder's packfiles mapped until its next call, which blocks moving
 		// or deleting that folder on Windows.
@@ -200,8 +200,6 @@ namespace Graphite {
 
 		GlobalState CaptureGlobalState();
 
-		WorkspaceState CaptureWorkspaceState() const;
-
 		void FollowBranchesIntoReviews();
 
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
@@ -247,6 +245,10 @@ namespace Graphite {
 
 		// WARNING: Declared before m_LanguageServices, whose root permission reads it, so it is destroyed after.
 		WorkspaceTrust m_Trust{UserDirectories::TrustedFoldersFile()};
+
+		// WARNING: Its participants are added in OnAttach, once the Git window exists; they hold references only and
+		// do nothing on destruction, so the order of the members they refer to does not matter here.
+		FolderTransitions m_Folder{m_Trust, [](const std::filesystem::path& root) { return WorkspaceSettings{root}.LoadState(); }};
 
 		// WARNING: Declared after m_Workspace, because its fallback root reads m_Workspace's;
 		// member initialisers run in declaration order regardless of the order they are listed in.
