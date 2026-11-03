@@ -143,6 +143,14 @@ namespace Graphite {
 		return directory;
 	}
 
+	// WARNING: Local, not roaming: the entries are keyed by paths on this machine.
+	std::filesystem::path UserDirectories::GitRepositoriesDirectory()
+	{
+		static const std::filesystem::path directory = EnsuredDirectory(GetRoots().Local / "git");
+
+		return directory;
+	}
+
 	std::filesystem::path UserDirectories::LogFile()
 	{
 		static const std::filesystem::path file = EnsuredDirectory(GetRoots().Local / "logs") / "graphite.log";
