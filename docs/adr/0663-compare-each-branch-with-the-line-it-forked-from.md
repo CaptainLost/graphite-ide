@@ -32,16 +32,24 @@ Compare each branch with the line it forked from, found from the commit graph al
   copy at the same commit, is what it is built on. Otherwise, at the bottom of its line, it joins another line: a
   base's line gives that base; any other line gives the lowest branch tip at or above the join point. A branch whose
   tip lies on a base's line has no own commits.
+- **Same row.** A local branch and its upstream with the same short name are one row. A branch whose same-row partner
+  is a base compares with that base before any walk, in both directions (a local copy of a base belongs in the base's
+  row). A diverged local and upstream pair never compares with itself: the branch takes its partner's comparison.
+- **The user's comparison.** It wins. A comparison naming a missing ref, or a ref whose tip the graph lacks, cannot be
+  honoured and is ignored: the automatic rule above decides.
 - **Counts and merged.** Ahead is the commits reachable from the branch and not from its line. A branch is merged by
-  history when its tip is reachable from its line's tip. A branch that only points into the line has no own commits,
-  which is its own state: a fresh branch is never shown as merged.
+  history when its tip is reachable from its line's tip. A branch that only points into the line, that is, whose tip
+  is on the line's first-parent chain, has no own commits, which is its own state: a fresh branch is never shown as
+  merged. "On the line" always means that the line's first-parent chain holds the tip, so a branch built on another
+  sits above that branch's tip.
 - The walks are iterative and linear: 200,000 commits in one chain and thousands of branches forking at one commit
   must neither overflow the stack nor go quadratic.
 - Names are carried and compared for equality only. The user may override any branch's line; the override wins and is
   stored with the repository's answers ([0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md)).
 
 This supersedes the single trunk of 0654 and the origin-only review base of 0589 for the Git window and for the
-callers that used them.
+callers that used them. It is a partial supersession, and the house practice for one is to say so in the new record
+and leave the old records' statuses alone (both are still proposed); no status line was changed.
 
 ## Rationale
 

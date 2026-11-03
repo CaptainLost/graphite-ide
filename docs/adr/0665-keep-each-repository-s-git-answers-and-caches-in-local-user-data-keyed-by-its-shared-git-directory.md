@@ -26,6 +26,10 @@ Keep both in Graphite's per-user data, in a folder per repository, named by the 
 - Every worktree of a repository reads and writes the same folder, so the main-line question is asked once per
   repository.
 - Nothing is written into the repository or a working tree. Reading a repository never changes it.
+- An incremental read asks git only for what the cache lacks: it hides the cache's own heads (every cached commit that
+  no other cached commit has as a parent), not the current branch tips, so a branch that moved does not make the
+  commits below its old tip be read again. If git cannot hide a cached head (it was pruned after its branch was
+  deleted), the cache is discarded and the whole graph is read once.
 - An answers file written by a newer version reads as empty and is not overwritten. A malformed file reads as empty
   and is logged. The graph is rewritten whenever it changed, and read in full again when it holds commits cut off by a
   shallow clone that has since been deepened.

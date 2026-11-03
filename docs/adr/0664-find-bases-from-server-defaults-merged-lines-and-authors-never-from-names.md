@@ -18,11 +18,13 @@ branches into bases.
 
 Find the bases from the data, in `Core::ComputeLines`, with the thresholds named in `LineThresholds.h`.
 
-- **Server defaults.** Each remote's default branch (its symbolic HEAD) is a base, unless it is an ancestor of another
-  remote's default: that is an old copy, listed as such and never used. After the other rules have run the test is made
-  again against every base: a remote default that is an ancestor of any base is an old copy, and the lines are
-  computed once more without it. A fork whose `origin` reports a stale default then finds the real main line from the
-  rules below and asks no question.
+- **Server defaults.** Each remote's default branch (its symbolic HEAD) is a base, unless it is an old copy. A default
+  is an old copy only of a base on a different, non-empty remote whose first-parent chain holds the default's tip
+  strictly below that base's tip. When two defaults from different remotes are at the same commit, the one whose
+  remote has fewer refs becomes the old copy of the other. Old copies are listed as such and never used. The test is
+  made again against every base after the other rules have run, and the lines are computed once more without the new
+  old copies. Old copies exist for forks, which are a matter of remotes and not of names: a fork whose `origin`
+  reports a stale default finds the real main line from the rules below and asks no question.
 - **The user's answers.** Bases the user added are bases; bases the user removed are not. The user's choice of the main
   line is a base.
 - **Merged lines.** A line into whose own stretch (its commits up to where it joins another line) three or more
@@ -33,10 +35,17 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
 - **Active and kept.** A base is active when its tip is within 90 days; the others are listed folded. A line found by
   the rules stays a base afterwards, stored with the repository's answers, until the user stops it or the branch is
   deleted.
-- **Bases before lines.** Bases are fixed before the lines are split, in two passes.
-- **No default from any remote.** The model guesses the line that most branches active in the last 90 days have as
-  their line, marks it as guessed everywhere it is shown, and the window asks once which branch is the main line. The
-  answer is stored per repository.
+- **Bases before lines.** Bases are fixed before the lines are split, because the rules read lines and the lines
+  are pinned to the bases. The split is run with the server defaults and the user's answers pinned, the lines that
+  qualify are added as bases, and the split is run again, until a pass adds none. Real repositories settle in two
+  passes; a cap of six keeps a pathological history from going round for ever.
+- **No main line.** The model guesses whenever no ServerDefault or MainLineByUser base exists: no remote default, a
+  default whose tip is missing, a main-line answer naming a missing ref, or the only default removed by the user.
+  Added and Kept bases do not stop the guess. The guess counts per line: each active branch votes for the line of the
+  ref it is compared with in a split with no base pinned, branches at one commit vote once, and the guess is that
+  line's first ref that the user has not removed, at its top. A removed ref passes its count to the next ref at the same
+  commit, and when every top ref of the busiest line is removed the next line is tried. The guess is marked as guessed
+  everywhere it is shown, and the window asks once which branch is the main line. The answer is stored per repository.
 - No rule reads a name. Names are carried and compared for equality only.
 
 ## Rationale
