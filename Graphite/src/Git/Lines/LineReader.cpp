@@ -46,6 +46,31 @@ namespace Graphite {
 			return false;
 		}
 
+		// The cache's heads: commits no other cached commit has as a parent. Hiding them hides the whole cache.
+		std::vector<Core::Oid> HeadsOf(const Core::AncestryGraph& graph)
+		{
+			std::vector<bool> hasChild(graph.Size(), false);
+
+			for (Core::AncestryGraph::Index commit = 0; commit < graph.Size(); ++commit)
+			{
+				for (const Core::AncestryGraph::Index parent : graph.ParentsOf(commit))
+				{
+					hasChild[parent] = true;
+				}
+			}
+
+			std::vector<Core::Oid> heads;
+			for (Core::AncestryGraph::Index commit = 0; commit < graph.Size(); ++commit)
+			{
+				if (!hasChild[commit])
+				{
+					heads.push_back(graph.IdOf(commit));
+				}
+			}
+
+			return heads;
+		}
+
 		bool Contains(const std::vector<std::string>& names, const std::string& name)
 		{
 			return std::ranges::find(names, name) != names.end();
@@ -119,33 +144,24 @@ namespace Graphite {
 
 		for (const Core::LineRef& ref : read.Refs)
 		{
-			if (ref.Tip.IsZero() || !seen.insert(ref.Tip).second)
-			{
-				continue;
-			}
-
-			if (graph.Find(ref.Tip) == Core::AncestryGraph::kNoCommit)
+			if (!ref.Tip.IsZero() && seen.insert(ref.Tip).second && graph.Find(ref.Tip) == Core::AncestryGraph::kNoCommit)
 			{
 				request.Tips.push_back(ref.Tip);
-			}
-			else
-			{
-				request.Known.push_back(ref.Tip);
 			}
 		}
 
 		if (!request.Tips.empty())
 		{
+			request.Known = HeadsOf(graph);
+
 			Core::Result<std::vector<Core::GraphCommit>> commits = repository.ReadGraphCommits(request);
 			if (!commits.HasValue())
 			{
 				return commits.GetError();
 			}
 
-			// A branch tip that moved is no longer a ref tip, so the walk may meet it again; only what the graph lacked counts.
-			const std::size_t sizeBefore = graph.Size();
+			read.CommitsRead = commits.GetValue().size();
 			graph.Append(std::move(commits).GetValue());
-			read.CommitsRead = graph.Size() - sizeBefore;
 			graphChanged = graphChanged || read.CommitsRead > 0;
 		}
 

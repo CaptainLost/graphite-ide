@@ -183,6 +183,35 @@ TEST_CASE("Lines: a new commit is the only thing read after the cache")
 	CHECK(feature->Ahead == 2);
 }
 
+TEST_CASE("Lines: new commits on a single branch are read without the history below them")
+{
+	GitFixture fixture;
+	for (int index = 0; index < 20; ++index)
+	{
+		fixture.Write("a.txt", std::to_string(index));
+		fixture.Commit("old " + std::to_string(index));
+	}
+
+	TempDirectory store;
+	{
+		const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+		const Core::Result<LineRead> first = ReadLines(repository, StoreIn(store), 1800000000);
+		REQUIRE(first.HasValue());
+		CHECK(first.GetValue().CommitsRead == 20);
+	}
+
+	for (int index = 0; index < 3; ++index)
+	{
+		fixture.Write("a.txt", "new" + std::to_string(index));
+		fixture.Commit("new " + std::to_string(index));
+	}
+
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> second = ReadLines(repository, StoreIn(store), 1800000000);
+	REQUIRE(second.HasValue());
+	CHECK(second.GetValue().CommitsRead == 3);
+}
+
 TEST_CASE("Lines: bases found by the rules are kept in the answers")
 {
 	GitFixture fixture;
