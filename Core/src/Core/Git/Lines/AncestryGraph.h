@@ -25,7 +25,7 @@ namespace Core {
 
 	// The history the line model walks, held as flat arrays so that a hundred thousand commits stay
 	// cheap: a commit is a position, and its parents are positions too.
-	class CommitGraph
+	class AncestryGraph
 	{
 	public:
 		using Index = std::uint32_t;

@@ -1,12 +1,12 @@
 #include "corepch.h"
 
-#include "Core/Git/Lines/CommitGraph.h"
+#include "Core/Git/Lines/AncestryGraph.h"
 
 #include <utility>
 
 namespace Core {
 
-	std::uint32_t CommitGraph::InternAuthor(const std::string& key)
+	std::uint32_t AncestryGraph::InternAuthor(const std::string& key)
 	{
 		const auto found = m_authorByKey.find(key);
 
@@ -21,7 +21,7 @@ namespace Core {
 		return index;
 	}
 
-	void CommitGraph::Append(std::vector<GraphCommit> commits)
+	void AncestryGraph::Append(std::vector<GraphCommit> commits)
 	{
 		const std::size_t firstNew = m_ids.size();
 		std::vector<std::vector<Oid>> rawParents;
@@ -63,49 +63,49 @@ namespace Core {
 		}
 	}
 
-	std::size_t CommitGraph::Size() const
+	std::size_t AncestryGraph::Size() const
 	{
 		return m_ids.size();
 	}
 
-	CommitGraph::Index CommitGraph::Find(const Oid& id) const
+	AncestryGraph::Index AncestryGraph::Find(const Oid& id) const
 	{
 		const auto found = m_indexById.find(id);
 		return found == m_indexById.end() ? kNoCommit : found->second;
 	}
 
-	const Oid& CommitGraph::IdOf(Index commit) const
+	const Oid& AncestryGraph::IdOf(Index commit) const
 	{
 		return m_ids[commit];
 	}
 
-	std::span<const CommitGraph::Index> CommitGraph::ParentsOf(Index commit) const
+	std::span<const AncestryGraph::Index> AncestryGraph::ParentsOf(Index commit) const
 	{
 		const std::size_t begin = m_parentStarts[commit];
 		return std::span<const Index>(m_parents).subspan(begin, m_parentStarts[commit + 1] - begin);
 	}
 
-	std::int64_t CommitGraph::TimeOf(Index commit) const
+	std::int64_t AncestryGraph::TimeOf(Index commit) const
 	{
 		return m_times[commit];
 	}
 
-	std::uint32_t CommitGraph::AuthorOf(Index commit) const
+	std::uint32_t AncestryGraph::AuthorOf(Index commit) const
 	{
 		return m_authors[commit];
 	}
 
-	const std::vector<std::string>& CommitGraph::AuthorKeys() const
+	const std::vector<std::string>& AncestryGraph::AuthorKeys() const
 	{
 		return m_authorKeys;
 	}
 
-	bool CommitGraph::ParentsCutAt(Index commit) const
+	bool AncestryGraph::ParentsCutAt(Index commit) const
 	{
 		return m_parentsCut[commit];
 	}
 
-	std::vector<GraphCommit> CommitGraph::ToCommits() const
+	std::vector<GraphCommit> AncestryGraph::ToCommits() const
 	{
 		std::vector<GraphCommit> commits;
 		commits.reserve(m_ids.size());

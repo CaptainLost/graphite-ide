@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/Git/Lines/CommitGraph.h"
+#include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/Oid.h"
 
 #include <cstddef>
@@ -103,9 +103,9 @@ public:
 		m_nowDay = day;
 	}
 
-	Core::CommitGraph Graph() const
+	Core::AncestryGraph Graph() const
 	{
-		Core::CommitGraph graph;
+		Core::AncestryGraph graph;
 		graph.Append(m_commits);
 		return graph;
 	}
