@@ -132,8 +132,234 @@ namespace {
 	}
 
 	constexpr std::int64_t kReleaseScenarioNow = 1767225600 + 30LL * 86400;
+
+	// The id of HEAD's tree: an object that is not a commit.
+	std::string TreeOfHead(const std::filesystem::path& root)
+	{
+		git_repository* raw = nullptr;
+		REQUIRE(git_repository_open(&raw, Core::ToUtf8(root).c_str()) == 0);
+		git_object* tree = nullptr;
+		REQUIRE(git_revparse_single(&tree, raw, "HEAD^{tree}") == 0);
+		const std::string hex = HexTextOf(*git_object_id(tree));
+		git_object_free(tree);
+		git_repository_free(raw);
+		return hex;
+	}
+
+	void WriteAnswersText(const std::filesystem::path& file, const std::string& text)
+	{
+		std::filesystem::create_directories(file.parent_path());
+		std::ofstream out{file, std::ios::binary | std::ios::trunc};
+		out << text;
+	}
 }
 
+TEST_CASE("Lines: a branch tracking a local branch names it under refs/heads")
+{
+	Core::Branch main;
+	main.Name = "main";
+	main.FullName = "refs/heads/main";
+
+	Core::Branch topic;
+	topic.Name = "topic";
+	topic.FullName = "refs/heads/topic";
+	topic.Upstream = "main";
+
+	Core::Branch tracking;
+	tracking.Name = "release";
+	tracking.FullName = "refs/heads/release";
+	tracking.Upstream = "origin/release";
+
+	Core::Branch orphaned;
+	orphaned.Name = "old";
+	orphaned.FullName = "refs/heads/old";
+	orphaned.Upstream = "origin/old";
+
+	const std::vector<Core::LineRef> refs = LineRefsOf({main, topic, tracking, orphaned, RemoteBranch("origin/release")}, {"origin"});
+
+	REQUIRE(refs.size() == 5);
+	REQUIRE(refs[1].UpstreamFullName.has_value());
+	CHECK(*refs[1].UpstreamFullName == "refs/heads/main");
+	REQUIRE(refs[2].UpstreamFullName.has_value());
+	CHECK(*refs[2].UpstreamFullName == "refs/remotes/origin/release");
+	REQUIRE(refs[3].UpstreamFullName.has_value());
+	CHECK(*refs[3].UpstreamFullName == "refs/remotes/origin/old");
+}
+
+TEST_CASE("Lines: a read hands back the graph its model was computed on")
+{
+	GitFixture fixture;
+	BuildMasterAndFeature(fixture);
+	TempDirectory store;
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	for (int readNumber = 0; readNumber < 2; ++readNumber)
+	{
+		const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), 1800000000);
+		REQUIRE(read.HasValue());
+		const LineRead& value = read.GetValue();
+		CHECK(value.Graph.Size() == 4);
+
+		for (const Core::LineRef& ref : value.Refs)
+		{
+			CHECK(value.Graph.Find(ref.Tip) != Core::AncestryGraph::kNoCommit);
+		}
+	}
+}
+
+TEST_CASE("Lines: a reference to a missing object or to an object that is no commit does not stop the read")
+{
+	GitFixture fixture;
+	BuildMasterAndFeature(fixture);
+	fixture.Write(".git/refs/heads/broken", std::string(40, 'a') + "\n");
+	fixture.Write(".git/refs/remotes/origin/not-a-commit", TreeOfHead(fixture.GetPath()) + "\n");
+	TempDirectory store;
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), 1800000000);
+
+	INFO((read.HasValue() ? std::string{} : read.GetError().Message));
+	REQUIRE(read.HasValue());
+	CHECK(read.GetValue().CommitsRead == 4);
+
+	const Core::BranchLine* broken = BranchNamed(read.GetValue(), "refs/heads/broken");
+	REQUIRE(broken != nullptr);
+	CHECK(broken->State == Core::BranchState::TipMissing);
+
+	const Core::BranchLine* notACommit = BranchNamed(read.GetValue(), "refs/remotes/origin/not-a-commit");
+	REQUIRE(notACommit != nullptr);
+	CHECK(notACommit->State == Core::BranchState::TipMissing);
+
+	const Core::BranchLine* feature = BranchNamed(read.GetValue(), "refs/heads/feature");
+	REQUIRE(feature != nullptr);
+	CHECK(feature->Ahead == 1);
+}
+
+TEST_CASE("Lines: a read drops kept bases and comparisons that name references gone from the repository")
+{
+	GitFixture fixture;
+	BuildMasterAndFeature(fixture);
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(store);
+
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/origin/gone", "refs/heads/feature"};
+	answers.RemovedBases = {"refs/remotes/origin/gone-too"};
+	answers.Comparisons["refs/heads/gone"] = "refs/remotes/origin/master";
+	answers.Comparisons["refs/heads/feature"] = "refs/heads/gone";
+	answers.Comparisons["refs/heads/master"] = std::nullopt;
+	REQUIRE(SaveLineAnswers(paths.Answers, answers));
+
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> read = ReadLines(repository, paths, 1800000000);
+	REQUIRE(read.HasValue());
+
+	const Core::LineAnswers saved = LoadLineAnswers(paths.Answers);
+	CHECK(saved.KeptBases == std::vector<std::string>{"refs/heads/feature"});
+	CHECK(saved.RemovedBases == std::vector<std::string>{"refs/remotes/origin/gone-too"});
+	REQUIRE(saved.Comparisons.size() == 1);
+	CHECK(saved.Comparisons.contains("refs/heads/master"));
+	CHECK(saved == read.GetValue().Answers);
+}
+
+TEST_CASE("Lines: an answers file that cannot be read is not overwritten by a read")
+{
+	GitFixture fixture;
+	BuildReleaseScenario(fixture);
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(store);
+	const std::string typo = R"({"version": 1, "removedBases": ["refs/remotes/origin/staging"],})";
+	WriteAnswersText(paths.Answers, typo);
+
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> read = ReadLines(repository, paths, kReleaseScenarioNow);
+	REQUIRE(read.HasValue());
+
+	// The rules did find release, so an unguarded read would have saved it over the file.
+	CHECK(std::ranges::find(read.GetValue().Answers.KeptBases, "refs/remotes/origin/release") != read.GetValue().Answers.KeptBases.end());
+	CHECK(ReadWhole(paths.Answers) == typo);
+}
+
+TEST_CASE("Lines: a read's own changes to the answers are merged into what the file holds when it saves")
+{
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "store" / "answers.json";
+
+	SUBCASE("a base found by the rules joins an answer given while the read ran")
+	{
+		Core::LineAnswers meanwhile;
+		meanwhile.RemovedBases = {"refs/remotes/origin/staging"};
+		REQUIRE(SaveLineAnswers(file, meanwhile));
+
+		Core::LineAnswers computed;
+		computed.KeptBases = {"refs/remotes/origin/release"};
+
+		const Core::LineAnswers result = SaveAnswerChanges(file, Core::LineAnswers{}, computed);
+
+		Core::LineAnswers expected = meanwhile;
+		expected.KeptBases = {"refs/remotes/origin/release"};
+		CHECK(LoadLineAnswers(file) == expected);
+		CHECK(result == expected);
+	}
+
+	SUBCASE("only what the read pruned is dropped")
+	{
+		Core::LineAnswers loaded;
+		loaded.KeptBases = {"refs/remotes/origin/gone", "refs/remotes/origin/release"};
+		loaded.Comparisons["refs/heads/gone"] = "refs/remotes/origin/main";
+		loaded.Comparisons["refs/heads/kept"] = std::nullopt;
+
+		Core::LineAnswers meanwhile = loaded;
+		meanwhile.Comparisons["refs/heads/new"] = "refs/remotes/origin/release";
+		meanwhile.MainLine = "refs/remotes/origin/main";
+		REQUIRE(SaveLineAnswers(file, meanwhile));
+
+		Core::LineAnswers computed = loaded;
+		computed.KeptBases = {"refs/remotes/origin/release"};
+		computed.Comparisons.erase("refs/heads/gone");
+
+		SaveAnswerChanges(file, loaded, computed);
+
+		Core::LineAnswers expected = meanwhile;
+		expected.KeptBases = {"refs/remotes/origin/release"};
+		expected.Comparisons.erase("refs/heads/gone");
+		CHECK(LoadLineAnswers(file) == expected);
+	}
+
+	SUBCASE("a missing file is written")
+	{
+		Core::LineAnswers computed;
+		computed.KeptBases = {"refs/remotes/origin/release"};
+
+		SaveAnswerChanges(file, Core::LineAnswers{}, computed);
+
+		CHECK(LoadLineAnswers(file) == computed);
+	}
+
+	SUBCASE("a file from a newer build is left alone")
+	{
+		const std::string newer = R"({"version": 2})";
+		WriteAnswersText(file, newer);
+		Core::LineAnswers computed;
+		computed.KeptBases = {"refs/remotes/origin/release"};
+
+		SaveAnswerChanges(file, Core::LineAnswers{}, computed);
+
+		CHECK(ReadWhole(file) == newer);
+	}
+
+	SUBCASE("a file that cannot be read is left alone")
+	{
+		const std::string typo = R"({"version": 1, "keptBases": [})";
+		WriteAnswersText(file, typo);
+		Core::LineAnswers computed;
+		computed.KeptBases = {"refs/remotes/origin/release"};
+
+		SaveAnswerChanges(file, Core::LineAnswers{}, computed);
+
+		CHECK(ReadWhole(file) == typo);
+	}
+}
 TEST_CASE("Lines: remote branches belong to the longest remote name that prefixes them")
 {
 	const std::vector<Core::Branch> branches = {RemoteBranch("team/fork/main"), RemoteBranch("team/main"), RemoteBranch("origin/x")};
@@ -248,14 +474,14 @@ TEST_CASE("Lines: new commits on a single branch are read without the history be
 	CHECK(second.GetValue().CommitsRead == 3);
 }
 
-TEST_CASE("Lines: the whole graph is read again when a cached commit is gone from the repository")
+TEST_CASE("Lines: a cached head gone from the repository is passed over and the other heads still hide")
 {
 	GitFixture fixture;
-	std::string tip;
+	std::vector<std::string> commitIds;
 	for (int index = 0; index < 4; ++index)
 	{
 		fixture.Write("a.txt", std::to_string(index));
-		tip = fixture.Commit("old " + std::to_string(index));
+		commitIds.push_back(fixture.Commit("old " + std::to_string(index)));
 	}
 
 	TempDirectory store;
@@ -264,29 +490,29 @@ TEST_CASE("Lines: the whole graph is read again when a cached commit is gone fro
 		REQUIRE(ReadLines(repository, StoreIn(store), 1800000000).HasValue());
 	}
 
-	Core::Oid fakeId;
-	fakeId.Bytes.fill(0xAB);
+	// A branch deleted after the last read, its commit pruned by gc: a cached head git no longer has.
+	Core::Oid ghostId;
+	ghostId.Bytes.fill(0xAB);
 
 	std::optional<Core::AncestryGraph> cached = LoadGraph(StoreIn(store).Graph);
 	REQUIRE(cached.has_value());
 	std::vector<Core::GraphCommit> commits = cached->ToCommits();
-	commits.push_back(Core::GraphCommit{fakeId, {*Core::Oid::FromHex(tip)}, 1, "ghost@example.com", false});
+	commits.push_back(Core::GraphCommit{ghostId, {*Core::Oid::FromHex(commitIds[1])}, 1, "ghost@example.com", false});
 	Core::AncestryGraph withGhost;
 	withGhost.Append(std::move(commits));
 	REQUIRE(SaveGraph(StoreIn(store).Graph, withGhost).HasValue());
 
 	fixture.Write("a.txt", "new");
-	fixture.Commit("new");
+	const std::string fresh = fixture.Commit("new");
 
 	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 	const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), 1800000000);
 	REQUIRE(read.HasValue());
-	CHECK(read.GetValue().CommitsRead == 5);
+	CHECK(read.GetValue().CommitsRead == 1);
 
 	const std::optional<Core::AncestryGraph> saved = LoadGraph(StoreIn(store).Graph);
 	REQUIRE(saved.has_value());
-	CHECK(saved->Size() == 5);
-	CHECK(saved->Find(fakeId) == Core::AncestryGraph::kNoCommit);
+	CHECK(saved->Find(*Core::Oid::FromHex(fresh)) != Core::AncestryGraph::kNoCommit);
 }
 
 TEST_CASE("Lines: bases found by the rules are kept in the answers")

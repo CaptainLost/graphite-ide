@@ -3,7 +3,6 @@
 #include "Git/Lines/GraphFile.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/Requests.h"
 
 #include <algorithm>
@@ -75,10 +74,74 @@ namespace Graphite {
 		{
 			return std::ranges::find(names, name) != names.end();
 		}
+
+		// Each tip once, leaving out a branch whose tip git cannot read as a commit (a missing object, or one that is
+		// no commit): asking git to walk from it would fail the whole read, and the model reports it as TipMissing.
+		std::vector<Core::Oid> ReadableTips(const std::vector<Core::Branch>& branches)
+		{
+			std::vector<Core::Oid> tips;
+			std::unordered_set<Core::Oid> seen;
+
+			for (const Core::Branch& branch : branches)
+			{
+				if (branch.TipCommit.has_value() && seen.insert(branch.Tip).second)
+				{
+					tips.push_back(branch.Tip);
+				}
+			}
+
+			return tips;
+		}
+
+		// Answers about refs that are gone: a kept base or a comparison naming a ref the read did not list. A removed
+		// base stays removed, so that a branch pushed again under the same name does not come back as a base.
+		void DropAnswersAboutGoneRefs(Core::LineAnswers& answers, const std::vector<Core::LineRef>& refs)
+		{
+			std::unordered_set<std::string_view> names;
+
+			for (const Core::LineRef& ref : refs)
+			{
+				names.insert(ref.FullName);
+			}
+
+			const auto isGone = [&names](const std::string& name) { return !names.contains(std::string_view{name}); };
+			std::erase_if(answers.KeptBases, isGone);
+			std::erase_if(answers.Comparisons,
+						  [&isGone](const auto& entry) { return isGone(entry.first) || (entry.second.has_value() && isGone(*entry.second)); });
+		}
+
+		void AddKeptBasesFound(Core::LineAnswers& answers, const Core::LineModel& model, const std::vector<Core::LineRef>& refs)
+		{
+			for (const Core::LineBase& base : model.Bases)
+			{
+				const bool found = base.Reason == Core::BaseReason::MergedLines || base.Reason == Core::BaseReason::Authors;
+				const std::string& name = refs[base.Ref].FullName;
+
+				if (found && !Contains(answers.KeptBases, name))
+				{
+					answers.KeptBases.push_back(name);
+				}
+			}
+		}
 	}
 
 	std::vector<Core::LineRef> LineRefsOf(const std::vector<Core::Branch>& branches, const std::vector<std::string>& remotes)
 	{
+		std::unordered_set<std::string_view> remoteBranchNames;
+		std::unordered_set<std::string_view> localBranchNames;
+
+		for (const Core::Branch& branch : branches)
+		{
+			if (branch.Kind == Core::RefKind::Remote)
+			{
+				remoteBranchNames.insert(branch.Name);
+			}
+			else
+			{
+				localBranchNames.insert(branch.Name);
+			}
+		}
+
 		std::vector<Core::LineRef> refs;
 		refs.reserve(branches.size());
 
@@ -102,7 +165,9 @@ namespace Graphite {
 
 				if (branch.Upstream.has_value())
 				{
-					ref.UpstreamFullName = std::string{Core::kRemoteBranchPrefix} + *branch.Upstream;
+					const bool tracksALocalBranch = !remoteBranchNames.contains(*branch.Upstream) && localBranchNames.contains(*branch.Upstream);
+					ref.UpstreamFullName = tracksALocalBranch ? Core::LocalBranchReference(*branch.Upstream)
+															  : std::string{Core::kRemoteBranchPrefix} + *branch.Upstream;
 				}
 			}
 
@@ -110,6 +175,58 @@ namespace Graphite {
 		}
 
 		return refs;
+	}
+
+	Core::LineAnswers SaveAnswerChanges(const std::filesystem::path& file, const Core::LineAnswers& loaded, const Core::LineAnswers& computed)
+	{
+		const std::optional<Core::LineAnswers> current = LoadLineAnswersToUpdate(file);
+
+		if (!current.has_value())
+		{
+			return computed;
+		}
+
+		Core::LineAnswers merged = *current;
+
+		for (const std::string& name : computed.KeptBases)
+		{
+			if (!Contains(loaded.KeptBases, name) && !Contains(merged.KeptBases, name))
+			{
+				merged.KeptBases.push_back(name);
+			}
+		}
+
+		for (const std::string& name : loaded.KeptBases)
+		{
+			if (!Contains(computed.KeptBases, name))
+			{
+				std::erase(merged.KeptBases, name);
+			}
+		}
+
+		// A comparison the read dropped goes only if nobody changed it since.
+		for (const auto& [branch, target] : loaded.Comparisons)
+		{
+			const auto stillThere = merged.Comparisons.find(branch);
+
+			if (!computed.Comparisons.contains(branch) && stillThere != merged.Comparisons.end() && stillThere->second == target)
+			{
+				merged.Comparisons.erase(stillThere);
+			}
+		}
+
+		if (merged == *current)
+		{
+			return merged;
+		}
+
+		const Core::Result<void> saved = SaveLineAnswers(file, merged);
+		if (!saved.HasValue())
+		{
+			APP_WARN("Could not save the line answers: {}", saved.GetError().Message);
+		}
+
+		return merged;
 	}
 
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, std::int64_t now)
@@ -139,14 +256,14 @@ namespace Graphite {
 			graphChanged = true;
 		}
 
+		const std::vector<Core::Oid> readableTips = ReadableTips(branches.GetValue());
 		Core::GraphReadRequest request;
-		std::unordered_set<Core::Oid> seen;
 
-		for (const Core::LineRef& ref : read.Refs)
+		for (const Core::Oid& tip : readableTips)
 		{
-			if (!ref.Tip.IsZero() && seen.insert(ref.Tip).second && graph.Find(ref.Tip) == Core::AncestryGraph::kNoCommit)
+			if (graph.Find(tip) == Core::AncestryGraph::kNoCommit)
 			{
-				request.Tips.push_back(ref.Tip);
+				request.Tips.push_back(tip);
 			}
 		}
 
@@ -157,20 +274,12 @@ namespace Graphite {
 			Core::Result<std::vector<Core::GraphCommit>> commits = repository.ReadGraphCommits(request);
 			if (!commits.HasValue() && !request.Known.empty())
 			{
-				// A cached head that git no longer has (pruned by gc) would fail every later read: start again from nothing.
+				// Only a fallback, since a cached head git lacks is passed over: whatever else went wrong, the read
+				// starts once more from nothing.
 				graph = Core::AncestryGraph{};
 				graphChanged = true;
 				request.Known.clear();
-				request.Tips.clear();
-
-				for (const Core::LineRef& ref : read.Refs)
-				{
-					if (!ref.Tip.IsZero() && std::ranges::find(request.Tips, ref.Tip) == request.Tips.end())
-					{
-						request.Tips.push_back(ref.Tip);
-					}
-				}
-
+				request.Tips = readableTips;
 				commits = repository.ReadGraphCommits(request);
 			}
 
@@ -184,22 +293,12 @@ namespace Graphite {
 			graphChanged = graphChanged || read.CommitsRead > 0;
 		}
 
-		const bool answersAreForeign = HasForeignVersion(store.Answers);
-		read.Answers = LoadLineAnswers(store.Answers);
-		const Core::LineAnswers loaded = read.Answers;
+		const Core::LineAnswers loaded = LoadLineAnswers(store.Answers);
+		read.Model = Core::ComputeLines(Core::LineModelInput{graph, read.Refs, loaded, now});
 
-		read.Model = Core::ComputeLines(Core::LineModelInput{graph, read.Refs, read.Answers, now});
-
-		for (const Core::LineBase& base : read.Model.Bases)
-		{
-			const bool found = base.Reason == Core::BaseReason::MergedLines || base.Reason == Core::BaseReason::Authors;
-			const std::string& name = read.Refs[base.Ref].FullName;
-
-			if (found && !Contains(read.Answers.KeptBases, name))
-			{
-				read.Answers.KeptBases.push_back(name);
-			}
-		}
+		Core::LineAnswers computed = loaded;
+		AddKeptBasesFound(computed, read.Model, read.Refs);
+		DropAnswersAboutGoneRefs(computed, read.Refs);
 
 		if (graphChanged)
 		{
@@ -210,15 +309,8 @@ namespace Graphite {
 			}
 		}
 
-		if (!(read.Answers == loaded) && !answersAreForeign)
-		{
-			const Core::Result<void> saved = SaveLineAnswers(store.Answers, read.Answers);
-			if (!saved.HasValue())
-			{
-				APP_WARN("Could not save the line answers: {}", saved.GetError().Message);
-			}
-		}
-
+		read.Answers = computed == loaded ? loaded : SaveAnswerChanges(store.Answers, loaded, computed);
+		read.Graph = std::move(graph);
 		return read;
 	}
 }

@@ -4,6 +4,7 @@
 #include "Core/Git/Lines/LineAnswers.h"
 
 #include <filesystem>
+#include <optional>
 
 namespace Graphite {
 
@@ -19,6 +20,11 @@ namespace Graphite {
 
 	// A missing or malformed file, or one written by a newer version, gives empty answers (a malformed one is logged).
 	Core::LineAnswers LoadLineAnswers(const std::filesystem::path& file);
+
+	// For a save nobody asked for: the answers the file holds now, empty when there is no file, and nothing when the
+	// file exists but cannot be read, is malformed or is not version 1. Such a file must not be written over: a
+	// newer build's answers or a hand edit with a typo would be lost.
+	std::optional<Core::LineAnswers> LoadLineAnswersToUpdate(const std::filesystem::path& file);
 
 	// True only for a file that exists and parses as a JSON object whose "version" is present and not 1; a missing or
 	// malformed file, or a version-1 one, is false. A caller that saves unprompted must not do so over such a file.

@@ -95,6 +95,42 @@ namespace Graphite {
 		{
 			return name ? nlohmann::json(*name) : nlohmann::json(nullptr);
 		}
+
+		bool HasOwnVersion(const nlohmann::json& document)
+		{
+			const auto version = document.find("version");
+			return version != document.end() && version->is_number_integer() && version->get<std::int64_t>() == kAnswersVersion;
+		}
+
+		Core::LineAnswers AnswersFrom(const nlohmann::json& document)
+		{
+			Core::LineAnswers answers;
+			answers.AddedBases = NamesFrom(document, "addedBases");
+			answers.RemovedBases = NamesFrom(document, "removedBases");
+			answers.KeptBases = NamesFrom(document, "keptBases");
+
+			if (const auto mainLine = document.find("mainLine"); mainLine != document.end() && mainLine->is_string())
+			{
+				answers.MainLine = mainLine->get<std::string>();
+			}
+
+			if (const auto comparisons = document.find("comparisons"); comparisons != document.end() && comparisons->is_object())
+			{
+				for (const auto& [branch, target] : comparisons->items())
+				{
+					if (target.is_string())
+					{
+						answers.Comparisons[branch] = target.get<std::string>();
+					}
+					else if (target.is_null())
+					{
+						answers.Comparisons[branch] = std::nullopt;
+					}
+				}
+			}
+
+			return answers;
+		}
 	}
 
 	LineStorePaths LineStoreFor(const std::filesystem::path& gitCommonDirectory, const std::filesystem::path& root)
@@ -121,39 +157,38 @@ namespace Graphite {
 			return {};
 		}
 
-		const auto version = document.find("version");
-
-		if (version == document.end() || !version->is_number_integer() || version->get<std::int64_t>() != kAnswersVersion)
+		if (!HasOwnVersion(document))
 		{
 			return {};
 		}
 
-		Core::LineAnswers answers;
-		answers.AddedBases = NamesFrom(document, "addedBases");
-		answers.RemovedBases = NamesFrom(document, "removedBases");
-		answers.KeptBases = NamesFrom(document, "keptBases");
+		return AnswersFrom(document);
+	}
 
-		if (const auto mainLine = document.find("mainLine"); mainLine != document.end() && mainLine->is_string())
+	std::optional<Core::LineAnswers> LoadLineAnswersToUpdate(const std::filesystem::path& file)
+	{
+		std::error_code error;
+
+		if (!std::filesystem::exists(file, error) && !error)
 		{
-			answers.MainLine = mainLine->get<std::string>();
+			return Core::LineAnswers{};
 		}
 
-		if (const auto comparisons = document.find("comparisons"); comparisons != document.end() && comparisons->is_object())
+		const Core::Result<std::string> bytes = Core::ReadFileBytes(file);
+
+		if (!bytes)
 		{
-			for (const auto& [branch, target] : comparisons->items())
-			{
-				if (target.is_string())
-				{
-					answers.Comparisons[branch] = target.get<std::string>();
-				}
-				else if (target.is_null())
-				{
-					answers.Comparisons[branch] = std::nullopt;
-				}
-			}
+			return std::nullopt;
 		}
 
-		return answers;
+		const nlohmann::json document = nlohmann::json::parse(bytes.GetValue(), nullptr, false);
+
+		if (document.is_discarded() || !document.is_object() || !HasOwnVersion(document))
+		{
+			return std::nullopt;
+		}
+
+		return AnswersFrom(document);
 	}
 
 	bool HasForeignVersion(const std::filesystem::path& file)
