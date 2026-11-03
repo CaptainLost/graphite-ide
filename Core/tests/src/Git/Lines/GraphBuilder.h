@@ -1,12 +1,16 @@
 #pragma once
 
 #include "Core/Git/Lines/AncestryGraph.h"
+#include "Core/Git/Lines/LineModel.h"
 #include "Core/Git/Oid.h"
+#include "Core/Git/Ref.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -49,6 +53,7 @@ public:
 	static constexpr std::int64_t kDayZero = 1767225600;
 	static constexpr std::int64_t kSecondsPerDay = 86400;
 	static constexpr int kDefaultNowDay = 100;
+	static constexpr std::size_t kNoRef = std::numeric_limits<std::size_t>::max();
 
 	Core::Oid Commit(std::string_view name, std::vector<std::string_view> parents, int day, std::string_view author = "a@example.com")
 	{
@@ -98,6 +103,58 @@ public:
 		m_commits[m_indexByName.at(std::string(name))].ParentsCut = true;
 	}
 
+	// "refs/heads/x" is local; "refs/remotes/<remote>/<short>" is remote (remote names in tests have no slash).
+	// `at` names the tip commit; a name never committed gives a tip the graph lacks.
+	std::size_t Ref(std::string_view fullName, std::string_view at, bool remoteDefault = false,
+					std::optional<std::string_view> upstreamFullName = std::nullopt)
+	{
+		Core::LineRef ref;
+		ref.FullName = std::string(fullName);
+		ref.Tip = OidOf(at);
+		ref.IsRemoteDefault = remoteDefault;
+
+		if (upstreamFullName.has_value())
+		{
+			ref.UpstreamFullName = std::string(*upstreamFullName);
+		}
+
+		if (fullName.starts_with(Core::kRemoteBranchPrefix))
+		{
+			const std::string_view remoteAndShortName = fullName.substr(Core::kRemoteBranchPrefix.size());
+			const std::size_t remoteEnd = remoteAndShortName.find('/');
+			ref.Kind = Core::RefKind::Remote;
+			ref.Remote = std::string(remoteAndShortName.substr(0, remoteEnd));
+			ref.ShortName = std::string(remoteAndShortName.substr(remoteEnd + 1));
+		}
+		else
+		{
+			ref.Kind = Core::RefKind::Local;
+			ref.ShortName = Core::ShortBranchName(fullName);
+		}
+
+		m_refs.push_back(std::move(ref));
+		return m_refs.size() - 1;
+	}
+
+	std::span<const Core::LineRef> Refs() const
+	{
+		return m_refs;
+	}
+
+	// kNoRef for a name Ref was never given, so a check against it fails rather than matching ref 0.
+	std::size_t RefIndex(std::string_view fullName) const
+	{
+		for (std::size_t refIndex = 0; refIndex < m_refs.size(); ++refIndex)
+		{
+			if (m_refs[refIndex].FullName == fullName)
+			{
+				return refIndex;
+			}
+		}
+
+		return kNoRef;
+	}
+
 	void SetNow(int day)
 	{
 		m_nowDay = day;
@@ -128,5 +185,6 @@ public:
 private:
 	std::vector<Core::GraphCommit> m_commits;
 	std::map<std::string, std::size_t> m_indexByName;
+	std::vector<Core::LineRef> m_refs;
 	int m_nowDay = kDefaultNowDay;
 };
