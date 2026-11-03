@@ -61,20 +61,28 @@ namespace Core {
 		}
 
 		// A local branch and its upstream are one row only when their short names match.
+		std::optional<std::size_t> SameNamedUpstream(const RefTable& table, std::size_t ref)
+		{
+			const LineRef& branch = table.Refs[ref];
+
+			if (branch.Kind != RefKind::Local || !branch.UpstreamFullName.has_value())
+			{
+				return std::nullopt;
+			}
+
+			const std::optional<std::size_t> upstream = FindRef(table, *branch.UpstreamFullName);
+			const bool isAnotherRefWithTheSameShortName = upstream.has_value() && *upstream != ref
+														  && table.Refs[*upstream].ShortName == branch.ShortName;
+			return isAnotherRefWithTheSameShortName ? upstream : std::nullopt;
+		}
+
 		void PairRows(RefTable& table)
 		{
 			for (std::size_t refIndex = 0; refIndex < table.Refs.size(); ++refIndex)
 			{
-				const LineRef& ref = table.Refs[refIndex];
+				const std::optional<std::size_t> upstream = SameNamedUpstream(table, refIndex);
 
-				if (ref.Kind != RefKind::Local || !ref.UpstreamFullName.has_value())
-				{
-					continue;
-				}
-
-				const std::optional<std::size_t> upstream = FindRef(table, *ref.UpstreamFullName);
-
-				if (upstream.has_value() && table.Refs[*upstream].ShortName == ref.ShortName)
+				if (upstream.has_value())
 				{
 					table.RowPartner[refIndex] = *upstream;
 					table.RowPartner[*upstream] = refIndex;
@@ -801,6 +809,451 @@ namespace Core {
 				}
 			}
 		}
+
+		// The walk hops from each line's bottom to the commit it grew from, so it takes as many steps as there are
+		// lines under `top`, not as many as there are commits.
+		bool IsOnFirstParentChainOf(const LineSplit& split, Index commit, Index top)
+		{
+			for (Index current = top; current != AncestryGraph::kNoCommit && split.LineOf[current] != kNoLine;
+				 current = split.Lines[split.LineOf[current]].Join)
+			{
+				if (split.LineOf[current] == split.LineOf[commit])
+				{
+					return split.PositionOf[commit] <= split.PositionOf[current];
+				}
+			}
+
+			return false;
+		}
+
+		struct ComparisonAnswer
+		{
+			bool Applies = false;
+			std::optional<std::size_t> ComparedWith; // empty when the user compares the branch with nothing
+		};
+
+		// An answer naming a ref the input lacks, or one whose tip the graph lacks, is stale; the rule decides instead.
+		ComparisonAnswer AnswerFor(const RefTable& table, const LineAnswers& answers, std::size_t ref)
+		{
+			const std::string& name = table.Refs[ref].FullName;
+
+			if (!answers.Comparisons.contains(name))
+			{
+				return ComparisonAnswer{};
+			}
+
+			const std::optional<std::string>& answered = answers.Comparisons.at(name);
+
+			if (!answered.has_value())
+			{
+				return ComparisonAnswer{.Applies = true};
+			}
+
+			const std::optional<std::size_t> comparedWith = FindRef(table, *answered);
+			const bool namesACommitTheGraphHolds = comparedWith.has_value() && table.Tips[*comparedWith] != AncestryGraph::kNoCommit;
+
+			if (!namesACommitTheGraphHolds)
+			{
+				return ComparisonAnswer{};
+			}
+
+			return ComparisonAnswer{.Applies = true, .ComparedWith = comparedWith};
+		}
+
+		// A tip on a base's line has no commits of its own, and AutomaticComparison would look below it for another tip.
+		std::optional<std::size_t> ComparisonByRule(const RefTable& table, const IndexedSplit& indexed, std::size_t ref)
+		{
+			const std::uint32_t ownLine = indexed.Split.LineOf[table.Tips[ref]];
+
+			if (ownLine != kNoLine && indexed.BaseOfLine[ownLine].has_value())
+			{
+				return indexed.BaseOfLine[ownLine];
+			}
+
+			return AutomaticComparison(table, indexed, ref);
+		}
+
+		// The rule names nothing only for a line that grew from a root.
+		BranchState StateWithNothingToCompare(const AncestryGraph& graph, const LineSplit& split, Index tip)
+		{
+			const std::uint32_t ownLine = split.LineOf[tip];
+			const bool startsAtAShallowBoundary = ownLine != kNoLine && graph.ParentsCutAt(split.Lines[ownLine].Bottom);
+			return startsAtAShallowBoundary ? BranchState::HistoryCutOff : BranchState::NoCommonHistory;
+		}
+
+		// Everything but the count. A branch compared with a ref whose first parents do not hold its tip is left
+		// NotMerged for CountAhead, which decides between that and MergedByHistory.
+		BranchLine DescribeBranch(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
+								  const std::vector<bool>& isBase, const LineAnswers& answers, std::size_t ref)
+		{
+			BranchLine branch{.Ref = ref, .SameRowAs = SameNamedUpstream(table, ref)};
+			const Index tip = table.Tips[ref];
+
+			if (tip == AncestryGraph::kNoCommit)
+			{
+				branch.State = BranchState::TipMissing;
+				return branch;
+			}
+
+			const ComparisonAnswer answer = AnswerFor(table, answers, ref);
+			branch.ByAnswer = answer.Applies;
+			branch.ComparedWith = answer.Applies ? answer.ComparedWith : ComparisonByRule(table, indexed, ref);
+
+			if (!branch.ComparedWith.has_value())
+			{
+				branch.State = answer.Applies ? BranchState::NotCompared : StateWithNothingToCompare(graph, indexed.Split, tip);
+				return branch;
+			}
+
+			const std::size_t comparedWith = *branch.ComparedWith;
+			const bool hasNoOwnCommits = IsOnFirstParentChainOf(indexed.Split, tip, table.Tips[comparedWith]);
+			branch.Kind = isBase[comparedWith] ? ComparedKind::Base : ComparedKind::Branch;
+			branch.State = hasNoOwnCommits ? BranchState::NoOwnCommits : BranchState::NotMerged;
+			return branch;
+		}
+
+		bool NeedsAheadCount(const BranchLine& branch)
+		{
+			return branch.ComparedWith.has_value() && branch.State == BranchState::NotMerged;
+		}
+
+		constexpr std::uint8_t kSeen = 1;
+		constexpr std::uint8_t kFromTip = 1;
+		constexpr std::uint8_t kFromCompared = 2;
+
+		// One graph-sized array of marks shared by thousands of walks; each walk clears only what it marked.
+		struct WalkScratch
+		{
+			std::vector<std::uint8_t> Marks; // per commit
+			std::vector<Index> Touched;
+			std::vector<Index> Pending;
+		};
+
+		void ClearMarks(WalkScratch& scratch)
+		{
+			for (const Index commit : scratch.Touched)
+			{
+				scratch.Marks[commit] = 0;
+			}
+
+			scratch.Touched.clear();
+		}
+
+		void MarkSeen(WalkScratch& scratch, Index commit)
+		{
+			scratch.Marks[commit] = kSeen;
+			scratch.Touched.push_back(commit);
+		}
+
+		std::vector<bool> CommitsReachableFrom(const AncestryGraph& graph, Index start)
+		{
+			std::vector<bool> reached(graph.Size(), false);
+			std::vector<Index> pending{start};
+			reached[start] = true;
+
+			while (!pending.empty())
+			{
+				const Index commit = pending.back();
+				pending.pop_back();
+
+				for (const Index parent : graph.ParentsOf(commit))
+				{
+					if (!reached[parent])
+					{
+						reached[parent] = true;
+						pending.push_back(parent);
+					}
+				}
+			}
+
+			return reached;
+		}
+
+		// The walk never passes a commit `reached` holds, so it visits only the commits it counts and their edge.
+		std::size_t CountUnreached(const AncestryGraph& graph, const std::vector<bool>& reached, Index tip, WalkScratch& scratch)
+		{
+			std::size_t unreached = 0;
+			MarkSeen(scratch, tip);
+			scratch.Pending.push_back(tip);
+
+			while (!scratch.Pending.empty())
+			{
+				const Index commit = scratch.Pending.back();
+				scratch.Pending.pop_back();
+
+				if (reached[commit])
+				{
+					continue;
+				}
+
+				++unreached;
+
+				for (const Index parent : graph.ParentsOf(commit))
+				{
+					if (scratch.Marks[parent] == 0)
+					{
+						MarkSeen(scratch, parent);
+						scratch.Pending.push_back(parent);
+					}
+				}
+			}
+
+			ClearMarks(scratch);
+			return unreached;
+		}
+
+		enum class Visit : std::uint8_t
+		{
+			NotSeen,
+			Open,
+			Done
+		};
+
+		void PushUnseenParents(const AncestryGraph& graph, const std::vector<Visit>& visits, Index commit, std::vector<Index>& pending)
+		{
+			for (const Index parent : graph.ParentsOf(commit))
+			{
+				if (visits[parent] == Visit::NotSeen)
+				{
+					pending.push_back(parent);
+				}
+			}
+		}
+
+		std::uint32_t HighestGenerationOfParents(const AncestryGraph& graph, const std::vector<std::uint32_t>& generations, Index commit)
+		{
+			std::uint32_t highest = 0;
+
+			for (const Index parent : graph.ParentsOf(commit))
+			{
+				highest = std::max(highest, generations[parent]);
+			}
+
+			return highest;
+		}
+
+		// One more than the highest of its parents', so every descendant of a commit has a higher generation, whatever
+		// the clocks said. Depth first on an explicit stack: a first-parent chain can be hundreds of thousands long.
+		std::vector<std::uint32_t> GenerationsOf(const AncestryGraph& graph)
+		{
+			std::vector<std::uint32_t> generations(graph.Size(), 0);
+			std::vector<Visit> visits(graph.Size(), Visit::NotSeen);
+			std::vector<Index> pending;
+
+			for (Index start = 0; start < graph.Size(); ++start)
+			{
+				if (visits[start] == Visit::Done)
+				{
+					continue;
+				}
+
+				pending.push_back(start);
+
+				while (!pending.empty())
+				{
+					const Index commit = pending.back();
+
+					if (visits[commit] == Visit::NotSeen)
+					{
+						visits[commit] = Visit::Open;
+						PushUnseenParents(graph, visits, commit, pending);
+						continue;
+					}
+
+					pending.pop_back();
+
+					if (visits[commit] == Visit::Open)
+					{
+						generations[commit] = HighestGenerationOfParents(graph, generations, commit) + 1;
+						visits[commit] = Visit::Done;
+					}
+				}
+			}
+
+			return generations;
+		}
+
+		struct QueuedCommit
+		{
+			std::uint32_t Generation = 0;
+			Index Commit = AncestryGraph::kNoCommit;
+		};
+
+		bool HasLowerGeneration(const QueuedCommit& first, const QueuedCommit& second)
+		{
+			return first.Generation < second.Generation;
+		}
+
+		struct JointWalk
+		{
+			const std::vector<std::uint32_t>& Generations;
+			WalkScratch& Scratch;
+			std::vector<QueuedCommit> Queue; // a heap, highest generation first
+			std::size_t QueuedFromTipOnly = 0;
+		};
+
+		// A commit is queued once, when first reached. It is never reached again after it leaves the queue: all its
+		// children have higher generations and left before it.
+		void ReachJointly(JointWalk& walk, Index commit, std::uint8_t from)
+		{
+			const std::uint8_t before = walk.Scratch.Marks[commit];
+			const auto after = static_cast<std::uint8_t>(before | from);
+
+			if (after == before)
+			{
+				return;
+			}
+
+			walk.Scratch.Marks[commit] = after;
+
+			if (before == 0)
+			{
+				walk.Scratch.Touched.push_back(commit);
+				walk.Queue.push_back(QueuedCommit{.Generation = walk.Generations[commit], .Commit = commit});
+				std::push_heap(walk.Queue.begin(), walk.Queue.end(), HasLowerGeneration);
+			}
+
+			if (after == kFromTip)
+			{
+				++walk.QueuedFromTipOnly;
+			}
+			else if (before == kFromTip)
+			{
+				--walk.QueuedFromTipOnly;
+			}
+		}
+
+		// Walks from the tip and from what it is compared with together, highest generation first, and stops once no
+		// queued commit is reached from the tip alone: the rest can only lead to commits both reach. Generations, not
+		// commit times, order the walk, so a skewed clock cannot stop it before a commit's last child is seen.
+		std::size_t CountAheadJointly(const AncestryGraph& graph, const std::vector<std::uint32_t>& generations, WalkScratch& scratch,
+									  Index tip, Index compared)
+		{
+			JointWalk walk{.Generations = generations, .Scratch = scratch};
+			ReachJointly(walk, tip, kFromTip);
+			ReachJointly(walk, compared, kFromCompared);
+			std::size_t ahead = 0;
+
+			while (walk.QueuedFromTipOnly > 0 && !walk.Queue.empty())
+			{
+				std::pop_heap(walk.Queue.begin(), walk.Queue.end(), HasLowerGeneration);
+				const Index commit = walk.Queue.back().Commit;
+				walk.Queue.pop_back();
+				const std::uint8_t from = scratch.Marks[commit];
+
+				if (from == kFromTip)
+				{
+					--walk.QueuedFromTipOnly;
+					++ahead;
+				}
+
+				for (const Index parent : graph.ParentsOf(commit))
+				{
+					ReachJointly(walk, parent, from);
+				}
+			}
+
+			ClearMarks(scratch);
+			return ahead;
+		}
+
+		bool IsBaseTip(const RefTable& table, const std::vector<bool>& isBase, Index commit)
+		{
+			for (const std::size_t refIndex : table.AtCommit.at(commit))
+			{
+				if (isBase[refIndex])
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void RecordAhead(BranchLine& branch, std::size_t ahead)
+		{
+			branch.Ahead = ahead;
+			branch.State = ahead == 0 ? BranchState::MergedByHistory : BranchState::NotMerged;
+		}
+
+		// Thousands of branches are compared with a few bases, each of which can reach most of the history: the
+		// branches compared with one base share one walk of what that base reaches. A branch compared with another
+		// branch walks together with it instead, which ends where their histories meet.
+		void CountAhead(const AncestryGraph& graph, const RefTable& table, const std::vector<bool>& isBase, std::vector<BranchLine>& branches)
+		{
+			std::unordered_map<Index, std::vector<std::size_t>> comparedWithBaseTip; // positions in branches, per base tip
+			std::vector<std::size_t> comparedWithBranch;
+
+			for (std::size_t position = 0; position < branches.size(); ++position)
+			{
+				if (!NeedsAheadCount(branches[position]))
+				{
+					continue;
+				}
+
+				const Index comparedTip = table.Tips[*branches[position].ComparedWith];
+
+				if (IsBaseTip(table, isBase, comparedTip))
+				{
+					comparedWithBaseTip[comparedTip].push_back(position);
+				}
+				else
+				{
+					comparedWithBranch.push_back(position);
+				}
+			}
+
+			if (comparedWithBaseTip.empty() && comparedWithBranch.empty())
+			{
+				return;
+			}
+
+			WalkScratch scratch;
+			scratch.Marks.assign(graph.Size(), 0);
+
+			for (const auto& [baseTip, positions] : comparedWithBaseTip)
+			{
+				const std::vector<bool> reached = CommitsReachableFrom(graph, baseTip);
+
+				for (const std::size_t position : positions)
+				{
+					BranchLine& branch = branches[position];
+					RecordAhead(branch, CountUnreached(graph, reached, table.Tips[branch.Ref], scratch));
+				}
+			}
+
+			if (comparedWithBranch.empty())
+			{
+				return;
+			}
+
+			const std::vector<std::uint32_t> generations = GenerationsOf(graph);
+
+			for (const std::size_t position : comparedWithBranch)
+			{
+				BranchLine& branch = branches[position];
+				const Index tip = table.Tips[branch.Ref];
+				const Index comparedTip = table.Tips[*branch.ComparedWith];
+				RecordAhead(branch, CountAheadJointly(graph, generations, scratch, tip, comparedTip));
+			}
+		}
+
+		std::vector<BranchLine> DescribeBranches(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
+												 const std::vector<bool>& isBase, const LineAnswers& answers)
+		{
+			std::vector<BranchLine> branches;
+
+			for (std::size_t refIndex = 0; refIndex < table.Refs.size(); ++refIndex)
+			{
+				if (!isBase[refIndex])
+				{
+					branches.push_back(DescribeBranch(graph, table, indexed, isBase, answers, refIndex));
+				}
+			}
+
+			CountAhead(graph, table, isBase, branches);
+			return branches;
+		}
 	}
 
 	LineModel ComputeLines(const LineModelInput& input)
@@ -831,6 +1284,7 @@ namespace Core {
 		}
 
 		DescribeBases(graph, table, indexed.Split, input.Now, list.Bases);
+		model.Branches = DescribeBranches(graph, table, indexed, list.IsBase, input.Answers);
 		model.Bases = std::move(list.Bases);
 		return model;
 	}
