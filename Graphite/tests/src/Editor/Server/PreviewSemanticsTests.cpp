@@ -108,7 +108,7 @@ TEST_CASE("Two panes showing one file share a single open and a single request")
 	CHECK(port.CountOf("ask") == 1);
 }
 
-TEST_CASE("A file a tab already holds is asked about but never opened")
+TEST_CASE("A file a tab already holds is held here too, so its tokens are asked of an open document")
 {
 	FakePort port;
 	PreviewSemantics semantics{port};
@@ -117,11 +117,11 @@ TEST_CASE("A file a tab already holds is asked about but never opened")
 	semantics.Tick(1, 0.0);
 	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
-	CHECK(port.CountOf("open") == 0);
+	CHECK(port.CountOf("open") == 1);
 	CHECK(port.CountOf("ask") == 1);
 }
 
-TEST_CASE("Holds answers for the didOpen this class sent, and for no other")
+TEST_CASE("Holds answers for every file a pane shows, whether a tab holds it too or not")
 {
 	FakePort port;
 	PreviewSemantics semantics{port};
@@ -138,12 +138,12 @@ TEST_CASE("Holds answers for the didOpen this class sent, and for no other")
 	semantics.Tick(2, 0.0);
 	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
-	CHECK_FALSE(semantics.Holds("a.cpp"));
+	CHECK(semantics.Holds("a.cpp"));
 
 	semantics.Tick(3, 0.0);
 	semantics.Declare("c.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
-	CHECK_FALSE(semantics.Holds("c.cpp"));
+	CHECK(semantics.Holds("c.cpp"));
 
 	semantics.Tick(4, 0.0);
 	semantics.Declare("d.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
@@ -227,7 +227,7 @@ TEST_CASE("A declaration inside the grace frame closes nothing and asks nothing 
 	CHECK(port.CountOf("ask") == 1);
 }
 
-TEST_CASE("A file a tab holds is never closed from here")
+TEST_CASE("A file a tab holds is let go of from here once no pane shows it")
 {
 	FakePort port;
 	PreviewSemantics semantics{port};
@@ -239,7 +239,7 @@ TEST_CASE("A file a tab holds is never closed from here")
 	semantics.Tick(2, 0.1);
 	semantics.Tick(3, 0.2);
 
-	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("close") == 1);
 }
 
 TEST_CASE("An edit to a document with a tab drops its colours and asks again")
@@ -324,7 +324,7 @@ TEST_CASE("A failed request is tried again, but only after its retry clock")
 	CHECK(port.CountOf("ask") == 2);
 }
 
-TEST_CASE("A tab taking over a previewed file does not close it, and stays quiet after")
+TEST_CASE("A tab taking over a previewed file leaves the preview's hold in place while a pane shows it")
 {
 	FakePort port;
 	PreviewSemantics semantics{port};
@@ -334,29 +334,34 @@ TEST_CASE("A tab taking over a previewed file does not close it, and stays quiet
 	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 	semantics.Tick(2, 0.1);
 	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
+
+	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("open") == 1);
 
 	semantics.Tick(3, 0.2);
 	semantics.Tick(4, 0.3);
 
-	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("close") == 1);
 }
 
-TEST_CASE("A tab closing over a previewed file reopens it here")
+TEST_CASE("A tab closing over a previewed file holds it again here with the pane's text")
 {
 	FakePort port;
 	PreviewSemantics semantics{port};
-	const Core::TextBuffer buffer{"Renderer r;\n"};
+	const Core::TextBuffer tabText{"Renderer edited;\n"};
+	const Core::TextBuffer diskText{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
+	semantics.Declare("a.cpp", tabText, kTabWidth, kTabHoldsDocument);
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
+	semantics.Declare("a.cpp", diskText, kTabWidth, kPreviewOwnsDocument);
 
-	CHECK(port.CountOf("open") == 1);
+	REQUIRE(port.CountOf("open") == 2);
+	CHECK(port.Calls[port.Calls.size() - 2].Text == "Renderer r;\n");
 	CHECK(port.CountOf("ask") == 2);
 }
 
-TEST_CASE("Destruction after a tab takes over a previewed file closes nothing")
+TEST_CASE("Destruction lets go of a file a tab took over")
 {
 	FakePort port;
 
@@ -370,10 +375,10 @@ TEST_CASE("Destruction after a tab takes over a previewed file closes nothing")
 		semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 	}
 
-	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("close") == 1);
 }
 
-TEST_CASE("Destruction closes what was opened here and nothing else")
+TEST_CASE("Destruction lets go of every file held here")
 {
 	FakePort port;
 
@@ -386,6 +391,5 @@ TEST_CASE("Destruction closes what was opened here and nothing else")
 		semantics.Declare("b.cpp", buffer, kTabWidth, kTabHoldsDocument);
 	}
 
-	REQUIRE(port.CountOf("close") == 1);
-	CHECK(port.Calls.back().Path == std::filesystem::path{"a.cpp"});
+	CHECK(port.CountOf("close") == 2);
 }

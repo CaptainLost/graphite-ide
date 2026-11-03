@@ -11,12 +11,9 @@ namespace Graphite {
 
 	PreviewSemantics::~PreviewSemantics()
 	{
-		for (auto& [path, entry] : m_Entries)
+		for ([[maybe_unused]] const auto& [path, entry] : m_Entries)
 		{
-			if (entry.Opened)
-			{
-				m_Port.Close(path, LanguageOfPath(path));
-			}
+			m_Port.Close(path, LanguageOfPath(path));
 		}
 	}
 
@@ -41,11 +38,9 @@ namespace Graphite {
 			kept.EditorHolds = editorHolds;
 			kept.LastDeclared = m_Frame;
 
-			if (!editorHolds)
-			{
-				kept.Opened = true;
-				m_Port.Open(path, LanguageOfPath(path), kept.Snapshot.Materialize());
-			}
+			// WARNING: Held even when a tab holds the document too: the holders keep the tab's text, and a tab closed
+			// while the preview is still up hands the document back rather than taking it away.
+			m_Port.Open(path, LanguageOfPath(path), kept.Snapshot.Materialize());
 
 			Ask(path, kept);
 			return;
@@ -62,13 +57,11 @@ namespace Graphite {
 		if (tabTookOver)
 		{
 			entry.EditorHolds = true;
-			entry.Opened = false;
 			transitioned = true;
 		}
 		else if (tabClosed)
 		{
 			entry.EditorHolds = false;
-			entry.Opened = true;
 			m_Port.Open(path, LanguageOfPath(path), buffer.Materialize());
 			transitioned = true;
 		}
@@ -91,16 +84,7 @@ namespace Graphite {
 
 	bool PreviewSemantics::Holds(const std::filesystem::path& path) const
 	{
-		const EntryMap::const_iterator found = m_Entries.find(path);
-
-		if (found == m_Entries.end())
-		{
-			return false;
-		}
-
-		[[maybe_unused]] const auto& [foundPath, foundEntry] = *found;
-
-		return foundEntry.Opened;
+		return m_Entries.contains(path);
 	}
 
 	const std::vector<SemanticSpan>& PreviewSemantics::SpansOn(const std::filesystem::path& path,
@@ -155,10 +139,7 @@ namespace Graphite {
 
 			if (undeclaredForAWholeFrame)
 			{
-				if (entry.Opened)
-				{
-					m_Port.Close(path, LanguageOfPath(path));
-				}
+				m_Port.Close(path, LanguageOfPath(path));
 
 				entryIterator = m_Entries.erase(entryIterator);
 				continue;

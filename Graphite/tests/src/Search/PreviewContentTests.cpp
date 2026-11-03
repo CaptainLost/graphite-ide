@@ -323,7 +323,7 @@ TEST_CASE("Showing a file declares it to the mediator")
 	CHECK(port.Opened[0] == file);
 }
 
-TEST_CASE("A file with a tab open is declared as one the editor holds")
+TEST_CASE("A file with a tab open is held with the tab's text, so its tokens are asked of an open document")
 {
 	TempDirectory temp;
 	const std::filesystem::path file = temp.MakeFile("a.cpp", "Renderer r;\n");
@@ -339,7 +339,8 @@ TEST_CASE("A file with a tab open is declared as one the editor holds")
 	semantics.Tick(1, 0.0);
 	content.Show(file, documents);
 
-	CHECK(port.Opened.empty());
+	REQUIRE(port.Opened.size() == 1);
+	CHECK(port.Opened[0] == file);
 	CHECK(port.Asked.size() == 1);
 }
 

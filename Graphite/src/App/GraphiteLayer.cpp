@@ -995,14 +995,17 @@ namespace Graphite {
 		const bool foregroundBusy = activeDocument && m_DocumentWindows.IsAnalysing(*activeDocument);
 
 		// WARNING: Tick after Poll and PreviewSemantics::Tick, because the pass asks whether a server is ready and whether a preview pane holds a document.
-		// WARNING: HeldElsewhere means somebody else already holds this document with the server, not that a tab does: LanguageServices::OpenDocuments counts no references, so whichever opener sends a didClose takes the file away from all of them, and a preview pane holds no DocumentSet entry.
+		// WARNING: HeldElsewhere counts a document a tab has open but has not drawn yet: that tab will analyse it itself,
+		// and the pass's copy, read from disk, may not be what the tab shows.
 		m_AnalysisCoordinator.Tick(AnalysisTickInputs{
 			.Now = ImGui::GetTime(),
 			.ForegroundBusy = foregroundBusy,
 			.BudgetBytes = m_AnalysisSettings.GetBudgetBytes(),
 			.Concurrency = m_AnalysisSettings.GetConcurrency(),
 			.TabWidth = m_EditorSettings.GetIndentStyle().Width,
-			.HeldElsewhere = [this](const std::filesystem::path& path) { return IsDocumentOpen(path) || m_PreviewSemantics.Holds(path); }});
+			.HeldElsewhere = [this](const std::filesystem::path& path) {
+				return IsDocumentOpen(path) || m_DocumentHolders.IsHeldByAnyBut(DocumentHolder::Analysis, path);
+			}});
 
 		if (activeDocument)
 		{

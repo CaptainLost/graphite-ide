@@ -4,6 +4,7 @@
 #include "Editor/Server/PreviewSemantics.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
 #include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
+#include "Language/Server/DocumentHolders.h"
 #include "Language/Server/LanguageServices.h"
 
 #include <filesystem>
@@ -13,24 +14,25 @@
 
 namespace Graphite {
 
-	class LanguageServicesPort final : public PreviewServerPort
+	// What DocumentHolders sends, to the language servers themselves.
+	class LanguageServicesHeldPort final : public HeldDocumentPort
 	{
 	public:
-		explicit LanguageServicesPort(LanguageServices& services) : m_Services(services) {}
+		explicit LanguageServicesHeldPort(LanguageServices& services) : m_Services(services) {}
 
-		void Open(const std::filesystem::path& path, LanguageId language,
-				  std::string text) override
+		void EnsureStarted(const std::filesystem::path& path, LanguageId language) override
 		{
-			// WARNING: EnsureStarted must come before OpenDocument, which is a no-op while no server
-			// runs for this root, and server startup is asynchronous.
 			m_Services.EnsureStarted(path, language);
-			m_Services.OpenDocument(path, language, std::move(text));
 		}
 
-		LanguageServices::Ticket Ask(const std::filesystem::path& path,
-									 LanguageId language) override
+		void Open(const std::filesystem::path& path, LanguageId language, std::string text, DocumentRole role) override
 		{
-			return m_Services.AskSemanticTokens(path, language);
+			m_Services.OpenDocument(path, language, std::move(text), role);
+		}
+
+		void Change(const std::filesystem::path& path, LanguageId language, std::string text) override
+		{
+			m_Services.ChangeDocument(path, language, std::move(text));
 		}
 
 		void Close(const std::filesystem::path& path, LanguageId language) override
@@ -42,16 +44,45 @@ namespace Graphite {
 		LanguageServices& m_Services;
 	};
 
+	class LanguageServicesPort final : public PreviewServerPort
+	{
+	public:
+		LanguageServicesPort(LanguageServices& services, DocumentHolders& holders) : m_Services(services), m_Holders(holders)
+		{
+		}
+
+		void Open(const std::filesystem::path& path, LanguageId, std::string text) override
+		{
+			m_Holders.Hold(DocumentHolder::Preview, path, std::move(text));
+		}
+
+		LanguageServices::Ticket Ask(const std::filesystem::path& path,
+									 LanguageId language) override
+		{
+			return m_Services.AskSemanticTokens(path, language);
+		}
+
+		void Close(const std::filesystem::path& path, LanguageId) override
+		{
+			m_Holders.Release(DocumentHolder::Preview, path);
+		}
+
+	private:
+		LanguageServices& m_Services;
+		DocumentHolders& m_Holders;
+	};
+
 	class WorkspaceAnalysisServicesPort final : public WorkspaceAnalysisPort
 	{
 	public:
-		explicit WorkspaceAnalysisServicesPort(LanguageServices& services) : m_Services(services) {}
-
-		void Open(const std::filesystem::path& path, LanguageId language,
-				  std::string text) override
+		WorkspaceAnalysisServicesPort(LanguageServices& services, DocumentHolders& holders)
+			: m_Services(services), m_Holders(holders)
 		{
-			m_Services.EnsureStarted(path, language);
-			m_Services.OpenDocument(path, language, std::move(text));
+		}
+
+		void Open(const std::filesystem::path& path, LanguageId, std::string text) override
+		{
+			m_Holders.Hold(DocumentHolder::Analysis, path, std::move(text));
 		}
 
 		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path& path,
@@ -66,9 +97,9 @@ namespace Graphite {
 			return m_Services.AskSymbols(path, language);
 		}
 
-		void Close(const std::filesystem::path& path, LanguageId language) override
+		void Close(const std::filesystem::path& path, LanguageId) override
 		{
-			m_Services.CloseDocument(path, language);
+			m_Holders.Release(DocumentHolder::Analysis, path);
 		}
 
 		ServerReadiness ReadinessOf(const std::filesystem::path& path, LanguageId language) override
@@ -92,28 +123,29 @@ namespace Graphite {
 
 	private:
 		LanguageServices& m_Services;
+		DocumentHolders& m_Holders;
 	};
 
 	class DocumentServicesPort final : public DocumentServerPort
 	{
 	public:
-		explicit DocumentServicesPort(LanguageServices& services) : m_Services(services) {}
+		DocumentServicesPort(LanguageServices& services, DocumentHolders& holders) : m_Services(services), m_Holders(holders)
+		{
+		}
 
 		void EnsureStarted(const std::filesystem::path& path, LanguageId language) override
 		{
 			m_Services.EnsureStarted(path, language);
 		}
 
-		void OpenDocument(const std::filesystem::path& path, LanguageId language,
-						  std::string text) override
+		void OpenDocument(const std::filesystem::path& path, LanguageId, std::string text) override
 		{
-			m_Services.OpenDocument(path, language, std::move(text), DocumentRole::Shown);
+			m_Holders.Hold(DocumentHolder::Tab, path, std::move(text));
 		}
 
-		void ChangeDocument(const std::filesystem::path& path, LanguageId language,
-							std::string text) override
+		void ChangeDocument(const std::filesystem::path& path, LanguageId, std::string text) override
 		{
-			m_Services.ChangeDocument(path, language, std::move(text));
+			m_Holders.Change(path, std::move(text));
 		}
 
 		void SaveDocument(const std::filesystem::path& path, LanguageId language) override
@@ -121,9 +153,9 @@ namespace Graphite {
 			m_Services.SaveDocument(path, language);
 		}
 
-		void CloseDocument(const std::filesystem::path& path, LanguageId language) override
+		void CloseDocument(const std::filesystem::path& path, LanguageId) override
 		{
-			m_Services.CloseDocument(path, language);
+			m_Holders.Release(DocumentHolder::Tab, path);
 		}
 
 		ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language) override
@@ -190,6 +222,7 @@ namespace Graphite {
 
 	private:
 		LanguageServices& m_Services;
+		DocumentHolders& m_Holders;
 	};
 
 	class LanguageServicesWorkspacePort final : public WorkspaceServersPort

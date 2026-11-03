@@ -67,8 +67,6 @@ namespace Graphite {
 
 			bool EditorHolds = false;
 
-			bool Opened = false;
-
 			std::optional<LanguageServices::Ticket> Ticket;
 
 			double NextAskAt = 0.0;

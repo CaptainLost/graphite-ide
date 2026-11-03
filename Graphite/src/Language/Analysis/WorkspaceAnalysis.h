@@ -122,7 +122,6 @@ namespace Graphite {
 
 			bool Opened = false;
 
-			bool HeldElsewhereAtLastTick = false;
 			bool HeldElsewhereAtAnyTick = false;
 
 			std::optional<LanguageServices::Ticket> SemanticTokensTicket;

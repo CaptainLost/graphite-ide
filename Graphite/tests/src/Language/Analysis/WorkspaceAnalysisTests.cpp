@@ -432,7 +432,7 @@ TEST_CASE("A file taken over while its text is being read is never opened")
 	CHECK(analysis.Progress().Done == 1);
 }
 
-TEST_CASE("A file that acquires a holder while it is outstanding is dropped and nothing is cached")
+TEST_CASE("A file that acquires a holder while it is outstanding is dropped, let go of, and nothing is cached")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -451,12 +451,12 @@ TEST_CASE("A file that acquires a holder while it is outstanding is dropped and 
 
 	CHECK_FALSE(cache.Take("a.cpp", OnDisk()).has_value());
 
-	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("close") == 1);
 
 	CHECK(analysis.Progress().Done == 1);
 }
 
-TEST_CASE("An analysis that times out after somebody else takes it over closes nothing")
+TEST_CASE("An analysis that times out after somebody else takes the file over lets go of its own hold")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -470,7 +470,7 @@ TEST_CASE("An analysis that times out after somebody else takes it over closes n
 
 	analysis.Tick(2.0 + 200.0, kForegroundQuiet, SomebodyElse);
 
-	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("close") == 1);
 	CHECK(analysis.Progress().Done == 1);
 }
 
@@ -682,7 +682,7 @@ TEST_CASE("Closing the folder drops the queue and closes what was open")
 	CHECK(port.CountOf("open") == 1);
 }
 
-TEST_CASE("Closing the folder while somebody else holds an outstanding file closes nothing")
+TEST_CASE("Closing the folder lets go of an outstanding file that somebody else holds too")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -698,11 +698,11 @@ TEST_CASE("Closing the folder while somebody else holds an outstanding file clos
 
 	analysis.Clear();
 
-	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("close") == 1);
 	CHECK(analysis.Progress().Total == 0);
 }
 
-TEST_CASE("Destruction closes what was opened here, and nothing somebody else holds")
+TEST_CASE("Destruction lets go of every file opened here, whoever else holds it")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -722,7 +722,7 @@ TEST_CASE("Destruction closes what was opened here, and nothing somebody else ho
 		CHECK(port.CountOf("close") == 1);
 	}
 
-	SUBCASE("somebody else holds the file, so it is left open for them")
+	SUBCASE("somebody else holds the file too, and the holders keep it open for them")
 	{
 		{
 			WorkspaceAnalysis analysis{port, texts, cache, nullptr};
@@ -734,7 +734,7 @@ TEST_CASE("Destruction closes what was opened here, and nothing somebody else ho
 			analysis.Tick(3.0, kForegroundQuiet, SomebodyElse);
 		}
 
-		CHECK(port.CountOf("close") == 0);
+		CHECK(port.CountOf("close") == 1);
 	}
 }
 

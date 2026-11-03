@@ -130,13 +130,9 @@ namespace Graphite {
 	{
 		PendingAnalysis& pending = m_Pending[index];
 
-		const bool nobodyElseHoldsTheDocument = !pending.HeldElsewhereAtLastTick;
-		const bool mustCloseDocument = pending.Opened && nobodyElseHoldsTheDocument;
-
-		// WARNING: CloseDocument counts no references, so closing a document that a tab or preview
-		// pane took over would take it away from them for good. This must read the live answer,
-		// not HeldElsewhereAtAnyTick: a holder that has gone away took its document with it.
-		if (mustCloseDocument)
+		// WARNING: Closed even when a tab or a preview holds the document too: the port lets go of the pass's own hold,
+		// and the document stays open for as long as anybody else holds it.
+		if (pending.Opened)
 		{
 			m_Port.Close(pending.Path, pending.Language);
 		}
@@ -172,10 +168,7 @@ namespace Graphite {
 
 		for (PendingAnalysis& pending : m_Pending)
 		{
-			const bool isHeldElsewhere = heldElsewhere(pending.Path);
-
-			pending.HeldElsewhereAtLastTick = isHeldElsewhere;
-			pending.HeldElsewhereAtAnyTick |= isHeldElsewhere;
+			pending.HeldElsewhereAtAnyTick |= heldElsewhere(pending.Path);
 		}
 
 		FinishCompleted(now);

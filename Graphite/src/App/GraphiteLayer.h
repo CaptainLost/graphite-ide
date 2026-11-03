@@ -268,13 +268,18 @@ namespace Graphite {
 
 		ModalGate m_Modals;
 
+		// WARNING: Declared after m_LanguageServices, which it sends to, and before the three ports below: the preview and
+		// the analysis let go of their documents from their destructors, so the holders must outlive them.
+		LanguageServicesHeldPort m_HeldDocumentPort{m_LanguageServices};
+		DocumentHolders m_DocumentHolders{m_HeldDocumentPort};
+
 		// WARNING: Declared after m_LanguageServices, which the port forwards to, and before
 		// m_DocumentWindows and m_Panels, which hold the preview members by reference.
-		LanguageServicesPort m_PreviewPort{m_LanguageServices};
+		LanguageServicesPort m_PreviewPort{m_LanguageServices, m_DocumentHolders};
 		PreviewSemantics m_PreviewSemantics{m_PreviewPort};
 
 		// WARNING: Declared after m_LanguageServices, which it forwards to, and before m_DocumentWindows, which holds it by reference.
-		DocumentServicesPort m_DocumentPort{m_LanguageServices};
+		DocumentServicesPort m_DocumentPort{m_LanguageServices, m_DocumentHolders};
 
 		// WARNING: Declared before m_Panels, which owns the background analysis page that reads it.
 		AnalysisSettings m_AnalysisSettings{m_AppSettings};
@@ -289,7 +294,7 @@ namespace Graphite {
 		// WARNING: Declared after m_LanguageServices, which both ports forward to, and before
 		// m_AnalysisCoordinator: the pass closes its open documents from its own destructor,
 		// so the ports and the servers behind them must both still be there.
-		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices};
+		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices, m_DocumentHolders};
 		LanguageServicesWorkspacePort m_AnalysisServers{m_LanguageServices};
 
 		// WARNING: Declared after everything it holds a reference to (the ports, m_AnalysisTexts, m_Analysis)

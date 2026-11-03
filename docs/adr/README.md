@@ -695,4 +695,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0663](0663-compare-each-branch-with-the-line-it-forked-from.md) | Compare each branch with the line it forked from | proposed | 2026-11-03 |
 | [0664](0664-find-bases-from-server-defaults-merged-lines-and-authors-never-from-names.md) | Find bases from server defaults, merged lines and authors, never from names | proposed | 2026-11-03 |
 | [0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md) | Keep each repository's git answers and caches in local user data, keyed by its shared git directory | proposed | 2026-11-03 |
+| [0666](0666-count-who-holds-each-document-open-with-a-language-server.md) | Count who holds each document open with a language server | proposed | 2026-11-03 |
 <!-- /adr-index -->
