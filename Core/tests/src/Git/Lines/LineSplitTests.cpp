@@ -141,6 +141,28 @@ TEST_CASE("Lines: equal authors and equal branches leave the line on the newer s
 	CHECK(split.LineAt("old1").Join == split.Commit("m3"));
 }
 
+TEST_CASE("Lines: a full tie goes to the same side whatever order the commits were read in")
+{
+	// x1 and y1 tie on authors and tips above and time; only the order the graph took them in differs.
+	GraphBuilder xFirst;
+	xFirst.Chain("m", 3, std::nullopt, 1, {"a@x"});
+	xFirst.Commit("x1", {"m3"}, 4, "a@x");
+	xFirst.Commit("y1", {"m3"}, 4, "a@x");
+
+	GraphBuilder yFirst;
+	yFirst.Chain("m", 3, std::nullopt, 1, {"a@x"});
+	yFirst.Commit("y1", {"m3"}, 4, "a@x");
+	yFirst.Commit("x1", {"m3"}, 4, "a@x");
+
+	const NamedSplit one{xFirst, {.Tips = {"x1", "y1"}}};
+	const NamedSplit other{yFirst, {.Tips = {"x1", "y1"}}};
+
+	REQUIRE(one.LineCount() == 2);
+	REQUIRE(other.LineCount() == 2);
+	CHECK((one.LineOf("x1") == one.LineOf("m3")) == (other.LineOf("x1") == other.LineOf("m3")));
+	CHECK((one.LineOf("y1") == one.LineOf("m3")) == (other.LineOf("y1") == other.LineOf("m3")));
+}
+
 TEST_CASE("Lines: a line never continues past a base's tip")
 {
 	GraphBuilder builder;
@@ -151,6 +173,31 @@ TEST_CASE("Lines: a line never continues past a base's tip")
 	CHECK(split.LineOf("child1") != split.LineOf("m3"));
 	CHECK(split.LineAt("child1").Join == split.Commit("m3"));
 	CHECK(split.LineAt("m3").Top == split.Commit("m3"));
+}
+
+TEST_CASE("Lines: a base whose tip sits on an earlier base's chain does not cut that chain")
+{
+	// main is listed first at m15; a release cut from m10 and made a base before it had a commit of its own.
+	GraphBuilder builder;
+	builder.Chain("m", 15, std::nullopt, 1, {"a@x"});
+	const NamedSplit split{builder, {.Tips = {"m15", "m10"}, .BaseTips = {"m15", "m10"}}};
+
+	CHECK(split.LineCount() == 1);
+	CHECK(split.LineOf("m10") == split.LineOf("m15"));
+	CHECK(split.LineAt("m1").Top == split.Commit("m15"));
+}
+
+TEST_CASE("Lines: a line built on the tip of the base listed first still starts a line of its own")
+{
+	// main is listed first at m10; staging is listed after it and has five commits on main's tip.
+	GraphBuilder builder;
+	builder.Chain("m", 15, std::nullopt, 1, {"a@x"});
+	const NamedSplit split{builder, {.Tips = {"m10", "m15"}, .BaseTips = {"m10", "m15"}}};
+
+	CHECK(split.LineCount() == 2);
+	CHECK(split.LineOf("m11") != split.LineOf("m10"));
+	CHECK(split.LineAt("m11").Join == split.Commit("m10"));
+	CHECK(split.LineAt("m1").Top == split.Commit("m10"));
 }
 
 TEST_CASE("Lines: a base's first-parent chain is the continuation even when lighter")

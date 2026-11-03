@@ -196,8 +196,9 @@ namespace Core {
 			std::vector<Index> HeaviestChild;      // per commit; kNoCommit for a commit without path children
 		};
 
-		// Most distinct authors, then most tips above, then the newer commit; the lower index settles a tie in
-		// all three so that the split never depends on the order the children were found in.
+		// Most distinct authors, then most tips above, then the newer commit; the lower id settles a tie in all
+		// three. Not the index: it follows the order git returned the commits in, which a cache rebuilt from nothing
+		// does not keep.
 		bool IsHeavier(const AncestryGraph& graph, const PathWeights& weights, Index candidate, Index current)
 		{
 			if (weights.AuthorsAbove[candidate] != weights.AuthorsAbove[current])
@@ -215,7 +216,7 @@ namespace Core {
 				return graph.TimeOf(candidate) > graph.TimeOf(current);
 			}
 
-			return candidate < current;
+			return graph.IdOf(candidate).Bytes < graph.IdOf(current).Bytes;
 		}
 
 		// Children before parents, so that each commit's weight is built from its children's.
@@ -266,15 +267,15 @@ namespace Core {
 
 		struct BasePins
 		{
-			std::vector<bool> IsBaseTip;
-			std::vector<std::uint32_t> PinnedBy; // per commit: the first listed base whose first-parent chain holds it, or kNoBase
+			std::vector<std::uint32_t> FirstBaseAtTip; // per commit: the first listed base whose tip it is, or kNoBase
+			std::vector<std::uint32_t> PinnedBy;       // per commit: the first listed base whose first-parent chain holds it, or kNoBase
 		};
 
 		// A base's walk stops at a commit an earlier base pinned: from there down, the chain is that base's too.
 		BasePins PinBaseChains(const AncestryGraph& graph, std::span<const Index> baseTips)
 		{
 			BasePins pins;
-			pins.IsBaseTip.assign(graph.Size(), false);
+			pins.FirstBaseAtTip.assign(graph.Size(), kNoBase);
 			pins.PinnedBy.assign(graph.Size(), kNoBase);
 
 			for (std::uint32_t baseIndex = 0; baseIndex < baseTips.size(); ++baseIndex)
@@ -282,9 +283,9 @@ namespace Core {
 				const Index baseTip = baseTips[baseIndex];
 				Index commit = IsInGraph(graph, baseTip) ? baseTip : AncestryGraph::kNoCommit;
 
-				if (commit != AncestryGraph::kNoCommit)
+				if (commit != AncestryGraph::kNoCommit && pins.FirstBaseAtTip[commit] == kNoBase)
 				{
-					pins.IsBaseTip[commit] = true;
+					pins.FirstBaseAtTip[commit] = baseIndex;
 				}
 
 				while (commit != AncestryGraph::kNoCommit && pins.PinnedBy[commit] == kNoBase)
@@ -353,14 +354,19 @@ namespace Core {
 
 		// The child that keeps the commit's line, or kNoCommit when every child starts a line of its own.
 		// A pinned child is never cut by the stack rule: a base's first-parent chain is always the continuation.
+		// At a base's tip the line stops, so that work built on the base is a line of its own, unless the chain going
+		// on belongs to a base listed before every base whose tip this is: a base cut from another's chain before
+		// its first commit of its own must not cut that chain in two.
 		Index ContinuationOf(const SplitPlan& plan, Index commit, const AuthorsSoFar& lineAuthors)
 		{
-			if (plan.Pins.IsBaseTip[commit])
-			{
-				return AncestryGraph::kNoCommit;
-			}
-
 			const Index pinnedChild = FirstListedPinnedChild(plan.Pins, PathChildrenOf(plan.Tree, commit));
+			const std::uint32_t firstBaseAtTip = plan.Pins.FirstBaseAtTip[commit];
+
+			if (firstBaseAtTip != kNoBase)
+			{
+				const bool anEarlierBaseGoesOn = pinnedChild != AncestryGraph::kNoCommit && plan.Pins.PinnedBy[pinnedChild] < firstBaseAtTip;
+				return anEarlierBaseGoesOn ? pinnedChild : AncestryGraph::kNoCommit;
+			}
 
 			if (pinnedChild != AncestryGraph::kNoCommit)
 			{

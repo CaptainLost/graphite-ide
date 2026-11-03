@@ -26,7 +26,8 @@ namespace Core {
 	};
 
 	// tips: every reference's tip. baseTips: the tips of the current bases, a subset of tips, in the order that
-	// decides which base keeps the line where two of them fork. A tip the graph lacks (kNoCommit) is skipped.
+	// decides which base keeps the line where two of them fork, and whether a line goes on past a base's tip (only
+	// along the chain of a base listed before it). A tip the graph lacks (kNoCommit) is skipped.
 	LineSplit SplitLines(const AncestryGraph& graph, std::span<const AncestryGraph::Index> tips,
 						 std::span<const AncestryGraph::Index> baseTips);
 }
