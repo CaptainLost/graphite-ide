@@ -344,6 +344,7 @@ namespace {
 TEST_CASE("An embedded review draws a draft's branch without opening a tab")
 {
 	EmbeddedHost host;
+	host.Port.Range.Ends.Tip.Bytes[0] = 2;
 	host.Sessions.OpenDraft(kSide, kMain);
 
 	host.Draw(kSide);

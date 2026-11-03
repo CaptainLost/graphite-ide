@@ -1,5 +1,7 @@
 #include "Review/ReviewWindows.h"
 
+#include "Review/CommittedReview.h"
+
 #include "Git/History/CommitLabels.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
@@ -726,23 +728,22 @@ namespace Graphite {
 		const SessionSettings settings = session->Settings;
 		const RowsCache* noRowsYet = nullptr;
 
-		input.Model.RequestRange(key);
-		const Core::Ref<const ReviewRange> range = input.Model.GetRange(key);
+		AskForCommittedReview(input.Model, key, settings.Whitespace);
+		const CommittedReview committed = ReadCommittedReview(input.Model, key, settings.Whitespace);
+		const Core::Ref<const ReviewRange>& range = committed.Range;
 		const bool rangeLoading = input.Model.IsRangeLoading(key);
 
 		if (range == nullptr)
 		{
 			RenderHeader(tab, input, nullptr, noRowsYet, kNotUpdating);
 
-			const Core::Error* error = input.Model.GetRangeError(key);
-
-			if (error == nullptr || input.Model.IsRangeRetrying(key))
+			if (committed.State == CommittedReviewState::LoadingRange)
 			{
 				Core::LoadingState("Loading the review");
 				return;
 			}
 
-			if (Core::EmptyState(error->Message, "Retry"))
+			if (Core::EmptyState(committed.Problem, "Retry"))
 			{
 				input.Model.Retry(key);
 			}
@@ -750,11 +751,11 @@ namespace Graphite {
 			return;
 		}
 
-		if (range->Problem != RangeProblem::None)
+		if (committed.State == CommittedReviewState::RangeProblem)
 		{
 			RenderHeader(tab, input, range.get(), noRowsYet, kNotUpdating);
 
-			const std::string problem = RangeProblemMessage(range->Problem, tab.Branch, session->Base);
+			const std::string& problem = committed.Problem;
 
 			if (range->Problem == RangeProblem::BranchMissing)
 			{
@@ -798,9 +799,6 @@ namespace Graphite {
 			input.Model.StopUncommitted(key);
 		}
 
-		const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = settings.Whitespace};
-		input.Model.RequestCommittedDiff(diffKey);
-
 		const bool showUncommitted = settings.IncludeUncommitted && range->Worktree.has_value();
 
 		if (showUncommitted)
@@ -810,7 +808,7 @@ namespace Graphite {
 
 		const LoadedReview review{.Key = key,
 								  .Range = range,
-								  .Committed = input.Model.GetCommittedDiff(diffKey),
+								  .Committed = committed.Committed,
 								  .Uncommitted = showUncommitted ? input.Model.GetUncommitted(key) : nullptr};
 		ReviewRefresh refresh{.RangeLoading = rangeLoading,
 							  .UncommittedLoading = showUncommitted && input.Model.IsUncommittedLoading(key),
@@ -826,7 +824,7 @@ namespace Graphite {
 			return;
 		}
 
-		const bool failed = input.Model.IsCommittedDiffFailed(diffKey);
+		const bool failed = committed.State == CommittedReviewState::ChangesFailed;
 
 		if (!failed && tab.LastLoaded.has_value())
 		{
@@ -845,10 +843,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<Core::Error> diffError = input.Model.GetCommittedDiffFailure(diffKey);
-		const std::string message = diffError.has_value() ? diffError->Message : std::string{kDiffUnreadable};
-
-		if (Core::EmptyState(message, "Retry"))
+		if (Core::EmptyState(committed.Problem, "Retry"))
 		{
 			input.Model.Retry(key);
 		}

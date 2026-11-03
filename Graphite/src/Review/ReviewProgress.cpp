@@ -1,6 +1,7 @@
 #include "Review/ReviewProgress.h"
 
 #include "Git/DefaultBranch.h"
+#include "Review/CommittedReview.h"
 
 namespace Graphite {
 
@@ -9,6 +10,13 @@ namespace Graphite {
 		bool HasCommittedFiles(const ReviewRange& range)
 		{
 			return range.Ends.MergeBase != range.Ends.Tip;
+		}
+
+		Core::WhitespaceInDiff WhitespaceOf(const ReviewSessions& sessions, const std::string& branch)
+		{
+			const ReviewSession* session = sessions.Find(branch);
+
+			return session != nullptr ? session->Settings.Whitespace : SessionSettings{}.Whitespace;
 		}
 	}
 
@@ -87,9 +95,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const ReviewSession* session = sessions.Find(branch);
-		const Core::WhitespaceInDiff whitespace =
-			session != nullptr ? session->Settings.Whitespace : SessionSettings{}.Whitespace;
+		const Core::WhitespaceInDiff whitespace = WhitespaceOf(sessions, branch);
 		const bool kept = sessions.IsKept(branch);
 
 		const ReviewKey key{.Branch = branch, .Base = *base};
@@ -113,16 +119,10 @@ namespace Graphite {
 			}
 		}
 
-		Core::Ref<const Core::Diff> committed;
+		AskForCommittedReview(model, key, whitespace);
+		const CommittedReview review = ReadCommittedReview(model, key, whitespace);
 
-		if (range->Problem == RangeProblem::None && HasCommittedFiles(*range))
-		{
-			const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = whitespace};
-			model.RequestCommittedDiff(diffKey);
-			committed = model.GetCommittedDiff(diffKey);
-		}
-
-		const std::optional<ViewedCount> count = CountReviewProgress(sessions, branch, range.get(), committed.get());
+		const std::optional<ViewedCount> count = CountReviewProgress(sessions, branch, range.get(), review.Committed.get());
 
 		if (count.has_value())
 		{
@@ -148,30 +148,19 @@ namespace Graphite {
 		}
 
 		const ReviewKey key{.Branch = branch, .Base = *base};
-		const Core::Ref<const ReviewRange> range = model.GetRange(key);
+		const CommittedReview review = ReadCommittedReview(model, key, WhitespaceOf(sessions, branch));
 
-		if (range == nullptr)
+		switch (review.State)
 		{
-			// WARNING: A retry the reader asked for is waited on, as the review itself waits on it.
-			const Core::Error* error = model.GetRangeError(key);
-			return error != nullptr && !model.IsRangeRetrying(key) ? std::optional<std::string>{error->Message}
-																	: std::nullopt;
-		}
+		case CommittedReviewState::RangeFailed:
+		case CommittedReviewState::RangeProblem:
+		case CommittedReviewState::ChangesFailed:
+			return review.Problem;
 
-		if (range->Problem != RangeProblem::None)
-		{
-			return RangeProblemMessage(range->Problem, branch, *base);
-		}
-
-		const ReviewSession* session = sessions.Find(branch);
-		const RangeDiffKey diffKey{.Ends = range->Ends,
-								   .Whitespace = session != nullptr ? session->Settings.Whitespace
-																	: SessionSettings{}.Whitespace};
-
-		if (HasCommittedFiles(*range) && model.IsCommittedDiffFailed(diffKey))
-		{
-			const std::optional<Core::Error> error = model.GetCommittedDiffFailure(diffKey);
-			return error.has_value() ? error->Message : std::string("The branch's changes could not be read.");
+		case CommittedReviewState::LoadingRange:
+		case CommittedReviewState::LoadingChanges:
+		case CommittedReviewState::Ready:
+			break;
 		}
 
 		return std::nullopt;
