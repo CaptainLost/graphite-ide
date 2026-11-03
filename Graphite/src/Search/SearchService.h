@@ -3,7 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/Jobs/CancellationToken.h"
-#include "Core/Jobs/JobQueue.h"
+#include "Core/Jobs/JobSubmitter.h"
 #include "Search/SearchQuery.h"
 
 #include <cstddef>
@@ -46,7 +46,10 @@ namespace Graphite {
 	class SearchService
 	{
 	public:
-		SearchService();
+		// WARNING: A search job holds only the shared results and its own token, never the service, so the
+		// submitter's workers may outlive it. They must not be joined before it: its destructor cancels the
+		// running search, and a join first would wait for the whole search to finish.
+		explicit SearchService(Core::JobSubmitter submit);
 		~SearchService();
 
 		SearchService(const SearchService&) = delete;
@@ -86,12 +89,10 @@ namespace Graphite {
 							   const std::vector<SearchHit>& found, FileOutcome outcome);
 		static void ScanFile(const ScanContext& context, const std::filesystem::path& file);
 
+		Core::JobSubmitter m_Submit;
+
 		Core::Ref<Shared> m_Shared = Core::CreateRef<Shared>();
 
 		Core::CancellationToken m_Token;
-
-		// WARNING: Declared last so its destructor runs first and joins the workers while
-		// everything they touch is still alive.
-		Core::JobQueue m_Jobs;
 	};
 }

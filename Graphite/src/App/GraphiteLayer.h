@@ -323,9 +323,13 @@ namespace Graphite {
 		// WARNING: Declared after m_Documents and m_DocumentWindows and before m_Panels, where GitView holds it by reference.
 		DocumentBuffers m_DocumentBuffers{m_Documents, m_DocumentWindows};
 
+		// WARNING: Declared before m_Search, so it is destroyed after it: the service cancels its running search
+		// first, and this queue then joins a worker that is already stopping rather than one still scanning.
+		Core::JobQueue m_SearchJobs;
+
 		// WARNING: Declared before m_Panels, because SearchPanel holds references to m_Workspace, m_Documents,
 		// m_Search and m_SearchSettings, and a member declared after m_Panels is destroyed first.
-		SearchService m_Search;
+		SearchService m_Search{[this](std::function<void()> job) { m_SearchJobs.Submit(std::move(job)); }};
 		SearchSettings m_SearchSettings{m_AppSettings};
 
 		// WARNING: Declared before m_Panels, because FindInFilesPage holds a reference to it.

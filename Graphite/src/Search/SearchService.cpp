@@ -45,11 +45,12 @@ namespace Graphite {
 		}
 	}
 
-	SearchService::SearchService() = default;
+	SearchService::SearchService(Core::JobSubmitter submit) : m_Submit(std::move(submit))
+	{
+	}
 
 	SearchService::~SearchService()
 	{
-		// WARNING: Cancel before m_Jobs joins, or the destructor waits for the whole search.
 		m_Token.Cancel();
 	}
 
@@ -179,8 +180,7 @@ namespace Graphite {
 			m_Shared->Progress.Running = true;
 		}
 
-		m_Jobs.Submit([shared = m_Shared, token = m_Token, generation,
-					   input = std::move(request)] {
+		m_Submit([shared = m_Shared, token = m_Token, generation, input = std::move(request)] {
 			const ScanContext context{.SharedState = *shared,
 									  .Token = token,
 									  .Input = input,

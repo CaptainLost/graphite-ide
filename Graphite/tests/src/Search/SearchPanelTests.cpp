@@ -22,13 +22,11 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
-#include <thread>
 
 namespace {
 
@@ -38,7 +36,6 @@ namespace {
 	constexpr ImVec2 kPanelSize{600.0f, 400.0f};
 	constexpr ImVec2 kInsideTheQueryField{200.0f, 17.0f};
 	constexpr int kFramesPastTheLoaderWait = 20;
-	constexpr std::chrono::seconds kSearchTimeout{10};
 
 	constexpr const char* kProjectsUnreadable = "The solution could not be read, so Projects only has no files to search.";
 
@@ -97,7 +94,7 @@ namespace {
 	struct SearchScreen
 	{
 		explicit SearchScreen(DeferredJobs& jobs)
-			: Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter())
+			: Jobs(jobs), Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter())
 		{
 			Search.SetProjectsOnly(true);
 		}
@@ -147,16 +144,13 @@ namespace {
 
 		void WaitUntilTheSearchIsDone()
 		{
-			const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kSearchTimeout;
-
-			while (Panel.IsSearching() && std::chrono::steady_clock::now() < deadline)
-			{
-				Next();
-			}
+			Jobs.RunAll();
+			Next();
 
 			REQUIRE_FALSE(Panel.IsSearching());
 		}
 
+		DeferredJobs& Jobs;
 		ImGuiFrames Frames;
 		TempAppSettings Settings;
 		Core::EventBus Events;
@@ -167,7 +161,7 @@ namespace {
 		Core::DocumentSet Documents;
 		SilentPreviewPort Port;
 		Graphite::PreviewSemantics Semantics{Port};
-		Graphite::SearchService Service;
+		Graphite::SearchService Service{Jobs.Submitter()};
 		Graphite::SearchPanel Panel{Service, Search, Workspace, Documents, Scheme, Editor, Semantics};
 	};
 

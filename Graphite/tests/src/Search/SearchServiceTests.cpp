@@ -1,20 +1,20 @@
 #include <doctest/doctest.h>
 
 #include "Search/SearchService.h"
+
+#include "DeferredJobs.h"
 #include "TempDirectory.h"
 
-#include <algorithm>
-#include <chrono>
+#include <cstddef>
 #include <fstream>
+#include <string>
 #include <string_view>
-#include <thread>
+#include <utility>
+#include <vector>
 
 namespace {
 
-	constexpr std::chrono::seconds kSearchDeadline{10};
-	constexpr std::chrono::milliseconds kPollInterval{1};
-	constexpr std::chrono::milliseconds kSettleInterval{200};
-	constexpr std::size_t kManyFilesCount = 200;
+	constexpr std::size_t kManyFilesCount = 20;
 
 	void WriteFile(const std::filesystem::path& path, std::string_view contents)
 	{
@@ -24,26 +24,12 @@ namespace {
 		outputStream << contents;
 	}
 
-	std::vector<Graphite::SearchHit> RunToEnd(Graphite::SearchService& service,
+	std::vector<Graphite::SearchHit> RunToEnd(Graphite::SearchService& service, DeferredJobs& jobs,
 											  Graphite::SearchProgress& progress)
 	{
+		jobs.RunAll();
+
 		std::vector<Graphite::SearchHit> hits;
-
-		const std::chrono::steady_clock::time_point deadline =
-			std::chrono::steady_clock::now() + kSearchDeadline;
-
-		while (std::chrono::steady_clock::now() < deadline)
-		{
-			service.Drain(hits, progress);
-
-			if (!progress.Running)
-			{
-				break;
-			}
-
-			std::this_thread::sleep_for(kPollInterval);
-		}
-
 		service.Drain(hits, progress);
 
 		return hits;
@@ -66,17 +52,37 @@ TEST_CASE("SearchService finds a hit in a file on disk")
 
 	WriteFile(temp.GetPath() / "a.cpp", "int alpha = 1;\nint beta = 2;\n");
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(Request(temp.GetPath(), "beta"));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].Line == 1);
 	CHECK(hits[0].Text == "int beta = 2;");
 	CHECK_FALSE(progress.Running);
 	CHECK(progress.FilesScanned == 1);
+}
+
+TEST_CASE("SearchService reports a search as running until its job has run")
+{
+	const TempDirectory temp;
+
+	WriteFile(temp.GetPath() / "a.cpp", "needle\n");
+
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
+	service.Start(Request(temp.GetPath(), "needle"));
+
+	std::vector<Graphite::SearchHit> hits;
+	Graphite::SearchProgress progress;
+	service.Drain(hits, progress);
+
+	CHECK(progress.Running);
+	CHECK(hits.empty());
+	CHECK(jobs.Count() == 1);
 }
 
 TEST_CASE("SearchService applies the file mask")
@@ -89,11 +95,12 @@ TEST_CASE("SearchService applies the file mask")
 	Graphite::SearchStart request = Request(temp.GetPath(), "needle");
 	request.Query.Mask = "*.cpp";
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(std::move(request));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].File.filename() == "a.cpp");
@@ -110,11 +117,12 @@ TEST_CASE("SearchService searches an open document's text rather than the file's
 	Graphite::SearchStart request = Request(temp.GetPath(), "fresh");
 	request.Unsaved.push_back(Graphite::UnsavedFile{file, "fresh text\n"});
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(std::move(request));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].Text == "fresh text");
@@ -132,12 +140,13 @@ TEST_CASE("SearchService does not find what only the saved file still says")
 	Graphite::SearchStart request = Request(temp.GetPath(), "removed");
 	request.Unsaved.push_back(Graphite::UnsavedFile{file, "gone now\n"});
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(std::move(request));
 
 	Graphite::SearchProgress progress;
 
-	CHECK(RunToEnd(service, progress).empty());
+	CHECK(RunToEnd(service, jobs, progress).empty());
 }
 
 TEST_CASE("SearchService skips a binary file and counts it")
@@ -147,11 +156,12 @@ TEST_CASE("SearchService skips a binary file and counts it")
 	WriteFile(temp.GetPath() / "a.cpp", "needle\n");
 	WriteFile(temp.GetPath() / "b.bin", std::string("needle\0\0\0binary", 15));
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(Request(temp.GetPath(), "needle"));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].File.filename() == "a.cpp");
@@ -166,11 +176,12 @@ TEST_CASE("SearchService counts a file it cannot probe as unreadable and not as 
 	request.Options.ProjectsOnly = true;
 	request.ProjectFiles.push_back(temp.GetPath() / "missing.cpp");
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(std::move(request));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	CHECK(hits.empty());
 	CHECK(progress.Unreadable == 1);
@@ -186,36 +197,23 @@ TEST_CASE("SearchService shows only the newest search's results")
 		WriteFile(temp.GetPath() / ("f" + std::to_string(fileIndex) + ".cpp"), "alpha\nbeta\n");
 	}
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 
 	service.Start(Request(temp.GetPath(), "alpha"));
-
-	Graphite::SearchProgress firstProgress;
-	const std::chrono::steady_clock::time_point firstScanDeadline =
-		std::chrono::steady_clock::now() + kSearchDeadline;
-
-	while (firstProgress.FilesScanned == 0 &&
-		   std::chrono::steady_clock::now() < firstScanDeadline)
-	{
-		std::vector<Graphite::SearchHit> discarded;
-		service.Drain(discarded, firstProgress);
-
-		std::this_thread::sleep_for(kPollInterval);
-	}
-
-	REQUIRE(firstProgress.FilesScanned > 0);
+	jobs.RunAll();
 
 	service.Start(Request(temp.GetPath(), "beta"));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	for (const Graphite::SearchHit& hit : hits)
 	{
 		CHECK(hit.Text == "beta");
 	}
 
-	CHECK_FALSE(hits.empty());
+	CHECK(hits.size() == kManyFilesCount);
 }
 
 TEST_CASE("SearchService runs nothing for an empty query instead of walking the tree")
@@ -225,11 +223,14 @@ TEST_CASE("SearchService runs nothing for an empty query instead of walking the 
 	WriteFile(temp.GetPath() / "a.cpp", "alpha\n");
 	WriteFile(temp.GetPath() / "b.cpp", "beta\n");
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(Request(temp.GetPath(), ""));
 
+	CHECK(jobs.Count() == 0);
+
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	CHECK(hits.empty());
 	CHECK(progress.FilesScanned == 0);
@@ -247,24 +248,17 @@ TEST_CASE("SearchService stops when cancelled and its worker stops scanning")
 		WriteFile(temp.GetPath() / ("f" + std::to_string(fileIndex) + ".cpp"), "alpha\n");
 	}
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(Request(temp.GetPath(), "alpha"));
 	service.Cancel();
 
 	Graphite::SearchProgress progress;
-	RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	CHECK_FALSE(progress.Running);
-	CHECK(progress.FilesScanned < kManyFilesCount);
-
-	const std::size_t scannedAfterStop = progress.FilesScanned;
-
-	std::this_thread::sleep_for(kSettleInterval);
-
-	std::vector<Graphite::SearchHit> hits;
-	service.Drain(hits, progress);
-
-	CHECK(progress.FilesScanned == scannedAfterStop);
+	CHECK(progress.FilesScanned == 0);
+	CHECK(hits.empty());
 }
 
 TEST_CASE("SearchService searches only the listed files under the projects-only scope")
@@ -278,11 +272,12 @@ TEST_CASE("SearchService searches only the listed files under the projects-only 
 	request.Options.ProjectsOnly = true;
 	request.ProjectFiles.push_back(temp.GetPath() / "listed.cpp");
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(std::move(request));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].File.filename() == "listed.cpp");
@@ -294,11 +289,12 @@ TEST_CASE("SearchService places a hit in a file with a byte order mark where the
 
 	WriteFile(temp.GetPath() / "marked.cpp", "\xEF\xBB\xBFint beta = 2;\r\nint gamma = 3;\r\n");
 
-	Graphite::SearchService service;
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
 	service.Start(Request(temp.GetPath(), "beta"));
 
 	Graphite::SearchProgress progress;
-	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].Line == 0);
