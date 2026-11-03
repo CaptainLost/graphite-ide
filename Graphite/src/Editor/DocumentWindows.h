@@ -134,7 +134,7 @@ namespace Graphite {
 
 		void RestoreState(const WorkspaceState& state);
 
-		void HandleRootMoved(const std::filesystem::path& from, const std::filesystem::path& to);
+		void FollowMove(const std::filesystem::path& from, const std::filesystem::path& to);
 
 		void HandleFilesChanged(const std::vector<std::filesystem::path>& directories,
 								bool everything);

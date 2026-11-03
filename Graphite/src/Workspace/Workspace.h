@@ -69,6 +69,14 @@ namespace Graphite {
 		std::filesystem::path To;
 	};
 
+	// A file or folder inside the open folder that Graphite itself renamed. A rename made elsewhere reaches Graphite
+	// only as a file gone and another come, and is not one of these.
+	struct PathMovedEvent
+	{
+		std::filesystem::path From;
+		std::filesystem::path To;
+	};
+
 	struct WorkspaceFilesChangedEvent
 	{
 		std::vector<std::filesystem::path> Directories;

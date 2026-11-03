@@ -836,6 +836,8 @@ namespace Graphite {
 			return action.Target;
 		}
 
+		m_Events.Publish(PathMovedEvent{.From = action.Target, .To = target});
+
 		RefreshParentOf(action.Target);
 		return target;
 	}

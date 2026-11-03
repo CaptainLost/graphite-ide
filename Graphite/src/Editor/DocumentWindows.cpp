@@ -576,7 +576,7 @@ namespace Graphite {
 		m_SizeQuestion.AskOnce(std::move(question));
 	}
 
-	void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
+	void DocumentWindows::FollowMove(const std::filesystem::path& from,
 										  const std::filesystem::path& to)
 	{
 		const std::vector<std::string> oldIdentities = CurrentIdentities(m_Documents);

@@ -805,6 +805,31 @@ TEST_CASE("Enter in the New File name field makes the file and opens it")
 	CHECK(screen.OpenedFiles.front() == folder.GetPath() / "Foo.cpp");
 }
 
+TEST_CASE("Renaming a file tells the application which path moved where, so its tab can follow")
+{
+	TempDirectory folder;
+	folder.MakeFile("a.cpp");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	std::vector<Graphite::PathMovedEvent> moved;
+	screen.Events.Subscribe<Graphite::PathMovedEvent>(
+		[&moved](const Graphite::PathMovedEvent& event) { moved.push_back(event); });
+
+	screen.RightClickRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Rename"));
+	screen.Next();
+	screen.Next();
+	screen.Type("renamed");
+	screen.Press(ImGuiKey_Enter);
+	screen.Next();
+
+	REQUIRE(std::filesystem::is_regular_file(folder.GetPath() / "renamed.cpp"));
+	REQUIRE(moved.size() == 1);
+	CHECK(moved.front().From == folder.GetPath() / "a.cpp");
+	CHECK(moved.front().To == folder.GetPath() / "renamed.cpp");
+}
+
 TEST_CASE("A name with slashes in the New File field makes the folders on the way")
 {
 	TempDirectory folder;

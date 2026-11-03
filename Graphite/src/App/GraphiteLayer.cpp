@@ -490,6 +490,9 @@ namespace Graphite {
 		m_Events.Subscribe<WorkspaceRootMovedEvent>(
 			[this](const WorkspaceRootMovedEvent& event) { m_Folder.Move(event.From, event.To); });
 
+		m_Events.Subscribe<PathMovedEvent>(
+			[this](const PathMovedEvent& event) { m_DocumentWindows.FollowMove(event.From, event.To); });
+
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& event) {
 				m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything);

@@ -79,7 +79,7 @@ namespace Graphite {
 
 	void DocumentsOfFolder::FollowMove(const std::filesystem::path& from, const std::filesystem::path& to)
 	{
-		m_Windows.HandleRootMoved(from, to);
+		m_Windows.FollowMove(from, to);
 	}
 
 	void DocumentsOfFolder::Capture(WorkspaceState& state) const
