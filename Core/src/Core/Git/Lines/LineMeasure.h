@@ -25,7 +25,4 @@ namespace Core {
 
 	// kMergedLinesForBase or more merged lines, or (kAuthorsForBase+ authors, Span >= kSpanForBase, kCommitsForBase+ commits).
 	bool QualifiesAsBase(const LineQualities& qualities);
-
-	// True when `ancestor` is reachable from `descendant` (a commit is its own ancestor).
-	bool IsAncestor(const AncestryGraph& graph, AncestryGraph::Index ancestor, AncestryGraph::Index descendant);
 }

@@ -30,6 +30,24 @@ TEST_CASE("Lines: a parent the graph never receives is dropped and its child is 
 	CHECK(graph.ParentsCutAt(graph.Find(OidOf("a"))));
 }
 
+TEST_CASE("Lines: a commit whose first parent is missing loses every parent and is marked cut")
+{
+	Core::AncestryGraph graph;
+	graph.Append({Core::GraphCommit{OidOf("side"), {}, 5, "a@example.com", false},
+				  Core::GraphCommit{OidOf("merge"), {OidOf("missing"), OidOf("side")}, 10, "a@example.com", false},
+				  Core::GraphCommit{OidOf("other"), {OidOf("side"), OidOf("missing")}, 11, "a@example.com", false}});
+
+	const auto merge = graph.Find(OidOf("merge"));
+	CHECK(graph.ParentsOf(merge).empty());
+	CHECK(graph.ParentsCutAt(merge));
+
+	// A missing second parent leaves the first parent where it is.
+	const auto other = graph.Find(OidOf("other"));
+	REQUIRE(graph.ParentsOf(other).size() == 1);
+	CHECK(graph.ParentsOf(other)[0] == graph.Find(OidOf("side")));
+	CHECK(graph.ParentsCutAt(other));
+}
+
 TEST_CASE("Lines: appending a commit twice keeps one and authors are shared by key")
 {
 	GraphBuilder b;

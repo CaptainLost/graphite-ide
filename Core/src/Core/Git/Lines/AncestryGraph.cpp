@@ -45,9 +45,13 @@ namespace Core {
 		// Every commit of the batch is indexed, so a parent appended after its child resolves here.
 		for (std::size_t i = 0; i < rawParents.size(); ++i)
 		{
+			// Without its first parent a commit keeps none: a second parent moved into the first place would be
+			// walked as the line the commit was made on.
+			const bool firstParentMissing = !rawParents[i].empty() && Find(rawParents[i].front()) == kNoCommit;
+
 			for (const Oid& parent : rawParents[i])
 			{
-				const Index found = Find(parent);
+				const Index found = firstParentMissing ? kNoCommit : Find(parent);
 
 				if (found == kNoCommit)
 				{

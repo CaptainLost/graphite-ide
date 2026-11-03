@@ -163,46 +163,4 @@ namespace Core {
 		return qualities.MergedLines >= kMergedLinesForBase
 			|| (qualities.Authors >= kAuthorsForBase && qualities.Span >= kSpanForBase && qualities.Commits >= kCommitsForBase);
 	}
-
-	bool IsAncestor(const AncestryGraph& graph, AncestryGraph::Index ancestor, AncestryGraph::Index descendant)
-	{
-		if (ancestor == AncestryGraph::kNoCommit || descendant == AncestryGraph::kNoCommit)
-		{
-			return false;
-		}
-
-		// A commit older than the ancestor by more than a day cannot lead to it unless clocks are far off; the
-		// day is the skew allowance, and it ends the walk early on a long history.
-		const std::int64_t floor = graph.TimeOf(ancestor) - kSecondsPerDay;
-		std::vector<bool> visited(graph.Size(), false);
-		std::vector<Index> pending{descendant};
-		visited[descendant] = true;
-
-		while (!pending.empty())
-		{
-			const Index current = pending.back();
-			pending.pop_back();
-
-			if (current == ancestor)
-			{
-				return true;
-			}
-
-			if (graph.TimeOf(current) < floor)
-			{
-				continue;
-			}
-
-			for (const Index parent : graph.ParentsOf(current))
-			{
-				if (!visited[parent])
-				{
-					visited[parent] = true;
-					pending.push_back(parent);
-				}
-			}
-		}
-
-		return false;
-	}
 }

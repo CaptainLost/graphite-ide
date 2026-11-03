@@ -165,20 +165,3 @@ TEST_CASE("Lines: a span stays positive when commit clocks run backwards")
 	CHECK(qualities.Span == GraphBuilder::Seconds(19) - GraphBuilder::Seconds(3));
 	CHECK(qualities.Span > 0);
 }
-
-TEST_CASE("Lines: ancestry")
-{
-	GraphBuilder builder;
-	builder.Chain("m", 5, std::nullopt, 1, {});
-	builder.Commit("s1", {"m1"}, 10);
-	builder.Commit("j", {"m5", "s1"}, 12);
-	const Core::AncestryGraph graph = builder.Graph();
-
-	const auto at = [&graph](std::string_view name) { return graph.Find(OidOf(name)); };
-
-	CHECK(Core::IsAncestor(graph, at("m1"), at("m5")));
-	CHECK_FALSE(Core::IsAncestor(graph, at("m5"), at("m1")));
-	CHECK(Core::IsAncestor(graph, at("m3"), at("m3")));
-	CHECK(Core::IsAncestor(graph, at("s1"), at("j")));
-	CHECK_FALSE(Core::IsAncestor(graph, at("s1"), at("m5")));
-}

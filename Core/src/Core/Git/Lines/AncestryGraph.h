@@ -32,7 +32,7 @@ namespace Core {
 		static constexpr Index kNoCommit = std::numeric_limits<Index>::max();
 
 		// Duplicates (same Id) are ignored. After the whole batch is in, a parent the graph still lacks is
-		// dropped and its child is marked ParentsCut.
+		// dropped and its child is marked ParentsCut; a commit whose first parent is lacking drops all of them.
 		void Append(std::vector<GraphCommit> commits);
 
 		std::size_t Size() const;
