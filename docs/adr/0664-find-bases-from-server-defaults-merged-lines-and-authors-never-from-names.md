@@ -26,12 +26,14 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
   default's commit time, so a badly skewed clock can hide an old copy but never make one. When two defaults from
   different remotes are at the same commit, the one whose remote has fewer refs becomes the old copy of the other;
   with as many refs on each, the one whose remote name sorts later does. Old copies are listed as such and never used.
-  The test runs once, against every base, after the other rules have run; the lines are then computed once more
-  without the old copies, and each old copy is named a copy of the base whose line holds its tip in that split, so a
-  release line forked above the stale tip and listed earlier does not take it from the main line. Old copies exist
-  for forks, which are a matter of remotes and not of names: a fork whose `origin` reports a stale default keeps the
-  upstream's default as its main line when the upstream reports one, and otherwise guesses the upstream's main line
-  found by the rules below and asks once (see "No main line").
+  The test runs once, against every base, after the other rules have run. Of the bases a default copies, it is named
+  a copy of the one its tip goes on into along the heaviest line with nothing pinned (the first it copies when none
+  is on that line), so a release line forked above the stale tip and listed earlier does not take it from the
+  upstream's main line. That base takes over the default's role: it moves into the default's place in the list, is
+  pinned as the default was, and stands for the main line, so nothing is guessed. The lines are then computed once
+  more without the old copies. Old copies exist for forks, which are a matter of remotes and not of names: a fork
+  whose `origin` reports a stale default finds the real main line from the upstream's default or from the rules below
+  and asks no question.
 - **The user's answers.** Bases the user added are bases; bases the user removed are not. The user's choice of the main
   line is a base.
 - **Merged lines.** A line into whose own stretch (its commits up to where it joins another line) three or more
@@ -46,10 +48,9 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
   are pinned to the bases. The split is run with the server defaults and the user's answers pinned, the lines that
   qualify are added as bases, and the split is run again, until a pass adds none. Real repositories settle in two
   passes; a cap of six keeps a pathological history from going round for ever.
-- **No main line.** The model guesses whenever no ServerDefault or MainLineByUser base exists: no remote default, a
-  default whose tip is missing, a main-line answer naming a missing ref, or the only default removed by the user; and
-  again after the old copies are set aside when every default was one, never guessing an old copy.
-  Added and Kept bases do not stop the guess. The guess counts per line: each active branch votes for the line of the
+- **No main line.** The model guesses only when there is no ServerDefault base, no MainLineByUser base and no base
+  that a default set aside as an old copy copies: no remote default, a default whose tip is missing, a main-line
+  answer naming a missing ref, or the only default removed by the user. Added and Kept bases do not stop the guess. The guess counts per line: each active branch votes for the line of the
   ref it is compared with in a split with no base pinned, branches at one commit vote once, and the guess is that
   line's first ref that the user has not removed, at its top. A removed ref passes its count to the next ref at the same
   commit, and when every top ref of the busiest line is removed the next line is tried. The guess is marked as guessed
@@ -78,7 +79,7 @@ The guess has to be a question because in a copy of this repository the plain he
 - Agent and integration branches that many people merge into appear as bases while they are active. They are not wrong
   by the rules and the user can stop one; the window cannot tell them from a release line.
 - A repository with no remote default and no stated main line is asked once, and its guess is shown as a guess until
-  then; so is a fork whose own default is an old copy and whose upstream reports no default.
+  then.
 - A stale default in a fork whose upstream has fewer refs than the fork stays a base.
 
 ### Neutral

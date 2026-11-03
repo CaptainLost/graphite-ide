@@ -769,90 +769,86 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		// An old copy stops being a base. True when any did. Of names the first base it copies until
-		// NameWhatOldCopiesCopy has the split without the old copies.
+		// Of the bases a stale default copies, the one its tip goes on into along the heaviest line, as the split sees it
+		// with nothing pinned: upstream's main line rather than a release line forked above the stale tip. The first it
+		// copies when none of them is on that line; nullopt when it copies none but old copies.
+		std::optional<std::size_t> BaseThatTakesOver(const AncestryGraph& graph, const RefTable& table, const std::vector<LineBase>& bases,
+													 std::size_t position, const std::vector<bool>& isOldCopy, const IndexedSplit& unpinned)
+		{
+			const std::uint32_t lineOfCopy = unpinned.Split.LineOf[table.Tips[bases[position].Ref]];
+			std::optional<std::size_t> firstCopied;
+
+			for (std::size_t other = 0; other < bases.size(); ++other)
+			{
+				if (other == position || isOldCopy[other] || !IsOldCopyOf(graph, table, bases[position], bases[other]))
+				{
+					continue;
+				}
+
+				if (unpinned.Split.LineOf[table.Tips[bases[other].Ref]] == lineOfCopy)
+				{
+					return other;
+				}
+
+				if (!firstCopied.has_value())
+				{
+					firstCopied = other;
+				}
+			}
+
+			return firstCopied;
+		}
+
+		// An old copy stops being a base, and the base it copies takes over its role: it moves into the copy's place
+		// in the list, so that it is pinned as the default was and keeps the line below a release line that was listed
+		// before it. True when any was set aside.
 		bool SetAsideOldCopies(const AncestryGraph& graph, const RefTable& table, BaseList& list, std::vector<OldCopy>& oldCopies)
 		{
 			const std::vector<LineBase>& bases = list.Bases;
 			const std::vector<bool> noneSkipped(bases.size(), false);
 			std::vector<bool> isOldCopy(bases.size(), false);
+			bool anyOldCopy = false;
 
 			for (std::size_t position = 0; position < bases.size(); ++position)
 			{
 				isOldCopy[position] = FirstBaseItCopies(graph, table, bases, position, noneSkipped).has_value();
+				anyOldCopy = anyOldCopy || isOldCopy[position];
 			}
 
+			if (!anyOldCopy)
+			{
+				return false;
+			}
+
+			const IndexedSplit unpinned = SplitAndIndex(graph, table, {});
+			std::vector<bool> placed(bases.size(), false);
 			std::vector<LineBase> remaining;
 
 			for (std::size_t position = 0; position < bases.size(); ++position)
 			{
 				// The bases it copies may all be old copies themselves (one went on along a remote that is its own,
 				// or a skewed clock cut a walk short); with none left to name, it stays a base.
-				const std::optional<std::size_t> newer = isOldCopy[position] ? FirstBaseItCopies(graph, table, bases, position, isOldCopy)
-																			 : std::nullopt;
+				const std::optional<std::size_t> takesOver = isOldCopy[position] ? BaseThatTakesOver(graph, table, bases, position, isOldCopy, unpinned)
+																				 : std::nullopt;
 
-				if (newer.has_value())
+				if (takesOver.has_value())
 				{
-					oldCopies.push_back(OldCopy{.Ref = bases[position].Ref, .Of = bases[*newer].Ref});
+					oldCopies.push_back(OldCopy{.Ref = bases[position].Ref, .Of = bases[*takesOver].Ref});
 					list.IsBase[bases[position].Ref] = false;
 				}
-				else
+
+				const std::size_t next = takesOver.value_or(position);
+
+				if (!placed[next])
 				{
-					remaining.push_back(bases[position]);
+					placed[next] = true;
+					remaining.push_back(bases[next]);
 				}
 			}
 
-			const bool anySetAside = remaining.size() != bases.size();
+			const bool anySetAside = !oldCopies.empty();
 			list.Bases = std::move(remaining);
 			return anySetAside;
-		}
-
-		// An old copy is a copy of the base whose line holds its tip once the old copies are no bases; a base listed
-		// before that one, such as a release line forked above the copy's tip, does not take it.
-		void NameWhatOldCopiesCopy(const RefTable& table, const IndexedSplit& indexed, std::vector<OldCopy>& oldCopies)
-		{
-			for (OldCopy& copy : oldCopies)
-			{
-				const std::uint32_t line = indexed.Split.LineOf[table.Tips[copy.Ref]];
-
-				if (line != kNoLine && indexed.BaseOfLine[line].has_value())
-				{
-					copy.Of = *indexed.BaseOfLine[line];
-				}
-			}
-		}
-
-		std::vector<bool> RemovedOrOldCopies(const std::vector<bool>& removed, const std::vector<OldCopy>& oldCopies)
-		{
-			std::vector<bool> excluded = removed;
-
-			for (const OldCopy& copy : oldCopies)
-			{
-				excluded[copy.Ref] = true;
-			}
-
-			return excluded;
-		}
-
-		// No default and no answer, or only ones the graph lacks, the user removed, that name no branch or that are
-		// old copies. True when a guess was made.
-		bool GuessUnlessAMainLineStands(const AncestryGraph& graph, const RefTable& table, const std::vector<bool>& notToGuess,
-										std::int64_t now, BaseList& list)
-		{
-			if (HasMainLineBase(list))
-			{
-				return false;
-			}
-
-			const std::optional<std::size_t> guess = GuessMainLine(graph, table, notToGuess, now);
-
-			if (!guess.has_value())
-			{
-				return false;
-			}
-
-			MakeGuessedMainLine(list, *guess);
-			return true;
 		}
 
 		// Each base's line as the final split draws it. A kept base its line still qualifies for reports the rule. A
@@ -1390,17 +1386,25 @@ namespace Core {
 		const std::vector<bool> removed = MarkRemovedBases(table, input.Answers);
 		LineModel model;
 		BaseList list = StartingBases(table, input.Answers, removed);
-		model.MainLineGuessed = GuessUnlessAMainLineStands(graph, table, removed, input.Now, list);
+
+		// No default and no answer, or only ones the graph lacks, the user removed or that name no branch.
+		if (!HasMainLineBase(list))
+		{
+			const std::optional<std::size_t> guess = GuessMainLine(graph, table, removed, input.Now);
+
+			if (guess.has_value())
+			{
+				MakeGuessedMainLine(list, *guess);
+				model.MainLineGuessed = true;
+			}
+		}
 
 		IndexedSplit indexed = FindBasesByRules(graph, table, removed, input.Now, list);
 
-		// Run once, after the rules. A fork's default set aside can leave no base standing for the main line.
+		// Run once, after the rules. A default set aside leaves the base it copies as the main line: nothing is guessed.
 		if (SetAsideOldCopies(graph, table, list, model.OldCopies))
 		{
-			const bool guessed = GuessUnlessAMainLineStands(graph, table, RemovedOrOldCopies(removed, model.OldCopies), input.Now, list);
-			model.MainLineGuessed = model.MainLineGuessed || guessed;
 			indexed = SplitAndIndex(graph, table, list.Bases);
-			NameWhatOldCopiesCopy(table, indexed, model.OldCopies);
 		}
 
 		DescribeBases(graph, table, indexed, input.Now, list.Bases);

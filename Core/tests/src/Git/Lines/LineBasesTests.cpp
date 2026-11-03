@@ -229,7 +229,7 @@ TEST_CASE("Lines: a fork's stale default is an old copy when both remotes report
 
 TEST_CASE("Lines: a fork's stale default is an old copy when only the fork reports a default")
 {
-	// With the only default set aside no base stands for the main line, so upstream's main line is guessed and asked.
+	// The base the stale default copies takes over as the main line, so nothing is guessed or asked.
 	GraphBuilder builder;
 	AddFork(builder, false);
 
@@ -237,12 +237,11 @@ TEST_CASE("Lines: a fork's stale default is an old copy when only the fork repor
 
 	REQUIRE(model.Bases.size() == 1);
 	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
-	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
-	CHECK(model.Bases[0].Qualities.Commits == 30);
+	CHECK(model.Bases[0].Reason == Core::BaseReason::Authors);
 	REQUIRE(model.OldCopies.size() == 1);
 	CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
 	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
-	CHECK(model.MainLineGuessed);
+	CHECK_FALSE(model.MainLineGuessed);
 }
 
 TEST_CASE("Lines: a stale default is an old copy of upstream's main line even when an upstream release line is listed first")
@@ -263,8 +262,11 @@ TEST_CASE("Lines: a stale default is an old copy of upstream's main line even wh
 	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
 	REQUIRE_FALSE(model.Bases.empty());
 	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::Authors);
+	CHECK(model.Bases[0].Qualities.Commits == 30);
 	CHECK(IsBase(model, builder.RefIndex("refs/remotes/upstream/release/1")));
 	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/main")));
+	CHECK_FALSE(model.MainLineGuessed);
 }
 
 TEST_CASE("Lines: an integration branch on a remote with fewer branches does not make the default an old copy")
