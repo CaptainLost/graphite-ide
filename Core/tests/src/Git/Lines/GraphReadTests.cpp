@@ -86,6 +86,27 @@ TEST_CASE("Lines: known tips and their ancestors are not read again")
 	CHECK(read.GetValue().front().Id == OidFromHex(third));
 }
 
+TEST_CASE("Lines: a known commit git does not have is passed over and the others still hide")
+{
+	GitFixture repo;
+	repo.Write("a.txt", "1");
+	repo.Commit("first");
+	repo.Write("a.txt", "2");
+	const std::string second = repo.Commit("second");
+	repo.Write("a.txt", "3");
+	const std::string third = repo.Commit("third");
+	const Core::Repository repository = OpenRepositoryAt(repo.GetPath());
+
+	Core::Oid pruned;
+	pruned.Bytes.fill(0xAB);
+
+	const auto read = repository.ReadGraphCommits({{OidFromHex(third)}, {pruned, OidFromHex(second)}});
+
+	REQUIRE(read.HasValue());
+	REQUIRE(read.GetValue().size() == 1);
+	CHECK(read.GetValue().front().Id == OidFromHex(third));
+}
+
 TEST_CASE("Lines: a shallow boundary comes back cut and without parents")
 {
 	GitFixture repo;

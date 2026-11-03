@@ -103,14 +103,12 @@ namespace Core {
 			}
 		}
 
+		// Hiding only saves reading what the caller has; a known id git no longer has (pruned after its branch went)
+		// is passed over, and whatever it would have hidden comes back once more.
 		for (const Oid& known : request.Known)
 		{
 			const git_oid knownId = ToGitOid(known);
-
-			if (git_revwalk_hide(walk.get(), &knownId) != 0)
-			{
-				return GraphFailure(std::format("cannot leave out {}", known.ShortHex()));
-			}
+			git_revwalk_hide(walk.get(), &knownId);
 		}
 
 		const std::unordered_set<Oid> shallowBoundary = ReadShallowBoundary(CommonDirectory());

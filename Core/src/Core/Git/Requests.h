@@ -119,7 +119,7 @@ namespace Core {
 	struct GraphReadRequest
 	{
 		std::vector<Oid> Tips;  // walk from these
-		std::vector<Oid> Known; // tips already in the graph: they and their ancestors are not read again
+		std::vector<Oid> Known; // commits already in the graph: they and their ancestors are not read again; one git lacks is passed over
 
 		friend bool operator==(const GraphReadRequest&, const GraphReadRequest&) = default;
 	};
