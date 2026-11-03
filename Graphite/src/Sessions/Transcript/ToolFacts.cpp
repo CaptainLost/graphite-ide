@@ -22,7 +22,6 @@ namespace Graphite {
 	namespace {
 		constexpr std::string_view kClaudeModelPrefix = "claude-";
 		constexpr std::string_view kModelNamesSeparator = "+";
-		constexpr std::uint64_t kTranscriptStart = 0;
 		constexpr std::uint64_t kPercentScale = 100;
 		constexpr std::uint64_t kTokensPerThousand = 1000;
 		constexpr std::uint64_t kTokensPerMillion = 1'000'000;
@@ -133,26 +132,6 @@ namespace Graphite {
 	bool IsAgentCall(const ToolCall& tool)
 	{
 		return tool.Name == "Agent" || tool.Name == "Task";
-	}
-
-	SubagentUsage LoadSubagentUsage(const std::filesystem::path& sessionFile)
-	{
-		SubagentUsage usage;
-		ForEachSubagentTranscript(sessionFile, [&usage](const std::filesystem::path& transcript, const std::string& agentId) {
-			UsageTally tally;
-
-			if (Core::Result<TranscriptRead> read = ReadTranscript(transcript, kTranscriptStart))
-			{
-				for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
-				{
-					tally.Add(record);
-				}
-			}
-
-			usage[agentId] = tally.Get();
-		});
-
-		return usage;
 	}
 
 	std::string ImageText(std::string_view mediaType, std::uint64_t bytes)

@@ -31,8 +31,6 @@ namespace Graphite {
 
 	using SubagentUsage = std::unordered_map<std::string, UsageByModel>;
 
-	SubagentUsage LoadSubagentUsage(const std::filesystem::path& sessionFile);
-
 	struct ToolFacts
 	{
 		ToolCategory Category = ToolCategory::Other;

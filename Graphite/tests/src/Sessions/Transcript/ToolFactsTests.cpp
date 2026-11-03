@@ -166,18 +166,6 @@ TEST_CASE("A usage line names the model, the cached share, output and cost")
 	CHECK(UsageLine(usage, 3, Pricing::Defaults()).starts_with("3 requests \xc2\xb7 opus-5"));
 }
 
-TEST_CASE("Subagent usage is read per agent id from the session's subagents folder")
-{
-	TempDirectory temp;
-	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("x"));
-	temp.MakeFile("p/s/subagents/agent-a1.jsonl", Fixtures::Assistant("r", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6)));
-
-	const SubagentUsage usage = LoadSubagentUsage(file);
-
-	REQUIRE(usage.contains("a1"));
-	CHECK(usage.at("a1") == UsageByModel{{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
-}
-
 TEST_CASE("A cached share is a whole percent, cut rather than rounded, so 99.9 percent is not read as all of it")
 {
 	CHECK(CachedPercent(999, 1000) == 99);
