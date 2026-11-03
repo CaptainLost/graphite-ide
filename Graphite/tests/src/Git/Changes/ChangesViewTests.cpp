@@ -1,34 +1,19 @@
 #include <doctest/doctest.h>
 
-#include "Editor/DocumentWindows.h"
-#include "Editor/EditorCommandTarget.h"
-#include "Editor/Overlays/AnalysisCache.h"
-#include "Editor/Server/DocumentServerPort.h"
-#include "Editor/Server/PreviewSemantics.h"
-#include "Git/Blame/BlameModel.h"
-#include "Git/Changes/ChangeBases.h"
-#include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/Changes/ChangesPanel.h"
 #include "Git/Changes/ChangesShared.h"
 #include "Git/Changes/ChangesView.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitModel.h"
-#include "Hex/HexFiles.h"
-#include "Image/ImageTabs.h"
-#include "Language/Analysis/AnalysisStore.h"
-#include "Language/Analysis/FileTextSource.h"
-#include "Language/Analysis/WorkspaceAnalysis.h"
-#include "Language/Diagnostics/DiagnosticsModel.h"
 #include "Theme/ActiveScheme.h"
 #include "UI/Dialogs/ModalGate.h"
 
-#include "FakeImageTexture.h"
+#include "Git/FakeEditorBuffers.h"
 #include "GitFixtures.h"
 #include "HoveredItems.h"
 #include "ImGuiFrames.h"
 
 #include "Core/Events/EventBus.h"
-#include "Core/Text/DocumentSet.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -43,10 +28,6 @@
 #include <vector>
 
 namespace {
-	using Graphite::LanguageId;
-	using Graphite::LanguageServices;
-
-	constexpr std::size_t kAnalysisBudgetBytes = 1u << 20;
 	constexpr ImVec2 kHostSize(480.0f, 600.0f);
 	constexpr float kIntoTheRow = 40.0f;
 	constexpr int kOnlyEntry = 0;
@@ -61,78 +42,6 @@ namespace {
 			file.WorkTree = Core::StatusFlags::Modified;
 			return WorkingTreeStatusOf({file});
 		}
-	};
-
-	class SilentServer final : public Graphite::DocumentServerPort
-	{
-	public:
-		void EnsureStarted(const std::filesystem::path&, LanguageId) override {}
-		void OpenDocument(const std::filesystem::path&, LanguageId, std::string) override {}
-		void ChangeDocument(const std::filesystem::path&, LanguageId, std::string) override {}
-		void SaveDocument(const std::filesystem::path&, LanguageId) override {}
-		void CloseDocument(const std::filesystem::path&, LanguageId) override {}
-		Graphite::ServerStatus StatusFor(const std::filesystem::path&, LanguageId) override { return {}; }
-		bool HasChosenServer(LanguageId) override { return false; }
-		bool OffersSwitchSourceHeader(LanguageId) override { return false; }
-		LanguageServices::Ticket AskDefinition(const std::filesystem::path&, LanguageId, const Graphite::FilePosition&) override { return {}; }
-		LanguageServices::Ticket AskReferences(const std::filesystem::path&, LanguageId, const Graphite::FilePosition&) override { return {}; }
-		LanguageServices::Ticket AskHover(const std::filesystem::path&, LanguageId, const Graphite::FilePosition&) override { return {}; }
-		LanguageServices::Ticket AskSwitchSourceHeader(const std::filesystem::path&, LanguageId) override { return {}; }
-		LanguageServices::Ticket AskSymbols(const std::filesystem::path&, LanguageId) override { return {}; }
-		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path&, LanguageId) override { return {}; }
-		void Cancel(LanguageServices::Ticket) override {}
-		void TakeAnswers(std::vector<LanguageServices::Answer>&) override {}
-		void TakeRecolour(std::vector<std::filesystem::path>&) override {}
-	};
-
-	class NoBases final : public Graphite::ChangeBasePort
-	{
-	public:
-		Core::Result<Graphite::ChangeBases> ReadBases(const std::filesystem::path&) override
-		{
-			return Core::Error{Core::ErrorCode::NotFound, "not in a repository"};
-		}
-	};
-
-	class NoBlame final : public Graphite::BlamePort
-	{
-	public:
-		Core::Result<Graphite::HeadBlame> BlameAtHead(const std::filesystem::path&) override
-		{
-			return Graphite::HeadBlame{};
-		}
-
-		Core::Result<Core::LineHistory> QueryLineHistory(const Core::LineHistoryRequest&) override
-		{
-			return Core::Error{Core::ErrorCode::NotFound, "not in a repository"};
-		}
-	};
-
-	class SilentPreviewPort final : public Graphite::PreviewServerPort
-	{
-	public:
-		void Open(const std::filesystem::path&, LanguageId, std::string) override {}
-		LanguageServices::Ticket Ask(const std::filesystem::path&, LanguageId) override { return {}; }
-		void Close(const std::filesystem::path&, LanguageId) override {}
-	};
-
-	class SilentAnalysisPort final : public Graphite::WorkspaceAnalysisPort
-	{
-	public:
-		void Open(const std::filesystem::path&, LanguageId, std::string) override {}
-		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path&, LanguageId) override { return {}; }
-		LanguageServices::Ticket AskSymbols(const std::filesystem::path&, LanguageId) override { return {}; }
-		void Close(const std::filesystem::path&, LanguageId) override {}
-		Graphite::ServerReadiness ReadinessOf(const std::filesystem::path&, LanguageId) override { return Graphite::ServerReadiness::CannotRun; }
-		bool HasChosenServer(LanguageId) override { return false; }
-		std::string ServerNameOf(LanguageId) override { return {}; }
-	};
-
-	class SilentTexts final : public Graphite::FileTextSource
-	{
-	public:
-		void Request(const std::filesystem::path&) override {}
-		void Take(std::vector<Graphite::FileText>&) override {}
 	};
 
 	// The host's window, at the same place and size every frame. Each test names its own, because hover
@@ -162,27 +71,8 @@ namespace {
 		OneModifiedFile Port;
 		Graphite::GitModel Model{Port, RunJobsInline()};
 		Graphite::ModalGate Modals;
-		Core::DocumentSet Documents;
-		SilentServer Server;
-		Graphite::DiagnosticsModel Diagnostics;
-		NoBases Bases;
-		Graphite::ChangeMarkersModel ChangeMarkers{Bases, [](std::function<void()>) {}};
-		NoBlame BlameReader;
-		Graphite::BlameModel Blame{BlameReader, [](std::function<void()>) {}};
-		SilentPreviewPort PreviewPort;
-		Graphite::PreviewSemantics Preview{PreviewPort};
-		Graphite::AnalysisCache Analysis{kAnalysisBudgetBytes};
-		Graphite::AnalysisStore AnalysisStore;
-		SilentAnalysisPort AnalysisPort;
-		SilentTexts Texts;
-		Graphite::WorkspaceAnalysis Pass{AnalysisPort, Texts, Analysis, &AnalysisStore};
 		Core::EventBus Events;
-		Graphite::ActiveEditorTarget ActiveEditor;
-		FakeTextureFactory Textures;
-		Graphite::ImageTabs Images{[](std::function<void()>) {}, Textures};
-		Graphite::HexFiles Hex{[](std::function<void()>) {}};
-		Graphite::DocumentWindows Windows{Documents, Modals, Server, Diagnostics, ChangeMarkers, Blame, Preview,
-										  Analysis, AnalysisStore, Pass, Events, ActiveEditor, Images, Hex};
+		FakeEditorBuffers Buffers;
 		Graphite::ActiveScheme Scheme;
 		Graphite::ChangesShared Shared;
 		Graphite::DiffWindows Diffs;
@@ -290,7 +180,7 @@ namespace {
 TEST_CASE("Picking a file hands its diff to the host")
 {
 	ChangesHosts hosts;
-	Graphite::ChangesView view{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesView view{hosts.Model, hosts.Modals, hosts.Buffers,
 							   hosts.Scheme, hosts.Events, hosts.Shared, "window"};
 
 	std::vector<Graphite::OpenDiff> chosen;
@@ -310,7 +200,7 @@ TEST_CASE("Picking a file hands its diff to the host")
 TEST_CASE("A commit clears the draft both hosts share")
 {
 	ChangesHosts hosts;
-	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers,
 								 hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
 
 	hosts.Shared.Message = "fix";
@@ -328,7 +218,7 @@ TEST_CASE("A commit clears the draft both hosts share")
 TEST_CASE("A view of its own leaves a landed commit for the side panel to take")
 {
 	ChangesHosts hosts;
-	Graphite::ChangesView view{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesView view{hosts.Model, hosts.Modals, hosts.Buffers,
 							   hosts.Scheme, hosts.Events, hosts.Shared, "window"};
 
 	hosts.Shared.Message = "fix";
@@ -345,7 +235,7 @@ TEST_CASE("A view of its own leaves a landed commit for the side panel to take")
 TEST_CASE("The side panel opens a diff tab for the picked file")
 {
 	ChangesHosts hosts;
-	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers,
 								 hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
 
 	constexpr const char* kHost = "Side panel host";
@@ -359,10 +249,24 @@ TEST_CASE("The side panel opens a diff tab for the picked file")
 												.Path = "a.txt"}));
 }
 
+TEST_CASE("A landed discard tells the editor which files it rewrote")
+{
+	ChangesHosts hosts;
+	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers, hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
+
+	hosts.Model.RequestDiscard({.Restore = {"a.txt"}});
+	hosts.Model.OnUpdate(Core::Timestep{0.0f});
+
+	panel.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(hosts.Buffers.Expected.size() == 1);
+	CHECK(hosts.Buffers.Expected.front() == std::filesystem::path("C:/repo") / "a.txt");
+}
+
 TEST_CASE("A side panel left undrawn hands back the modal gate its discard question held")
 {
 	ChangesHosts hosts;
-	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers,
 								 hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
 
 	constexpr const char* kHost = "Undrawn panel host";
@@ -387,9 +291,9 @@ TEST_CASE("A side panel left undrawn hands back the modal gate its discard quest
 TEST_CASE("Two Changes views ask their questions under their own identities")
 {
 	ChangesHosts hosts;
-	Graphite::ChangesView panelView{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesView panelView{hosts.Model, hosts.Modals, hosts.Buffers,
 									hosts.Scheme, hosts.Events, hosts.Shared, "panel"};
-	Graphite::ChangesView windowView{hosts.Model, hosts.Modals, hosts.Documents, hosts.Windows,
+	Graphite::ChangesView windowView{hosts.Model, hosts.Modals, hosts.Buffers,
 									 hosts.Scheme, hosts.Events, hosts.Shared, "window"};
 
 	constexpr const char* kPanelHost = "Two views panel host";

@@ -239,9 +239,8 @@ namespace Graphite {
 			return sessions.IsKept(branch) ? std::optional<std::string>{sessions.Find(branch)->Base} : std::nullopt;
 		};
 
-		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
-													 m_DocumentWindows, m_ActiveScheme,
-													 m_DiffWindows, m_Events, m_ChangesShared));
+		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_DocumentBuffers, m_ActiveScheme, m_DiffWindows,
+													 m_Events, m_ChangesShared));
 
 		m_ClaudeSettings.Load();
 

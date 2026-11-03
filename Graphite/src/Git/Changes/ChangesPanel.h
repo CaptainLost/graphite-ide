@@ -7,24 +7,22 @@
 #include "Git/GitModel.h"
 #include "Theme/ActiveScheme.h"
 
+#include "Git/EditorBuffers.h"
+
 #include "Core/UI/Panel.h"
 
 namespace Core {
-	class DocumentSet;
 	class EventBus;
 }
 
 namespace Graphite {
-
-	class DocumentWindows;
 
 	// The side panel's host of the Changes view, which also does what must happen exactly once per write,
 	// whichever host made it.
 	class ChangesPanel final : public Core::Panel
 	{
 	public:
-		ChangesPanel(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents,
-					 DocumentWindows& documentWindows, const ActiveScheme& scheme,
+		ChangesPanel(GitModel& model, ModalGate& modals, EditorBuffers& editor, const ActiveScheme& scheme,
 					 DiffWindows& diffWindows, Core::EventBus& events, ChangesShared& shared);
 
 		void OnUpdate(Core::Timestep ts) override;
@@ -33,7 +31,7 @@ namespace Graphite {
 	private:
 		GitModel& m_Model;
 
-		DocumentWindows& m_DocumentWindows;
+		EditorBuffers& m_Editor;
 
 		DiffWindows& m_DiffWindows;
 

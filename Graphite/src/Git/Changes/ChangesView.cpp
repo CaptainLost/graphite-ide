@@ -2,7 +2,7 @@
 
 #include "Core/Base/Base.h"
 
-#include "Editor/DocumentWindows.h"
+#include "Workspace/Workspace.h"
 #include "Theme/Palettes.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
@@ -160,11 +160,9 @@ namespace Graphite {
 		}
 	}
 
-	ChangesView::ChangesView(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents,
-							 DocumentWindows& documentWindows, const ActiveScheme& scheme, Core::EventBus& events,
-							 ChangesShared& shared, std::string_view host)
-		: m_Model(model), m_Documents(documents), m_DocumentWindows(documentWindows), m_Scheme(scheme),
-		  m_Events(events), m_Shared(shared), m_DiscardTitle(QuestionTitle("Discard changes?", "ChangesDiscard", host)),
+	ChangesView::ChangesView(GitModel& model, ModalGate& modals, EditorBuffers& editor, const ActiveScheme& scheme,
+							 Core::EventBus& events, ChangesShared& shared, std::string_view host)
+		: m_Model(model), m_Editor(editor), m_Scheme(scheme), m_Events(events), m_Shared(shared), m_DiscardTitle(QuestionTitle("Discard changes?", "ChangesDiscard", host)),
 		  m_DiscardQuestion(modals, m_DiscardTitle.c_str()),
 		  m_StashTitle(QuestionTitle("Stash changes", "ChangesStash", host)),
 		  m_StashQuestion(modals, m_StashTitle.c_str())
@@ -829,7 +827,7 @@ namespace Graphite {
 
 			if (ImGui::MenuItem("Open File"))
 			{
-				m_DocumentWindows.RequestOpen(absolutePath, kPermanent);
+				m_Events.Publish(OpenFileRequested{.Path = absolutePath, .Permanent = kPermanent});
 			}
 
 			ImGui::Separator();
@@ -1019,32 +1017,13 @@ namespace Graphite {
 
 		DiscardQuestion question;
 		question.Subject = file.Path;
-		question.Plan = PlanDiscard(subject, m_Model.GetWorkingDirectory(), DirtyDocuments());
+		question.Plan = PlanDiscard(subject, m_Model.GetWorkingDirectory(), DirtyDocumentsInRepository());
 		question.Text = DiscardQuestionText(subject, question.Plan);
 
 		// WARNING: Every discard asks, because git can hand back none of what one throws away.
 		// Asked once per subject: a row waiting behind another modal stays clickable, and a
 		// second click would queue a duplicate asking about a file already discarded.
 		m_DiscardQuestion.AskOnce(std::move(question));
-	}
-
-	std::vector<std::filesystem::path> ChangesView::DirtyDocuments() const
-	{
-		std::vector<std::filesystem::path> dirty;
-
-		for (std::size_t documentIndex = 0; documentIndex < m_Documents.GetCount(); ++documentIndex)
-		{
-			const Core::OpenItem& item = m_Documents.At(documentIndex);
-
-			if (!item.Document || !item.Document->IsModified())
-			{
-				continue;
-			}
-
-			dirty.push_back(item.Path);
-		}
-
-		return dirty;
 	}
 
 	bool ChangesView::SelectedIsInsideExpandedFolder() const
@@ -1142,20 +1121,9 @@ namespace Graphite {
 
 	std::vector<std::filesystem::path> ChangesView::DirtyDocumentsInRepository() const
 	{
-		const std::filesystem::path& repositoryRoot = m_Model.GetWorkingDirectory();
-		std::vector<std::filesystem::path> inside;
-
-		for (std::filesystem::path& path : DirtyDocuments())
-		{
-			// WARNING: An empty root, with no repository open yet, matches nothing on purpose:
-			// there is nothing a stash could take, so nothing is saved.
-			if (Core::IsSameOrWithin(path, repositoryRoot))
-			{
-				inside.push_back(std::move(path));
-			}
-		}
-
-		return inside;
+		// WARNING: An empty root, with no repository open yet, matches nothing on purpose: there is
+		// nothing a stash could take or a discard could touch, so nothing is saved or counted.
+		return m_Editor.ModifiedUnder(m_Model.GetWorkingDirectory());
 	}
 
 	void ChangesView::RenderStashDialog()
@@ -1208,7 +1176,7 @@ namespace Graphite {
 			// WARNING: Documents are saved first so the stash holds the edits on screen. A file
 			// that cannot be written stops everything: stashing the older copy would hide the
 			// edit from the tree and the reader would think it was kept.
-			if (m_DocumentWindows.SaveDocuments(DirtyDocumentsInRepository()))
+			if (m_Editor.Save(DirtyDocumentsInRepository()))
 			{
 				m_Model.RequestStashSave(m_StashMessage, m_StashIncludeUntracked);
 				m_StashQuestion.Answer();

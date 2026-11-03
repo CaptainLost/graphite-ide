@@ -1,7 +1,5 @@
 #include "Git/Changes/ChangesPanel.h"
 
-#include "Editor/DocumentWindows.h"
-
 #include <IconsLucide.h>
 
 #include <filesystem>
@@ -10,13 +8,11 @@
 
 namespace Graphite {
 
-	ChangesPanel::ChangesPanel(GitModel& model, ModalGate& modals,
-							   const Core::DocumentSet& documents,
-							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
+	ChangesPanel::ChangesPanel(GitModel& model, ModalGate& modals, EditorBuffers& editor, const ActiveScheme& scheme,
 							   DiffWindows& diffWindows, Core::EventBus& events, ChangesShared& shared)
 		: Core::Panel("changes", "Changes", "git", ICON_LC_FILE_DIFF, StartsAs::Visible, Sides::Flush),
-		  m_Model(model), m_DocumentWindows(documentWindows), m_DiffWindows(diffWindows), m_Shared(shared),
-		  m_View(model, modals, documents, documentWindows, scheme, events, shared, "panel")
+		  m_Model(model), m_Editor(editor), m_DiffWindows(diffWindows), m_Shared(shared),
+		  m_View(model, modals, editor, scheme, events, shared, "panel")
 	{
 		m_View.OnFileChosen = [this](const OpenDiff& diff) {
 			// WARNING: GitModel keeps a single slot for the working-tree diff, so two tabs of
@@ -83,7 +79,7 @@ namespace Graphite {
 				}
 			}
 
-			m_DocumentWindows.ExpectExternalWrite(absolutePaths);
+			m_Editor.ExpectExternalWrite(absolutePaths);
 		}
 	}
 

@@ -4,6 +4,7 @@
 #include "Git/Changes/ChangesRows.h"
 #include "Git/Changes/ChangesShared.h"
 #include "Git/Diff/DiffBody.h"
+#include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
 #include "Theme/GitPalette.h"
 #include "Theme/ActiveScheme.h"
@@ -19,13 +20,10 @@
 #include <vector>
 
 namespace Core {
-	class DocumentSet;
 	class EventBus;
 }
 
 namespace Graphite {
-
-	class DocumentWindows;
 
 	// The working tree's changes, the commit box and their dialogs. Each host has a view of its own, with its own
 	// selection and open folders; what the hosts share is held in ChangesShared.
@@ -33,8 +31,8 @@ namespace Graphite {
 	{
 	public:
 		// `host` names the host, "panel" or "window", so that each host's questions are its own.
-		ChangesView(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents, DocumentWindows& documentWindows,
-					const ActiveScheme& scheme, Core::EventBus& events, ChangesShared& shared, std::string_view host);
+		ChangesView(GitModel& model, ModalGate& modals, EditorBuffers& editor, const ActiveScheme& scheme,
+					Core::EventBus& events, ChangesShared& shared, std::string_view host);
 
 		// WARNING: The questions hold pointers into the view's own title strings, so a copy or a move would leave
 		// them pointing into the view it was made from.
@@ -90,16 +88,13 @@ namespace Graphite {
 
 		std::vector<std::filesystem::path> DirtyDocumentsInRepository() const;
 
-		std::vector<std::filesystem::path> DirtyDocuments() const;
-
 		// WARNING: A file drawn inside an open folder never enters m_LastDrawn, which holds top-level
 		// rows only. Without this test a change to the top-level list would drop that selection.
 		bool SelectedIsInsideExpandedFolder() const;
 
 		GitModel& m_Model;
-		const Core::DocumentSet& m_Documents;
 
-		DocumentWindows& m_DocumentWindows;
+		EditorBuffers& m_Editor;
 
 		const ActiveScheme& m_Scheme;
 

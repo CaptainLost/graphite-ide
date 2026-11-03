@@ -397,8 +397,8 @@ namespace Graphite {
 
 		// WARNING: Declared after m_ChangesShared, which it holds, and before m_Panels, where GitView holds it by
 		// reference. The Git window's host of the Changes view; the side panel owns its own.
-		ChangesView m_GitWindowChanges{m_Git, m_Modals, m_Documents, m_DocumentWindows, m_ActiveScheme,
-									   m_Events, m_ChangesShared, "window"};
+		ChangesView m_GitWindowChanges{m_Git, m_Modals, m_DocumentBuffers, m_ActiveScheme, m_Events, m_ChangesShared,
+									   "window"};
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
