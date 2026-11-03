@@ -892,15 +892,21 @@ namespace Core {
 			return AutomaticComparison(table, indexed, ref);
 		}
 
-		// A local branch and its same-named upstream are one row, and a row is never compared with itself: a ref the
-		// rule would compare with its partner takes the partner's comparison. A partner that is a base is the
-		// exception, because a local copy of a base sits in the base's row and is told against it.
+		// A local branch and its same-named upstream are one row. A copy of a base sits in the base's row and is told
+		// against the base, even when a branch it was fast-forwarded past lies below it. Any other row is never compared
+		// with itself: a ref the rule would compare with its partner takes the partner's comparison.
 		std::optional<std::size_t> ComparisonByRule(const RefTable& table, const IndexedSplit& indexed, const std::vector<bool>& isBase,
 													std::size_t ref)
 		{
-			const std::optional<std::size_t> comparison = ComparisonOfOwnLine(table, indexed, ref);
 			const std::optional<std::size_t> partner = table.RowPartner[ref];
-			const bool namesItsOwnRow = comparison.has_value() && comparison == partner && !isBase[*partner];
+
+			if (partner.has_value() && isBase[*partner])
+			{
+				return partner;
+			}
+
+			const std::optional<std::size_t> comparison = ComparisonOfOwnLine(table, indexed, ref);
+			const bool namesItsOwnRow = comparison.has_value() && comparison == partner;
 
 			if (!namesItsOwnRow)
 			{

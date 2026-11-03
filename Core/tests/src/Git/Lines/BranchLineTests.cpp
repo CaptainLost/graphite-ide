@@ -233,6 +233,32 @@ TEST_CASE("Lines: a local branch tracking a differently named upstream keeps its
 	CHECK(fix.Ahead == 1);
 }
 
+TEST_CASE("Lines: a local copy of a base ahead of it is compared with the base and not with a branch below it")
+{
+	// done was fast-forwarded into the local main at l1 and left behind; main has three commits to push.
+	GraphBuilder builder;
+	AddTrunk(builder, 20);
+	builder.Chain("l", 3, "m20", 21, {"d@example.com"});
+	builder.Ref("refs/heads/main", "l3", false, "refs/remotes/origin/main");
+	builder.Ref("refs/heads/done", "l1");
+	builder.SetNow(30);
+
+	const Core::LineModel model = Compute(builder);
+	const Core::BranchLine main = RequireBranch(model, builder.RefIndex("refs/heads/main"));
+	const Core::BranchLine done = RequireBranch(model, builder.RefIndex("refs/heads/done"));
+
+	CHECK(RowRef(main) == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(main.Kind == Core::ComparedKind::Base);
+	CHECK(ComparedRef(main) == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(main.State == Core::BranchState::NotMerged);
+	CHECK(main.Ahead == 3);
+
+	CHECK(done.Kind == Core::ComparedKind::Base);
+	CHECK(ComparedRef(done) == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(done.State == Core::BranchState::NotMerged);
+	CHECK(done.Ahead == 1);
+}
+
 TEST_CASE("Lines: a local branch that diverged from its same-named upstream is never compared with it")
 {
 	GraphBuilder builder;
