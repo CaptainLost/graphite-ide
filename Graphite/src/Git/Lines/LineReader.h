@@ -19,7 +19,7 @@ namespace Graphite {
 	{
 		std::vector<Core::LineRef> Refs;
 		Core::LineModel Model;
-		Core::LineAnswers Answers;   // as saved after this read
+		Core::LineAnswers Answers;   // as computed by this read; saved unless the file on disk is from a newer build
 		std::size_t CommitsRead = 0; // read from git this time; 0 when the cache already had every tip
 	};
 

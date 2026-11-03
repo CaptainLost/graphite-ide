@@ -96,6 +96,42 @@ namespace {
 		fixture.Write("b.txt", "f");
 		fixture.Commit("feature work");
 	}
+
+	// master (days 1..20) pushed to origin as its default, and a release branch from day 10 with six commits by three
+	// e-mails on days 11..19, pushed as origin/release: the rules find release as a base.
+	void BuildReleaseScenario(GitFixture& fixture)
+	{
+	for (int day = 1; day <= 10; ++day)
+	{
+		fixture.Write("m.txt", std::to_string(day));
+		fixture.CommitAt("master " + std::to_string(day), "ann@example.com", day);
+	}
+
+	fixture.Branch("release");
+	fixture.Checkout("release");
+
+	const char* emails[] = {"a@example.com", "b@example.com", "c@example.com"};
+	const int days[] = {11, 12, 14, 16, 18, 19};
+	std::string releaseTip;
+	for (int index = 0; index < 6; ++index)
+	{
+		fixture.Write("r.txt", std::to_string(index));
+		releaseTip = fixture.CommitAt("release " + std::to_string(index), emails[index % 3], days[index]);
+	}
+	fixture.PushTo("release", releaseTip);
+
+	fixture.Checkout("master");
+	std::string masterTip;
+	for (int day = 11; day <= 20; ++day)
+	{
+		fixture.Write("m.txt", std::to_string(day));
+		masterTip = fixture.CommitAt("master " + std::to_string(day), "ann@example.com", day);
+	}
+	fixture.PushTo("master", masterTip);
+	fixture.SetRemoteHead("master");
+	}
+
+	constexpr std::int64_t kReleaseScenarioNow = 1767225600 + 30LL * 86400;
 }
 
 TEST_CASE("Lines: remote branches belong to the longest remote name that prefixes them")
@@ -256,41 +292,11 @@ TEST_CASE("Lines: the whole graph is read again when a cached commit is gone fro
 TEST_CASE("Lines: bases found by the rules are kept in the answers")
 {
 	GitFixture fixture;
-
-	for (int day = 1; day <= 10; ++day)
-	{
-		fixture.Write("m.txt", std::to_string(day));
-		fixture.CommitAt("master " + std::to_string(day), "ann@example.com", day);
-	}
-
-	fixture.Branch("release");
-	fixture.Checkout("release");
-
-	const char* emails[] = {"a@example.com", "b@example.com", "c@example.com"};
-	const int days[] = {11, 12, 14, 16, 18, 19};
-	std::string releaseTip;
-	for (int index = 0; index < 6; ++index)
-	{
-		fixture.Write("r.txt", std::to_string(index));
-		releaseTip = fixture.CommitAt("release " + std::to_string(index), emails[index % 3], days[index]);
-	}
-	fixture.PushTo("release", releaseTip);
-
-	fixture.Checkout("master");
-	std::string masterTip;
-	for (int day = 11; day <= 20; ++day)
-	{
-		fixture.Write("m.txt", std::to_string(day));
-		masterTip = fixture.CommitAt("master " + std::to_string(day), "ann@example.com", day);
-	}
-	fixture.PushTo("master", masterTip);
-	fixture.SetRemoteHead("master");
+	BuildReleaseScenario(fixture);
 
 	TempDirectory store;
 	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
-	const std::int64_t now = 1767225600 + 30LL * 86400;
-
-	const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), now);
+	const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), kReleaseScenarioNow);
 	REQUIRE(read.HasValue());
 
 	const Core::LineAnswers saved = LoadLineAnswers(StoreIn(store).Answers);
@@ -347,7 +353,7 @@ TEST_CASE("Lines: a deepened shallow clone is read whole again")
 TEST_CASE("Lines: an answers file from a newer build is not overwritten by a read")
 {
 	GitFixture fixture;
-	BuildMasterAndFeature(fixture);
+	BuildReleaseScenario(fixture);
 
 	TempDirectory store;
 	const LineStorePaths paths = StoreIn(store);
@@ -360,8 +366,10 @@ TEST_CASE("Lines: an answers file from a newer build is not overwritten by a rea
 	REQUIRE(HasForeignVersion(paths.Answers));
 
 	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
-	const Core::Result<LineRead> read = ReadLines(repository, paths, 1800000000);
+	const Core::Result<LineRead> read = ReadLines(repository, paths, kReleaseScenarioNow);
 	REQUIRE(read.HasValue());
 
+	// The rules did find release, so an unguarded read would have saved it over the newer file.
+	CHECK(std::ranges::find(read.GetValue().Answers.KeptBases, "refs/remotes/origin/release") != read.GetValue().Answers.KeptBases.end());
 	CHECK(ReadWhole(paths.Answers) == newer);
 }
