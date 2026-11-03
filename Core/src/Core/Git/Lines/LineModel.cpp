@@ -274,17 +274,43 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		std::optional<std::size_t> LowestRefAtOrAbove(const RefTable& table, const IndexedSplit& indexed, Index commit)
+		std::optional<std::size_t> LowestRefAtOrAbove(const RefTable& table, const IndexedSplit& indexed, Index commit,
+													  std::optional<std::size_t> excluded)
 		{
 			const std::vector<Index>& tipsOnLine = indexed.TipsOnLine[indexed.Split.LineOf[commit]];
-			const std::size_t slot = FirstTipAtOrAbove(indexed.Split, tipsOnLine, indexed.Split.PositionOf[commit]);
 
-			if (slot == tipsOnLine.size())
+			for (std::size_t slot = FirstTipAtOrAbove(indexed.Split, tipsOnLine, indexed.Split.PositionOf[commit]); slot < tipsOnLine.size(); ++slot)
+			{
+				const std::optional<std::size_t> other = RefAt(table, tipsOnLine[slot], excluded);
+
+				if (other.has_value())
+				{
+					return other;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		// Where the line of `tip` joins another: that line's base, or the lowest ref at or above the join on it.
+		std::optional<std::size_t> ComparisonAtJoin(const RefTable& table, const IndexedSplit& indexed, Index tip,
+													 std::optional<std::size_t> excluded)
+		{
+			const Index join = indexed.Split.Lines[indexed.Split.LineOf[tip]].Join;
+
+			if (join == AncestryGraph::kNoCommit)
 			{
 				return std::nullopt;
 			}
 
-			return RefAt(table, tipsOnLine[slot], std::nullopt);
+			const std::optional<std::size_t> baseOfJoinLine = indexed.BaseOfLine[indexed.Split.LineOf[join]];
+
+			if (baseOfJoinLine.has_value())
+			{
+				return baseOfJoinLine;
+			}
+
+			return LowestRefAtOrAbove(table, indexed, join, excluded);
 		}
 
 		// What a ref is compared with before any answer: the nearest other ref below its tip on its own line (a copy at
@@ -306,21 +332,7 @@ namespace Core {
 				return builtOn;
 			}
 
-			const Index join = indexed.Split.Lines[indexed.Split.LineOf[tip]].Join;
-
-			if (join == AncestryGraph::kNoCommit)
-			{
-				return std::nullopt;
-			}
-
-			const std::optional<std::size_t> baseOfJoinLine = indexed.BaseOfLine[indexed.Split.LineOf[join]];
-
-			if (baseOfJoinLine.has_value())
-			{
-				return baseOfJoinLine;
-			}
-
-			return LowestRefAtOrAbove(table, indexed, join);
+			return ComparisonAtJoin(table, indexed, tip, std::nullopt);
 		}
 
 		std::vector<bool> MarkRemovedBases(const RefTable& table, const LineAnswers& answers)
@@ -861,9 +873,16 @@ namespace Core {
 		}
 
 		// A tip on a base's line has no commits of its own, and AutomaticComparison would look below it for another tip.
-		std::optional<std::size_t> ComparisonByRule(const RefTable& table, const IndexedSplit& indexed, std::size_t ref)
+		std::optional<std::size_t> ComparisonOfOwnLine(const RefTable& table, const IndexedSplit& indexed, std::size_t ref)
 		{
-			const std::uint32_t ownLine = indexed.Split.LineOf[table.Tips[ref]];
+			const Index tip = table.Tips[ref];
+
+			if (tip == AncestryGraph::kNoCommit)
+			{
+				return std::nullopt;
+			}
+
+			const std::uint32_t ownLine = indexed.Split.LineOf[tip];
 
 			if (ownLine != kNoLine && indexed.BaseOfLine[ownLine].has_value())
 			{
@@ -873,12 +892,47 @@ namespace Core {
 			return AutomaticComparison(table, indexed, ref);
 		}
 
-		// The rule names nothing only for a line that grew from a root.
+		// A local branch and its same-named upstream are one row, and a row is never compared with itself: a ref the
+		// rule would compare with its partner takes the partner's comparison. A partner that is a base is the
+		// exception, because a local copy of a base sits in the base's row and is told against it.
+		std::optional<std::size_t> ComparisonByRule(const RefTable& table, const IndexedSplit& indexed, const std::vector<bool>& isBase,
+													std::size_t ref)
+		{
+			const std::optional<std::size_t> comparison = ComparisonOfOwnLine(table, indexed, ref);
+			const std::optional<std::size_t> partner = table.RowPartner[ref];
+			const bool namesItsOwnRow = comparison.has_value() && comparison == partner && !isBase[*partner];
+
+			if (!namesItsOwnRow)
+			{
+				return comparison;
+			}
+
+			const std::optional<std::size_t> partnersComparison = ComparisonOfOwnLine(table, indexed, *partner);
+
+			if (partnersComparison != ref)
+			{
+				return partnersComparison;
+			}
+
+			return ComparisonAtJoin(table, indexed, table.Tips[ref], partner);
+		}
+
+		// Nothing to compare with means the history under the tip ends in a root, or where a shallow clone cut it.
 		BranchState StateWithNothingToCompare(const AncestryGraph& graph, const LineSplit& split, Index tip)
 		{
-			const std::uint32_t ownLine = split.LineOf[tip];
-			const bool startsAtAShallowBoundary = ownLine != kNoLine && graph.ParentsCutAt(split.Lines[ownLine].Bottom);
-			return startsAtAShallowBoundary ? BranchState::HistoryCutOff : BranchState::NoCommonHistory;
+			std::uint32_t line = split.LineOf[tip];
+
+			if (line == kNoLine)
+			{
+				return BranchState::NoCommonHistory;
+			}
+
+			while (split.Lines[line].Join != AncestryGraph::kNoCommit)
+			{
+				line = split.LineOf[split.Lines[line].Join];
+			}
+
+			return graph.ParentsCutAt(split.Lines[line].Bottom) ? BranchState::HistoryCutOff : BranchState::NoCommonHistory;
 		}
 
 		// Everything but the count. A branch compared with a ref whose first parents do not hold its tip is left
@@ -897,7 +951,7 @@ namespace Core {
 
 			const ComparisonAnswer answer = AnswerFor(table, answers, ref);
 			branch.ByAnswer = answer.Applies;
-			branch.ComparedWith = answer.Applies ? answer.ComparedWith : ComparisonByRule(table, indexed, ref);
+			branch.ComparedWith = answer.Applies ? answer.ComparedWith : ComparisonByRule(table, indexed, isBase, ref);
 
 			if (!branch.ComparedWith.has_value())
 			{

@@ -233,6 +233,96 @@ TEST_CASE("Lines: a local branch tracking a differently named upstream keeps its
 	CHECK(fix.Ahead == 1);
 }
 
+TEST_CASE("Lines: a local branch that diverged from its same-named upstream is never compared with it")
+{
+	GraphBuilder builder;
+	AddTrunk(builder, 20);
+	const std::string upstreamName = "refs/remotes/origin/feature/x";
+	const std::string localName = "refs/heads/feature/x";
+
+	SUBCASE("both fork from the trunk")
+	{
+		builder.Commit("x1", {"m18"}, 21, "p@example.com");
+		builder.Chain("y", 2, "m18", 22, {"q@example.com"});
+		builder.Ref(upstreamName, "x1");
+		builder.Ref(localName, "y2", false, upstreamName);
+		builder.SetNow(30);
+
+		const Core::LineModel model = Compute(builder);
+		const Core::BranchLine local = RequireBranch(model, builder.RefIndex(localName));
+
+		CHECK(RowRef(local) == builder.RefIndex(upstreamName));
+		CHECK(local.Kind == Core::ComparedKind::Base);
+		CHECK(ComparedRef(local) == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(local.Ahead == 2);
+	}
+
+	SUBCASE("the local branch forks below the upstream's tip")
+	{
+		// At x1 both sides have one author and one tip; the newer x2 keeps the line, so the local side joins it.
+		builder.Commit("x1", {"m18"}, 21, "p@example.com");
+		builder.Commit("x2", {"x1"}, 23, "p@example.com");
+		builder.Commit("y1", {"x1"}, 22, "q@example.com");
+		builder.Commit("y2", {"y1"}, 24, "q@example.com");
+		builder.Ref(upstreamName, "x2");
+		builder.Ref(localName, "y2", false, upstreamName);
+		builder.SetNow(30);
+
+		const Core::LineModel model = Compute(builder);
+		const Core::BranchLine local = RequireBranch(model, builder.RefIndex(localName));
+
+		CHECK(RowRef(local) == builder.RefIndex(upstreamName));
+		CHECK(local.Kind == Core::ComparedKind::Base);
+		CHECK(ComparedRef(local) == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(local.State == Core::BranchState::NotMerged);
+		CHECK(local.Ahead == 3);
+	}
+
+	SUBCASE("the upstream forks below the local branch's tip")
+	{
+		// The newer y1 keeps the line at x1, so the upstream's side joins the local branch's line.
+		builder.Commit("x1", {"m18"}, 21, "p@example.com");
+		builder.Commit("x2", {"x1"}, 22, "p@example.com");
+		builder.Commit("y1", {"x1"}, 23, "q@example.com");
+		builder.Commit("y2", {"y1"}, 24, "q@example.com");
+		builder.Ref(upstreamName, "x2");
+		builder.Ref(localName, "y2", false, upstreamName);
+		builder.SetNow(30);
+
+		const Core::LineModel model = Compute(builder);
+		const Core::BranchLine upstream = RequireBranch(model, builder.RefIndex(upstreamName));
+		const Core::BranchLine local = RequireBranch(model, builder.RefIndex(localName));
+
+		CHECK(upstream.Kind == Core::ComparedKind::Base);
+		CHECK(ComparedRef(upstream) == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(upstream.Ahead == 2);
+		CHECK(ComparedRef(local) == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(local.Ahead == 3);
+	}
+
+	SUBCASE("a diverged local branch of a shallow upstream is cut off too")
+	{
+		const std::vector<std::string_view> noParents;
+		builder.Commit("s1", noParents, 21, "p@example.com");
+		builder.Cut("s1");
+		builder.Commit("s2", {"s1"}, 23, "p@example.com");
+		builder.Commit("t1", {"s1"}, 22, "q@example.com");
+		builder.Ref(upstreamName, "s2");
+		builder.Ref(localName, "t1", false, upstreamName);
+		builder.SetNow(30);
+
+		const Core::LineModel model = Compute(builder);
+		const Core::BranchLine upstream = RequireBranch(model, builder.RefIndex(upstreamName));
+		const Core::BranchLine local = RequireBranch(model, builder.RefIndex(localName));
+
+		CHECK(upstream.State == Core::BranchState::HistoryCutOff);
+		CHECK(RowRef(local) == builder.RefIndex(upstreamName));
+		CHECK(local.Kind == Core::ComparedKind::None);
+		CHECK_FALSE(local.ComparedWith.has_value());
+		CHECK(local.State == Core::BranchState::HistoryCutOff);
+	}
+}
+
 TEST_CASE("Lines: branches built on a branch are compared with it")
 {
 	GraphBuilder builder;
