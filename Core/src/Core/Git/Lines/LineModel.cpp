@@ -326,8 +326,10 @@ namespace Core {
 			return removed;
 		}
 
-		// How often each ref is what an active ref would be compared with.
-		std::vector<std::size_t> CountTimesNamed(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed, std::int64_t now)
+		// How often each ref is what an active ref would be compared with. A ref the user removed passes the count on to
+		// the next ref at its commit, so that removing it does not throw away its line's count.
+		std::vector<std::size_t> CountTimesNamed(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
+												 const std::vector<bool>& removed, std::int64_t now)
 		{
 			std::vector<std::size_t> timesNamed(table.Refs.size(), 0);
 
@@ -342,9 +344,18 @@ namespace Core {
 
 				const std::optional<std::size_t> comparedWith = AutomaticComparison(table, indexed, refIndex);
 
-				if (comparedWith.has_value())
+				if (!comparedWith.has_value())
 				{
-					++timesNamed[*comparedWith];
+					continue;
+				}
+
+				const std::optional<std::size_t> counted = removed[*comparedWith]
+															   ? FirstRefNotRemovedAt(table, table.Tips[*comparedWith], removed)
+															   : comparedWith;
+
+				if (counted.has_value())
+				{
+					++timesNamed[*counted];
 				}
 			}
 
@@ -428,7 +439,7 @@ namespace Core {
 		std::optional<std::size_t> MostNamedRef(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& unpinned,
 												const std::vector<bool>& removed, std::int64_t now)
 		{
-			const std::vector<std::size_t> timesNamed = CountTimesNamed(graph, table, unpinned, now);
+			const std::vector<std::size_t> timesNamed = CountTimesNamed(graph, table, unpinned, removed, now);
 			const std::size_t most = MostTimesNamed(timesNamed, removed);
 
 			if (most == 0)
@@ -572,11 +583,11 @@ namespace Core {
 			return list;
 		}
 
-		bool AnyRefIsRemoteDefault(std::span<const LineRef> refs)
+		bool HasMainLineBase(const BaseList& list)
 		{
-			for (const LineRef& ref : refs)
+			for (const LineBase& base : list.Bases)
 			{
-				if (ref.IsRemoteDefault)
+				if (base.Reason == BaseReason::ServerDefault || base.Reason == BaseReason::MainLineByUser)
 				{
 					return true;
 				}
@@ -745,9 +756,8 @@ namespace Core {
 		LineModel model;
 		BaseList list = StartingBases(table, input.Answers, removed);
 
-		const bool mainLineIsUnknown = !AnyRefIsRemoteDefault(input.Refs) && !input.Answers.MainLine.has_value();
-
-		if (mainLineIsUnknown)
+		// No default and no answer, or only ones the graph lacks, the user removed or that name no branch.
+		if (!HasMainLineBase(list))
 		{
 			const std::optional<std::size_t> guess = GuessMainLine(graph, table, removed, input.Now);
 

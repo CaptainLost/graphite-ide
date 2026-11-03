@@ -385,3 +385,70 @@ TEST_CASE("Lines: a reference whose tip the graph lacks is never a base")
 		CHECK_FALSE(guessed.MainLineGuessed);
 	}
 }
+
+TEST_CASE("Lines: a main line answer naming a missing branch falls back to the guess")
+{
+	SUBCASE("a name no reference has")
+	{
+		GraphBuilder builder;
+		AddLocalRepository(builder);
+		Core::LineAnswers answers;
+		answers.MainLine = "refs/heads/deleted";
+
+		const Core::LineModel model = Compute(builder, answers);
+
+		REQUIRE_FALSE(model.Bases.empty());
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+		CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+		CHECK(model.MainLineGuessed);
+	}
+
+	SUBCASE("a reference whose tip the graph lacks")
+	{
+		GraphBuilder builder;
+		AddLocalRepository(builder);
+		builder.Ref("refs/heads/gone", "never-read");
+		Core::LineAnswers answers;
+		answers.MainLine = "refs/heads/gone";
+
+		const Core::LineModel model = Compute(builder, answers);
+
+		REQUIRE_FALSE(model.Bases.empty());
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+		CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+		CHECK(model.MainLineGuessed);
+	}
+}
+
+TEST_CASE("Lines: a default whose tip the graph lacks leaves the main line to the guess")
+{
+	GraphBuilder builder;
+	AddLocalRepository(builder);
+	builder.Ref("refs/remotes/origin/main", "never-read", true);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE_FALSE(model.Bases.empty());
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+	CHECK(model.MainLineGuessed);
+	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/main")));
+}
+
+TEST_CASE("Lines: the only default removed by the user leaves the guess to another reference")
+{
+	// origin/main shares main's commit and would speak for it; the user removed it, so main is guessed instead.
+	GraphBuilder builder;
+	AddLocalRepository(builder);
+	builder.Ref("refs/remotes/origin/main", "m20", true);
+	Core::LineAnswers answers;
+	answers.RemovedBases = {"refs/remotes/origin/main"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE_FALSE(model.Bases.empty());
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+	CHECK(model.MainLineGuessed);
+	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/main")));
+}
