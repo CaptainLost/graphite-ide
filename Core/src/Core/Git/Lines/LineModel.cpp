@@ -33,6 +33,7 @@ namespace Core {
 			std::unordered_map<Index, std::vector<std::size_t>> AtCommit; // the refs at each tip, the one that speaks for it first
 			std::unordered_map<std::string_view, std::size_t> ByName;     // the first ref of each full name
 			std::vector<std::optional<std::size_t>> RowPartner;           // a local branch and its same-named upstream, both ways
+			std::unordered_map<std::string_view, std::size_t> RefsPerRemote;
 		};
 
 		// Where several refs share a commit, a remote one speaks for it before a local one, then the full names decide.
@@ -93,6 +94,11 @@ namespace Core {
 				const Index tip = graph.Find(refs[refIndex].Tip);
 				table.Tips.push_back(tip);
 				table.ByName.emplace(refs[refIndex].FullName, refIndex);
+
+				if (!refs[refIndex].Remote.empty())
+				{
+					++table.RefsPerRemote[refs[refIndex].Remote];
+				}
 
 				if (tip != AncestryGraph::kNoCommit)
 				{
@@ -326,149 +332,138 @@ namespace Core {
 			return removed;
 		}
 
-		// How often each ref is what an active ref would be compared with. A ref the user removed passes the count on to
-		// the next ref at its commit, so that removing it does not throw away its line's count.
-		std::vector<std::size_t> CountTimesNamed(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
-												 const std::vector<bool>& removed, std::int64_t now)
+		// A line's guess: the ref at its top that the user has not removed, a remote one before a local one.
+		std::optional<std::size_t> GuessAtTopOf(const RefTable& table, const LineSplit& split, std::uint32_t line, const std::vector<bool>& removed)
 		{
-			std::vector<std::size_t> timesNamed(table.Refs.size(), 0);
+			return FirstRefNotRemovedAt(table, split.Lines[line].Top, removed);
+		}
 
-			for (std::size_t refIndex = 0; refIndex < table.Refs.size(); ++refIndex)
+		// Per line, how many active tips would be compared with a ref on it. The refs at one commit are copies of
+		// each other and vote once.
+		std::vector<std::size_t> CountVotesPerLine(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& unpinned, std::int64_t now)
+		{
+			std::vector<std::size_t> votes(unpinned.Split.Lines.size(), 0);
+
+			for (const std::pair<const Index, std::vector<std::size_t>>& refsAtCommit : table.AtCommit)
 			{
-				const Index tip = table.Tips[refIndex];
-
-				if (tip == AncestryGraph::kNoCommit || !IsActive(graph, tip, now))
+				if (!IsActive(graph, refsAtCommit.first, now))
 				{
 					continue;
 				}
 
-				const std::optional<std::size_t> comparedWith = AutomaticComparison(table, indexed, refIndex);
+				const std::optional<std::size_t> comparedWith = AutomaticComparison(table, unpinned, refsAtCommit.second.front());
 
 				if (!comparedWith.has_value())
 				{
 					continue;
 				}
 
-				const std::optional<std::size_t> counted = removed[*comparedWith]
-															   ? FirstRefNotRemovedAt(table, table.Tips[*comparedWith], removed)
-															   : comparedWith;
+				const std::uint32_t line = unpinned.Split.LineOf[table.Tips[*comparedWith]];
 
-				if (counted.has_value())
+				if (line != kNoLine)
 				{
-					++timesNamed[*counted];
+					++votes[line];
 				}
 			}
 
-			return timesNamed;
+			return votes;
 		}
 
-		std::size_t MostTimesNamed(const std::vector<std::size_t>& timesNamed, const std::vector<bool>& removed)
+		// The lines with the most votes, among those with a ref at their top to guess.
+		std::vector<std::uint32_t> MostVotedLines(const RefTable& table, const LineSplit& split, const std::vector<std::size_t>& votes,
+												  const std::vector<bool>& removed)
 		{
 			std::size_t most = 0;
+			std::vector<std::uint32_t> lines;
 
-			for (std::size_t refIndex = 0; refIndex < timesNamed.size(); ++refIndex)
+			for (std::uint32_t line = 0; line < votes.size(); ++line)
 			{
-				if (!removed[refIndex] && timesNamed[refIndex] > most)
+				const bool hasAsManyVotes = votes[line] > 0 && votes[line] >= most;
+
+				if (!hasAsManyVotes || !GuessAtTopOf(table, split, line, removed).has_value())
 				{
-					most = timesNamed[refIndex];
-				}
-			}
-
-			return most;
-		}
-
-		// A guess named as often as another wins with more distinct authors on its line, then with the newer tip, then
-		// by speaking first at a shared commit.
-		bool IsBetterGuess(const AncestryGraph& graph, const RefTable& table, std::size_t candidate, std::size_t candidateAuthors,
-						   std::size_t current, std::size_t currentAuthors)
-		{
-			if (candidateAuthors != currentAuthors)
-			{
-				return candidateAuthors > currentAuthors;
-			}
-
-			const std::int64_t candidateTime = graph.TimeOf(table.Tips[candidate]);
-			const std::int64_t currentTime = graph.TimeOf(table.Tips[current]);
-
-			if (candidateTime != currentTime)
-			{
-				return candidateTime > currentTime;
-			}
-
-			return SpeaksBefore(table.Refs[candidate], table.Refs[current]);
-		}
-
-		std::vector<std::size_t> RefsNamedTimes(const std::vector<std::size_t>& timesNamed, const std::vector<bool>& removed, std::size_t times)
-		{
-			std::vector<std::size_t> refs;
-
-			for (std::size_t refIndex = 0; refIndex < timesNamed.size(); ++refIndex)
-			{
-				if (!removed[refIndex] && timesNamed[refIndex] == times)
-				{
-					refs.push_back(refIndex);
-				}
-			}
-
-			return refs;
-		}
-
-		// Per ref, the distinct authors of the line its tip is on; each line is measured once.
-		std::vector<std::size_t> AuthorsOnLinesOf(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& unpinned,
-												  const std::vector<std::size_t>& refs, std::int64_t now)
-		{
-			std::vector<std::optional<std::size_t>> authorsOnLine(unpinned.Split.Lines.size());
-			std::vector<std::size_t> authors;
-			authors.reserve(refs.size());
-
-			for (const std::size_t ref : refs)
-			{
-				const std::uint32_t line = unpinned.Split.LineOf[table.Tips[ref]];
-
-				if (!authorsOnLine[line].has_value())
-				{
-					authorsOnLine[line] = MeasureLine(graph, unpinned.Split, line, {}, now).Authors;
+					continue;
 				}
 
-				authors.push_back(*authorsOnLine[line]);
+				if (votes[line] > most)
+				{
+					most = votes[line];
+					lines.clear();
+				}
+
+				lines.push_back(line);
 			}
 
-			return authors;
+			return lines;
 		}
 
-		std::optional<std::size_t> MostNamedRef(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& unpinned,
-												const std::vector<bool>& removed, std::int64_t now)
+		struct VotedLine
 		{
-			const std::vector<std::size_t> timesNamed = CountTimesNamed(graph, table, unpinned, removed, now);
-			const std::size_t most = MostTimesNamed(timesNamed, removed);
+			std::size_t Guess = 0;   // the ref at its top that the user has not removed
+			std::size_t Authors = 0; // distinct authors of its own commits
+			std::int64_t TopTime = 0;
+		};
 
-			if (most == 0)
+		VotedLine DescribeVotedLine(const AncestryGraph& graph, const RefTable& table, const LineSplit& split, std::uint32_t line,
+									const std::vector<bool>& removed, std::int64_t now)
+		{
+			VotedLine voted;
+			voted.Guess = GuessAtTopOf(table, split, line, removed).value();
+			voted.Authors = MeasureLine(graph, split, line, {}, now).Authors;
+			voted.TopTime = graph.TimeOf(split.Lines[line].Top);
+			return voted;
+		}
+
+		// Of two lines with as many votes, more distinct authors win, then the newer top, then the guess that speaks
+		// first at a shared commit.
+		bool IsBetterVotedLine(const RefTable& table, const VotedLine& candidate, const VotedLine& current)
+		{
+			if (candidate.Authors != current.Authors)
+			{
+				return candidate.Authors > current.Authors;
+			}
+
+			if (candidate.TopTime != current.TopTime)
+			{
+				return candidate.TopTime > current.TopTime;
+			}
+
+			return SpeaksBefore(table.Refs[candidate.Guess], table.Refs[current.Guess]);
+		}
+
+		std::optional<std::size_t> GuessFromVotes(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& unpinned,
+												  const std::vector<bool>& removed, std::int64_t now)
+		{
+			const std::vector<std::size_t> votes = CountVotesPerLine(graph, table, unpinned, now);
+			const std::vector<std::uint32_t> mostVoted = MostVotedLines(table, unpinned.Split, votes, removed);
+
+			if (mostVoted.empty())
 			{
 				return std::nullopt;
 			}
 
-			const std::vector<std::size_t> tied = RefsNamedTimes(timesNamed, removed, most);
-
-			if (tied.size() == 1)
+			if (mostVoted.size() == 1)
 			{
-				return tied.front();
+				return GuessAtTopOf(table, unpinned.Split, mostVoted.front(), removed);
 			}
 
-			const std::vector<std::size_t> authors = AuthorsOnLinesOf(graph, table, unpinned, tied, now);
-			std::size_t best = 0;
+			VotedLine best = DescribeVotedLine(graph, table, unpinned.Split, mostVoted.front(), removed, now);
 
-			for (std::size_t position = 1; position < tied.size(); ++position)
+			for (std::size_t position = 1; position < mostVoted.size(); ++position)
 			{
-				if (IsBetterGuess(graph, table, tied[position], authors[position], tied[best], authors[best]))
+				const VotedLine candidate = DescribeVotedLine(graph, table, unpinned.Split, mostVoted[position], removed, now);
+
+				if (IsBetterVotedLine(table, candidate, best))
 				{
-					best = position;
+					best = candidate;
 				}
 			}
 
-			return tied[best];
+			return best.Guess;
 		}
 
-		// With nothing named, the guess is the top of the line from a root that has the most tips above it.
+		// With no vote, the guess is the top of the line from a root that has the most tips above it, passing over a
+		// root line whose refs at the top the user all removed.
 		std::optional<std::size_t> TopOfBusiestRootLine(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& unpinned,
 														const std::vector<bool>& removed)
 		{
@@ -488,7 +483,9 @@ namespace Core {
 
 			for (std::uint32_t line = 0; line < split.Lines.size(); ++line)
 			{
-				if (split.Lines[line].Join != AncestryGraph::kNoCommit)
+				const bool isRootLine = split.Lines[line].Join == AncestryGraph::kNoCommit;
+
+				if (!isRootLine || !GuessAtTopOf(table, split, line, removed).has_value())
 				{
 					continue;
 				}
@@ -508,18 +505,18 @@ namespace Core {
 				return std::nullopt;
 			}
 
-			return FirstRefNotRemovedAt(table, split.Lines[*busiest].Top, removed);
+			return GuessAtTopOf(table, split, *busiest, removed);
 		}
 
 		// The line most active refs would be compared with, with nothing pinned.
 		std::optional<std::size_t> GuessMainLine(const AncestryGraph& graph, const RefTable& table, const std::vector<bool>& removed, std::int64_t now)
 		{
 			const IndexedSplit unpinned = SplitAndIndex(graph, table, {});
-			const std::optional<std::size_t> mostNamed = MostNamedRef(graph, table, unpinned, removed, now);
+			const std::optional<std::size_t> fromVotes = GuessFromVotes(graph, table, unpinned, removed, now);
 
-			if (mostNamed.has_value())
+			if (fromVotes.has_value())
 			{
-				return mostNamed;
+				return fromVotes;
 			}
 
 			return TopOfBusiestRootLine(graph, table, unpinned, removed);
@@ -668,20 +665,80 @@ namespace Core {
 			return indexed;
 		}
 
-		bool IsStrictAncestor(const AncestryGraph& graph, Index ancestor, Index descendant)
+		Index FirstParentOf(const AncestryGraph& graph, Index commit)
 		{
-			return ancestor != descendant && IsAncestor(graph, ancestor, descendant);
+			const std::span<const Index> parents = graph.ParentsOf(commit);
+			return parents.empty() ? AncestryGraph::kNoCommit : parents.front();
 		}
 
-		// The first base, other than the one at `position` and those marked skipped, whose tip descends from its tip.
-		std::optional<std::size_t> FirstBaseAhead(const AncestryGraph& graph, const RefTable& table, const std::vector<LineBase>& bases,
-												  std::size_t position, const std::vector<bool>& skipped)
+		// Commit times are only numbers here: the walk allows a day of skew below the commit it looks for.
+		bool IsOnFirstParentChainBelow(const AncestryGraph& graph, Index commit, Index tip)
 		{
-			const Index tip = table.Tips[bases[position].Ref];
+			const std::int64_t floor = graph.TimeOf(commit) - kSecondsPerDay;
 
+			for (Index below = FirstParentOf(graph, tip); below != AncestryGraph::kNoCommit && graph.TimeOf(below) >= floor;
+				 below = FirstParentOf(graph, below))
+			{
+				if (below == commit)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		std::size_t RefsOnRemote(const RefTable& table, const std::string& remote)
+		{
+			return table.RefsPerRemote.contains(remote) ? table.RefsPerRemote.at(remote) : 0;
+		}
+
+		// Of two defaults at one commit, the one whose remote has fewer branches is the old copy; with as many, the one
+		// whose remote name comes later.
+		bool LosesToDefaultAtSameCommit(const RefTable& table, const LineRef& defaultRef, const LineRef& otherDefault)
+		{
+			const std::size_t ownCount = RefsOnRemote(table, defaultRef.Remote);
+			const std::size_t otherCount = RefsOnRemote(table, otherDefault.Remote);
+
+			if (ownCount != otherCount)
+			{
+				return ownCount < otherCount;
+			}
+
+			return defaultRef.Remote > otherDefault.Remote;
+		}
+
+		// A fork's stale default: a server default that another remote's base has gone on from along its first
+		// parents, or another remote's default at the same commit on a busier remote.
+		bool IsOldCopyOf(const AncestryGraph& graph, const RefTable& table, const LineBase& candidate, const LineBase& other)
+		{
+			const LineRef& candidateRef = table.Refs[candidate.Ref];
+			const LineRef& otherRef = table.Refs[other.Ref];
+			const bool otherIsOnAnotherRemote = !otherRef.Remote.empty() && otherRef.Remote != candidateRef.Remote;
+
+			if (candidate.Reason != BaseReason::ServerDefault || !otherIsOnAnotherRemote)
+			{
+				return false;
+			}
+
+			const Index candidateTip = table.Tips[candidate.Ref];
+			const Index otherTip = table.Tips[other.Ref];
+
+			if (candidateTip == otherTip)
+			{
+				return other.Reason == BaseReason::ServerDefault && LosesToDefaultAtSameCommit(table, candidateRef, otherRef);
+			}
+
+			return IsOnFirstParentChainBelow(graph, candidateTip, otherTip);
+		}
+
+		// The first base, other than the one at `position` and those marked skipped, that it is an old copy of.
+		std::optional<std::size_t> FirstBaseItCopies(const AncestryGraph& graph, const RefTable& table, const std::vector<LineBase>& bases,
+													 std::size_t position, const std::vector<bool>& skipped)
+		{
 			for (std::size_t other = 0; other < bases.size(); ++other)
 			{
-				if (other != position && !skipped[other] && IsStrictAncestor(graph, tip, table.Tips[bases[other].Ref]))
+				if (other != position && !skipped[other] && IsOldCopyOf(graph, table, bases[position], bases[other]))
 				{
 					return other;
 				}
@@ -690,8 +747,7 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		// A server default whose tip is a strict ancestor of another base's tip is an old copy of that base (a fork's
-		// stale default) and stops being a base. True when any did.
+		// An old copy stops being a base. True when any did.
 		bool SetAsideOldCopies(const AncestryGraph& graph, const RefTable& table, BaseList& list, std::vector<OldCopy>& oldCopies)
 		{
 			const std::vector<LineBase>& bases = list.Bases;
@@ -700,17 +756,16 @@ namespace Core {
 
 			for (std::size_t position = 0; position < bases.size(); ++position)
 			{
-				isOldCopy[position] = bases[position].Reason == BaseReason::ServerDefault
-									  && FirstBaseAhead(graph, table, bases, position, noneSkipped).has_value();
+				isOldCopy[position] = FirstBaseItCopies(graph, table, bases, position, noneSkipped).has_value();
 			}
 
 			std::vector<LineBase> remaining;
 
 			for (std::size_t position = 0; position < bases.size(); ++position)
 			{
-				// Clock skew can stop the ancestry walk short, so the only bases found ahead may be old copies
-				// themselves; with none left to name, it stays a base.
-				const std::optional<std::size_t> newer = isOldCopy[position] ? FirstBaseAhead(graph, table, bases, position, isOldCopy)
+				// The bases it copies may all be old copies themselves (one went on along a remote that is its own,
+				// or a skewed clock cut a walk short); with none left to name, it stays a base.
+				const std::optional<std::size_t> newer = isOldCopy[position] ? FirstBaseItCopies(graph, table, bases, position, isOldCopy)
 																			 : std::nullopt;
 
 				if (newer.has_value())

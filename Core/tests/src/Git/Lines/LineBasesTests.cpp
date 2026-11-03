@@ -452,3 +452,188 @@ TEST_CASE("Lines: the only default removed by the user leaves the guess to anoth
 	CHECK(model.MainLineGuessed);
 	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/main")));
 }
+
+TEST_CASE("Lines: a merged branch left on the trunk does not take the guess from the trunk")
+{
+	// One person's repository: done was fast-forwarded into main at m60 and never deleted. feature/a and main are
+	// both compared with done, but done is on main's line, and that line's top is main.
+	GraphBuilder builder;
+	builder.Chain("m", 70, std::nullopt, 1, {});
+	builder.Commit("a1", {"m50"}, 71);
+	builder.Ref("refs/heads/main", "m70");
+	builder.Ref("refs/heads/done", "m60");
+	builder.Ref("refs/heads/feature/a", "a1");
+	builder.SetNow(80);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE_FALSE(model.Bases.empty());
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+	CHECK(model.MainLineGuessed);
+}
+
+TEST_CASE("Lines: copies of one branch at one commit count once for the guess")
+{
+	// b1 and b2 fork from main's line; three copies of k sit at one commit forked from the orphan's line.
+	GraphBuilder builder;
+	builder.Chain("m", 10, std::nullopt, 1, {});
+	builder.Commit("b1", {"m5"}, 5);
+	builder.Commit("b2", {"m6"}, 6);
+	builder.Chain("o", 5, std::nullopt, 1, {});
+	builder.Commit("k1", {"o3"}, 3);
+	builder.Ref("refs/heads/main", "m10");
+	builder.Ref("refs/heads/b1", "b1");
+	builder.Ref("refs/heads/b2", "b2");
+	builder.Ref("refs/heads/orphan", "o5");
+	builder.Ref("refs/heads/k", "k1");
+	builder.Ref("refs/remotes/origin/k", "k1");
+	builder.Ref("refs/remotes/fork/k", "k1");
+	builder.SetNow(30);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE_FALSE(model.Bases.empty());
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+}
+
+TEST_CASE("Lines: a local branch does not count its same-named upstream as what it is built on")
+{
+	// topic is one commit ahead of origin/topic on a side line from m5. Both are compared with main, so main's line
+	// has two votes against one for other's line. Counted as built on its upstream, topic would vote for its own
+	// line and three lines would tie, which other's line wins with the most authors.
+	GraphBuilder builder;
+	builder.Chain("m", 10, std::nullopt, 1, {"a@example.com", "b@example.com"});
+	builder.Chain("s", 3, "m5", 11, {"a@example.com"});
+	builder.Chain("o", 4, std::nullopt, 1, {"c@example.com", "d@example.com", "e@example.com", "f@example.com"});
+	builder.Commit("k1", {"o2"}, 5, "c@example.com");
+	builder.Ref("refs/heads/main", "m10");
+	builder.Ref("refs/remotes/origin/topic", "s2");
+	builder.Ref("refs/heads/topic", "s3", false, "refs/remotes/origin/topic");
+	builder.Ref("refs/heads/other", "o4");
+	builder.Ref("refs/heads/other-fix", "k1");
+	builder.SetNow(30);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE_FALSE(model.Bases.empty());
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+}
+
+TEST_CASE("Lines: an added or kept base with no default does not stop the guess")
+{
+	SUBCASE("added")
+	{
+		GraphBuilder builder;
+		AddLocalRepository(builder);
+		Core::LineAnswers answers;
+		answers.AddedBases = {"refs/heads/feature/y"};
+
+		const Core::LineModel model = Compute(builder, answers);
+
+		REQUIRE(model.Bases.size() == 2);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+		CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+		CHECK(model.Bases[1].Ref == builder.RefIndex("refs/heads/feature/y"));
+		CHECK(model.Bases[1].Reason == Core::BaseReason::AddedByUser);
+		CHECK(model.MainLineGuessed);
+	}
+
+	SUBCASE("kept")
+	{
+		GraphBuilder builder;
+		AddLocalRepository(builder);
+		Core::LineAnswers answers;
+		answers.KeptBases = {"refs/heads/feature/x"};
+
+		const Core::LineModel model = Compute(builder, answers);
+
+		REQUIRE(model.Bases.size() == 2);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/heads/main"));
+		CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineGuess);
+		CHECK(model.Bases[1].Ref == builder.RefIndex("refs/heads/feature/x"));
+		CHECK(model.Bases[1].Reason == Core::BaseReason::Kept);
+		CHECK(model.MainLineGuessed);
+	}
+}
+
+TEST_CASE("Lines: a default is not an old copy of a local base built on its tip")
+{
+	GraphBuilder builder;
+	AddDevelop(builder, 150);
+	builder.Commit("s1", {"d150"}, 151);
+	builder.Ref("refs/remotes/origin/develop", "d150", true);
+	builder.Ref("refs/heads/staging", "s1");
+	builder.SetNow(160);
+	Core::LineAnswers answers;
+	answers.AddedBases = {"refs/heads/staging"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/develop"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::ServerDefault);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/heads/staging"));
+	CHECK(model.OldCopies.empty());
+}
+
+TEST_CASE("Lines: a default merged into another base as a second parent is not its old copy")
+{
+	GraphBuilder builder;
+	AddDevelop(builder, 30);
+	AddGitflowMaster(builder, 0);
+	builder.Commit("M4", {"M3", "d30"}, 31);
+	builder.Ref("refs/remotes/origin/develop", "d30", true);
+	builder.Ref("refs/remotes/origin/master", "M4");
+	builder.SetNow(40);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/develop"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::ServerDefault);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/master"));
+	CHECK(model.Bases[1].Reason == Core::BaseReason::MergedLines);
+	CHECK(model.OldCopies.empty());
+}
+
+TEST_CASE("Lines: of two defaults at one commit the remote with fewer branches holds the old copy")
+{
+	SUBCASE("upstream has more branches")
+	{
+		GraphBuilder builder;
+		builder.Chain("u", 10, std::nullopt, 1, {});
+		builder.Commit("f1", {"u5"}, 11);
+		builder.Ref("refs/remotes/origin/main", "u10", true);
+		builder.Ref("refs/remotes/upstream/main", "u10", true);
+		builder.Ref("refs/remotes/upstream/feature", "f1");
+		builder.SetNow(20);
+
+		const Core::LineModel model = Compute(builder);
+
+		REQUIRE(model.Bases.size() == 1);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
+		REQUIRE(model.OldCopies.size() == 1);
+		CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
+	}
+
+	SUBCASE("as many branches on each and the later remote name holds it")
+	{
+		GraphBuilder builder;
+		builder.Chain("u", 10, std::nullopt, 1, {});
+		builder.Ref("refs/remotes/upstream/main", "u10", true);
+		builder.Ref("refs/remotes/origin/main", "u10", true);
+		builder.SetNow(20);
+
+		const Core::LineModel model = Compute(builder);
+
+		REQUIRE(model.Bases.size() == 1);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+		REQUIRE(model.OldCopies.size() == 1);
+		CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
+		CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/origin/main"));
+	}
+}
