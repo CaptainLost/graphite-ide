@@ -279,6 +279,38 @@ public:
 		git_reference_free(createdReference);
 	}
 
+	// Records a shallow boundary the way a depth-limited fetch does: the commit's hex id on a line of its own in
+	// <git dir>/shallow.
+	void MarkShallow(const std::string& commit)
+	{
+		const std::filesystem::path shallowFile = std::filesystem::path(git_repository_path(m_Repository)) / "shallow";
+		std::ofstream file{shallowFile, std::ios::binary | std::ios::app};
+		REQUIRE(file.is_open());
+		file << commit << '\n';
+	}
+
+	void AddRemote(const std::string& name)
+	{
+		git_remote* remote = nullptr;
+		REQUIRE(git_remote_create(&remote, m_Repository, name.c_str(), Core::ToUtf8(m_Directory.GetPath()).c_str()) == 0);
+		git_remote_free(remote);
+	}
+
+	void SetRemoteBranch(const std::string& remote, const std::string& branch, const std::string& commit)
+	{
+		git_oid commitId{};
+		REQUIRE(git_oid_fromstr(&commitId, commit.c_str()) == 0);
+
+		const std::string reference = "refs/remotes/" + remote + "/" + branch;
+
+		const int overwriteExisting = 1;
+		const char* noReflogMessage = nullptr;
+		git_reference* createdReference = nullptr;
+		REQUIRE(git_reference_create(&createdReference, m_Repository, reference.c_str(), &commitId, overwriteExisting,
+									 noReflogMessage) == 0);
+		git_reference_free(createdReference);
+	}
+
 	void StartConflict(const std::string& branchChangingTheSameFile)
 	{
 		const std::string reference = "refs/heads/" + branchChangingTheSameFile;

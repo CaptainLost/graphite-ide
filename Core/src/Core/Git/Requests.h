@@ -115,4 +115,12 @@ namespace Core {
 		Excluded,
 		Included
 	};
+
+	struct GraphReadRequest
+	{
+		std::vector<Oid> Tips;  // walk from these
+		std::vector<Oid> Known; // tips already in the graph: they and their ancestors are not read again
+
+		friend bool operator==(const GraphReadRequest&, const GraphReadRequest&) = default;
+	};
 }

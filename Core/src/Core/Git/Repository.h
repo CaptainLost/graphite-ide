@@ -7,6 +7,7 @@
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/LineHistory.h"
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/PatchMatch.h"
@@ -102,6 +103,18 @@ namespace Core {
 		// One walk over every tip with the hidden commits left out, then each tip's own commits
 		// gathered from what that walk found.
 		Result<std::vector<TipAuthors>> QueryOwnAuthors(const OwnAuthorsRequest& request) const;
+
+		// Every commit reachable from Tips and not from Known, with parents, committer time and author key.
+		// Commits listed in the repository's shallow file come back with ParentsCut and no parents.
+		Result<std::vector<GraphCommit>> ReadGraphCommits(const GraphReadRequest& request) const;
+
+		bool IsShallow() const;
+
+		// The git directory every worktree of this repository shares (git_repository_commondir).
+		std::filesystem::path CommonDirectory() const;
+
+		// Configured remotes, in name order.
+		Result<std::vector<std::string>> QueryRemoteNames() const;
 
 		// Empty when no configuration level sets user.email, or sets it blank.
 		Result<std::optional<std::string>> ReadUserEmail() const;
