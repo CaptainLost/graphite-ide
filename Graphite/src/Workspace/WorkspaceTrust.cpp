@@ -195,6 +195,50 @@ namespace Graphite {
 		Save();
 	}
 
+	void WorkspaceTrust::FollowFolderMove(const std::filesystem::path& movedFrom, const std::filesystem::path& movedTo)
+	{
+		const std::filesystem::path from = NormalisedAbsoluteFolder(movedFrom);
+		const std::filesystem::path to = NormalisedAbsoluteFolder(movedTo);
+
+		if (from.empty() || to.empty())
+		{
+			return;
+		}
+
+		// WARNING: Asked before any entry moves: an entry inside the moved folder stops naming it once rewritten.
+		const bool wasTrusted = IsTrusted(from);
+		bool entriesChanged = false;
+
+		for (std::filesystem::path& entry : m_Entries)
+		{
+			const std::optional<std::filesystem::path> placeInMovedFolder = Core::RelativeTo(entry, from);
+
+			if (!placeInMovedFolder.has_value())
+			{
+				continue;
+			}
+
+			const bool isTheMovedFolder = *placeInMovedFolder == ".";
+			entry = isTheMovedFolder ? to : NormalisedAbsoluteFolder(to / *placeInMovedFolder);
+			entriesChanged = true;
+		}
+
+		// WARNING: A folder trusted only through a parent it has left would lose its trust, so it gets an entry of its own.
+		if (wasTrusted && !IsTrusted(to))
+		{
+			m_Entries.push_back(to);
+			entriesChanged = true;
+		}
+
+		if (!entriesChanged)
+		{
+			return;
+		}
+
+		++m_Revision;
+		Save();
+	}
+
 	void WorkspaceTrust::Save()
 	{
 		if (m_File.empty())

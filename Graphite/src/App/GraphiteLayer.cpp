@@ -536,6 +536,9 @@ namespace Graphite {
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
+			// WARNING: Trust follows first: the documents moved below ask it whether their server may run.
+			m_Trust.FollowFolderMove(event.From, event.To);
+
 			// WARNING: Every root the folder's open and close set is set again here. The git port and
 			// the language servers otherwise keep reading the old path, which no longer exists.
 			m_LanguageServices.SetFallbackRoot(event.To);

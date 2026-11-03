@@ -120,6 +120,87 @@ TEST_CASE("Revoking an entry, however it is spelled, removes it and moves the re
 	CHECK(trust.GetRevision() > revision);
 }
 
+TEST_CASE("A trusted folder that is renamed stays trusted under its new name and not under the old one")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos\\IDE");
+	const std::uint64_t revision = trust.GetRevision();
+
+	trust.FollowFolderMove("D:\\Repos\\IDE", "D:\\Repos\\Graphite");
+
+	CHECK(trust.IsTrusted("D:\\Repos\\Graphite"));
+	CHECK_FALSE(trust.IsTrusted("D:\\Repos\\IDE"));
+	CHECK(trust.GetEntries().size() == 1);
+	CHECK(trust.GetRevision() > revision);
+}
+
+TEST_CASE("A folder trusted inside a moved folder moves with it")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Work\\Project\\Tools");
+
+	trust.FollowFolderMove("d:/work/project", "D:\\Work\\Renamed");
+
+	CHECK(trust.IsTrusted("D:\\Work\\Renamed\\Tools"));
+	CHECK_FALSE(trust.IsTrusted("D:\\Work\\Project\\Tools"));
+	CHECK_FALSE(trust.IsTrusted("D:\\Work\\Renamed"));
+}
+
+TEST_CASE("A folder trusted through a parent stays trusted when it moves out from under that parent")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+
+	trust.FollowFolderMove("D:\\Repos\\IDE", "D:\\Elsewhere\\IDE");
+
+	CHECK(trust.IsTrusted("D:\\Elsewhere\\IDE"));
+	CHECK_FALSE(trust.IsTrusted("D:\\Elsewhere"));
+	CHECK(trust.IsEntry("D:\\Repos"));
+}
+
+TEST_CASE("A folder that stays under the parent it is trusted through adds no entry when it moves")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+	const std::uint64_t revision = trust.GetRevision();
+
+	trust.FollowFolderMove("D:\\Repos\\IDE", "D:\\Repos\\Graphite");
+
+	CHECK(trust.IsTrusted("D:\\Repos\\Graphite"));
+	CHECK(trust.GetEntries().size() == 1);
+	CHECK(trust.GetRevision() == revision);
+}
+
+TEST_CASE("An untrusted folder that moves stays untrusted")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Other");
+	const std::uint64_t revision = trust.GetRevision();
+
+	trust.FollowFolderMove("D:\\Repos\\IDE", "D:\\Repos\\Graphite");
+
+	CHECK_FALSE(trust.IsTrusted("D:\\Repos\\Graphite"));
+	CHECK(trust.GetEntries().size() == 1);
+	CHECK(trust.GetRevision() == revision);
+}
+
+TEST_CASE("A folder's trust carried by a move is written to the trust file")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "trusted-folders.json";
+
+	{
+		Graphite::WorkspaceTrust trust{file};
+		trust.Trust("D:\\Repos\\IDE");
+		trust.FollowFolderMove("D:\\Repos\\IDE", "D:\\Repos\\Graphite");
+	}
+
+	const Graphite::WorkspaceTrust reread{file};
+
+	CHECK(reread.IsTrusted("D:\\Repos\\Graphite"));
+	CHECK_FALSE(reread.IsTrusted("D:\\Repos\\IDE"));
+}
+
 TEST_CASE("The trust list survives being written and read back")
 {
 	TempDirectory temp;

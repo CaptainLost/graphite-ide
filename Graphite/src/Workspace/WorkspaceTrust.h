@@ -24,6 +24,8 @@ namespace Graphite {
 
 		void Revoke(const std::filesystem::path& entry);
 
+		void FollowFolderMove(const std::filesystem::path& movedFrom, const std::filesystem::path& movedTo);
+
 		const std::vector<std::filesystem::path>& GetEntries() const { return m_Entries; }
 
 		std::uint64_t GetRevision() const { return m_Revision; }
