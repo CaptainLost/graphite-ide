@@ -212,6 +212,47 @@ TEST_CASE("Lines: new commits on a single branch are read without the history be
 	CHECK(second.GetValue().CommitsRead == 3);
 }
 
+TEST_CASE("Lines: the whole graph is read again when a cached commit is gone from the repository")
+{
+	GitFixture fixture;
+	std::string tip;
+	for (int index = 0; index < 4; ++index)
+	{
+		fixture.Write("a.txt", std::to_string(index));
+		tip = fixture.Commit("old " + std::to_string(index));
+	}
+
+	TempDirectory store;
+	{
+		const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+		REQUIRE(ReadLines(repository, StoreIn(store), 1800000000).HasValue());
+	}
+
+	Core::Oid fakeId;
+	fakeId.Bytes.fill(0xAB);
+
+	std::optional<Core::AncestryGraph> cached = LoadGraph(StoreIn(store).Graph);
+	REQUIRE(cached.has_value());
+	std::vector<Core::GraphCommit> commits = cached->ToCommits();
+	commits.push_back(Core::GraphCommit{fakeId, {*Core::Oid::FromHex(tip)}, 1, "ghost@example.com", false});
+	Core::AncestryGraph withGhost;
+	withGhost.Append(std::move(commits));
+	REQUIRE(SaveGraph(StoreIn(store).Graph, withGhost).HasValue());
+
+	fixture.Write("a.txt", "new");
+	fixture.Commit("new");
+
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), 1800000000);
+	REQUIRE(read.HasValue());
+	CHECK(read.GetValue().CommitsRead == 5);
+
+	const std::optional<Core::AncestryGraph> saved = LoadGraph(StoreIn(store).Graph);
+	REQUIRE(saved.has_value());
+	CHECK(saved->Size() == 5);
+	CHECK(saved->Find(fakeId) == Core::AncestryGraph::kNoCommit);
+}
+
 TEST_CASE("Lines: bases found by the rules are kept in the answers")
 {
 	GitFixture fixture;

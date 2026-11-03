@@ -155,6 +155,25 @@ namespace Graphite {
 			request.Known = HeadsOf(graph);
 
 			Core::Result<std::vector<Core::GraphCommit>> commits = repository.ReadGraphCommits(request);
+			if (!commits.HasValue() && !request.Known.empty())
+			{
+				// A cached head that git no longer has (pruned by gc) would fail every later read: start again from nothing.
+				graph = Core::AncestryGraph{};
+				graphChanged = true;
+				request.Known.clear();
+				request.Tips.clear();
+
+				for (const Core::LineRef& ref : read.Refs)
+				{
+					if (!ref.Tip.IsZero() && std::ranges::find(request.Tips, ref.Tip) == request.Tips.end())
+					{
+						request.Tips.push_back(ref.Tip);
+					}
+				}
+
+				commits = repository.ReadGraphCommits(request);
+			}
+
 			if (!commits.HasValue())
 			{
 				return commits.GetError();
