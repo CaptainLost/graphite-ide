@@ -170,7 +170,7 @@ namespace Graphite {
 
 		if (HasCommittedFiles(*range) && model.IsCommittedDiffFailed(diffKey))
 		{
-			const std::optional<Core::Error>& error = model.GetCommittedDiffError();
+			const std::optional<Core::Error> error = model.GetCommittedDiffFailure(diffKey);
 			return error.has_value() ? error->Message : std::string("The branch's changes could not be read.");
 		}
 

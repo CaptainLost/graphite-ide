@@ -5,6 +5,7 @@
 #include "DeferredJobs.h"
 #include "Review/FakeReviewPort.h"
 
+#include <optional>
 #include <string>
 
 using Graphite::RangeDiffKey;
@@ -281,7 +282,7 @@ TEST_CASE("A failed range diff is asked again only after a retry")
 	Settle(model, jobs);
 
 	CHECK(model.IsCommittedDiffFailed(diffKey));
-	CHECK(model.GetCommittedDiffError().has_value());
+	CHECK(model.GetCommittedDiffFailure(diffKey).has_value());
 
 	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
@@ -294,7 +295,49 @@ TEST_CASE("A failed range diff is asked again only after a retry")
 
 	CHECK(port.RangeDiffQueries == 2);
 	CHECK(model.GetCommittedDiff(diffKey) != nullptr);
-	CHECK_FALSE(model.GetCommittedDiffError().has_value());
+	CHECK_FALSE(model.GetCommittedDiffFailure(diffKey).has_value());
+}
+
+TEST_CASE("A range diff's failure is its own, not the last one any range reported")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeDiffKey firstKey{.Ends = RangeWithTip(2).Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+	const RangeDiffKey secondKey{.Ends = RangeWithTip(3).Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+
+	port.RangeDiffFailure = Core::Error{Core::ErrorCode::IoFailure, "the first range broke"};
+	model.RequestCommittedDiff(firstKey);
+	Settle(model, jobs);
+
+	port.RangeDiffFailure = Core::Error{Core::ErrorCode::IoFailure, "the second range broke"};
+	model.RequestCommittedDiff(secondKey);
+	Settle(model, jobs);
+
+	const std::optional<Core::Error> firstFailure = model.GetCommittedDiffFailure(firstKey);
+	REQUIRE(firstFailure.has_value());
+	CHECK(firstFailure->Message == "the first range broke");
+}
+
+TEST_CASE("A range diff keeps its failure when another range's diff is read")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeDiffKey failedKey{.Ends = RangeWithTip(2).Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+	const RangeDiffKey readKey{.Ends = RangeWithTip(3).Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+
+	port.RangeDiffFailure = Core::Error{Core::ErrorCode::IoFailure, "the range broke"};
+	model.RequestCommittedDiff(failedKey);
+	Settle(model, jobs);
+
+	port.RangeDiffFailure.reset();
+	model.RequestCommittedDiff(readKey);
+	Settle(model, jobs);
+
+	const std::optional<Core::Error> failure = model.GetCommittedDiffFailure(failedKey);
+	REQUIRE(failure.has_value());
+	CHECK(failure->Message == "the range broke");
 }
 
 TEST_CASE("Committed texts are read once per file and never for a binary one")

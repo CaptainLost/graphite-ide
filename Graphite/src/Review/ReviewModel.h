@@ -73,7 +73,7 @@ namespace Graphite {
 		void RequestCommittedDiff(const RangeDiffKey& key);
 		Core::Ref<const Core::Diff> GetCommittedDiff(const RangeDiffKey& key) const;
 		bool IsCommittedDiffFailed(const RangeDiffKey& key) const;
-		const std::optional<Core::Error>& GetCommittedDiffError() const { return m_CommittedDiffError; }
+		std::optional<Core::Error> GetCommittedDiffFailure(const RangeDiffKey& key) const;
 
 		void RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const;
@@ -199,7 +199,6 @@ namespace Graphite {
 
 		LruResultCache<RangeDiffKey, Core::Diff, RangeDiffKeyHash> m_CommittedDiffs{kCachedDiffs};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_CommittedTexts{kCachedTexts};
-		std::optional<Core::Error> m_CommittedDiffError;
 		LruResultCache<SinceViewedKey, SinceViewedAnswer, SinceViewedKeyHash> m_SinceViewed{kCachedTexts};
 
 		std::unordered_set<SinceViewedKey, SinceViewedKeyHash> m_ViewedVersionsGone;

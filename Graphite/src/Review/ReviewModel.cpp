@@ -119,7 +119,6 @@ namespace Graphite {
 		m_CommittedTexts.Clear();
 		m_SinceViewed.Clear();
 		m_ViewedVersionsGone.clear();
-		m_CommittedDiffError.reset();
 	}
 
 	ReviewModel::RangeState* ReviewModel::FindRange(const ReviewKey& key, std::uint64_t incarnation)
@@ -265,14 +264,8 @@ namespace Graphite {
 			{
 				const RangeDiffKey shownKey{.Ends = held->Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
 				const RangeDiffKey ignoredKey{.Ends = held->Ends, .Whitespace = Core::WhitespaceInDiff::Ignored};
-				const bool forgotShown = m_CommittedDiffs.ForgetFailed(shownKey);
-				const bool forgotIgnored = m_CommittedDiffs.ForgetFailed(ignoredKey);
-				const bool forgotDiff = forgotShown || forgotIgnored;
-
-				if (forgotDiff)
-				{
-					m_CommittedDiffError.reset();
-				}
+				m_CommittedDiffs.ForgetFailed(shownKey);
+				m_CommittedDiffs.ForgetFailed(ignoredKey);
 
 				const RangeEnds ends = held->Ends;
 				m_CommittedTexts.ForgetFailedWhere([&ends](const TextsKey& texts) { return texts.Ends == ends; });
@@ -320,20 +313,13 @@ namespace Graphite {
 	{
 		if (!answer.HasValue())
 		{
-			if (m_CommittedDiffs.Fail(key, generation))
-			{
-				m_CommittedDiffError = answer.GetError();
-			}
-
+			m_CommittedDiffs.Fail(key, generation, answer.GetError());
 			return;
 		}
 
 		Core::Ref<const Core::Diff> diff = Core::CreateRef<const Core::Diff>(std::move(answer).GetValue());
 
-		if (m_CommittedDiffs.Succeed(key, generation, std::move(diff)))
-		{
-			m_CommittedDiffError.reset();
-		}
+		m_CommittedDiffs.Succeed(key, generation, std::move(diff));
 	}
 
 	Core::Ref<const Core::Diff> ReviewModel::GetCommittedDiff(const RangeDiffKey& key) const
@@ -344,6 +330,11 @@ namespace Graphite {
 	bool ReviewModel::IsCommittedDiffFailed(const RangeDiffKey& key) const
 	{
 		return m_CommittedDiffs.IsFailed(key);
+	}
+
+	std::optional<Core::Error> ReviewModel::GetCommittedDiffFailure(const RangeDiffKey& key) const
+	{
+		return m_CommittedDiffs.FailureOf(key);
 	}
 
 	void ReviewModel::RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file)

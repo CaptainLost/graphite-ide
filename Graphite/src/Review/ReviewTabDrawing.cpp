@@ -845,7 +845,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<Core::Error>& diffError = input.Model.GetCommittedDiffError();
+		const std::optional<Core::Error> diffError = input.Model.GetCommittedDiffFailure(diffKey);
 		const std::string message = diffError.has_value() ? diffError->Message : std::string{kDiffUnreadable};
 
 		if (Core::EmptyState(message, "Retry"))
