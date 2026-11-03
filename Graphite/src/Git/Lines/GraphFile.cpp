@@ -3,12 +3,14 @@
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -67,11 +69,87 @@ namespace Graphite {
 			std::string_view m_bytes;
 			std::size_t m_position = 0;
 		};
+
+		enum class Visit : std::uint8_t
+		{
+			NotSeen,
+			Open,
+			Done
+		};
+
+		// Every commit after all of its parents, so that in the file a parent's index is always below its child's
+		// and a file that holds a cycle can be told from one that does not. Depth first on an explicit stack: a
+		// first-parent chain can be hundreds of thousands long.
+		std::vector<Core::GraphCommit> ParentsFirst(std::vector<Core::GraphCommit> commits)
+		{
+			std::unordered_map<Core::Oid, std::size_t> positionById;
+			positionById.reserve(commits.size());
+
+			for (std::size_t position = 0; position < commits.size(); ++position)
+			{
+				positionById.emplace(commits[position].Id, position);
+			}
+
+			std::vector<Visit> visits(commits.size(), Visit::NotSeen);
+			std::vector<std::size_t> order;
+			order.reserve(commits.size());
+			std::vector<std::size_t> pending;
+
+			for (std::size_t start = 0; start < commits.size(); ++start)
+			{
+				if (visits[start] == Visit::Done)
+				{
+					continue;
+				}
+
+				pending.push_back(start);
+
+				while (!pending.empty())
+				{
+					const std::size_t position = pending.back();
+
+					if (visits[position] == Visit::NotSeen)
+					{
+						visits[position] = Visit::Open;
+
+						for (const Core::Oid& parent : commits[position].Parents)
+						{
+							const auto found = positionById.find(parent);
+
+							if (found != positionById.end() && visits[found->second] == Visit::NotSeen)
+							{
+								pending.push_back(found->second);
+							}
+						}
+
+						continue;
+					}
+
+					pending.pop_back();
+
+					if (visits[position] == Visit::Open)
+					{
+						visits[position] = Visit::Done;
+						order.push_back(position);
+					}
+				}
+			}
+
+			std::vector<Core::GraphCommit> ordered;
+			ordered.reserve(commits.size());
+
+			for (const std::size_t position : order)
+			{
+				ordered.push_back(std::move(commits[position]));
+			}
+
+			return ordered;
+		}
 	}
 
 	Core::Result<void> SaveGraph(const std::filesystem::path& file, const Core::AncestryGraph& graph)
 	{
-		const std::vector<Core::GraphCommit> commits = graph.ToCommits();
+		const std::vector<Core::GraphCommit> commits = ParentsFirst(graph.ToCommits());
 
 		std::unordered_map<Core::Oid, std::uint32_t> indexById;
 		indexById.reserve(commits.size());
@@ -214,11 +292,13 @@ namespace Graphite {
 			row.Commit.AuthorKey = authors[static_cast<std::size_t>(author)];
 			row.Commit.ParentsCut = (flags & kParentsCutFlag) != 0;
 
+			// SaveGraph writes parents first, so a parent at or above its child is damage, and refusing it keeps a
+			// cycle, which every first-parent walk would go round for ever, out of the graph.
 			for (std::uint64_t parent = 0; parent < parentCount; ++parent)
 			{
 				std::uint64_t target = 0;
 
-				if (!reader.ReadUnsigned(target, 4) || target >= commitCount)
+				if (!reader.ReadUnsigned(target, 4) || target >= index)
 				{
 					return std::nullopt;
 				}
