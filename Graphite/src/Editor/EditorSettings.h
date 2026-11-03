@@ -40,6 +40,19 @@ namespace Graphite {
 	class EditorSettings final
 	{
 	public:
+		// The ranges every setter clamps to, which the settings page offers too.
+		static constexpr float kMinimumFontSize = 8.0f;
+		static constexpr float kMaximumFontSize = 32.0f;
+
+		static constexpr std::size_t kMinimumIndentWidth = 1;
+		static constexpr std::size_t kMaximumIndentWidth = 8;
+
+		static constexpr int kMinimumLineAuthorDelayMs = 0;
+		static constexpr int kMaximumLineAuthorDelayMs = 2000;
+
+		static constexpr int kMinimumHoverDelayMs = 200;
+		static constexpr int kMaximumHoverDelayMs = 1500;
+
 		explicit EditorSettings(AppSettings& settings) : m_Store(settings) {}
 
 		void Load();
@@ -109,14 +122,10 @@ namespace Graphite {
 
 		std::function<bool(PictureZoom)> m_PictureZoom;
 
-		static constexpr float kMinimumFontSize = 8.0f;
-		static constexpr float kMaximumFontSize = 32.0f;
 		static constexpr float kDefaultFontSize = Core::kCodeFontSize;
 
 		static constexpr float kFontSizeStep = 1.0f;
 
-		static constexpr std::size_t kMinimumIndentWidth = 1;
-		static constexpr std::size_t kMaximumIndentWidth = 8;
 		static constexpr std::size_t kDefaultIndentWidth = 4;
 
 		float m_FontSize = kDefaultFontSize;
@@ -133,15 +142,9 @@ namespace Graphite {
 		bool m_ScrollbarChangeMarkers = true;
 		bool m_LineAuthor = true;
 
-		static constexpr int kMinimumLineAuthorDelayMs = 0;
-		static constexpr int kMaximumLineAuthorDelayMs = 2000;
-
 		int m_LineAuthorDelayMs = kMinimumLineAuthorDelayMs;
 
 		bool m_HighlightOccurrences = true;
-
-		static constexpr int kMinimumHoverDelayMs = 200;
-		static constexpr int kMaximumHoverDelayMs = 1500;
 
 		HoverSettings m_Hover;
 	};

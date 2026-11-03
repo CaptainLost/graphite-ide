@@ -20,14 +20,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr float kMinimumFontSize = 8.0f;
-		constexpr float kMaximumFontSize = 32.0f;
-		constexpr int kMinimumTabWidth = 1;
-		constexpr int kMaximumTabWidth = 8;
-		constexpr int kMinimumHoverDelayMs = 200;
-		constexpr int kMaximumHoverDelayMs = 1500;
-		constexpr int kMinimumLineAuthorDelayMs = 0;
-		constexpr int kMaximumLineAuthorDelayMs = 2000;
 		constexpr int kLineAuthorDelayStepMs = 100;
 
 		const std::vector<std::string> kIndentOptions{"Spaces", "Tabs"};
@@ -177,7 +169,7 @@ namespace Graphite {
 	{
 		float fontSize = m_FontSizeWhileDragged.value_or(m_Settings.GetFontSize());
 
-		if (ImGui::SliderFloat("##fontSize", &fontSize, kMinimumFontSize, kMaximumFontSize, "%.1f"))
+		if (ImGui::SliderFloat("##fontSize", &fontSize, EditorSettings::kMinimumFontSize, EditorSettings::kMaximumFontSize, "%.1f"))
 		{
 			m_FontSizeWhileDragged = fontSize;
 		}
@@ -220,6 +212,9 @@ namespace Graphite {
 
 		if (ImGui::InputInt("##tabWidth", &typedWidth))
 		{
+			constexpr int kMinimumTabWidth = static_cast<int>(EditorSettings::kMinimumIndentWidth);
+			constexpr int kMaximumTabWidth = static_cast<int>(EditorSettings::kMaximumIndentWidth);
+
 			m_Settings.SetIndentWidth(static_cast<std::size_t>(std::clamp(typedWidth, kMinimumTabWidth, kMaximumTabWidth)));
 		}
 	}
@@ -248,7 +243,7 @@ namespace Graphite {
 	{
 		int delay = m_HoverDelayWhileDragged.value_or(m_Settings.GetHoverSettings().DelayMs);
 
-		if (ImGui::SliderInt("##hoverDelay", &delay, kMinimumHoverDelayMs, kMaximumHoverDelayMs, "%d ms"))
+		if (ImGui::SliderInt("##hoverDelay", &delay, EditorSettings::kMinimumHoverDelayMs, EditorSettings::kMaximumHoverDelayMs, "%d ms"))
 		{
 			m_HoverDelayWhileDragged = delay;
 		}
@@ -297,7 +292,7 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(!m_Settings.HasLineAuthor());
 
-		if (ImGui::SliderInt("##lineAuthorDelay", &delay, kMinimumLineAuthorDelayMs, kMaximumLineAuthorDelayMs, "%d ms"))
+		if (ImGui::SliderInt("##lineAuthorDelay", &delay, EditorSettings::kMinimumLineAuthorDelayMs, EditorSettings::kMaximumLineAuthorDelayMs, "%d ms"))
 		{
 			m_LineAuthorDelayWhileDragged = ToNearestStep(delay, kLineAuthorDelayStepMs);
 		}
