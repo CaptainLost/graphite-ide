@@ -106,6 +106,45 @@ TEST_CASE("A subagent reports its type, model and cost; with no transcript yet, 
 	CHECK(FactsOf(call, {}, Pricing::Defaults()).Detail == "Explore \xc2\xb7 sonnet-5");
 }
 
+TEST_CASE("A held subagent's cost is worked out again once the prices change")
+{
+	const ToolCall call = Call("Agent", {{"agentId", "a1"}, {"resolvedModel", "claude-sonnet-5"}},
+							   {{"subagent_type", "Explore"}});
+
+	SubagentUsage subagents;
+	subagents["a1"] = {{{"claude-sonnet-5", false}, {1'000'000, 0, 0, 0, 0}}};
+
+	Pricing prices = Pricing::Defaults();
+	ToolFactsCache cache;
+	cache.Reset(1);
+
+	CHECK(cache.FactsOf(0, call, subagents, 0, prices).Detail == "Explore \xc2\xb7 sonnet-5 \xc2\xb7 $2.00");
+
+	REQUIRE(prices.Find("claude-sonnet-5") != nullptr);
+	Price doubled = *prices.Find("claude-sonnet-5");
+	doubled.Input *= 2.0;
+	prices.Set("claude-sonnet-5", doubled);
+
+	CHECK(cache.FactsOf(0, call, subagents, 0, prices).Detail == "Explore \xc2\xb7 sonnet-5 \xc2\xb7 $4.00");
+}
+
+TEST_CASE("A held subagent's cost is worked out again once its usage is followed further")
+{
+	const ToolCall call = Call("Agent", {{"agentId", "a1"}, {"resolvedModel", "claude-sonnet-5"}},
+							   {{"subagent_type", "Explore"}});
+	const Pricing prices = Pricing::Defaults();
+
+	ToolFactsCache cache;
+	cache.Reset(1);
+
+	CHECK(cache.FactsOf(0, call, {}, 0, prices).Detail == "Explore \xc2\xb7 sonnet-5");
+
+	SubagentUsage subagents;
+	subagents["a1"] = {{{"claude-sonnet-5", false}, {1'000'000, 0, 0, 0, 0}}};
+
+	CHECK(cache.FactsOf(0, call, subagents, 1, prices).Detail == "Explore \xc2\xb7 sonnet-5 \xc2\xb7 $2.00");
+}
+
 TEST_CASE("A missing or mistyped field costs the detail, never the row")
 {
 	CHECK(Facts(Call("Read", {{"file", "not an object"}})).Size.empty());

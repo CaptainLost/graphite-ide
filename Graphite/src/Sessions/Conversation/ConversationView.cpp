@@ -262,7 +262,7 @@ namespace Graphite {
 		const std::vector<Turn>& turns = session.GetTurns();
 		m_Parts.assign(turns.size(), {});
 
-		m_Facts.assign(session.GetTools().size(), std::nullopt);
+		m_Facts.Reset(session.GetTools().size());
 
 		std::vector<Row> rows;
 		std::string latestTime;
@@ -692,18 +692,7 @@ namespace Graphite {
 
 		const ToolCall& tool = session.GetTools()[item.Tool];
 
-		if (item.Tool >= m_Facts.size())
-		{
-			m_Facts.resize(session.GetTools().size());
-		}
-
-		std::optional<ToolFacts>& cachedFacts = m_Facts[item.Tool];
-		if (!cachedFacts)
-		{
-			cachedFacts = FactsOf(tool, context.Subagents, context.Prices);
-		}
-
-		const ToolFacts& facts = *cachedFacts;
+		const ToolFacts& facts = m_Facts.FactsOf(item.Tool, tool, context.Subagents, context.SubagentsVersion, context.Prices);
 		const ImU32 colour = tool.IsError ? palette.Failed : palette.CategoryColor(facts.Category);
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 		const float lineHeight = ImGui::GetTextLineHeight();
@@ -1175,19 +1164,6 @@ namespace Graphite {
 		{
 			ImGui::EndChild();
 			return;
-		}
-
-		if (context.SubagentsVersion != m_FactsSubagentsVersion)
-		{
-			for (std::optional<ToolFacts>& facts : m_Facts)
-			{
-				if (facts && facts->Category == ToolCategory::Agent)
-				{
-					facts.reset();
-				}
-			}
-
-			m_FactsSubagentsVersion = context.SubagentsVersion;
 		}
 
 		const float width = ImGui::GetContentRegionAvail().x;

@@ -197,6 +197,46 @@ namespace Graphite {
 		return Core::FormatCount(tokens);
 	}
 
+	void ToolFactsCache::Reset(std::size_t toolCount)
+	{
+		m_Facts.assign(toolCount, std::nullopt);
+	}
+
+	const ToolFacts& ToolFactsCache::FactsOf(std::size_t toolIndex, const ToolCall& tool, const SubagentUsage& subagents,
+											 std::uint64_t subagentsVersion, const Pricing& pricing)
+	{
+		const bool costsMayHaveChanged = subagentsVersion != m_SubagentsVersion || pricing.GetEntries() != m_PricedWith;
+
+		// WARNING: Only a subagent's facts carry a cost, so only those are worked out again.
+		if (costsMayHaveChanged)
+		{
+			for (std::optional<ToolFacts>& facts : m_Facts)
+			{
+				if (facts.has_value() && facts->Category == ToolCategory::Agent)
+				{
+					facts.reset();
+				}
+			}
+
+			m_SubagentsVersion = subagentsVersion;
+			m_PricedWith = pricing.GetEntries();
+		}
+
+		if (toolIndex >= m_Facts.size())
+		{
+			m_Facts.resize(toolIndex + 1);
+		}
+
+		std::optional<ToolFacts>& held = m_Facts[toolIndex];
+
+		if (!held.has_value())
+		{
+			held = Graphite::FactsOf(tool, subagents, pricing);
+		}
+
+		return *held;
+	}
+
 	ToolFacts FactsOf(const ToolCall& tool, const SubagentUsage& subagents, const Pricing& pricing)
 	{
 		ToolFacts facts;

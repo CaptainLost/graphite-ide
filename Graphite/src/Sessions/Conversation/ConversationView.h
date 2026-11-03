@@ -117,8 +117,7 @@ namespace Graphite {
 		bool m_OffsetsDirty = true;
 		bool m_FollowTail = true;
 
-		std::vector<std::optional<ToolFacts>> m_Facts;
-		std::uint64_t m_FactsSubagentsVersion = 0;
+		ToolFactsCache m_Facts;
 
 		struct MarkdownCache
 		{
