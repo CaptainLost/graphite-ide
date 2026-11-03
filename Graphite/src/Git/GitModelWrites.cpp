@@ -639,6 +639,11 @@ namespace Graphite {
 						outcome.Changed.end(), job.Discard.Delete.begin(), job.Discard.Delete.end());
 				}
 
+				if (!job.Discard.ListedFiles.empty())
+				{
+					outcome.Changed = job.Discard.ListedFiles;
+				}
+
 				break;
 			}
 

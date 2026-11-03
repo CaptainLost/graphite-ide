@@ -201,7 +201,6 @@ namespace Graphite {
 			}
 
 			m_Expanded.clear();
-			m_Shared.DiscardedFiles.clear();
 
 			// WARNING: The questions are withdrawn before the return below: Begin is the only
 			// other code that hands the modal gate back, and a workspace closed while a question
@@ -1085,10 +1084,8 @@ namespace Graphite {
 
 		// WARNING: Copied out before Answer(), which drops the payload `question` refers to.
 		const DiscardRequest request{.Restore = question.Plan.Restore,
-									 .Delete = question.Plan.Delete};
-
-		const std::filesystem::path subject = question.Subject;
-		const std::vector<std::filesystem::path> files = question.Plan.Files;
+									 .Delete = question.Plan.Delete,
+									 .ListedFiles = question.Plan.Files};
 
 		const DialogLayout::ButtonSpec absentButton{};
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
@@ -1096,11 +1093,6 @@ namespace Graphite {
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
-			if (!files.empty())
-			{
-				m_Shared.DiscardedFiles[subject] = files;
-			}
-
 			m_Model.RequestDiscard(request);
 			m_DiscardQuestion.Answer();
 		}

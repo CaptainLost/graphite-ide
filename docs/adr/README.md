@@ -696,4 +696,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0664](0664-find-bases-from-server-defaults-merged-lines-and-authors-never-from-names.md) | Find bases from server defaults, merged lines and authors, never from names | proposed | 2026-11-03 |
 | [0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md) | Keep each repository's git answers and caches in local user data, keyed by its shared git directory | proposed | 2026-11-03 |
 | [0666](0666-count-who-holds-each-document-open-with-a-language-server.md) | Count who holds each document open with a language server | proposed | 2026-11-03 |
+| [0667](0667-apply-what-a-landed-git-write-changes-in-one-module-outside-the-panels.md) | Apply what a landed git write changes in one module outside the panels | proposed | 2026-11-03 |
 <!-- /adr-index -->

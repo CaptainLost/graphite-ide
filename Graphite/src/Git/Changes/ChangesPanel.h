@@ -17,8 +17,7 @@ namespace Core {
 
 namespace Graphite {
 
-	// The side panel's host of the Changes view, which also does what must happen exactly once per write,
-	// whichever host made it.
+	// The side panel's host of the Changes view. What a landed write changes elsewhere is WriteConsequences' job.
 	class ChangesPanel final : public Core::Panel
 	{
 	public:
@@ -29,13 +28,7 @@ namespace Graphite {
 		void OnImGuiRender() override;
 
 	private:
-		GitModel& m_Model;
-
-		EditorBuffers& m_Editor;
-
 		DiffWindows& m_DiffWindows;
-
-		ChangesShared& m_Shared;
 
 		ChangesView m_View;
 	};

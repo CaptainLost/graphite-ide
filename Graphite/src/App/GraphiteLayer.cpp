@@ -549,13 +549,10 @@ namespace Graphite {
 		// WARNING: Update the model before the panels, so it applies whatever a worker finished this frame and any workspace event just published before a panel reads a snapshot.
 		m_Git.OnUpdate(timestep);
 
-		// WARNING: The file watcher never sees `.git/` when the workspace is a subfolder of the repository or a linked worktree, so writes made by this process are reported here.
-		if (const std::uint64_t writes = m_Git.GetAppliedWriteCount(); writes != m_SeenGitWrites)
-		{
-			m_SeenGitWrites = writes;
-			m_ChangeMarkers.Invalidate();
-			m_Blame.Invalidate();
-		}
+		// WARNING: Right after the model, whatever is on screen: an expected write must be registered before the watcher
+		// reports it, and the watcher never sees `.git/` when the workspace is a subfolder of the repository or a linked
+		// worktree, so writes made by this process reach the change markers and blame only from here.
+		m_WriteConsequences.Apply();
 
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);
@@ -1268,16 +1265,6 @@ namespace Graphite {
 											   .LayoutRebuilt = m_DockSpace.HasBuiltLayoutThisFrame()},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
 
-		// WARNING: Drained here, not in a git panel, so a failure is reported with both panels closed and only once with both open.
-		while (std::optional<GitModel::WriteFailure> failure = m_Git.TakeWriteError())
-		{
-			std::string title(WriteFailureTitle(failure->Kind));
-			std::string shown = RelativiseUnder(failure->Error.Message, m_Git.GetWorkingDirectory());
-			std::string copied = title + "\n" + failure->Error.Message;
-
-			ShowToast(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied), ToastScope::Folder);
-		}
-
 		// WARNING: Draw the toasts last, so they sit over every panel and terminal.
 		const Core::ToastPalette toastPalette = ToastPaletteFor(m_ActiveScheme.Get());
 		m_NotificationsPopup.Render(m_Notifications, toastPalette, m_Workspace.GetRoot(), m_LocalTimeZone);
@@ -1383,6 +1370,15 @@ namespace Graphite {
 			}
 			break;
 		}
+	}
+
+	void GraphiteLayer::ReportGitWriteFailure(const GitModel::WriteFailure& failure)
+	{
+		std::string title(WriteFailureTitle(failure.Kind));
+		std::string shown = RelativiseUnder(failure.Error.Message, m_Git.GetWorkingDirectory());
+		std::string copied = title + "\n" + failure.Error.Message;
+
+		ShowToast(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied), ToastScope::Folder);
 	}
 
 	void GraphiteLayer::ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText,

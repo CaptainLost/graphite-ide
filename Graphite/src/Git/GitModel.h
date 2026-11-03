@@ -36,6 +36,10 @@ namespace Graphite {
 	{
 		std::vector<std::filesystem::path> Restore;
 		std::vector<std::filesystem::path> Delete;
+
+		// WARNING: Every file the discard rewrites, listed when it was asked, because a deleted folder is gone from disk by
+		// the time it lands and the editor holds its files, not the folder. Empty when nothing was listed.
+		std::vector<std::filesystem::path> ListedFiles;
 	};
 
 	enum class CheckoutPreparation

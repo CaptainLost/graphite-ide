@@ -23,6 +23,7 @@
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
 #include "Git/Work/WorkModel.h"
+#include "Git/WriteConsequences.h"
 #include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
 #include "Notifications/NotificationHistory.h"
@@ -157,6 +158,8 @@ namespace Graphite {
 		void RenderEmptyEditorArea();
 
 		void ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText, ToastScope scope);
+
+		void ReportGitWriteFailure(const GitModel::WriteFailure& failure);
 
 		void QueueForFocusedEditor(Core::Event& event);
 
@@ -389,7 +392,6 @@ namespace Graphite {
 		// WARNING: m_Events is destroyed after m_Git although m_Git subscribes handlers into it that capture `this`.
 		// That is unreachable today, because nothing publishes from a destructor and EventBus has no unsubscribe;
 		// a member declared between m_Events and the group above must not change that.
-		std::uint64_t m_SeenGitWrites = 0;
 
 		// WARNING: Declared before m_Panels, because the Explorer holds a pointer into m_Decorations between rebuilds.
 		Core::Ref<const Core::WorkingTreeStatus> m_DecoratedStatus;
@@ -406,6 +408,14 @@ namespace Graphite {
 		// reference. The Git window's host of the Changes view; the side panel owns its own.
 		ChangesView m_GitWindowChanges{m_Git, m_Modals, m_DocumentBuffers, m_ActiveScheme, m_Events, m_ChangesShared,
 									   "window"};
+
+		// WARNING: Declared after m_Git, m_DocumentBuffers, m_ChangeMarkers, m_Blame and m_ChangesShared, which it holds.
+		WriteConsequences m_WriteConsequences{m_Git, m_DocumentBuffers, m_ChangesShared,
+											  [this](const GitModel::WriteFailure& failure) { ReportGitWriteFailure(failure); },
+											  [this] {
+												  m_ChangeMarkers.Invalidate();
+												  m_Blame.Invalidate();
+											  }};
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;

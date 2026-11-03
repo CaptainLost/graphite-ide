@@ -197,29 +197,13 @@ TEST_CASE("Picking a file hands its diff to the host")
 	CHECK_FALSE(chosen.front().Commit.has_value());
 }
 
-TEST_CASE("A commit clears the draft both hosts share")
-{
-	ChangesHosts hosts;
-	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers,
-								 hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
-
-	hosts.Shared.Message = "fix";
-	hosts.Shared.Amend = true;
-
-	hosts.Model.RequestCommit({.Message = hosts.Shared.Message, .Amend = hosts.Shared.Amend});
-	hosts.Model.OnUpdate(Core::Timestep{0.0f});
-
-	panel.OnUpdate(Core::Timestep{0.0f});
-
-	CHECK(hosts.Shared.Message.empty());
-	CHECK_FALSE(hosts.Shared.Amend);
-}
-
-TEST_CASE("A view of its own leaves a landed commit for the side panel to take")
+TEST_CASE("Neither host takes a landed commit: that is left to the write consequences")
 {
 	ChangesHosts hosts;
 	Graphite::ChangesView view{hosts.Model, hosts.Modals, hosts.Buffers,
 							   hosts.Scheme, hosts.Events, hosts.Shared, "window"};
+	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers,
+								 hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
 
 	hosts.Shared.Message = "fix";
 
@@ -227,6 +211,7 @@ TEST_CASE("A view of its own leaves a landed commit for the side panel to take")
 	hosts.Model.OnUpdate(Core::Timestep{0.0f});
 
 	hosts.Frames.Next(InHost("Own view host", [&view] { view.Draw(); }));
+	panel.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(hosts.Shared.Message == "fix");
 	CHECK(hosts.Model.TakeCommitted().has_value());
@@ -247,20 +232,6 @@ TEST_CASE("The side panel opens a diff tab for the picked file")
 	CHECK(hosts.Diffs.IsOpen(Graphite::OpenDiff{.Commit = std::nullopt,
 												.Target = Core::DiffTarget::WorkTreeToIndex,
 												.Path = "a.txt"}));
-}
-
-TEST_CASE("A landed discard tells the editor which files it rewrote")
-{
-	ChangesHosts hosts;
-	Graphite::ChangesPanel panel{hosts.Model, hosts.Modals, hosts.Buffers, hosts.Scheme, hosts.Diffs, hosts.Events, hosts.Shared};
-
-	hosts.Model.RequestDiscard({.Restore = {"a.txt"}});
-	hosts.Model.OnUpdate(Core::Timestep{0.0f});
-
-	panel.OnUpdate(Core::Timestep{0.0f});
-
-	REQUIRE(hosts.Buffers.Expected.size() == 1);
-	CHECK(hosts.Buffers.Expected.front() == std::filesystem::path("C:/repo") / "a.txt");
 }
 
 TEST_CASE("A side panel left undrawn hands back the modal gate its discard question held")

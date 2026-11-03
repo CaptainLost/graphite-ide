@@ -141,27 +141,6 @@ namespace Graphite {
 		{
 			AskDeleteHeldForPanel();
 		}
-
-		if (std::vector<std::filesystem::path> changed = m_Model.TakeCheckedOut(); !changed.empty())
-		{
-			const std::filesystem::path& root = m_Model.GetWorkingDirectory();
-			const bool hasNoWorkingDirectory = root.empty();
-
-			if (hasNoWorkingDirectory)
-			{
-				return;
-			}
-
-			std::vector<std::filesystem::path> changedAbsolute;
-			changedAbsolute.reserve(changed.size());
-
-			for (const std::filesystem::path& path : changed)
-			{
-				changedAbsolute.push_back(root / path);
-			}
-
-			m_Buffers.ExpectExternalWrite(SilentReloads(changedAbsolute, m_Buffers.ModifiedUnder(root)));
-		}
 	}
 
 	void GitView::FollowSelectedRef()
