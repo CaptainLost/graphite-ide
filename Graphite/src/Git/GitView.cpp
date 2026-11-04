@@ -1517,7 +1517,7 @@ namespace Graphite {
 
 		// Without a read there is no answer to wait for or to give; the line shows its ellipsis.
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
-		content.Bases = read ? DescribeInBases(*read, m_Lines.BasesHolding(commit.Id)) : InBases{.Holding = {}, .Pending = true};
+		content.Bases = read ? DescribeInBases(*read, m_Lines.BasesHolding(commit.Id)) : InBasesWithoutRead(m_Lines.IsReading(), m_Lines.GetError());
 
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
 		{

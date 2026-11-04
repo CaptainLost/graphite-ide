@@ -40,7 +40,11 @@ namespace Graphite {
 	{
 		std::vector<std::string> Holding; // short names in model order; a remote base keeps its remote
 		bool Pending = false;             // the answer has not landed
+		std::optional<std::string> Unknown; // the line read failed: its message, and no answer will come
 	};
+
+	// The line for a moment with no read: waiting while one is coming, unknown once it has failed.
+	InBases InBasesWithoutRead(bool reading, const std::optional<Core::Error>& error);
 
 	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked.
 	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding);

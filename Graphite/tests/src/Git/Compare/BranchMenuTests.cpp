@@ -39,7 +39,7 @@ TEST_CASE("Git window: a base's menu offers stop using as base")
 
 	CHECK(base.StopUsingAsBase);
 	CHECK_FALSE(base.UseAsBase);
-	CHECK_FALSE(base.CompareWith);
+	CHECK(base.CompareWith);
 
 	const BranchMenu branch = MenuFor(&scene.Read, &lines, "refs/heads/feature/x");
 

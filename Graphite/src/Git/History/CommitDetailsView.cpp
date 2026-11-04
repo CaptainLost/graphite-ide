@@ -46,7 +46,7 @@ namespace Graphite {
 		constexpr float kLabelWidthPixels = 62.0f;
 		constexpr float kChipGapPixels = 4.0f;
 		constexpr ImU32 kChipFillAlphaByte = 0x38u;
-		const char* const kPendingText = "â¦";
+		const char* const kPendingText = "…";
 		const char* const kBroughtFailed = "Cannot read the commits this merge brought: ";
 
 		// Pieces laid out left to right in the room that is left, each on the next line when it does not fit.
@@ -115,6 +115,18 @@ namespace Graphite {
 			if (bases.Pending)
 			{
 				ImGui::TextDisabled("%s", kPendingText);
+				return;
+			}
+
+			if (bases.Unknown.has_value())
+			{
+				ImGui::TextDisabled("unknown");
+
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::SetTooltip("%s", bases.Unknown->c_str());
+				}
+
 				return;
 			}
 

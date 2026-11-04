@@ -32,7 +32,7 @@ namespace Graphite {
 
 		menu.StopUsingAsBase = isBase;
 		menu.UseAsBase = !isBase;
-		menu.CompareWith = lines->LineOf(fullName) != nullptr;
+		menu.CompareWith = true;
 
 		const bool isChosenMainLine = isBase && base->Reason == Core::BaseReason::MainLineByUser;
 		menu.UseAsMainLine = !HasServerDefaultBase(*read) && !isChosenMainLine;

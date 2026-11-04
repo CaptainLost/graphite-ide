@@ -237,3 +237,18 @@ TEST_CASE("Git window: the in bases line waits with an ellipsis")
 	CHECK(bases.Pending);
 	CHECK(bases.Holding.empty());
 }
+
+TEST_CASE("Git window: the in bases line is unknown once the line read failed and waits while one is coming")
+{
+	const Core::Error failure{Core::ErrorCode::IoFailure, "graph.bin is unreadable"};
+
+	const Graphite::InBases failed = Graphite::InBasesWithoutRead(false, failure);
+
+	CHECK_FALSE(failed.Pending);
+	REQUIRE(failed.Unknown.has_value());
+	CHECK(*failed.Unknown == "graph.bin is unreadable");
+
+	CHECK(Graphite::InBasesWithoutRead(true, failure).Pending);
+	CHECK(Graphite::InBasesWithoutRead(false, std::nullopt).Pending);
+	CHECK_FALSE(Graphite::InBasesWithoutRead(false, std::nullopt).Unknown.has_value());
+}
