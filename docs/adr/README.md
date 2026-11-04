@@ -700,5 +700,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0668](0668-let-a-tab-follow-a-file-that-graphite-itself-renames.md) | Let a tab follow a file that Graphite itself renames | proposed | 2026-11-03 |
 | [0669](0669-show-references-in-a-sidebar-beside-the-history.md) | Show references in a sidebar beside the history | proposed | 2026-11-04 |
 | [0670](0670-take-a-branch-s-review-base-from-its-line.md) | Take a branch's review base from its line | proposed | 2026-11-04 |
-| [0671](0671-show-a-branch-s-history-by-first-parents-by-default.md) | Show a branch's history by first parents by default | accepted | 2026-11-04 |
+| [0671](0671-show-a-branch-s-history-by-first-parents-by-default.md) | Show a branch's history by first parents by default | proposed | 2026-11-04 |
 <!-- /adr-index -->

@@ -203,3 +203,29 @@ TEST_CASE("Git window: the operation in progress is said in words")
 	CHECK(Graphite::HeadOperationText(Core::RepositoryOperation::Bisect) == "bisect in progress");
 	CHECK(Graphite::HeadOperationText(Core::RepositoryOperation::ApplyMailbox) == "applying patches");
 }
+
+TEST_CASE("Git window: the room for the counts is the same before and after the distance lands")
+{
+	Scene scene = MakeScene();
+
+	const VsLabel pending = Describe(scene, "refs/heads/feature/x");
+	const VsLabel landed = Describe(
+		scene, "refs/heads/feature/x", Core::LineDistance{.Ahead = 6, .Behind = 80, .ForkTime = std::nullopt, .ForkOnLine = true});
+	const VsLabel thousands = Describe(
+		scene, "refs/heads/feature/x", Core::LineDistance{.Ahead = 6, .Behind = 3'448, .ForkTime = std::nullopt, .ForkOnLine = true});
+
+	CHECK_FALSE(pending.CountsRoom.empty());
+	CHECK(pending.CountsRoom == landed.CountsRoom);
+	CHECK(pending.CountsRoom == thousands.CountsRoom);
+	CHECK(pending.CountsRoom == "6 ahead, 99,999 behind");
+}
+
+TEST_CASE("Git window: a behind count wider than the usual room widens the reserved room to fit")
+{
+	Scene scene = MakeScene();
+
+	const VsLabel huge = Describe(
+		scene, "refs/heads/feature/x", Core::LineDistance{.Ahead = 6, .Behind = 1'234'567, .ForkTime = std::nullopt, .ForkOnLine = true});
+
+	CHECK(huge.CountsRoom == "6 ahead, 1,234,567 behind");
+}

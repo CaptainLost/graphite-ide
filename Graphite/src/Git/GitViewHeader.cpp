@@ -32,6 +32,8 @@ namespace Graphite {
 		constexpr float kMarkText = 10.5f;
 		constexpr float kMarkSide = 5.0f;
 		constexpr float kMarkRounding = 4.0f;
+		constexpr float kMarkPadding = 1.0f;
+		constexpr float kSwitchBorder = 1.0f;
 
 		constexpr float kSwitchHeight = 26.0f;
 		constexpr float kSwitchRounding = 7.0f;
@@ -51,12 +53,6 @@ namespace Graphite {
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kMergesLabel = "Merges";
 		constexpr const char* kAllCommitsLabel = "All commits";
-
-		// A length of the mockup at the font the window has now; the lambdas below take it before any smaller font is pushed.
-		float EmUnit()
-		{
-			return ImGui::GetFontSize() / kMockupFont;
-		}
 
 		float TextWidth(const std::string& text)
 		{
@@ -193,7 +189,7 @@ namespace Graphite {
 	bool GitView::DrawVsButton(const VsLabel& label, float maxWidth)
 	{
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
-		const float unit = EmUnit();
+		const float unit = WindowBarEm(1.0f); // taken before a smaller font is pushed
 		const auto Em = [unit](float mockupPixels) { return mockupPixels * unit; };
 		const float side = Em(kVsSide);
 		const float gap = Em(kVsGap);
@@ -219,13 +215,24 @@ namespace Graphite {
 		// What the line's name may take: the room less the lead, the counts, the chip and the caret.
 		const float fixedWidth = 2.0f * side + gap + caretWidth + (mark.empty() ? 0.0f : gap + markWidth);
 		float piecesWithoutLine = 0.0f;
+		float reservedForLaterCounts = 0.0f;
+
+		// The behind count lands later: its place is as wide as the landed text, so nothing on the row moves then.
+		if (!label.Counts.empty())
+		{
+			const auto restOf = [](const std::string& counts) {
+				return counts.substr(std::min(counts.find(", "), counts.size()));
+			};
+
+			reservedForLaterCounts = std::max(0.0f, TextWidth(restOf(label.CountsRoom)) - TextWidth(restOf(label.Counts)));
+		}
 
 		for (const VsPiece& piece : PiecesOf(label, colours, std::string{}))
 		{
 			piecesWithoutLine += WidthOf(piece);
 		}
 
-		const float lineRoom = std::max(0.0f, maxWidth - fixedWidth - piecesWithoutLine);
+		const float lineRoom = std::max(0.0f, maxWidth - fixedWidth - piecesWithoutLine - reservedForLaterCounts);
 
 		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 		const std::string line = FitToWidth(label.Line, lineRoom);
@@ -233,7 +240,7 @@ namespace Graphite {
 
 		const std::vector<VsPiece> pieces = PiecesOf(label, colours, line);
 
-		float piecesWidth = 0.0f;
+		float piecesWidth = reservedForLaterCounts;
 
 		for (const VsPiece& piece : pieces)
 		{
@@ -277,11 +284,11 @@ namespace Graphite {
 
 			Core::PushInterfaceFont(ImGui::GetFontSize() * kMarkText / kMockupFont);
 
-			const float chipHeight = ImGui::GetTextLineHeight() + 2.0f;
+			const float chipHeight = ImGui::GetTextLineHeight() + 2.0f * kMarkPadding;
 			const float chipTop = origin.y + (height - chipHeight) * kHalf;
 			drawList->AddRectFilled(ImVec2(x, chipTop), ImVec2(x + markWidth, chipTop + chipHeight), colours.AskFill,
 									Em(kMarkRounding));
-			drawList->AddText(ImVec2(x + markSide, chipTop + 1.0f), colours.AskQuestion, mark.c_str());
+			drawList->AddText(ImVec2(x + markSide, chipTop + kMarkPadding), colours.AskQuestion, mark.c_str());
 			ImGui::PopFont();
 
 			x += markWidth;
@@ -296,20 +303,20 @@ namespace Graphite {
 
 	float GitView::HistorySwitchWidth() const
 	{
-		const float unit = EmUnit();
+		const float unit = WindowBarEm(1.0f); // taken before a smaller font is pushed
 		const auto Em = [unit](float mockupPixels) { return mockupPixels * unit; };
 
 		Core::PushInterfaceFont(ImGui::GetFontSize() * kSwitchText / kMockupFont);
 		const float labels = TextWidth(kMergesLabel) + TextWidth(kAllCommitsLabel);
 		ImGui::PopFont();
 
-		return labels + 4.0f * Em(kSegmentSide) + Em(kSwitchGap) + 2.0f * Em(kSwitchPadding) + 2.0f;
+		return labels + 4.0f * Em(kSegmentSide) + Em(kSwitchGap) + 2.0f * Em(kSwitchPadding) + 2.0f * kSwitchBorder;
 	}
 
 	bool GitView::DrawHistorySwitch(bool enabled)
 	{
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
-		const float unit = EmUnit();
+		const float unit = WindowBarEm(1.0f); // taken before a smaller font is pushed
 		const auto Em = [unit](float mockupPixels) { return mockupPixels * unit; };
 		const float frameHeight = ImGui::GetFrameHeight();
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -337,7 +344,7 @@ namespace Graphite {
 		Core::PushInterfaceFont(ImGui::GetFontSize() * kSwitchText / kMockupFont);
 
 		bool changed = false;
-		float x = origin.x + Em(kSwitchPadding) + 1.0f;
+		float x = origin.x + Em(kSwitchPadding) + kSwitchBorder;
 
 		for (const Segment& segment : segments)
 		{
@@ -384,7 +391,7 @@ namespace Graphite {
 	void GitView::DrawHistoryBanner(const std::string& text)
 	{
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
-		const float unit = EmUnit();
+		const float unit = WindowBarEm(1.0f); // taken before a smaller font is pushed
 		const auto Em = [unit](float mockupPixels) { return mockupPixels * unit; };
 		const float side = Em(kBannerSide);
 		const float width = ImGui::GetContentRegionAvail().x - 2.0f * side;

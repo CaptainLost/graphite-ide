@@ -1,6 +1,6 @@
 # 0671. Show a branch's history by first parents by default
 
-Status: accepted
+Status: proposed
 Date: 2026-11-04
 
 ## Context
@@ -11,8 +11,9 @@ The history of a branch or of HEAD lists every commit with its full graph. In a 
 
 - A branch's or HEAD's history asks the log with `LogRequest::FirstParentOnly` and lays the graph out with `LayoutParents::FirstOnly` by default. The header carries a switch, `Merges` and `All commits`; `All commits` asks the full log and the full graph. Switching asks the log again from the start.
 - The switch applies to a branch's and HEAD's history only. A stash is one commit, and a file's history follows the file through merges, so both keep the plain log and the switch is drawn dim for them.
-- Showing a commit from outside the window (a blame or search jump) switches to `All commits` for that request, because the commit may sit on a merged branch that first parents leave out.
+- Showing a commit from outside the window (a blame or search jump) switches to `All commits`, because the commit may sit on a merged branch that first parents leave out. The switch stays on `All commits` until the reader switches it back or the folder changes.
 - The choice lives in the window and is not saved; a new folder starts on `Merges` again.
+- The vs button reserves room for the behind count that is measured later (as wide as five digits and a comma, or the value if wider), so the header row does not move when it lands.
 
 ## Rationale
 

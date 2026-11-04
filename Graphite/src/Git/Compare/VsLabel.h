@@ -20,6 +20,9 @@ namespace Graphite {
 		std::string Lead;
 		std::string Line;
 		std::string Counts;
+
+		// The counts with the room their later value will take, so the button does not change width when the distance lands.
+		std::string CountsRoom;
 		std::optional<std::string> Mark;
 	};
 
@@ -39,6 +42,9 @@ namespace Graphite {
 
 	// The "behind" count of a distance as the header says it: an ellipsis while the distance is unknown.
 	std::string BehindText(const std::optional<Core::LineDistance>& distance);
+
+	// The behind count as the room for it reads: as wide as the landed value, but never narrower than five digits.
+	std::string ReservedBehindText(const std::optional<Core::LineDistance>& distance);
 
 	VsLabel DescribeVs(const VsInput& input);
 
