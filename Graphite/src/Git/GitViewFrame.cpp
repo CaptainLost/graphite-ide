@@ -269,8 +269,12 @@ namespace Graphite {
 
 	void GitView::RebuildSidebarWhenOutOfDate()
 	{
+		const std::optional<Core::Error>& stashesError = m_Model.GetStashesError();
+
 		SidebarInputs inputs{.Read = m_Lines.GetRead(),
 							 .Stashes = m_Model.GetStashes(),
+							 .StashesError = stashesError.has_value() ? std::optional<std::string>{stashesError->Message}
+																	  : std::nullopt,
 							 .Authors = m_Model.GetBranchAuthors(),
 							 .Search = m_Sidebar.GetSearch(),
 							 .ChoicesVersion = m_SidebarChoicesVersion,
@@ -296,6 +300,8 @@ namespace Graphite {
 			}
 		}
 
+		const Core::Error* const failedStashRead = stashesError.has_value() ? &*stashesError : nullptr;
+
 		if (inputs.Read)
 		{
 			m_SidebarRows = BuildSidebarRows(SidebarInput{.Read = *inputs.Read,
@@ -304,11 +310,12 @@ namespace Graphite {
 														  .Search = inputs.Search,
 														  .OpenByUser = m_OpenByUser,
 														  .ShowingMerged = m_ShowingMerged,
-														  .Now = inputs.Now});
+														  .Now = inputs.Now,
+														  .StashesError = failedStashRead});
 		}
 		else
 		{
-			m_SidebarRows = BuildStashRows(inputs.Stashes.get(), inputs.Search, m_OpenByUser);
+			m_SidebarRows = BuildStashRows(inputs.Stashes.get(), failedStashRead, inputs.Search, m_OpenByUser);
 		}
 
 		m_SidebarBuiltFrom = std::move(inputs);
@@ -397,7 +404,12 @@ namespace Graphite {
 		case SidebarRowKind::Base:
 			if (const Core::Branch* branch = SidebarBranchOf(row))
 			{
-				SelectRef(branch->FullName);
+				// WARNING: The rows can be a read behind the branches, so a row clicked may name a branch already gone;
+				// its history is then HEAD's, as for a shown branch that goes.
+				const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+				const bool isStillThere = BranchWithFullName(BranchesOrNone(branches), branch->FullName) != nullptr;
+
+				SelectRef(isStillThere ? std::optional<std::string>{branch->FullName} : std::nullopt);
 			}
 			return;
 		case SidebarRowKind::Stash:
@@ -416,6 +428,8 @@ namespace Graphite {
 			{
 				AnswerSidebarLink(*row.Link, row.Remote);
 			}
+			return;
+		case SidebarRowKind::Notice:
 			return;
 		}
 	}

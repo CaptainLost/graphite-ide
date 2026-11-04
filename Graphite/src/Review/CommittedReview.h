@@ -20,8 +20,7 @@ namespace Graphite {
 		Ready
 	};
 
-	// The committed half of a branch's review as the model holds it now, read the same way by the branch's card and
-	// by its review tab.
+	// The committed half of a branch's review as the model holds it now, as its review tab reads it.
 	struct CommittedReview
 	{
 		CommittedReviewState State = CommittedReviewState::LoadingRange;

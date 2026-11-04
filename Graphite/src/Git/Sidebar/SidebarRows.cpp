@@ -15,6 +15,9 @@ namespace Graphite {
 		constexpr std::chrono::hours kActiveWeek = std::chrono::hours{7 * 24};
 		constexpr std::chrono::hours kLastNinetyDays = std::chrono::hours{90 * 24};
 
+		constexpr bool kOnItsWay = true;
+		constexpr bool kNothingOnItsWay = false;
+
 		struct ActivityGroup
 		{
 			std::string_view Label;
@@ -484,17 +487,45 @@ namespace Graphite {
 					return;
 				}
 
-				if (AddSection(SidebarSection::Stashes, "stashes", "Stashes", shown.size(), total))
+				const bool open = AddSection(SidebarSection::Stashes, "stashes", "Stashes", shown.size(), total);
+				m_Rows.back().Counted = m_Input.Stashes != nullptr;
+
+				if (!open)
 				{
-					for (const std::size_t index : shown)
-					{
-						SidebarRow row;
-						row.Kind = SidebarRowKind::Stash;
-						row.Section = SidebarSection::Stashes;
-						row.Stash = index;
-						m_Rows.push_back(std::move(row));
-					}
+					return;
 				}
+
+				if (m_Input.StashesError != nullptr)
+				{
+					AddNotice(SidebarSection::Stashes, m_Input.StashesError->Message, kNothingOnItsWay);
+				}
+				else if (m_Input.Stashes == nullptr)
+				{
+					AddNotice(SidebarSection::Stashes, "Loading stashes", kOnItsWay);
+				}
+				else if (m_Input.Stashes->empty())
+				{
+					AddNotice(SidebarSection::Stashes, "No stashes", kNothingOnItsWay);
+				}
+
+				for (const std::size_t index : shown)
+				{
+					SidebarRow row;
+					row.Kind = SidebarRowKind::Stash;
+					row.Section = SidebarSection::Stashes;
+					row.Stash = index;
+					m_Rows.push_back(std::move(row));
+				}
+			}
+
+			void AddNotice(SidebarSection section, std::string text, bool waiting)
+			{
+				SidebarRow row;
+				row.Kind = SidebarRowKind::Notice;
+				row.Section = section;
+				row.Label = std::move(text);
+				row.Waiting = waiting;
+				m_Rows.push_back(std::move(row));
 			}
 
 			bool StashMatches(const Core::StashEntry& stash) const
@@ -527,8 +558,8 @@ namespace Graphite {
 		return Builder{input}.Build();
 	}
 
-	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, std::string_view search,
-										   const std::map<std::string, bool>& openByUser)
+	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
+										   std::string_view search, const std::map<std::string, bool>& openByUser)
 	{
 		static const LineRead kNoLines;
 		static const std::set<std::string> kNoneShowingMerged;
@@ -539,7 +570,8 @@ namespace Graphite {
 								 .Search = search,
 								 .OpenByUser = openByUser,
 								 .ShowingMerged = kNoneShowingMerged,
-								 .Now = {}};
+								 .Now = {},
+								 .StashesError = stashesError};
 		return Builder{input}.BuildStashes();
 	}
 }

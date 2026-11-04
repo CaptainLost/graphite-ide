@@ -17,12 +17,14 @@ using Graphite::Fixtures::LineReadBuilder;
 
 namespace {
 
+	const std::vector<Core::StashEntry> kNoStashes;
+
 	struct Options
 	{
 		std::string Search;
 		std::map<std::string, bool> OpenByUser;
 		std::set<std::string> ShowingMerged;
-		const std::vector<Core::StashEntry>* Stashes = nullptr;
+		const std::vector<Core::StashEntry>* Stashes = &kNoStashes;
 		const BranchAuthors* Authors = nullptr;
 	};
 
@@ -38,8 +40,9 @@ namespace {
 		return BuildSidebarRows(input);
 	}
 
-	// One short line per row, indented by depth: "# yours 3" a section, "> label 2" a group (closed groups end with
-	// " closed"), "main" a branch or base, "~ text" a link, "stash 0" a stash.
+	// One short line per row, indented by depth: "# yours 3" a section ("# stashes" with no count while unread), "> label
+	// 2" a group (closed groups end with " closed"), "main" a branch or base, "~ text" a link, "stash 0" a stash, "? text"
+	// a notice that waits and "! text" one that does not.
 	std::vector<std::string> Describe(const LineRead& read, const std::vector<SidebarRow>& rows)
 	{
 		std::vector<std::string> lines;
@@ -51,7 +54,7 @@ namespace {
 			switch (row.Kind)
 			{
 			case SidebarRowKind::Section:
-				text += "# " + row.Key + " " + std::to_string(row.Count);
+				text += "# " + row.Key + (row.Counted ? " " + std::to_string(row.Count) : std::string{});
 
 				if (row.Total.has_value())
 				{
@@ -76,6 +79,9 @@ namespace {
 			case SidebarRowKind::Link:
 				text += "~ " + row.Label;
 				break;
+			case SidebarRowKind::Notice:
+				text += (row.Waiting ? "? " : "! ") + row.Label;
+				break;
 			}
 
 			lines.push_back(text);
@@ -99,7 +105,7 @@ TEST_CASE("Git window: yours lists the checked-out branch first then the others 
 	builder.AddLocal("newer", {.AgeDays = 1});
 	const LineRead read = builder.Build();
 
-	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 4", "checked-out", "newer", "older", "unread", "# stashes 0"});
+	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 4", "checked-out", "newer", "older", "unread", "# stashes 0", "! No stashes"});
 }
 
 TEST_CASE("Git window: a base's local copy is in the base's row and not in yours")
@@ -116,7 +122,7 @@ TEST_CASE("Git window: a base's local copy is in the base's row and not in yours
 	const std::vector<SidebarRow> rows = RowsOf(read);
 
 	CHECK(Describe(read, rows) == Lines{"# yours 1", "feature", "# bases 1", "origin/main", "~ Why these, and how to change them",
-										"# remote/origin 0", "# stashes 0"});
+										"# remote/origin 0", "# stashes 0", "! No stashes"});
 	CHECK(rows[3].Kind == SidebarRowKind::Base);
 	CHECK(rows[3].LocalCopy == std::optional<std::size_t>{main});
 }
@@ -152,7 +158,7 @@ TEST_CASE("Git window: a local base is one row with the remote branch it tracks"
 	const std::vector<SidebarRow> rows = RowsOf(read);
 
 	CHECK(Describe(read, rows) == Lines{"# yours 0", "# bases 1", "main", "~ Why these, and how to change them", "# remote/origin 1",
-										"origin/other", "# stashes 0"});
+										"origin/other", "# stashes 0", "! No stashes"});
 	CHECK_FALSE(rows[2].LocalCopy.has_value());
 }
 
@@ -172,7 +178,7 @@ TEST_CASE("Git window: a remote section lists only what is not on this computer 
 	const std::vector<SidebarRow> rows = RowsOf(read);
 
 	CHECK(Describe(read, rows) == Lines{"# yours 1", "mine", "# remote/origin 2", "origin/theirs-new", "origin/theirs-old", kInYours,
-										"# remote/fork 1", "fork/x", "# stashes 0"});
+										"# remote/fork 1", "fork/x", "# stashes 0", "! No stashes"});
 	CHECK(rows[2].Label == "origin");
 	CHECK(rows[2].Note == "not on this computer");
 	CHECK(rows[2].Remote == "origin");
@@ -187,14 +193,14 @@ TEST_CASE("Git window: merged branches of a remote hide behind a show row until 
 	builder.AddRemoteBranch("origin", "merged", {.AgeDays = 1, .State = Core::BranchState::MergedByHistory});
 	const LineRead read = builder.Build();
 
-	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 0", "# remote/origin 1", "origin/live", kOneMergedHidden, "# stashes 0"});
+	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 0", "# remote/origin 1", "origin/live", kOneMergedHidden, "# stashes 0", "! No stashes"});
 
 	Options showing;
 	showing.ShowingMerged = {"origin"};
 	const std::vector<SidebarRow> rows = RowsOf(read, showing);
 
 	CHECK(Describe(read, rows) ==
-		  Lines{"# yours 0", "# remote/origin 2", "origin/merged", "origin/live", "~ Hide merged", "# stashes 0"});
+		  Lines{"# yours 0", "# remote/origin 2", "origin/merged", "origin/live", "~ Hide merged", "# stashes 0", "! No stashes"});
 	CHECK(rows[4].Link == std::optional<SidebarLink>{SidebarLink::HideMerged});
 }
 
@@ -225,7 +231,7 @@ TEST_CASE("Git window: more than fifteen remote branches are grouped by activity
 	const Lines described = Describe(read, rows);
 
 	CHECK(described == Lines{"# yours 0", "# remote/origin 16", "> Active this week 3", "  origin/week0", "  origin/week1", "  origin/week2",
-							 "> Last 90 days 7 closed", "> Older than 90 days 6 closed", "# stashes 0"});
+							 "> Last 90 days 7 closed", "> Older than 90 days 6 closed", "# stashes 0", "! No stashes"});
 	CHECK(rows[2].Key == "remote/origin/0");
 	CHECK(rows[6].Key == "remote/origin/1");
 	CHECK(rows[7].Key == "remote/origin/2");
@@ -237,7 +243,7 @@ TEST_CASE("Git window: more than fifteen remote branches are grouped by activity
 
 	CHECK(reopened[2] == "> Active this week 3 closed");
 	CHECK(reopened[5] == "  origin/old0");
-	CHECK(reopened[reopened.size() - 2] == "  origin/unread");
+	CHECK(reopened[reopened.size() - 3] == "  origin/unread");
 }
 
 TEST_CASE("Git window: fifteen remote branches stay flat")
@@ -253,7 +259,7 @@ TEST_CASE("Git window: fifteen remote branches stay flat")
 	const LineRead read = builder.Build();
 	const std::vector<SidebarRow> rows = RowsOf(read);
 
-	CHECK(rows.size() == 1 + 1 + 15 + 1);
+	CHECK(rows.size() == 1 + 1 + 15 + 2);
 	CHECK(rows[2].Kind == SidebarRowKind::Branch);
 	CHECK(rows[2].Depth == 0);
 }
@@ -270,14 +276,14 @@ TEST_CASE("Git window: quiet bases fold under their own group after the active o
 	const LineRead read = builder.Build();
 
 	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 0", "# bases 3", "first", "last", "> Quiet for 90 days 1 closed",
-												"~ Why these, and how to change them", "# stashes 0"});
+												"~ Why these, and how to change them", "# stashes 0", "! No stashes"});
 
 	Options opened;
 	opened.OpenByUser = {{"bases/quiet", true}};
 	const std::vector<SidebarRow> rows = RowsOf(read, opened);
 
 	CHECK(Describe(read, rows) == Lines{"# yours 0", "# bases 3", "first", "last", "> Quiet for 90 days 1", "  quiet",
-										"~ Why these, and how to change them", "# stashes 0"});
+										"~ Why these, and how to change them", "# stashes 0", "! No stashes"});
 	CHECK(rows[2].Link == std::nullopt);
 	CHECK(rows[4].Key == "bases/quiet");
 }
@@ -327,12 +333,31 @@ TEST_CASE("Git window: while the lines are read only the stashes are listed")
 	const std::vector<Core::StashEntry> stashes = {{.Index = 0, .Message = "On main: Parser WIP"}, {.Index = 1, .Message = "On a: docs"}};
 	const std::map<std::string, bool> noneClosed;
 
-	CHECK(Describe(noLines, BuildStashRows(&stashes, {}, noneClosed)) == Lines{"# stashes 2", "stash 0", "stash 1"});
-	CHECK(Describe(noLines, BuildStashRows(&stashes, "docs", noneClosed)) == Lines{"# stashes 1/2", "stash 1"});
-	CHECK(Describe(noLines, BuildStashRows(nullptr, {}, noneClosed)) == Lines{"# stashes 0"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, {}, noneClosed)) == Lines{"# stashes 2", "stash 0", "stash 1"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, "docs", noneClosed)) == Lines{"# stashes 1/2", "stash 1"});
 
 	const std::map<std::string, bool> closed = {{"stashes", false}};
-	CHECK(Describe(noLines, BuildStashRows(&stashes, {}, closed)) == Lines{"# stashes 2 closed"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, {}, closed)) == Lines{"# stashes 2 closed"});
+}
+
+TEST_CASE("Git window: the stashes section says when its list is read, failed or empty")
+{
+	const LineRead noLines = LineReadBuilder{}.Build();
+	const std::map<std::string, bool> noneClosed;
+	const std::vector<Core::StashEntry> stashes = {{.Index = 0, .Message = "On main: Parser WIP"}};
+	const std::vector<Core::StashEntry> none;
+	const Core::Error failure{Core::ErrorCode::IoFailure, "refs/stash is locked"};
+
+	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, {}, noneClosed)) == Lines{"# stashes", "? Loading stashes"});
+	CHECK(Describe(noLines, BuildStashRows(nullptr, &failure, {}, noneClosed)) == Lines{"# stashes", "! refs/stash is locked"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, &failure, {}, noneClosed)) ==
+		  Lines{"# stashes 1", "! refs/stash is locked", "stash 0"});
+	CHECK(Describe(noLines, BuildStashRows(&none, nullptr, {}, noneClosed)) == Lines{"# stashes 0", "! No stashes"});
+
+	// A closed section says nothing, and a search with no stash to match leaves the section out.
+	const std::map<std::string, bool> closed = {{"stashes", false}};
+	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, {}, closed)) == Lines{"# stashes closed"});
+	CHECK(BuildStashRows(nullptr, nullptr, "parser", noneClosed).empty());
 }
 
 TEST_CASE("Git window: search finds merged branches that are hidden")
@@ -365,7 +390,7 @@ TEST_CASE("Git window: an unborn repository still lists the yours and stashes se
 {
 	const LineRead read = LineReadBuilder{}.Build();
 
-	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 0", "# stashes 0"});
+	CHECK(Describe(read, RowsOf(read)) == Lines{"# yours 0", "# stashes 0", "! No stashes"});
 }
 
 TEST_CASE("Git window: a section the user closed lists no rows")
@@ -379,7 +404,7 @@ TEST_CASE("Git window: a section the user closed lists no rows")
 	Options closed;
 	closed.OpenByUser = {{"yours", false}, {"remote/origin", false}};
 
-	CHECK(Describe(read, RowsOf(read, closed)) == Lines{"# yours 1 closed", "# remote/origin 1 closed", "# stashes 0"});
+	CHECK(Describe(read, RowsOf(read, closed)) == Lines{"# yours 1 closed", "# remote/origin 1 closed", "# stashes 0", "! No stashes"});
 }
 
 TEST_CASE("Git window: six thousand branches build into rows")
@@ -410,8 +435,8 @@ TEST_CASE("Git window: six thousand branches build into rows")
 
 	std::printf("six thousand branches: %zu rows in %.2f ms\n", rows.size(), took.count());
 
-	// yours + 1000, bases + base + link, remote + 3 groups + 1667 open ones, stashes.
-	CHECK(rows.size() == 1 + 1000 + 3 + 1 + 3 + 1667 + 1);
+	// yours + 1000, bases + base + link, remote + 3 groups + 1667 open ones, stashes + "No stashes".
+	CHECK(rows.size() == 1 + 1000 + 3 + 1 + 3 + 1667 + 2);
 }
 
 TEST_CASE("Git window: search finds a branch through the authors read for its tip")

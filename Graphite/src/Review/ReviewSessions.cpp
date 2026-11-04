@@ -233,7 +233,7 @@ namespace Graphite {
 
 	void ReviewSessions::Start(const std::string& branch, const std::string& base)
 	{
-		// The thread shows a branch's uncommitted group by default, whichever way its review began.
+		// A review shows a branch's uncommitted group by default, whichever way it began.
 		ReviewSession started{.Base = base};
 		started.Settings.IncludeUncommitted = true;
 

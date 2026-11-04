@@ -3,6 +3,7 @@
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/Lines/LineReader.h"
 
+#include "Core/Base/Result.h"
 #include "Core/Git/Stash.h"
 
 #include <chrono>
@@ -23,7 +24,8 @@ namespace Graphite {
 		Branch,
 		Base,
 		Stash,
-		Link
+		Link,
+		Notice // one dim line in a section: its list is being read, its read failed, or it is empty
 	};
 
 	enum class SidebarSection
@@ -50,10 +52,12 @@ namespace Graphite {
 		// The open-state key: "yours", "bases", "bases/quiet", "remote/<name>", "remote/<name>/<0|1|2>", "stashes".
 		std::string Key;
 
-		std::string Label; // section title, group label or link text
+		std::string Label; // section title, group label, link text or notice text
 		std::string Note;  // a remote section's "not on this computer"
 		std::size_t Count = 0;
 		std::optional<std::size_t> Total; // while searching: "n of total"
+		bool Counted = true;              // a section whose list is unread shows no count
+		bool Waiting = false;             // a notice of a list on its way: a loader turns beside it
 		bool Open = false;
 		std::size_t Depth = 0;
 		std::optional<std::size_t> Ref;       // Branch, Base: index into LineRead::Refs
@@ -66,12 +70,13 @@ namespace Graphite {
 	struct SidebarInput
 	{
 		const LineRead& Read;
-		const std::vector<Core::StashEntry>* Stashes; // null while unread
+		const std::vector<Core::StashEntry>* Stashes; // null while unread; a failed read keeps the list it last had
 		const BranchAuthors* Authors;                 // null while unread
 		std::string_view Search;
 		const std::map<std::string, bool>& OpenByUser; // key -> open; absent keys use the defaults
 		const std::set<std::string>& ShowingMerged;    // remote names
 		std::chrono::sys_seconds Now;
+		const Core::Error* StashesError = nullptr;     // the last read of the stash list failed
 	};
 
 	inline constexpr std::size_t kFlatGroupMost = 15;
@@ -83,6 +88,6 @@ namespace Graphite {
 
 	// The rows that need no line model, for while the lines are read: the Stashes section alone, as BuildSidebarRows
 	// lists it.
-	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, std::string_view search,
-										   const std::map<std::string, bool>& openByUser);
+	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
+										   std::string_view search, const std::map<std::string, bool>& openByUser);
 }

@@ -317,6 +317,7 @@ namespace Graphite {
 		{
 			Core::Ref<const LineRead> Read;
 			Core::Ref<const std::vector<Core::StashEntry>> Stashes;
+			std::optional<std::string> StashesError; // a failed read keeps the list it last had, so it is compared apart
 			Core::Ref<const BranchAuthors> Authors;
 			std::string Search;
 

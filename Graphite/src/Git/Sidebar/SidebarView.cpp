@@ -274,6 +274,14 @@ namespace Graphite {
 			return kPushed;
 		}
 
+		void PopRowId(int pushed)
+		{
+			for (int id = 0; id < pushed; ++id)
+			{
+				ImGui::PopID();
+			}
+		}
+
 		struct RowBox
 		{
 			float Left = 0.0f; // where content starts at depth 0
@@ -441,29 +449,41 @@ namespace Graphite {
 			}
 		}
 
-		// One list row high, its text where a one-line row's text is. A failure turns no loader: nothing is on its way, and
+		// One dim line of a list row, its text where a one-line row's text is, at `left` and `rowTop` from the cursor's
+		// origin. Only a text that waits has a loader beside it: for a failure or an empty list nothing is on its way, and
 		// a loader would have every frame drawn for good.
+		void DrawNotice(const std::string& text, bool waiting, float left, float rowTop)
+		{
+			ImGui::SetCursorPos(ImVec2(left, ListRowTextTop(rowTop)));
+
+			if (waiting)
+			{
+				Core::LoadingLine(text.c_str(), Core::WhileLoaderWaits::ShowText);
+				return;
+			}
+
+			bool cut = false;
+			ImGui::TextDisabled("%s", FitToWidth(text, ImGui::GetContentRegionAvail().x - Em(kRowSide), &cut).c_str());
+
+			if (cut && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				ImGui::SetTooltip("%s", text.c_str());
+			}
+		}
+
 		void DrawWaitingRow(const SidebarWaitingRow& waiting, ImVec2 contentStart)
 		{
-			ImGui::SetCursorPos(ImVec2(contentStart.x + Em(kRowSide), ListRowTextTop(contentStart.y)));
 			ImGui::PushID("##SidebarWaiting");
-
-			if (waiting.Failed)
-			{
-				bool cut = false;
-				ImGui::TextDisabled("%s", FitToWidth(waiting.Text, ImGui::GetContentRegionAvail().x - Em(kRowSide), &cut).c_str());
-
-				if (cut && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
-				{
-					ImGui::SetTooltip("%s", waiting.Text.c_str());
-				}
-			}
-			else
-			{
-				Core::LoadingLine(waiting.Text.c_str(), Core::WhileLoaderWaits::ShowText);
-			}
-
+			DrawNotice(waiting.Text, !waiting.Failed, contentStart.x + Em(kRowSide), contentStart.y);
 			ImGui::PopID();
+		}
+
+		// A notice is no item to click: its text stands where the section's other rows have theirs.
+		void DrawNoticeRow(const SidebarRow& row, ImVec2 contentStart, float rowTop)
+		{
+			const float left = contentStart.x + Em(kRowSide) + static_cast<float>(row.Depth) * Em(kIndent) + Em(kLeadSlot) +
+							   Em(kGap);
+			DrawNotice(row.Label, row.Waiting, left, contentStart.y + rowTop);
 		}
 
 		void DrawHeadDot(ImVec2 centre, const SidebarColours& colours)
@@ -577,8 +597,10 @@ namespace Graphite {
 				m_ScrollToTop = false;
 			}
 
-			// WARNING: Row positions are relative to where the child's content starts, which a window padding moves.
-			const ImVec2 contentStart = ImGui::GetCursorStartPos();
+			// WARNING: Row positions are relative to where the child's content starts, which a window padding moves. Read
+			// as the cursor before any row, not as GetCursorStartPos: that one has the scroll taken off already, and
+			// SetCursorPos takes it off again.
+			const ImVec2 contentStart = ImGui::GetCursorPos();
 			float listTop = 0.0f;
 
 			if (waiting.has_value())
@@ -610,6 +632,15 @@ namespace Graphite {
 				for (; index < rows->size() && m_RowTops[index] < visibleBottom; ++index)
 				{
 					const SidebarRow& row = (*rows)[index];
+
+					if (row.Kind == SidebarRowKind::Notice)
+					{
+						const int pushed = PushRowId(row);
+						DrawNoticeRow(row, contentStart, m_RowTops[index]);
+						PopRowId(pushed);
+						continue;
+					}
+
 					const bool isSelected = IsSelected(row, selected);
 					const float height = HeightOf(row);
 
@@ -663,16 +694,18 @@ namespace Graphite {
 					case SidebarRowKind::Base:
 						DrawRefRow(row, box, text, isSelected, colours, searchWords);
 						break;
+					case SidebarRowKind::Notice:
+						break;
 					}
 
-					for (int id = 0; id < pushed; ++id)
-					{
-						ImGui::PopID();
-					}
+					PopRowId(pushed);
 				}
 
-				ImGui::SetCursorPos(ImVec2(contentStart.x, contentStart.y + top));
-				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+				// WARNING: One item as tall as the whole list ends it at the last row's bottom. The last row drawn holds a line
+				// for pieces laid over it, so an empty item placed after that row would take the line too and end the list
+				// that much lower.
+				ImGui::SetCursorPos(contentStart);
+				ImGui::Dummy(ImVec2(0.0f, top));
 			}
 		}
 

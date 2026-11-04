@@ -55,7 +55,7 @@ namespace Graphite {
 		ReviewMenu menu;
 		const std::optional<ReviewOffer> offer = OfferReview(branch, branches);
 
-		// The thread it opens drafts its own base (ReviewBaseOf); the offer only says there is one.
+		// The review tab it opens drafts its own base (ReviewBaseOf); the offer only says there is one.
 		if (offer.has_value() && offer->Base.has_value())
 		{
 			menu.Items.push_back(ReviewMenuItem{.Label = kReview, .Action = ReviewAction::Open, .Branch = offer->Branch});

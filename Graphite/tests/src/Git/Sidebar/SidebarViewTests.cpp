@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -311,6 +312,85 @@ TEST_CASE("Git window: of ten thousand rows only those in view are described")
 
 	CHECK(highest > 20);
 	CHECK(described < 20);
+}
+
+TEST_CASE("Git window: scrolled rows stay at their place in the list")
+{
+	Harness harness("SidebarScrolled");
+
+	constexpr std::size_t kRowCount = 100;
+	constexpr std::size_t kRowsScrolledPast = 5;
+	constexpr float kIntoTheNextRow = 3.0f;
+
+	std::vector<SidebarRow> rows;
+
+	for (std::size_t index = 0; index < kRowCount; ++index)
+	{
+		rows.push_back(BranchRow(index));
+	}
+
+	harness.Rows = &rows;
+
+	std::vector<std::pair<std::size_t, float>> drawnTops;
+	harness.TextOf = [&](const SidebarRow& row) {
+		drawnTops.emplace_back(row.Ref.value_or(0), ImGui::GetItemRectMin().y);
+		return TextOfRow(row);
+	};
+
+	harness.Settle();
+	ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	const float rowHeight = SidebarTwoLineRowHeight();
+	const float scrolled = rowHeight * static_cast<float>(kRowsScrolledPast) + kIntoTheNextRow;
+	ImGui::SetScrollY(list, scrolled);
+	harness.Next();
+	drawnTops.clear();
+	harness.Next();
+
+	REQUIRE(list->Scroll.y == doctest::Approx(scrolled));
+	REQUIRE_FALSE(drawnTops.empty());
+
+	const float listTop = list->Pos.y + list->WindowPadding.y;
+	const auto& [firstRow, firstTop] = drawnTops.front();
+
+	CHECK(firstRow == kRowsScrolledPast);
+	CHECK(firstTop == doctest::Approx(listTop + rowHeight * static_cast<float>(firstRow) - scrolled));
+	CHECK(list->ContentSize.y == doctest::Approx(rowHeight * static_cast<float>(kRowCount)));
+}
+
+TEST_CASE("Git window: a notice row answers no click")
+{
+	Harness harness("SidebarNoticeClick");
+
+	SidebarRow stashes = Section("stashes");
+	stashes.Section = SidebarSection::Stashes;
+	SidebarRow notice;
+	notice.Kind = SidebarRowKind::Notice;
+	notice.Section = SidebarSection::Stashes;
+	notice.Label = "No stashes";
+	const std::vector<SidebarRow> rows = {stashes, notice};
+	harness.Rows = &rows;
+
+	std::vector<SidebarRow> clicked;
+	harness.View.OnClick = [&](const SidebarRow& row) { clicked.push_back(row); };
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	harness.Click(InRows(*list, ListRowPitch() * 1.5f));
+
+	CHECK(clicked.empty());
+
+	std::size_t noticeGlyphs = 0;
+
+	for (const DrawnGlyph& glyph : DrawnGlyphs(*list->DrawList))
+	{
+		noticeGlyphs += glyph.Box.Min.y >= list->Pos.y + ListRowPitch() ? 1 : 0;
+	}
+
+	CHECK(noticeGlyphs == std::string("Nostashes").size());
 }
 
 TEST_CASE("Git window: typing in the search field changes the search")
