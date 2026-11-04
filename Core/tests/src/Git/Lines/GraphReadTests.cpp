@@ -175,3 +175,23 @@ TEST_CASE("Lines: the common directory is shared by the main checkout and a link
 	CHECK_FALSE(error);
 	CHECK_FALSE(main.CommonDirectory().empty());
 }
+
+TEST_CASE("Git: remotes are listed with their urls by name")
+{
+	GitFixture repo;
+	repo.AddRemoteWithUrl("team", "https://example.com/team.git");
+	repo.AddRemoteWithUrl("origin", "git@example.com:me/project.git");
+	repo.AddRemoteWithPushUrlOnly("bare", "https://example.com/push.git");
+	const Core::Repository repository = OpenRepositoryAt(repo.GetPath());
+
+	const Core::Result<std::vector<Core::Remote>> remotes = repository.QueryRemotes();
+
+	REQUIRE(remotes.HasValue());
+	REQUIRE(remotes.GetValue().size() == 3);
+	CHECK(remotes.GetValue()[0].Name == "bare");
+	CHECK(remotes.GetValue()[0].Url.empty());
+	CHECK(remotes.GetValue()[1].Name == "origin");
+	CHECK(remotes.GetValue()[1].Url == "git@example.com:me/project.git");
+	CHECK(remotes.GetValue()[2].Name == "team");
+	CHECK(remotes.GetValue()[2].Url == "https://example.com/team.git");
+}

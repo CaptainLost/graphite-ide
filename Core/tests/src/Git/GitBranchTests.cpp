@@ -251,3 +251,38 @@ TEST_CASE("A local branch configured with a remote but no merge target is listed
 	CHECK_FALSE(masterBranch->Upstream.has_value());
 	CHECK_FALSE(masterBranch->DistanceKnown);
 }
+
+TEST_CASE("Git: a branch whose remote branch was deleted names it as its missing upstream")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string tip = fixture.Commit("add a");
+	fixture.PushTo("master", tip);
+	fixture.Branch("gone");
+	fixture.Branch("loose");
+	fixture.SetUpstream("gone", "origin", "gone");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+
+	const Branch* gone = FindBranchNamed(branches.GetValue(), "gone");
+	REQUIRE(gone != nullptr);
+	CHECK_FALSE(gone->Upstream.has_value());
+	REQUIRE(gone->MissingUpstream.has_value());
+	CHECK(*gone->MissingUpstream == "origin/gone");
+
+	const Branch* tracking = FindBranchNamed(branches.GetValue(), "master");
+	REQUIRE(tracking != nullptr);
+	CHECK_FALSE(tracking->MissingUpstream.has_value());
+	REQUIRE(tracking->Upstream.has_value());
+	CHECK(*tracking->Upstream == "origin/master");
+
+	const Branch* loose = FindBranchNamed(branches.GetValue(), "loose");
+	REQUIRE(loose != nullptr);
+	CHECK_FALSE(loose->MissingUpstream.has_value());
+	CHECK_FALSE(loose->Upstream.has_value());
+}

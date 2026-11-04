@@ -57,6 +57,10 @@ namespace Core {
 
 		std::optional<std::string> Upstream;
 
+		// The upstream the branch's config names when that remote branch does not exist any more
+		// ("origin/x"); Upstream is unset then.
+		std::optional<std::string> MissingUpstream;
+
 		// Commits this branch has that its upstream lacks, and the reverse. Zero and zero
 		// also means "in sync", so read them only when DistanceKnown is true.
 		std::size_t Ahead = 0;

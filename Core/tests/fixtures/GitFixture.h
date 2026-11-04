@@ -272,6 +272,33 @@ public:
 		git_remote_free(remote);
 	}
 
+	void AddRemoteWithUrl(const std::string& name, const std::string& url)
+	{
+		git_remote* remote = nullptr;
+		REQUIRE(git_remote_create(&remote, m_Repository, name.c_str(), url.c_str()) == 0);
+		git_remote_free(remote);
+	}
+
+	// A remote that only has a push url: it is listed, and has no fetch url.
+	void AddRemoteWithPushUrlOnly(const std::string& name, const std::string& pushUrl)
+	{
+		git_config* config = nullptr;
+		REQUIRE(git_repository_config(&config, m_Repository) == 0);
+		REQUIRE(git_config_set_string(config, ("remote." + name + ".pushurl").c_str(), pushUrl.c_str()) == 0);
+		git_config_free(config);
+	}
+
+	// Writes only the tracking config: the remote branch it names may or may not exist.
+	void SetUpstream(const std::string& branch, const std::string& remote, const std::string& remoteBranch)
+	{
+		git_config* config = nullptr;
+		REQUIRE(git_repository_config(&config, m_Repository) == 0);
+		REQUIRE(git_config_set_string(config, ("branch." + branch + ".remote").c_str(), remote.c_str()) == 0);
+		REQUIRE(git_config_set_string(config, ("branch." + branch + ".merge").c_str(),
+									  ("refs/heads/" + remoteBranch).c_str()) == 0);
+		git_config_free(config);
+	}
+
 	void SetRemoteBranch(const std::string& remote, const std::string& branch, const std::string& commit)
 	{
 		git_oid commitId{};

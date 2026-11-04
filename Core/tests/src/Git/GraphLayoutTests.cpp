@@ -156,3 +156,25 @@ TEST_CASE("Every edge names rows that exist")
 		CHECK(edge.ToLane < graph.LaneCount);
 	}
 }
+
+TEST_CASE("Git: a first-parent layout gives a merge one edge")
+{
+	const std::vector<CommitSummary> commits = {Commit(4, {3, 2}), Commit(3, {1}), Commit(2, {1}), RootCommit(1)};
+
+	const CommitGraph graph = Core::LayoutCommits(commits, Core::LayoutParents::FirstOnly);
+
+	std::size_t edgesFromMerge = 0;
+
+	for (const Core::GraphEdge& edge : graph.Edges)
+	{
+		if (edge.FromRow == 0)
+		{
+			++edgesFromMerge;
+			CHECK(edge.ToRow == 1);
+		}
+	}
+
+	CHECK(edgesFromMerge == 1);
+	CHECK(LaneOf(graph, 4) == 0);
+	CHECK(LaneOf(graph, 3) == 0);
+}

@@ -129,6 +129,46 @@ namespace Core {
 			return true;
 		}
 
+		std::optional<std::string> ReadConfigText(const git_config* snapshot, const std::string& key)
+		{
+			const char* value = nullptr;
+
+			if (git_config_get_string(&value, snapshot, key.c_str()) != 0 || value == nullptr || value[0] == '\0')
+			{
+				return std::nullopt;
+			}
+
+			return std::string{value};
+		}
+
+		// The short form git_branch_name gives for an upstream that exists: "origin/x" for remote
+		// "origin" and merge ref "refs/heads/x"; a remote of "." names a local branch, so "x".
+		std::optional<std::string> NameUpstreamFromConfig(const git_config* snapshot, const Branch& branch)
+		{
+			if (snapshot == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			const std::string shortName = ShortBranchName(branch.FullName);
+			const std::optional<std::string> remote = ReadConfigText(snapshot, "branch." + shortName + ".remote");
+			const std::optional<std::string> mergeReference = ReadConfigText(snapshot, "branch." + shortName + ".merge");
+
+			if (!remote.has_value() || !mergeReference.has_value())
+			{
+				return std::nullopt;
+			}
+
+			const std::string upstreamBranch = ShortBranchName(*mergeReference);
+
+			if (*remote == ".")
+			{
+				return upstreamBranch;
+			}
+
+			return *remote + "/" + upstreamBranch;
+		}
+
 		bool ComesBeforeInBranchList(const Branch& branch, const Branch& otherBranch)
 		{
 			if (branch.Kind != otherBranch.Kind)
@@ -234,6 +274,10 @@ namespace Core {
 						branch.DistanceKnown = true;
 					}
 				}
+			}
+			else if (askUpstream && branch.Kind == RefKind::Local && upstreamResult == GIT_ENOTFOUND)
+			{
+				branch.MissingUpstream = NameUpstreamFromConfig(configSnapshot.get(), branch);
 			}
 
 			branches.push_back(std::move(branch));

@@ -162,6 +162,26 @@ namespace Core {
 
 	Result<std::vector<std::string>> Repository::QueryRemoteNames() const
 	{
+		Result<std::vector<Remote>> remotes = QueryRemotes();
+
+		if (!remotes.HasValue())
+		{
+			return remotes.GetError();
+		}
+
+		std::vector<std::string> remoteNames;
+		remoteNames.reserve(remotes.GetValue().size());
+
+		for (Remote& remote : remotes.GetValue())
+		{
+			remoteNames.push_back(std::move(remote.Name));
+		}
+
+		return remoteNames;
+	}
+
+	Result<std::vector<Remote>> Repository::QueryRemotes() const
+	{
 		if (m_Handle == nullptr)
 		{
 			return RepositoryNotOpen();
@@ -174,16 +194,32 @@ namespace Core {
 			return GraphFailure("cannot list the remotes");
 		}
 
-		std::vector<std::string> remoteNames;
+		std::vector<Remote> remotes;
 
 		for (std::size_t nameIndex = 0; nameIndex < names.count; ++nameIndex)
 		{
-			remoteNames.emplace_back(names.strings[nameIndex]);
+			Remote remote;
+			remote.Name = names.strings[nameIndex];
+
+			// A remote that cannot be looked up is still listed, by name with no url.
+			git_remote* handle = nullptr;
+
+			if (git_remote_lookup(&handle, m_Handle.get(), names.strings[nameIndex]) == 0)
+			{
+				if (const char* url = git_remote_url(handle); url != nullptr)
+				{
+					remote.Url = url;
+				}
+
+				git_remote_free(handle);
+			}
+
+			remotes.push_back(std::move(remote));
 		}
 
 		git_strarray_dispose(&names);
 
-		std::sort(remoteNames.begin(), remoteNames.end());
-		return remoteNames;
+		std::sort(remotes.begin(), remotes.end(), [](const Remote& left, const Remote& right) { return left.Name < right.Name; });
+		return remotes;
 	}
 }

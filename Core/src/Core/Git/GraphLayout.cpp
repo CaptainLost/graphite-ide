@@ -4,6 +4,7 @@
 
 #include "Core/Base/Assert.h"
 
+#include <algorithm>
 #include <optional>
 #include <unordered_map>
 
@@ -86,7 +87,7 @@ namespace Core {
 		}
 	}
 
-	CommitGraph LayoutCommits(const std::vector<CommitSummary>& commits)
+	CommitGraph LayoutCommits(const std::vector<CommitSummary>& commits, LayoutParents parents)
 	{
 		CommitGraph graph;
 		graph.Nodes.reserve(commits.size());
@@ -112,7 +113,10 @@ namespace Core {
 
 			ReleaseLanesWaitingFor(lanes, commit.Id);
 
-			for (std::size_t parentIndex = 0; parentIndex < commit.Parents.size(); ++parentIndex)
+			const std::size_t parentsLaidOut =
+				parents == LayoutParents::FirstOnly ? std::min<std::size_t>(commit.Parents.size(), 1) : commit.Parents.size();
+
+			for (std::size_t parentIndex = 0; parentIndex < parentsLaidOut; ++parentIndex)
 			{
 				const Oid& parent = commit.Parents[parentIndex];
 				const bool parentIsOnPage = rowOfCommit.contains(parent);

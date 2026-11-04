@@ -529,3 +529,124 @@ TEST_CASE("Counting from a commit the repository does not hold is NotFound")
 	REQUIRE_FALSE(count.HasValue());
 	CHECK(count.GetError().Code == Core::ErrorCode::NotFound);
 }
+
+namespace {
+
+	std::vector<std::string> SummariesOf(const LogPage& page)
+	{
+		std::vector<std::string> summaries;
+
+		for (const CommitSummary& commit : page.Commits)
+		{
+			summaries.push_back(commit.Summary);
+		}
+
+		return summaries;
+	}
+}
+
+TEST_CASE("Git: a first-parent log lists a merge and not the commits it merged")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("base");
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("side.txt", "side\n");
+	fixture.Commit("side work");
+	fixture.Checkout("master");
+	fixture.Write("main.txt", "main\n");
+	fixture.Commit("main work");
+	fixture.MergeCommit("merge side", "side");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.FirstParentOnly = true;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(SummariesOf(log.GetValue()) == std::vector<std::string>{"merge side", "main work", "base"});
+}
+
+TEST_CASE("Git: a log from a merge's second parent without its first parent lists what the merge brought")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("base");
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("side.txt", "side\n");
+	fixture.Commit("side one");
+	fixture.Write("side.txt", "side two\n");
+	fixture.Commit("side two");
+	fixture.Checkout("master");
+	fixture.Write("main.txt", "main\n");
+	fixture.Commit("main work");
+	fixture.MergeCommit("merge side", "side");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Result<LogPage> all = repository.QueryLog(LogRequest{});
+	REQUIRE(all.HasValue());
+	REQUIRE_FALSE(all.GetValue().Commits.empty());
+
+	const CommitSummary& merge = all.GetValue().Commits.front();
+	REQUIRE(merge.Parents.size() == 2);
+
+	LogRequest request;
+	request.From = merge.Parents[1];
+	request.Exclude = merge.Parents[0];
+	request.FirstParentOnly = true;
+
+	const Result<LogPage> brought = repository.QueryLog(request);
+
+	REQUIRE(brought.HasValue());
+	CHECK(SummariesOf(brought.GetValue()) == std::vector<std::string>{"side two", "side one"});
+}
+
+TEST_CASE("Git: a log from two tips walks both with children before parents")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("base");
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("side.txt", "side\n");
+	const std::string sideTip = fixture.Commit("side work");
+	fixture.Checkout("master");
+	fixture.Write("main.txt", "main\n");
+	fixture.Commit("main work");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const std::optional<Core::Oid> sideTipId = Core::Oid::FromHex(sideTip);
+	REQUIRE(sideTipId.has_value());
+
+	LogRequest request;
+	request.AlsoFrom.push_back(*sideTipId);
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().Commits.size() == 3);
+
+	std::unordered_set<std::string> seen;
+
+	for (const CommitSummary& commit : log.GetValue().Commits)
+	{
+		for (const Core::Oid& parent : commit.Parents)
+		{
+			CHECK_FALSE(seen.contains(parent.ToHex()));
+		}
+
+		seen.insert(commit.Id.ToHex());
+	}
+
+	CHECK(log.GetValue().Commits.back().Summary == "base");
+	CHECK(seen.contains(sideTip));
+}

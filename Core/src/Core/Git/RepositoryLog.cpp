@@ -194,9 +194,19 @@ namespace Core {
 		// interleave the way a reader expects.
 		git_revwalk_sorting(walk.get(), GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
 
+		if (request.FirstParentOnly)
+		{
+			git_revwalk_simplify_first_parent(walk.get());
+		}
+
 		int pushResult = 0;
 
-		if (request.Ref.has_value())
+		if (request.From.has_value())
+		{
+			const git_oid startCommit = ToGitOid(*request.From);
+			pushResult = git_revwalk_push(walk.get(), &startCommit);
+		}
+		else if (request.Ref.has_value())
 		{
 			pushResult = git_revwalk_push_ref(walk.get(), request.Ref->c_str());
 		}
@@ -211,6 +221,12 @@ namespace Core {
 			// this call. Both mean there is nothing to show, not a failure to read.
 			const std::string message = LastLibgit2Message();
 
+			if (request.From.has_value())
+			{
+				return Error{ErrorCode::NotFound,
+							 std::format("no such commit {}: {}", request.From->ShortHex(), message)};
+			}
+
 			if (request.Ref.has_value())
 			{
 				return Error{ErrorCode::NotFound, std::format("no such ref '{}': {}", *request.Ref, message)};
@@ -218,6 +234,17 @@ namespace Core {
 
 			LogPage emptyHistory{.Commits = {}, .Complete = true};
 			return emptyHistory;
+		}
+
+		for (const Oid& alsoFrom : request.AlsoFrom)
+		{
+			const git_oid startCommit = ToGitOid(alsoFrom);
+
+			if (git_revwalk_push(walk.get(), &startCommit) != 0)
+			{
+				const std::string message = LastLibgit2Message();
+				return Error{ErrorCode::NotFound, std::format("no such commit {}: {}", alsoFrom.ShortHex(), message)};
+			}
 		}
 
 		if (request.Exclude.has_value())

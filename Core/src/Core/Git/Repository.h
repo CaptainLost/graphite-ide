@@ -11,6 +11,7 @@
 #include "Core/Git/LineHistory.h"
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/PatchMatch.h"
+#include "Core/Git/Remote.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
@@ -115,6 +116,9 @@ namespace Core {
 
 		// Configured remotes, in name order.
 		Result<std::vector<std::string>> QueryRemoteNames() const;
+
+		// Sorted by name.
+		Result<std::vector<Remote>> QueryRemotes() const;
 
 		// Empty when no configuration level sets user.email, or sets it blank.
 		Result<std::optional<std::string>> ReadUserEmail() const;

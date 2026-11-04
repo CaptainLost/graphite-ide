@@ -32,6 +32,14 @@ namespace Core {
 		std::size_t LaneCount = 0;
 	};
 
+	enum class LayoutParents
+	{
+		All,
+
+		// Each commit is laid out with its first parent only, so a merge has one edge.
+		FirstOnly
+	};
+
 	// `commits` must list every parent below its child, as a revwalk sorted with
 	// GIT_SORT_TOPOLOGICAL does; newest-first by date is not enough, because clock skew can
 	// put a parent above its child, and the layout then draws upward edges and never frees
@@ -40,5 +48,5 @@ namespace Core {
 	// A lane is freed at the row of the child that was waiting for it, so a commit below may
 	// take it from the next row on. A caller drawing the graph must route a connector out of
 	// its source lane at the source row rather than run it down that lane.
-	CommitGraph LayoutCommits(const std::vector<CommitSummary>& commits);
+	CommitGraph LayoutCommits(const std::vector<CommitSummary>& commits, LayoutParents parents = LayoutParents::All);
 }

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Core {
 
@@ -30,6 +31,17 @@ namespace Core {
 		// Without a value the walk starts at HEAD. A value must be a full reference name such as
 		// "refs/heads/main", not a short one.
 		std::optional<std::string> Ref;
+
+		// Starts the walk at this commit instead; Ref is then ignored.
+		std::optional<Oid> From;
+
+		// More commits the walk starts from, together with Ref or From in one topological walk, so
+		// children still come before parents. Exclude leaves out what is reachable from any of them.
+		std::vector<Oid> AlsoFrom;
+
+		// Follows each commit's first parent only, as `git log --first-parent` does: a merge is listed
+		// and the commits it merged are not. A File filter still diffs against the first parent.
+		bool FirstParentOnly = false;
 
 		// Leaves out every commit reachable from this one, as `git log <exclude>..<ref>` does: given
 		// a branch's fork point, the branch's own commits. Ignored for a stash.
