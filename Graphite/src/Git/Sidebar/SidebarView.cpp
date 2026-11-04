@@ -361,7 +361,7 @@ namespace Graphite {
 			DrawChevronAt(left, box, row.Open, dim);
 			left += Em(kChevronSize) + Em(kGap);
 
-			DrawIconAt(left, box, row.Open ? ICON_LC_FOLDER_OPEN : ICON_LC_FOLDER, dim);
+			DrawIconAt(left, box, ICON_LC_CLOCK, dim);
 			left += Em(kIconSize) + Em(kGap);
 
 			float labelRight = box.Right;
