@@ -107,11 +107,13 @@ namespace Core {
 			}
 		}
 
-		bool IsOnFirstParentChain(const AncestryGraph& graph, Index target, Index start)
+		// A first-parent step lowers the generation, so the walk ends once it is no higher than the target: at most
+		// the generations between the two.
+		bool IsOnFirstParentChain(const AncestryGraph& graph, std::span<const std::uint32_t> generations, Index target, Index start)
 		{
 			Index commit = start;
 
-			while (commit != target)
+			while (commit != target && generations[commit] > generations[target])
 			{
 				const std::span<const Index> parents = graph.ParentsOf(commit);
 
@@ -123,7 +125,7 @@ namespace Core {
 				commit = parents.front();
 			}
 
-			return true;
+			return commit == target;
 		}
 	}
 
@@ -204,7 +206,7 @@ namespace Core {
 		}
 
 		distance.ForkTime = walk.NewestSharedTime;
-		distance.ForkOnLine = walk.NewestShared != AncestryGraph::kNoCommit && IsOnFirstParentChain(graph, walk.NewestShared, to);
+		distance.ForkOnLine = walk.NewestShared != AncestryGraph::kNoCommit && IsOnFirstParentChain(graph, generations, walk.NewestShared, to);
 		return distance;
 	}
 

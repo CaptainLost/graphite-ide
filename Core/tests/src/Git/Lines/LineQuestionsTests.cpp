@@ -162,3 +162,20 @@ TEST_CASE("Lines: a child older than its parent still counts right")
 	CHECK(holding[0]);
 	CHECK(holding[1]);
 }
+
+TEST_CASE("Lines: a branch merged through a second parent on a long line is not on the line")
+{
+	constexpr int kLineLength = 50000;
+	GraphBuilder builder;
+	builder.Chain("c", kLineLength, std::nullopt, 0, {});
+	builder.Commit("side1", {"c10"}, kLineLength + 1);
+	builder.Commit("merge", {"c50000", "side1"}, kLineLength + 2);
+
+	// `side1` is an ancestor of `merge` but off its first-parent chain: the answer is false, and the check
+	// ends at the generation of `side1` instead of following the chain down to its root.
+	const Core::LineDistance distance = Distance(builder, "side1", "merge");
+	CHECK(distance.Ahead == 0);
+	CHECK(distance.Behind == static_cast<std::size_t>(kLineLength - 10 + 1));
+	CHECK(distance.ForkTime == GraphBuilder::Seconds(kLineLength + 1));
+	CHECK_FALSE(distance.ForkOnLine);
+}
