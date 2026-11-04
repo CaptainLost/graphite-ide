@@ -1176,9 +1176,14 @@ namespace Graphite {
 		ConfirmRevealedFile();
 	}
 
+	float GitView::PathFieldWidth()
+	{
+		return ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
+	}
+
 	void GitView::RenderFilterFields(float room)
 	{
-		const float pathWidth = ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
+		const float pathWidth = PathFieldWidth();
 		const float wordsWidth = std::max(0.0f, room - pathWidth - ImGui::GetStyle().ItemSpacing.x);
 
 		DrawFilterField("##commitFilter", m_FilterBuffer.data(), m_FilterBuffer.size(),

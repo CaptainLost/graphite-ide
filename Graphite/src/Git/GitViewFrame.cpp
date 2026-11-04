@@ -670,8 +670,15 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
+		// The filter field keeps the mockup's 200 px; the name and the vs button share what the fields and the switch
+		// leave, the name taking at most its share of that and the button the rest.
+		constexpr float kFilterBasis = 200.0f;
 		constexpr float kTitleShare = 0.4f;
-		const float titleRoom = std::max(0.0f, rowWidth * kTitleShare - (ImGui::GetCursorScreenPos().x - rowStartX));
+		constexpr float kTitleShareOfShared = 0.45f;
+		const float sharedRoom = std::max(0.0f, rowWidth - HistorySwitchWidth() - PathFieldWidth() - WindowBarEm(kFilterBasis) -
+													4.0f * spacing);
+		const float titleRoom = std::max(0.0f, std::min(rowWidth * kTitleShare, sharedRoom * kTitleShareOfShared) -
+												   (ImGui::GetCursorScreenPos().x - rowStartX));
 
 		const float operationWidth =
 			operation.empty() ? 0.0f : ImGui::CalcTextSize(operation.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
@@ -721,7 +728,9 @@ namespace Graphite {
 
 			ImGui::SameLine();
 
-			if (DrawVsButton(label, rowWidth * kVsShare))
+			const float vsRoom = std::max(0.0f, sharedRoom - (ImGui::GetCursorScreenPos().x - rowStartX));
+
+			if (DrawVsButton(label, std::min(rowWidth * kVsShare, vsRoom)))
 			{
 				OpenVsPicker(ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y + WindowBarEm(kVsPickerGap)));
 

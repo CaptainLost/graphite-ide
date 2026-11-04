@@ -292,6 +292,9 @@ namespace Graphite {
 		// The filter and path fields side by side in `room`, and the filter settling into a new log.
 		void RenderFilterFields(float room);
 
+		// The width the path field takes of the room the fields are given.
+		static float PathFieldWidth();
+
 		// The vs button, drawn on the header row within `maxWidth`; true when it was clicked.
 		bool DrawVsButton(const VsLabel& label, float maxWidth);
 
