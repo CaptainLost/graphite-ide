@@ -17,7 +17,6 @@ namespace Graphite {
 
 		constexpr const char* kPending = "\xE2\x80\xA6";
 		constexpr const char* kShowThem = "Show them";
-		constexpr const char* kWidestUsualCount = "99,999";
 
 		std::optional<LineFold> FoldOfState(Core::BranchState state, bool newerShown)
 		{
@@ -46,15 +45,6 @@ namespace Graphite {
 		std::string NewerCommitsText(const std::string& count, bool single, const std::string& lineName)
 		{
 			return count + (single ? " newer commit on " : " newer commits on ") + lineName + " since this branch forked";
-		}
-
-		// As wide as the landed count, but never narrower than five digits.
-		std::string CountRoom(std::optional<std::size_t> behind)
-		{
-			const std::string usual = kWidestUsualCount;
-			const std::string landed = behind.has_value() ? Core::FormatCount(*behind) : std::string{};
-
-			return landed.size() > usual.size() ? landed : usual;
 		}
 	}
 
@@ -170,10 +160,7 @@ namespace Graphite {
 			const std::string count = behind.has_value() ? Core::FormatCount(*behind) : std::string{kPending};
 			const bool single = behind == std::optional<std::size_t>{1};
 
-			return FoldRow{.BeforeCommit = commitIndex,
-						   .Text = NewerCommitsText(count, single, lineName),
-						   .TextRoom = NewerCommitsText(CountRoom(behind), false, lineName),
-						   .Action = kShowThem};
+			return FoldRow{.BeforeCommit = commitIndex, .Text = NewerCommitsText(count, single, lineName), .Action = kShowThem};
 		}
 
 		return std::nullopt;

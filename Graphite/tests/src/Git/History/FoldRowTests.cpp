@@ -302,19 +302,6 @@ TEST_CASE("Git window: rows with no fold row to count do not wait for a count")
 	CHECK_FALSE(Graphite::RowsWaitForFoldCount(scene.LineOf("refs/heads/feature/x"), words, std::nullopt));
 }
 
-TEST_CASE("Git window: the fold row keeps room for its count so its action does not move when the count lands")
-{
-	const Core::LogPage page = PageOf({1, 2});
-	const Core::LogPage own = PageOf({1});
-
-	const std::string usualRoom = "99,999 newer commits on develop since this branch forked";
-
-	CHECK(Graphite::FindFoldRow(page, own, "develop", std::nullopt).value_or(FoldRow{}).TextRoom == usualRoom);
-	CHECK(Graphite::FindFoldRow(page, own, "develop", 1).value_or(FoldRow{}).TextRoom == usualRoom);
-	CHECK(Graphite::FindFoldRow(page, own, "develop", 1'234'567).value_or(FoldRow{}).TextRoom ==
-		  "1,234,567 newer commits on develop since this branch forked");
-}
-
 TEST_CASE("Git window: the marked commits are looked up at least as far as the page reaches")
 {
 	const Scene scene = MakeScene();

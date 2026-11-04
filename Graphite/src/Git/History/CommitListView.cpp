@@ -1037,19 +1037,13 @@ namespace Graphite {
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
-		const float textLeft = ImGui::GetCursorScreenPos().x;
-
 		// WARNING: The italic face is not loaded where no renderer is, and a null face keeps the current one.
+		// The count comes with the row (its rows wait for it), so the action follows the text as in the mockup.
 		ImGui::PushFont(Core::ImGuiRenderer::GetItalicFont(), kKeepFontSize);
-		const float textRoom = Core::TextWidth(fold.TextRoom + kMiddleDot);
-		DrawFittedCell(fold.Text + kMiddleDot, dimmedInk, kNoHighlight);
+		DrawFittedCell(fold.Text, dimmedInk, kNoHighlight);
 		ImGui::PopFont();
 
-		// The action keeps to the room the count may come to take, so it stays put when the count lands or changes.
-		ImGui::SameLine(kNoOffset, kNoSpacing);
-		const float roomLeft = std::max(0.0f, textLeft + textRoom - ImGui::GetCursorScreenPos().x);
-		ImGui::Dummy(ImVec2(std::min(roomLeft, ImGui::GetContentRegionAvail().x), ImGui::GetTextLineHeight()));
-		ImGui::SameLine(kNoOffset, kNoSpacing);
+		ImGui::SameLine(kNoOffset, MockupPixels(kMessagePiecesGap));
 
 		const float actionLeft = ImGui::GetCursorScreenPos().x;
 		DrawFittedCell(fold.Action, actionInk, kNoHighlight);

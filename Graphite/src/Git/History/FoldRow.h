@@ -64,11 +64,6 @@ namespace Graphite {
 		std::size_t BeforeCommit = 0;
 
 		std::string Text;
-
-		// The text with its count as wide as the count may come to be, never narrower than five digits: the action is
-		// drawn after this much room, so it does not move when the count lands or changes.
-		std::string TextRoom;
-
 		std::string Action;
 	};
 
