@@ -1,6 +1,8 @@
 #include "Git/Compare/VsPickerView.h"
 
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 
 #include "UI/FittedText.h"
@@ -20,8 +22,9 @@ namespace Graphite {
 
 		constexpr float kHalf = 0.5f;
 		constexpr float kMockupFont = 13.0f;
+		constexpr float kKeepFontSize = 0.0f;
 
-		constexpr float kPopupWidth = 560.0f;
+		constexpr float kPopupWidth = 640.0f;
 		constexpr float kEdge = 16.0f;
 		constexpr float kRoundingOfPopup = 8.0f;
 		constexpr float kPopupPadding = 6.0f;
@@ -37,6 +40,8 @@ namespace Graphite {
 		constexpr float kChipPadding = 1.0f;
 		constexpr float kRadioRing = 1.5f;
 		constexpr float kRadioInset = 2.5f;
+		constexpr float kRestingRingAlpha = 0.4f; // as a tick box's resting outline
+		constexpr ImU32 kChipFillAlphaByte = 0x38u; // as the details' "In bases" chips
 
 		constexpr float kHeadingText = 11.0f;
 		constexpr float kChipText = 10.5f;
@@ -93,12 +98,40 @@ namespace Graphite {
 			}
 			else
 			{
-				drawList->AddCircle(centre, radius - Em(kRadioRing) * kHalf, colours.Rule, 0, Em(kRadioRing));
+				drawList->AddCircle(centre, radius - Em(kRadioRing) * kHalf, Core::WithAlphaScaled(colours.Dim, kRestingRingAlpha), 0,
+									Em(kRadioRing));
 			}
 		}
 
+		// "6 ahead · 80 behind": the ahead count bold in the match colour, the rest dim; a pending "…" dim.
+		void DrawCounts(ImDrawList* drawList, const std::string& counts, float right, float top, const WindowBarColours& colours)
+		{
+			constexpr const char* kBetween = " \xC2\xB7 ";
+			const std::size_t split = counts.find(kBetween);
+
+			if (split == std::string::npos)
+			{
+				drawList->AddText(ImVec2(right - Core::TextWidth(counts), top), colours.Dim, counts.c_str());
+				return;
+			}
+
+			const std::string ahead = counts.substr(0, split);
+			const std::string rest = counts.substr(split);
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+			const float aheadWidth = Core::TextWidth(ahead);
+			ImGui::PopFont();
+
+			const float left = right - aheadWidth - Core::TextWidth(rest);
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+			drawList->AddText(ImVec2(left, top), colours.Match, ahead.c_str());
+			ImGui::PopFont();
+			drawList->AddText(ImVec2(left + aheadWidth, top), colours.Dim, rest.c_str());
+		}
+
 		// One option that names a ref, or the Nothing option: true when clicked.
-		bool DrawOptionRow(const VsOption& option, float width, const WindowBarColours& colours)
+		bool DrawOptionRow(const VsOption& option, const LineRead& read, float width, const WindowBarColours& colours)
 		{
 			const float height = Em(kRowHeight);
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -118,8 +151,15 @@ namespace Graphite {
 			const float countsRight = slotLeft - gap;
 			const float countsLeft = countsRight - Em(kCountsWidth);
 
-			drawList->AddText(ImVec2(nameLeft, textTop), ImGui::GetColorU32(ImGuiCol_Text),
-							  FitToWidth(option.Name, nameRight - nameLeft).c_str());
+			// A remote branch's remote stands dim before its name.
+			const std::string remote = option.Ref.has_value() && *option.Ref < read.Refs.size() ? read.Refs[*option.Ref].Remote : std::string{};
+			const std::string prefix = !remote.empty() && option.Name.starts_with(remote + "/") ? remote + "/" : std::string{};
+			const std::string shownPrefix = FitToWidth(prefix, nameRight - nameLeft);
+			const float prefixWidth = Core::TextWidth(shownPrefix);
+
+			drawList->AddText(ImVec2(nameLeft, textTop), colours.Dim, shownPrefix.c_str());
+			drawList->AddText(ImVec2(nameLeft + prefixWidth, textTop), ImGui::GetColorU32(ImGuiCol_Text),
+							  FitToWidth(option.Name.substr(prefix.size()), nameRight - nameLeft - prefixWidth).c_str());
 
 			const float whyLeft = nameRight + gap;
 			float whyRoom = std::max(0.0f, countsLeft - gap - whyLeft);
@@ -141,12 +181,13 @@ namespace Graphite {
 
 			if (!option.Counts.empty())
 			{
-				drawList->AddText(ImVec2(countsRight - Core::TextWidth(option.Counts), textTop), colours.Match, option.Counts.c_str());
+				DrawCounts(drawList, option.Counts, countsRight, textTop, colours);
 			}
 
 			if (option.Automatic)
 			{
-				DrawChip(drawList, ImVec2(slotLeft, origin.y), kAutoChip, colours.ChipFill, colours.Match, true, height);
+				DrawChip(drawList, ImVec2(slotLeft, origin.y), kAutoChip, Core::WithAlphaReplaced(colours.Automatic, kChipFillAlphaByte),
+						 colours.Automatic, true, height);
 			}
 
 			return clicked;
@@ -278,9 +319,8 @@ namespace Graphite {
 		ImGui::SetNextWindowSize(ImVec2(width, 0.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, Em(kPopupPadding)));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Em(kRoundingOfPopup));
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 		const bool visible = ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoSavedSettings);
-		ImGui::PopStyleVar(3);
+		ImGui::PopStyleVar(2);
 
 		if (!visible)
 		{
@@ -302,6 +342,9 @@ namespace Graphite {
 		DrawTitle(picker, width, drawing.Colours);
 		ImGui::Dummy(ImVec2(0.0f, Em(kPopupPadding) * kHalf));
 
+		// The option rows touch, each as high as the mockup's.
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
+
 		for (std::size_t index = 0; index < picker.Options.size(); ++index)
 		{
 			const VsOption& option = picker.Options[index];
@@ -315,13 +358,15 @@ namespace Graphite {
 				ImGui::SetCursorPosX(Em(kSide));
 				DrawFilterField("##search", m_Search, FilterFieldLook{.Hint = hint.c_str(), .Width = width - 2.0f * Em(kSide)});
 			}
-			else if (DrawOptionRow(option, width, drawing.Colours))
+			else if (DrawOptionRow(option, drawing.Read, width, drawing.Colours))
 			{
 				chosen = ChangeFor(picker, option, m_Branch);
 			}
 
 			ImGui::PopID();
 		}
+
+		ImGui::PopStyleVar();
 
 		ImGui::Dummy(ImVec2(0.0f, Em(kPopupPadding)));
 		DrawBases(picker, width, drawing.Colours);

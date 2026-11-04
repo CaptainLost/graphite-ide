@@ -346,6 +346,7 @@ namespace Graphite {
 		colours.OnAccent = background;
 		colours.AskFill = Mixed(background, warning, kAskTint);
 		colours.AskQuestion = Mixed(warning, text, kLighterShare);
+		colours.Automatic = ReadGitPalette(scheme).GutterAdded;
 
 		return colours;
 	}

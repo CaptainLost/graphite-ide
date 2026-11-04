@@ -51,6 +51,7 @@ namespace Graphite {
 		ImU32 OnAccent = 0;
 		ImU32 AskFill = 0;
 		ImU32 AskQuestion = 0;
+		ImU32 Automatic = 0; // the ink of the picker's "auto" chip, the green of a base that holds a commit
 	};
 
 	WindowBarColours ReadWindowBarColours(const ResolvedScheme& scheme);
