@@ -457,6 +457,7 @@ namespace Graphite {
 		m_FilterBuffer = {};
 		m_FilterPathBuffer = {};
 		m_Filter.Reset();
+		m_FirstParentsOnly = true;
 
 		m_SelectedRef.reset();
 		m_SelectedStash.reset();
@@ -558,7 +559,6 @@ namespace Graphite {
 	void GitView::RenderHistory(const GitPalette& palette)
 	{
 		RenderHistoryHeader();
-		RenderFilterBar();
 
 		const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
 		const std::function<void()> drawDiff = [this, &palette] { RenderPreview(palette); };
@@ -708,7 +708,7 @@ namespace Graphite {
 
 		m_Reach = reach;
 
-		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash),
+		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash, m_FirstParentsOnly),
 						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
 
 		// WARNING: Accept tells the settling filter that this query already carries what is typed,
@@ -811,10 +811,10 @@ namespace Graphite {
 		ConfirmRevealedFile();
 	}
 
-	void GitView::RenderFilterBar()
+	void GitView::RenderFilterFields(float room)
 	{
 		const float pathWidth = ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
-		const float wordsWidth = ImGui::GetContentRegionAvail().x - pathWidth - ImGui::GetStyle().ItemSpacing.x;
+		const float wordsWidth = std::max(0.0f, room - pathWidth - ImGui::GetStyle().ItemSpacing.x);
 
 		DrawFilterField("##commitFilter", m_FilterBuffer.data(), m_FilterBuffer.size(),
 						{.Hint = "Message, author or hash", .Width = wordsWidth});
@@ -868,10 +868,15 @@ namespace Graphite {
 		}
 		else
 		{
-			if (page != m_GraphOf)
+			const Core::LayoutParents parents = shownRequest.has_value() && shownRequest->FirstParentOnly
+													? Core::LayoutParents::FirstOnly
+													: Core::LayoutParents::All;
+
+			if (page != m_GraphOf || parents != m_GraphParents)
 			{
 				m_GraphOf = page;
-				m_Graph = Core::LayoutCommits(page->Commits);
+				m_GraphParents = parents;
+				m_Graph = Core::LayoutCommits(page->Commits, parents);
 			}
 
 			const auto diffOf = [this](const Core::Oid& commit) {

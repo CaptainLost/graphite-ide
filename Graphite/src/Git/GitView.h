@@ -8,6 +8,7 @@
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/Branches/BranchDeletion.h"
 #include "Git/Changes/ChangesView.h"
+#include "Git/Compare/VsLabel.h"
 #include "Git/Diff/DiffBody.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
@@ -92,6 +93,9 @@ namespace Graphite {
 		std::function<void(const ReviewMenuItem& item)> OnReviewMenuItem;
 
 		std::function<void(const std::string& from, const std::string& to)> OnBranchRenamed;
+
+		// The vs button of the history header was clicked.
+		std::function<void()> OnVsClicked;
 
 		GitWindowState CaptureWindowState() const;
 
@@ -200,6 +204,14 @@ namespace Graphite {
 
 		std::string HistoryTitle() const;
 
+		// The full name of the branch whose history is shown: the selected ref, or the checked-out branch for HEAD's.
+		// Empty for a stash, a detached or unborn HEAD, and while no read is held.
+		std::string ShownRefName() const;
+
+		// What the shown reference is compared with and how far from it; asked of the lines model on every frame the
+		// header is drawn, which answers from its cache after the first.
+		std::optional<Core::LineDistance> ShownDistance(const LineRead& read, std::string_view shownRef);
+
 		void FollowSelectedRef();
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
 		void FollowSelectedStash();
@@ -259,7 +271,20 @@ namespace Graphite {
 
 		void RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette);
 
-		void RenderFilterBar();
+		// The filter and path fields side by side in `room`, and the filter settling into a new log.
+		void RenderFilterFields(float room);
+
+		// The vs button, drawn on the header row within `maxWidth`; true when it was clicked.
+		bool DrawVsButton(const VsLabel& label, float maxWidth);
+
+		// The sentence above the list, across the width.
+		void DrawHistoryBanner(const std::string& text);
+
+		// The width the Merges / All commits switch takes.
+		float HistorySwitchWidth() const;
+
+		// The Merges / All commits switch; true when it changed.
+		bool DrawHistorySwitch(bool enabled);
 
 		void UpdateForNewPage();
 
@@ -392,6 +417,10 @@ namespace Graphite {
 		// history, and the layout walks every commit of it.
 		Core::Ref<const Core::LogPage> m_GraphOf;
 		Core::CommitGraph m_Graph;
+		Core::LayoutParents m_GraphParents = Core::LayoutParents::All;
+
+		// Merges (first parents only) or All commits; applies to a branch's or HEAD's history.
+		bool m_FirstParentsOnly = true;
 
 		float m_ListHeight = 0.0f;
 

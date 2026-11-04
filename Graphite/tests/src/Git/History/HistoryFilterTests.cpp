@@ -278,3 +278,21 @@ TEST_CASE("The frame a change is typed in does not count toward its wait, even w
 	CHECK_FALSE(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds / 2.0f}));
 	CHECK(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds}));
 }
+
+TEST_CASE("Git window: merges mode asks a first-parent log")
+{
+	const Core::LogRequest merges = BuildLogRequest(std::nullopt, HistoryFilter{}, HistoryReach{}, std::nullopt, true);
+	const Core::LogRequest all = BuildLogRequest(std::nullopt, HistoryFilter{}, HistoryReach{}, std::nullopt, false);
+
+	CHECK(merges.FirstParentOnly);
+	CHECK_FALSE(all.FirstParentOnly);
+}
+
+TEST_CASE("Git window: a stash and a file history keep the plain log in merges mode")
+{
+	HistoryFilter byFile;
+	byFile.Path = "src/Main.cpp";
+
+	CHECK_FALSE(BuildLogRequest(std::nullopt, byFile, HistoryReach{}, std::nullopt, true).FirstParentOnly);
+	CHECK_FALSE(BuildLogRequest(std::nullopt, HistoryFilter{}, HistoryReach{}, Core::Oid{}, true).FirstParentOnly);
+}

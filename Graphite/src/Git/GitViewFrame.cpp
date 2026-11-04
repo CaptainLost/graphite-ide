@@ -2,6 +2,8 @@
 
 #include "Core/Base/Base.h"
 
+#include "Core/Base/Ascii.h"
+
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
@@ -12,6 +14,7 @@
 #include "Core/ImGui/Theme.h"
 
 #include "Git/Branches/BranchLookup.h"
+#include "Git/Compare/HistoryBanner.h"
 #include "Git/GitStatusText.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/Window/MainLineQuestion.h"
@@ -571,26 +574,112 @@ namespace Graphite {
 
 	void GitView::RenderHistoryHeader()
 	{
-		// A branch's history is named in the code face after the branch icon, a stash's after the archive's.
+		const float rowWidth = ImGui::GetContentRegionAvail().x;
+		const float rowStartX = ImGui::GetCursorScreenPos().x;
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
+
+		// What the shown branch is compared with, from the read the sidebar's lines view.
+		const std::string shownRef = ShownRefName();
+		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
+		const BranchLines* const lines = CurrentLines();
+
+		VsLabel label;
+		std::optional<std::string> banner;
+
+		if (read != nullptr && lines != nullptr && !shownRef.empty())
+		{
+			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef)};
+			label = DescribeVs(input);
+			banner = HistoryBannerFor(input);
+		}
+
+		// An operation in progress belongs to HEAD, so it is said by HEAD's history and by the checked-out branch's.
+		std::string operation;
+		const bool isHeadHistory = !m_SelectedStash.has_value() &&
+								   (!m_SelectedRef.has_value() || (m_HeadRef.has_value() && read != nullptr &&
+																   read->Refs[*m_HeadRef].FullName == *m_SelectedRef));
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
+
+		if (isHeadHistory && head)
+		{
+			operation = HeadOperationText(head->Operation);
+		}
+
+		// The remote of a remote branch stands dim before its name.
+		std::string prefix;
+		std::string title = HistoryTitle();
+
+		if (m_SelectedRef.has_value() && read != nullptr && lines != nullptr)
+		{
+			const std::optional<std::size_t> index = lines->IndexOf(*m_SelectedRef);
+
+			if (index.has_value() && !read->Refs[*index].Remote.empty())
+			{
+				prefix = read->Refs[*index].Remote + "/";
+				title = read->Refs[*index].ShortName;
+			}
+		}
+
+		// A branch's history is named in the code face after the branch icon, a stash's after the archive's, HEAD's after
+		// its dot.
+		ImGui::AlignTextToFramePadding();
 		ImGui::BeginGroup();
-		ImGui::TextUnformatted(m_SelectedStash.has_value() ? ICON_LC_ARCHIVE : ICON_LC_GIT_BRANCH);
+
+		const bool namesHead = !m_SelectedStash.has_value() && !m_SelectedRef.has_value();
+
+		if (namesHead)
+		{
+			const float dot = WindowBarEm(7.0f);
+			const float lineHeight = ImGui::GetTextLineHeight();
+			ImGui::Dummy(ImVec2(dot, lineHeight));
+			const ImVec2 centre((ImGui::GetItemRectMin().x + ImGui::GetItemRectMax().x) * 0.5f,
+								(ImGui::GetItemRectMin().y + ImGui::GetItemRectMax().y) * 0.5f);
+			ImGui::GetWindowDrawList()->AddCircleFilled(centre, dot * 0.5f, colours.Accent);
+		}
+		else
+		{
+			ImGui::TextUnformatted(m_SelectedStash.has_value() ? ICON_LC_ARCHIVE : ICON_LC_GIT_BRANCH);
+		}
+
 		ImGui::SameLine();
 
-		Core::PushCodeFont(ImGui::GetFontSize() * kHistoryTitleScale);
-		EmphasisedLine(FitToWidth(HistoryTitle(), ImGui::GetContentRegionAvail().x));
-		ImGui::PopFont();
-		ImGui::EndGroup();
+		constexpr float kTitleShare = 0.4f;
+		const float titleRoom = std::max(0.0f, rowWidth * kTitleShare - (ImGui::GetCursorScreenPos().x - rowStartX));
 
-		if (m_SelectedStash.has_value())
+		Core::PushCodeFont(ImGui::GetFontSize() * kHistoryTitleScale);
+
+		const float operationWidth =
+			operation.empty() ? 0.0f : ImGui::CalcTextSize(operation.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
+		const float nameRoom = std::max(0.0f, titleRoom - operationWidth);
+
+		if (!prefix.empty())
 		{
-			return;
+			ImGui::PushStyleColor(ImGuiCol_Text, colours.Dim);
+			ImGui::TextUnformatted(FitToWidth(prefix, nameRoom).c_str());
+			ImGui::PopStyleColor();
+			ImGui::SameLine(0.0f, 0.0f);
 		}
+
+		EmphasisedLine(FitToWidth(title, std::max(0.0f, nameRoom - ImGui::CalcTextSize(prefix.c_str()).x)));
+		ImGui::PopFont();
+
+		if (!operation.empty())
+		{
+			ImGui::SameLine();
+			ImGui::PushStyleColor(ImGuiCol_Text, colours.AskQuestion);
+			ImGui::TextUnformatted(operation.c_str());
+			ImGui::PopStyleColor();
+		}
+
+		ImGui::EndGroup();
 
 		// The branch the header names has its menu here too: the selected ref's, or HEAD's for HEAD's history.
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 		const std::vector<Core::Branch>& listed = BranchesOrNone(branches);
 		const Core::Branch* const named =
-			m_SelectedRef.has_value() ? BranchWithFullName(listed, *m_SelectedRef) : CheckedOutBranch(listed);
+			m_SelectedStash.has_value() ? nullptr
+										: (m_SelectedRef.has_value() ? BranchWithFullName(listed, *m_SelectedRef) : CheckedOutBranch(listed));
 
 		// Keyed by the branch, so a menu left open while HEAD moves elsewhere closes rather than naming the new branch.
 		if (named != nullptr)
@@ -598,6 +687,35 @@ namespace Graphite {
 			ImGui::PushID(named->FullName.c_str());
 			RenderRefMenu(*named);
 			ImGui::PopID();
+		}
+
+		if (!label.Lead.empty())
+		{
+			constexpr float kVsShare = 0.4f;
+
+			ImGui::SameLine();
+
+			if (DrawVsButton(label, rowWidth * kVsShare) && OnVsClicked)
+			{
+				OnVsClicked();
+			}
+		}
+
+		const bool switchApplies = !m_SelectedStash.has_value() && Core::Trimmed(m_Filter.Get().Path).empty();
+
+		ImGui::SameLine();
+		RenderFilterFields(ImGui::GetContentRegionAvail().x - HistorySwitchWidth() - spacing);
+
+		ImGui::SameLine();
+
+		if (DrawHistorySwitch(switchApplies))
+		{
+			RequestLog(HistoryReach{});
+		}
+
+		if (banner.has_value())
+		{
+			DrawHistoryBanner(*banner);
 		}
 	}
 }

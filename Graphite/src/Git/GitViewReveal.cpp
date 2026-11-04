@@ -31,6 +31,8 @@ namespace Graphite {
 
 	void GitView::ShowCommit(const CommitReveal& reveal)
 	{
+		// The commit may be on a merged branch, which first parents leave out.
+		m_FirstParentsOnly = false;
 		ShowHeadHistory(std::string{});
 		m_PendingReveal = reveal;
 	}

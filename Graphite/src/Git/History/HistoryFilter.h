@@ -39,7 +39,8 @@ namespace Graphite {
 	Core::LogRequest BuildLogRequest(const std::optional<std::string>& ref,
 									 const HistoryFilter& filter,
 									 const HistoryReach& reach,
-									 const std::optional<Core::Oid>& stash = std::nullopt);
+									 const std::optional<Core::Oid>& stash = std::nullopt,
+									 bool firstParentsOnly = false);
 
 	// Whether a log asked with this request keeps only some commits. Core trims the message text, so
 	// text of only spaces narrows nothing; BuildLogRequest leaves File unset for a blank path.

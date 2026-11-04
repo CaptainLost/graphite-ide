@@ -11,7 +11,7 @@ namespace Graphite {
 	Core::LogRequest BuildLogRequest(const std::optional<std::string>& ref,
 									 const HistoryFilter& filter,
 									 const HistoryReach& reach,
-									 const std::optional<Core::Oid>& stash)
+									 const std::optional<Core::Oid>& stash, bool firstParentsOnly)
 	{
 		Core::LogRequest request;
 		request.Ref = ref;
@@ -26,6 +26,9 @@ namespace Graphite {
 		{
 			request.File = Core::FromUtf8(trimmedPath);
 		}
+
+		// A stash is one commit and a file's history follows that file through merges, so neither is cut to first parents.
+		request.FirstParentOnly = firstParentsOnly && !request.Stash.has_value() && !request.File.has_value();
 
 		request.MaxCount = reach.MaxCount;
 		request.MaxWalk = reach.MaxWalk;
