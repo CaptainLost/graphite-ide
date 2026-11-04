@@ -8,6 +8,7 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
+#include "Core/Platform/Shell.h"
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
@@ -80,10 +81,10 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, LinesModel& lines, ChangesView& changes, const ActiveScheme& scheme,
+	GitView::GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ChangesView& changes, const ActiveScheme& scheme,
 					 EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
 					 Core::EventBus& events)
-		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines),
+		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines), m_Worktrees(worktrees),
 		  m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
 		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
@@ -98,6 +99,7 @@ namespace Graphite {
 	void GitView::OnUpdate(Core::Timestep)
 	{
 		const bool panelOnScreen = HasBeenDrawnOnLatestFrame();
+		m_Worktrees.SetOnScreen(panelOnScreen);
 
 		// WARNING: Begin hands the modal gate back, and it only runs from OnImGuiRender, which is
 		// skipped for a panel that is hidden or behind another tab. An undrawn panel withdraws its
@@ -677,6 +679,7 @@ namespace Graphite {
 		ImGui::EndDisabled();
 		RenderReviewItem(branch);
 		RenderLineItems(branch);
+		RenderWorktreeItem(branch);
 
 		ImGui::Separator();
 
@@ -688,6 +691,34 @@ namespace Graphite {
 		if (ImGui::MenuItem("Copy Tip Hash"))
 		{
 			CopyToClipboard(m_Events, "tip hash", branch.Tip.ToHex());
+		}
+	}
+
+	void GitView::RenderWorktreeItem(const Core::Branch& branch)
+	{
+		if (branch.Kind != Core::RefKind::Local)
+		{
+			return;
+		}
+
+		const std::optional<std::filesystem::path> folder = m_Worktrees.WorktreeOf(branch.FullName);
+
+		if (!folder.has_value())
+		{
+			return;
+		}
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem("Show worktree folder"))
+		{
+			const Core::Result<void> opened = Core::Shell::OpenFolder(*folder);
+
+			if (!opened.HasValue())
+			{
+				m_Events.Publish(FolderToast(Core::ToastKind::Error, "Cannot open folder", opened.GetError().Message,
+											 m_Model.GetWorkingDirectory()));
+			}
 		}
 	}
 

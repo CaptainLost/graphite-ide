@@ -32,6 +32,7 @@
 #include "Git/Sidebar/SidebarRows.h"
 #include "Git/Sidebar/SidebarText.h"
 #include "Git/Sidebar/SidebarView.h"
+#include "Git/Worktrees/WorktreesModel.h"
 #include "Git/Window/WindowBar.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
@@ -69,7 +70,7 @@ namespace Graphite {
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, LinesModel& lines, ChangesView& changes, const ActiveScheme& scheme,
+		GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ChangesView& changes, const ActiveScheme& scheme,
 				EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
 				Core::EventBus& events);
 
@@ -193,6 +194,7 @@ namespace Graphite {
 		const Core::StashEntry* SidebarStashOf(const SidebarRow& row) const;
 
 		SidebarRowText SidebarTextOf(const SidebarRow& row) const;
+		std::optional<bool> IsWorktreeDirty(const std::filesystem::path& worktree) const;
 		SidebarSelection SidebarSelectionNow() const;
 		void AnswerSidebarClick(const SidebarRow& row);
 		void AnswerSidebarLink(SidebarLink link, const std::string& remote);
@@ -229,6 +231,7 @@ namespace Graphite {
 
 		void RenderReviewItem(const Core::Branch& branch);
 		void RenderLineItems(const Core::Branch& branch);
+		void RenderWorktreeItem(const Core::Branch& branch);
 		void DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items);
 
 		// Fills a menu already open.
@@ -410,6 +413,7 @@ namespace Graphite {
 
 		GitModel& m_Model;
 		LinesModel& m_Lines;
+		WorktreesModel& m_Worktrees;
 		ChangesView& m_Changes;
 		const ActiveScheme& m_Scheme;
 

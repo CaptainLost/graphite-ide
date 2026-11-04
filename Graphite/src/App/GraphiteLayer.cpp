@@ -208,7 +208,7 @@ namespace Graphite {
 
 		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
-		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_GitWindowChanges, m_ActiveScheme,
+		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Worktrees, m_GitWindowChanges, m_ActiveScheme,
 																   m_EditorSettings, m_DiffWindows, m_Modals,
 																   m_DocumentBuffers, m_Events));
 		gitView->Subscribe();
@@ -430,6 +430,7 @@ namespace Graphite {
 		// WARNING: Before AddFolderParticipants, so the lines model is cleared before the port is pointed at the next
 		// folder: a read asked for the folder before must find it cleared, or it would write the next folder's line store.
 		m_Lines.SubscribeTo(m_Events);
+		m_Worktrees.SubscribeTo(m_Events);
 		m_ChangeMarkers.SubscribeTo(m_Events);
 		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
@@ -548,6 +549,8 @@ namespace Graphite {
 		// the window is on screen.
 		m_Lines.Follow(m_Git.GetBranches());
 		m_Lines.OnUpdate();
+		m_Worktrees.Follow(m_Git.GetBranches(), m_Git.GetWorkingDirectory());
+		m_Worktrees.OnUpdate(timestep);
 		FollowLinesIntoReviewsAndAuthors();
 
 		m_ChangeMarkers.OnUpdate(timestep);

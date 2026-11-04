@@ -53,12 +53,17 @@ namespace Graphite {
 		constexpr float kLineSpacing = 1.2f;
 		constexpr float kLinesApart = 2.0f;
 		constexpr float kHeadGlowAlpha = 0.25f;
+		constexpr float kWorktreeIcon = 12.0f;
+		constexpr float kWorktreeDotRoom = 7.0f;
+		constexpr float kWorktreeDot = 6.0f;
+		constexpr std::size_t kWorktreeLane = 3; // the purple graph lane, the mockup's #c792ea
 		constexpr float kLighterShare = 0.4f;
 		constexpr float kRuleThickness = 1.0f;
 		constexpr float kUnderlineThickness = 1.0f;
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kSearchHint = "Branches, tags, authors, remotes";
+		constexpr const char* kEllipsis = "…";
 
 		float Em(float mockupPixels)
 		{
@@ -494,6 +499,34 @@ namespace Graphite {
 			drawing->AddCircleFilled(centre, Em(kHeadDot) * kHalf, colours.Accent);
 		}
 
+		// The worktree marker has the right edge of every row that has a worktree, its icon and the room for the dot
+		// always, so a count that lands later moves nothing. Returns the left edge of what it drew.
+		float DrawWorktreeMarker(const RowBox& box, const SidebarRowText& text, const SidebarColours& colours)
+		{
+			const float dotRoom = Em(kWorktreeDotRoom);
+			const float iconLeft = box.Right - dotRoom - Em(kWorktreeIcon);
+
+			{
+				const TextAtSize size(Em(kWorktreeIcon));
+				DrawText(ImVec2(iconLeft, CentredTop(box)), colours.Worktree, ICON_LC_FOLDER_GIT_2);
+			}
+
+			const float dotMiddle = box.Right - dotRoom * kHalf;
+
+			if (!text.Dirty.has_value())
+			{
+				const TextAtSize small(Em(kSmallText));
+				DrawText(ImVec2(box.Right - WidthOf(kEllipsis), CentredTop(box)), colours.Of(SidebarTone::Dim), kEllipsis);
+			}
+			else if (*text.Dirty)
+			{
+				ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(dotMiddle, box.Top + box.Height * kHalf),
+															Em(kWorktreeDot) * kHalf, colours.Of(SidebarTone::Unusual));
+			}
+
+			return iconLeft;
+		}
+
 		void DrawRefRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
 						const SidebarColours& colours, const std::vector<std::string>& searchWords)
 		{
@@ -507,10 +540,18 @@ namespace Graphite {
 				DrawHeadDot(ImVec2(slotMiddle, box.Top + box.Height * kHalf), colours);
 			}
 
+			RowBox wordsBox = box;
+
+			if (text.Worktree.has_value())
+			{
+				textRight = DrawWorktreeMarker(box, text, colours) - Em(kTwoLineGap);
+				wordsBox.Right = textRight;
+			}
+
 			if (!text.Right.empty())
 			{
 				const TextAtSize small(Em(kSmallText));
-				const float rightLeft = box.Right - WidthOf(text.Right);
+				const float rightLeft = wordsBox.Right - WidthOf(text.Right);
 				DrawText(ImVec2(rightLeft, CentredTop(box)), colours.Right, text.Right);
 				textRight = rightLeft - Em(kTwoLineGap);
 			}
@@ -551,6 +592,7 @@ namespace Graphite {
 		colours.Link = lighterAccent;
 		colours.Right = lighterAccent;
 		colours.Rule = PackedColour(ColourFromScheme(scheme, ChromeColor::Border));
+		colours.Worktree = git.LaneOf(kWorktreeLane);
 
 		return colours;
 	}

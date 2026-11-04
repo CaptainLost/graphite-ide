@@ -966,3 +966,21 @@ TEST_CASE("Counting a worktree's uncommitted files reads that folder alone")
 	REQUIRE(count.HasValue());
 	CHECK(count.GetValue() == 3);
 }
+
+TEST_CASE("Git window: the port lists the worktrees of the repository")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("fork point");
+	repository.Branch("side");
+	const std::filesystem::path worktree = repository.AddWorktree("side");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	const Core::Result<std::vector<Core::WorktreeEntry>> listed = port.QueryWorktrees();
+
+	REQUIRE(listed.HasValue());
+	REQUIRE(listed.GetValue().size() == 2);
+	CHECK(std::ranges::any_of(listed.GetValue(), [&worktree](const Core::WorktreeEntry& entry) {
+		return !entry.IsMain && entry.Head.BranchName == "side" && Core::SamePath(entry.Path, worktree);
+	}));
+}

@@ -478,3 +478,34 @@ TEST_CASE("Git window: a stash row reads its message and its age")
 	CHECK(text.Meta.empty());
 	CHECK_FALSE(text.IsHead);
 }
+
+TEST_CASE("Git window: a row with a worktree carries its path")
+{
+	LineReadBuilder builder;
+	const std::size_t inTree = builder.AddLocal("side");
+	const std::size_t alone = builder.AddLocal("alone");
+	LineRead read = builder.Build();
+	const BranchLines lines(read);
+	const std::optional<std::string> email;
+	const std::string common = MostCommonLineOf(read);
+	const std::filesystem::path tree = "D:/repo-side";
+
+	SidebarTextInput input{.Read = read, .Lines = lines, .UserEmail = email, .MostCommonLine = common, .Now = LineReadBuilder::Now()};
+	input.WorktreeOf = [&tree](std::string_view fullName) -> std::optional<std::filesystem::path> {
+		return fullName == "refs/heads/side" ? std::optional<std::filesystem::path>{tree} : std::nullopt;
+	};
+	input.IsDirty = [](const std::filesystem::path&) -> std::optional<bool> { return std::nullopt; };
+
+	const SidebarRowText with = DescribeSidebarRow(BranchRow(inTree), input);
+	const SidebarRowText without = DescribeSidebarRow(BranchRow(alone), input);
+
+	CHECK(with.Worktree == tree);
+	CHECK_FALSE(with.Dirty.has_value());
+	CHECK(with.Tooltip.find("\nChecked out in a worktree: D:/repo-side") != std::string::npos);
+	CHECK_FALSE(without.Worktree.has_value());
+	CHECK(without.Tooltip.find("worktree") == std::string::npos);
+
+	input.IsDirty = [](const std::filesystem::path&) -> std::optional<bool> { return true; };
+	CHECK(DescribeSidebarRow(BranchRow(inTree), input).Dirty == true);
+	CHECK_FALSE(DescribeSidebarRow(BranchRow(alone), input).Dirty.has_value());
+}

@@ -5,6 +5,7 @@
 
 #include "Core/Base/Count.h"
 #include "Core/Base/Strings.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/OwnAuthors.h"
 
 #include <algorithm>
@@ -432,6 +433,21 @@ namespace Graphite {
 		if (!place.Gone.empty() && !inRemoteSection)
 		{
 			tip += "\nDeleted on " + place.Gone + "; only the local copy is left";
+		}
+
+		if (localBranch != nullptr && input.WorktreeOf)
+		{
+			text.Worktree = input.WorktreeOf(localBranch->FullName);
+
+			if (text.Worktree.has_value())
+			{
+				tip += "\nChecked out in a worktree: " + Core::ToUtf8(*text.Worktree);
+
+				if (input.IsDirty)
+				{
+					text.Dirty = input.IsDirty(*text.Worktree);
+				}
+			}
 		}
 
 		return text;

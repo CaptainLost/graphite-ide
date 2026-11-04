@@ -10,6 +10,8 @@
 #include "Core/Git/Stash.h"
 
 #include <chrono>
+#include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -40,6 +42,8 @@ namespace Graphite {
 		std::vector<SidebarSpan> Meta; // line 2; the view joins spans with " · "
 		std::string Right;             // "2 to push", "3 to pull", "2 to push · 3 to pull", or empty
 		std::string Tooltip;
+		std::optional<std::filesystem::path> Worktree; // where the row's local branch is checked out, if anywhere
+		std::optional<bool> Dirty;                     // that worktree has uncommitted changes; empty while unknown
 	};
 
 	struct SidebarTextInput
@@ -49,6 +53,10 @@ namespace Graphite {
 		const std::optional<std::string>& UserEmail;
 		std::string_view MostCommonLine; // full name
 		std::chrono::sys_seconds Now;
+
+		// Where a local branch is checked out, and whether that worktree has changes; unset means no worktree is known.
+		std::function<std::optional<std::filesystem::path>(std::string_view)> WorktreeOf;
+		std::function<std::optional<bool>(const std::filesystem::path&)> IsDirty;
 	};
 
 	// Empty for a row that is neither a branch nor a base.

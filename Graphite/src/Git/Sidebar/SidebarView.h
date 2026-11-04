@@ -29,6 +29,7 @@ namespace Graphite {
 		ImU32 Link = 0;               // a Link row
 		ImU32 Right = 0;              // "2 to push", "3 to pull"
 		ImU32 Rule = 0;               // the line after a section's title
+		ImU32 Worktree = 0;           // the marker of a branch checked out in a worktree
 
 		ImU32 Of(SidebarTone tone) const { return Tones[static_cast<std::size_t>(tone)]; }
 	};

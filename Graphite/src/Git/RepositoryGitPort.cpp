@@ -1205,6 +1205,18 @@ namespace Graphite {
 		return TextsOf(std::move(oldSide).GetValue(), std::move(newSide).GetValue());
 	}
 
+	Core::Result<std::vector<Core::WorktreeEntry>> RepositoryGitPort::QueryWorktrees()
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return opened.GetValue()->QueryWorktrees();
+	}
+
 	Core::Result<std::size_t> RepositoryGitPort::CountUncommitted(const std::filesystem::path& worktree)
 	{
 		// WARNING: Not cached per thread, for the reason QueryWorktreeDiff gives. A wholly untracked folder
