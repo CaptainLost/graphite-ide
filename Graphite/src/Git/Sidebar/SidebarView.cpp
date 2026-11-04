@@ -595,6 +595,7 @@ namespace Graphite {
 		colours.Tones[static_cast<std::size_t>(SidebarTone::Gone)] = editor.DiagnosticError;
 		colours.Tones[static_cast<std::size_t>(SidebarTone::Unusual)] = editor.DiagnosticWarning;
 		colours.Tones[static_cast<std::size_t>(SidebarTone::Merged)] = git.GutterAdded;
+		colours.Tones[static_cast<std::size_t>(SidebarTone::NoOwnCommits)] = lighterAccent;
 		colours.Accent = PackedColour(accent);
 		colours.Link = lighterAccent;
 		colours.Right = lighterAccent;

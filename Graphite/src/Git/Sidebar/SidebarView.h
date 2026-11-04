@@ -24,7 +24,7 @@ namespace Graphite {
 
 	struct SidebarColours
 	{
-		std::array<ImU32, 6> Tones{}; // by SidebarTone
+		std::array<ImU32, 7> Tones{}; // by SidebarTone
 		ImU32 Accent = 0;             // the HEAD dot
 		ImU32 Link = 0;               // a Link row
 		ImU32 Right = 0;              // "2 to push", "3 to pull"

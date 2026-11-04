@@ -184,7 +184,7 @@ TEST_CASE("Git window: a branch with no own commits and a merged branch say so")
 	const SidebarRowText mergedText = Describe(read, BranchRow(merged));
 
 	REQUIRE(SpanWith(emptyText, "no own commits yet") != nullptr);
-	CHECK(SpanWith(emptyText, "no own commits yet")->Tone == SidebarTone::Unusual);
+	CHECK(SpanWith(emptyText, "no own commits yet")->Tone == SidebarTone::NoOwnCommits);
 	REQUIRE(SpanWith(mergedText, "merged") != nullptr);
 	CHECK(SpanWith(mergedText, "merged")->Tone == SidebarTone::Merged);
 }

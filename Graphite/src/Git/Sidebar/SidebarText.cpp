@@ -202,7 +202,7 @@ namespace Graphite {
 			{
 				if (line->State == Core::BranchState::NoOwnCommits)
 				{
-					meta.push_back({.Text = "no own commits yet", .Tone = SidebarTone::Unusual});
+					meta.push_back({.Text = "no own commits yet", .Tone = SidebarTone::NoOwnCommits});
 				}
 				else if (line->State == Core::BranchState::MergedByHistory)
 				{

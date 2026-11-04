@@ -26,7 +26,8 @@ namespace Graphite {
 		Both,    // blue
 		Gone,    // red
 		Unusual, // amber
-		Merged   // green
+		Merged,  // green
+		NoOwnCommits // light blue
 	};
 
 	struct SidebarSpan
