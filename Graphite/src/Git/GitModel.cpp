@@ -101,9 +101,9 @@ namespace Graphite {
 		m_ShownLogRequest.reset();
 		m_LogRefreshPending = false;
 		m_CommitCount.Clear();
-		m_OwnLog.Clear();
-		m_LastOwnRequest.reset();
-		m_OwnLabel.clear();
+		m_MarkedLog.Clear();
+		m_LastMarkedRequest.reset();
+		m_MarkedLabel.clear();
 		m_WorkingTreeDiff.Clear();
 		m_WorkingTreeTexts.reset();
 		m_WorkingTreeTextsFailure.reset();
@@ -194,7 +194,7 @@ namespace Graphite {
 				}
 				else
 				{
-					RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+					RequestLog(*m_LastLogRequest, m_LastMarkedRequest);
 				}
 			}
 
@@ -391,7 +391,7 @@ namespace Graphite {
 		});
 	}
 
-	void GitModel::RequestLog(Core::LogRequest request, std::optional<OwnCommitsRequest> ownCommits)
+	void GitModel::RequestLog(Core::LogRequest request, std::optional<MarkedCommitsRequest> marked)
 	{
 		// A new ask reads the repository as it is now, so a refresh held for the log in flight is
 		// answered by it.
@@ -403,35 +403,35 @@ namespace Graphite {
 		}
 
 		const std::uint64_t generation = m_Log.Begin();
-		const std::uint64_t ownGeneration = m_OwnLog.Begin();
+		const std::uint64_t markedGeneration = m_MarkedLog.Begin();
 
 		m_LastLogRequest = request;
-		m_LastOwnRequest = ownCommits;
+		m_LastMarkedRequest = marked;
 
 		// Copied before the request moves into the log's job, which goes first: on a single worker the
 		// first page of a new ref would otherwise wait for a walk of its whole history.
 		const std::optional<std::string> countedRef = request.Ref;
 		const bool isStash = request.Stash.has_value();
 
-		m_Submit([this, generation, ownGeneration, request = std::move(request),
-				  ownCommits = std::move(ownCommits)]() {
+		m_Submit([this, generation, markedGeneration, request = std::move(request), marked = std::move(marked)]() {
 			Core::Result<Core::LogPage> result = m_Port.QueryLog(request);
 
-			std::optional<Core::Result<Core::LogPage>> ownResult;
+			std::optional<Core::Result<Core::LogPage>> markedResult;
 
-			if (ownCommits.has_value())
+			if (marked.has_value())
 			{
-				ownResult = m_Port.QueryLog(ownCommits->Query);
+				markedResult = m_Port.QueryLog(marked->Query);
 			}
 
-			std::string label = ownCommits.has_value() ? ownCommits->Label : std::string{};
+			std::string label = marked.has_value() ? marked->Label : std::string{};
+			const MarkedKind kind = marked.has_value() ? marked->Kind : MarkedKind::Own;
 
-			Deliver([this, generation, ownGeneration, asked = request, result = std::move(result),
-					 ownResult = std::move(ownResult), label = std::move(label)]() mutable {
+			Deliver([this, generation, markedGeneration, asked = request, result = std::move(result),
+					 markedResult = std::move(markedResult), label = std::move(label), kind]() mutable {
 				if (m_Log.Land(generation, std::move(result)) == SlotLanding::Applied)
 				{
 					m_ShownLogRequest = std::move(asked);
-					LandOwnCommits(ownGeneration, std::move(ownResult), std::move(label));
+					LandMarkedCommits(markedGeneration, std::move(markedResult), std::move(label), kind);
 				}
 
 				// Whatever the landing, applied, failed or stale: each of them can be the last log in flight.
@@ -445,24 +445,35 @@ namespace Graphite {
 		}
 	}
 
-	void GitModel::LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
-								  std::string label)
+	std::optional<GitModel::MarkedKind> GitModel::GetMarkedKind() const
+	{
+		if (!m_MarkedLog.Get())
+		{
+			return std::nullopt;
+		}
+
+		return m_MarkedKind;
+	}
+
+	void GitModel::LandMarkedCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
+									 std::string label, MarkedKind kind)
 	{
 		if (!result.has_value())
 		{
-			m_OwnLog.Clear();
-			m_OwnLabel.clear();
+			m_MarkedLog.Clear();
+			m_MarkedLabel.clear();
 			return;
 		}
 
-		if (m_OwnLog.Land(generation, std::move(*result)) == SlotLanding::Applied)
+		if (m_MarkedLog.Land(generation, std::move(*result)) == SlotLanding::Applied)
 		{
-			m_OwnLabel = std::move(label);
+			m_MarkedLabel = std::move(label);
+			m_MarkedKind = kind;
 		}
 		else
 		{
-			m_OwnLog.Clear();
-			m_OwnLabel.clear();
+			m_MarkedLog.Clear();
+			m_MarkedLabel.clear();
 		}
 	}
 
@@ -474,7 +485,7 @@ namespace Graphite {
 		}
 
 		m_LogRefreshPending = false;
-		RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+		RequestLog(*m_LastLogRequest, m_LastMarkedRequest);
 	}
 
 	void GitModel::RequestCommitCount(const std::optional<std::string>& ref)

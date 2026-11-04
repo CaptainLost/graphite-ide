@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <string>
 
 namespace Graphite {
 
@@ -15,8 +16,12 @@ namespace Graphite {
 		constexpr const char* kLoadAll = "Load all";
 		constexpr const char* kSearchFurther = "Search further";
 		constexpr const char* kSearchAll = "Search all";
+		constexpr const char* kFoldThem = "Fold them";
+		constexpr std::string_view kBetween = " \xC2\xB7 ";
 
 		constexpr float kPaddingSides = 2.0f;
+		constexpr float kNoOffset = 0.0f;
+		constexpr float kNoSpacing = 0.0f;
 
 		float SmallButtonWidth(const char* label)
 		{
@@ -29,26 +34,58 @@ namespace Graphite {
 		return ImGui::GetTextLineHeightWithSpacing();
 	}
 
-	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status)
+	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status, std::string_view foldFooter)
 	{
-		if (!status.Busy.empty())
+		std::optional<HistoryClick> clicked;
+
+		const bool busy = !status.Busy.empty();
+		const bool saysText = !status.Text.empty();
+
+		// A busy line without text holds the loader alone.
+		if (saysText || !busy)
 		{
-			if (!status.Text.empty())
+			ImGui::TextDisabled("%s", status.Text.c_str());
+		}
+
+		if (!foldFooter.empty())
+		{
+			const std::string footer = (saysText ? std::string{kBetween} : std::string{}) + std::string{foldFooter};
+
+			if (saysText || !busy)
 			{
-				ImGui::TextDisabled("%s", status.Text.c_str());
+				ImGui::SameLine(kNoOffset, kNoSpacing);
+			}
+
+			ImGui::TextDisabled("%s", footer.c_str());
+			ImGui::SameLine(kNoOffset, kNoSpacing);
+
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_CheckMark));
+
+			if (Core::SmallTextButton(kFoldThem))
+			{
+				clicked = HistoryClick::Fold;
+			}
+
+			ImGui::PopStyleColor();
+		}
+
+		const bool drewSomething = saysText || !busy || !foldFooter.empty();
+
+		if (busy)
+		{
+			if (drewSomething)
+			{
 				ImGui::SameLine();
 			}
 
 			Core::LoadingLine(status.Busy.c_str(), Core::WhileLoaderWaits::ShowText);
 
-			return std::nullopt;
+			return clicked;
 		}
-
-		ImGui::TextDisabled("%s", status.Text.c_str());
 
 		if (status.Actions == HistoryActions::None)
 		{
-			return std::nullopt;
+			return clicked;
 		}
 
 		const bool searching = status.Actions == HistoryActions::Search;
@@ -62,8 +99,6 @@ namespace Graphite {
 		ImGui::SameLine();
 		const float textEnd = ImGui::GetCursorPosX();
 		ImGui::SetCursorPosX(std::max(textEnd, textEnd + ImGui::GetContentRegionAvail().x - buttonsWidth));
-
-		std::optional<HistoryClick> clicked;
 
 		if (Core::SmallTextButton(more))
 		{

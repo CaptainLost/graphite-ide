@@ -591,7 +591,12 @@ namespace Graphite {
 		{
 			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef)};
 			label = DescribeVs(input);
-			banner = HistoryBannerFor(input);
+
+			// The banner comes in the update that shows the rows under it, so the two arrive together.
+			if (ShowsCommitRows())
+			{
+				banner = HistoryBannerFor(input);
+			}
 		}
 
 		// An operation in progress belongs to HEAD, so it is said by HEAD's history and by the checked-out branch's.

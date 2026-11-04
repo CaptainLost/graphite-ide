@@ -14,7 +14,7 @@
 #include "Git/History/CommitListView.h"
 #include "Git/History/CommitDetailsView.h"
 #include "Git/History/CommitReveal.h"
-#include "Git/History/ForkSeparator.h"
+#include "Git/History/FoldRow.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Editor/EditorSettings.h"
@@ -175,6 +175,10 @@ namespace Graphite {
 		// The history of the ref, or HEAD's with none.
 		void SelectRef(std::optional<std::string> fullName);
 
+		// Selects the row the history just opened starts on: Local changes for the checked-out branch's, else the one
+		// its first page gives.
+		void StartOpening();
+
 		void ApplyPendingRestore();
 
 		// The repository, its remotes and the checked-out branch, and the question for the main line when it is asked.
@@ -195,7 +199,7 @@ namespace Graphite {
 		// Fills the menu the sidebar opened for a branch, base or stash row.
 		void DrawSidebarRowMenu(const SidebarRow& row);
 
-		// WARNING: Reached from nowhere until the history's Local changes row shows them in its preview.
+		// The preview of the history's Local changes row: the Changes view's file list beside the diff of the file picked.
 		void RenderChanges(const GitPalette& palette);
 		void RenderChangesDiff(const GitPalette& palette);
 
@@ -300,26 +304,68 @@ namespace Graphite {
 
 		void RequestLog(const HistoryReach& reach, LogAsk ask = LogAsk::ByReader);
 
-		struct BaseSeen
-		{
-			std::string Branch;
-			Core::Oid BaseTip;
-
-			friend bool operator==(const BaseSeen&, const BaseSeen&) = default;
-		};
-
-		static std::optional<BaseSeen> BaseOf(const std::optional<ForkBase>& fork);
-
-		std::optional<ForkSeparator> ForkSeparatorFor(const Core::LogPage& page) const;
+		// Asks the first log, the log a wait for the line read held back once the read is in, and the log again when
+		// the read moved the shown reference's line.
+		void AskLogAsNeeded();
 
 		// The sidebar's lines of the read on screen; null before the first read lands.
 		const BranchLines* CurrentLines() const;
 
-		std::optional<GitModel::OwnCommitsRequest> OwnCommitsToAsk(const std::vector<Core::Branch>& branches);
+		// How the shown reference's history shows its line, from the read the sidebar's lines view: the reference alone
+		// for a stash, a detached HEAD and while no read is held. The filters are not looked at.
+		HistoryLine ShownRefLine() const;
 
-		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches);
+		// A branch's or HEAD's history waits for the line read that holds it; a stash and a file's history do not, and
+		// neither does a history whose read failed.
+		bool WaitsForLines() const;
 
-		std::optional<BaseSeen> m_BaseSeen;
+		// HEAD's or the checked-out branch's history, whose first row is Local changes.
+		bool ShowsLocalChanges() const;
+
+		// The list shows the page's rows rather than a wait; the header's banner comes with them.
+		bool ShowsCommitRows() const;
+
+		HistoryMarks HistoryMarksFor(const Core::Ref<const Core::LogPage>& page);
+
+		// The marked commits that landed with the page, as a set built once per page of them.
+		const std::unordered_set<Core::Oid>& MarkedCommitsOnScreen();
+
+		// "Show them" and "Fold them": the shown branch's line's newer commits beside it, or folded into one row again.
+		void ToggleNewerShown();
+
+		void AnswerListClicks();
+
+		// Once the first page of a reference just opened is in, selects the row it starts on and scrolls there.
+		void SelectOpenedStart();
+
+		// The shown reference's line as the last log asked of the model was asked with it.
+		std::optional<HistoryLine> m_LineAsked;
+
+		// The history waits for the line read, so its log is not asked yet.
+		bool m_LogHeld = false;
+
+		// A reference just opened: its first page selects the row it starts on.
+		bool m_OpeningRef = false;
+
+		// The branches whose line's newer commits the reader asked to see, by full name, until the folder changes.
+		std::set<std::string> m_NewerShown;
+
+		Core::Ref<const Core::LogPage> m_MarkedOf;
+		std::unordered_set<Core::Oid> m_Marked;
+
+		struct FoldSource
+		{
+			Core::Ref<const Core::LogPage> Page;
+			Core::Ref<const Core::LogPage> Own;
+			std::string Line;
+			std::optional<std::size_t> Behind;
+
+			friend bool operator==(const FoldSource&, const FoldSource&) = default;
+		};
+
+		// WARNING: Found again only when its source changes: it looks up every own commit of the page.
+		std::optional<FoldSource> m_FoldOf;
+		std::optional<FoldRow> m_Fold;
 
 		GitModel& m_Model;
 		LinesModel& m_Lines;

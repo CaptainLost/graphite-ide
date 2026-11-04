@@ -102,18 +102,25 @@ namespace Graphite {
 		void RequestBranches();
 		void RequestStashes();
 		void RequestHead();
-		// The commits a branch has that its base lacks, asked together with the log so that the
-		// history can tell them from the rest. Label names the base for whoever draws the answer.
-		struct OwnCommitsRequest
+		enum class MarkedKind
+		{
+			Own,  // the commits a branch has that its line lacks
+			Newer // the commits its line has that the branch lacks
+		};
+
+		// Commits asked together with the log so that the history can tell them from the rest. Label names the line for
+		// whoever draws the answer.
+		struct MarkedCommitsRequest
 		{
 			Core::LogRequest Query;
 			std::string Label;
+			MarkedKind Kind = MarkedKind::Own;
 		};
 
-		// WARNING: The own commits land in the same update as the log they were asked with. Landing
+		// WARNING: The marked commits land in the same update as the log they were asked with. Landing
 		// them apart shows the log for a frame without them, and a row appearing later moves the list.
 		// A log asked without them clears the old ones as it lands, not when it is asked.
-		void RequestLog(Core::LogRequest request, std::optional<OwnCommitsRequest> ownCommits = std::nullopt);
+		void RequestLog(Core::LogRequest request, std::optional<MarkedCommitsRequest> marked = std::nullopt);
 
 		void RequestWorkingTreeDiff(Core::DiffRequest request);
 
@@ -194,8 +201,10 @@ namespace Graphite {
 		std::uint64_t GetLogGeneration() const { return m_Log.GetRequested(); }
 		bool IsLogAnswered(std::uint64_t generation) const { return m_Log.GetApplied() >= generation; }
 
-		Core::Ref<const Core::LogPage> GetOwnCommits() const { return m_OwnLog.Get(); }
-		const std::string& GetOwnCommitsLabel() const { return m_OwnLabel; }
+		// The marked commits that landed with the log on screen, what they are, and the line they were asked against.
+		Core::Ref<const Core::LogPage> GetMarkedCommits() const { return m_MarkedLog.Get(); }
+		std::optional<MarkedKind> GetMarkedKind() const;
+		const std::string& GetMarkedLabel() const { return m_MarkedLabel; }
 
 		// The length of the history a log walks, counted for exactly `ref`: a count of the branch
 		// shown before never stands beside another branch's page.
@@ -596,8 +605,8 @@ namespace Graphite {
 		// Only ever set while m_LastLogRequest holds the request to ask again.
 		bool m_LogRefreshPending = false;
 
-		void LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
-							std::string label);
+		void LandMarkedCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
+							   std::string label, MarkedKind kind);
 
 		void AskHeldLogRefresh();
 
@@ -613,9 +622,10 @@ namespace Graphite {
 
 		GenerationSlot<RefCommitCount> m_CommitCount;
 
-		GenerationSlot<Core::LogPage> m_OwnLog;
-		std::optional<OwnCommitsRequest> m_LastOwnRequest;
-		std::string m_OwnLabel;
+		GenerationSlot<Core::LogPage> m_MarkedLog;
+		std::optional<MarkedCommitsRequest> m_LastMarkedRequest;
+		std::string m_MarkedLabel;
+		MarkedKind m_MarkedKind = MarkedKind::Own; // meaningful while m_MarkedLog holds a page
 
 		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
 		Core::Ref<const FileTexts> m_WorkingTreeTexts;

@@ -9,6 +9,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Git/GraphLayout.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiColors.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -19,8 +20,10 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 using namespace Graphite;
 
@@ -306,4 +309,169 @@ TEST_CASE("Commit reveal scrolls the history to a commit far down the page")
 	CHECK(list.Scroll.y > 0.0f);
 	CHECK(targetTop >= list.Scroll.y);
 	CHECK(targetTop + pitch <= list.Scroll.y + list.Size.y);
+}
+
+namespace {
+
+	// A short history drawn with marks, and clicks on its rows by their display index.
+	struct MarkedHistory
+	{
+		explicit MarkedHistory(const char* windowName, int commitCount) : WindowName(windowName)
+		{
+			for (int number = 1; number <= commitCount; ++number)
+			{
+				Page.Commits.push_back(CommitNumbered(number));
+			}
+
+			Graph = Core::LayoutCommits(Page.Commits);
+			ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+		}
+
+		void Draw()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
+			ImGui::Begin(WindowName);
+			View.Render(Page, Graph, Palette, nullptr, [](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
+						[](const Core::Oid&) { return false; }, Refs, {}, {}, Marks);
+			ImGui::End();
+		}
+
+		void Settle()
+		{
+			for (int frame = 0; frame < 3; ++frame)
+			{
+				Frames.Next([&] { Draw(); });
+			}
+		}
+
+		const ImGuiTable* Table() const
+		{
+			ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			for (int index = 0; index < context.Tables.GetMapSize(); ++index)
+			{
+				if (const ImGuiTable* table = context.Tables.TryGetMapData(index))
+				{
+					return table;
+				}
+			}
+
+			return nullptr;
+		}
+
+		// The rows are all in view, so the last one drawn is the last of the list.
+		void ClickRow(int displayRow, int rowCount)
+		{
+			const ImGuiTable* table = Table();
+			REQUIRE(table != nullptr);
+
+			const float pitch = ListRowPitch();
+			const float lastRowTop = table->RowPosY1;
+			const float rowMiddle = lastRowTop - static_cast<float>(rowCount - 1 - displayRow) * pitch + pitch * 0.5f;
+
+			Frames.Click(ImVec2((table->WorkRect.Min.x + table->WorkRect.Max.x) * 0.5f, rowMiddle), [&] { Draw(); });
+		}
+
+		const char* WindowName;
+		ImGuiFrames Frames;
+		Core::LogPage Page;
+		Core::CommitGraph Graph;
+		GitPalette Palette;
+		CommitRefMap Refs;
+		HistoryMarks Marks;
+		CommitListView View;
+	};
+}
+
+TEST_CASE("Git window: showing the newer commits dims them")
+{
+	MarkedHistory history("DimmedHistory", 3);
+	const ImU32 dimmedText = Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_Text), CommitListView::kDimmedRowAlpha);
+
+	history.Settle();
+	REQUIRE(history.Table() != nullptr);
+	CHECK_FALSE(DrawsInColour(*history.Table()->InnerWindow->DrawList, dimmedText));
+
+	const std::unordered_set<Core::Oid> newer = {history.Page.Commits[0].Id};
+	history.Marks.Dimmed = &newer;
+	history.Settle();
+
+	CHECK(DrawsInColour(*history.Table()->InnerWindow->DrawList, dimmedText));
+}
+
+TEST_CASE("Git window: clicking the fold row is reported once")
+{
+	MarkedHistory history("FoldClickHistory", 3);
+	history.Marks.Fold = FoldRow{.BeforeCommit = 1, .Text = "2 newer commits on develop since this branch forked", .Action = "Show them"};
+
+	history.Settle();
+	CHECK_FALSE(history.View.TakeFoldClick());
+
+	constexpr int kRowCount = 4;
+	constexpr int kFoldRow = 1;
+	history.ClickRow(kFoldRow, kRowCount);
+
+	CHECK(history.View.TakeFoldClick());
+	CHECK_FALSE(history.View.TakeFoldClick());
+	CHECK_FALSE(history.View.GetSelectedCommit().has_value());
+}
+
+TEST_CASE("Git window: choosing the local changes row selects it and choosing a commit leaves it")
+{
+	MarkedHistory history("LocalChangesHistory", 2);
+	history.Marks.LocalChanges = "1 staged \xC2\xB7 0 not staged";
+
+	history.Settle();
+	CHECK_FALSE(history.View.IsLocalChangesSelected());
+
+	constexpr int kRowCount = 3;
+	history.ClickRow(0, kRowCount);
+
+	CHECK(history.View.TakeLocalChangesClick());
+	CHECK_FALSE(history.View.TakeLocalChangesClick());
+	CHECK(history.View.IsLocalChangesSelected());
+
+	history.ClickRow(2, kRowCount);
+
+	CHECK_FALSE(history.View.IsLocalChangesSelected());
+	CHECK(history.View.GetSelectedCommit() == std::optional<Core::Oid>{history.Page.Commits[1].Id});
+}
+
+TEST_CASE("Git window: while the history waits the local changes row stands above one waiting row")
+{
+	MarkedHistory waiting("WaitingWithLocalChanges", 0);
+	waiting.Marks.LocalChanges = "\xE2\x80\xA6";
+	waiting.Marks.Waiting = "Reading the branches' lines\xE2\x80\xA6";
+
+	waiting.Settle();
+	REQUIRE(waiting.Table() != nullptr);
+
+	constexpr int kRowCount = 2;
+	waiting.ClickRow(0, kRowCount);
+	CHECK(waiting.View.IsLocalChangesSelected());
+}
+
+TEST_CASE("Git window: while a history without local changes waits there is no list yet")
+{
+	MarkedHistory waiting("WaitingAlone", 0);
+	waiting.Marks.Waiting = "Reading the branches' lines\xE2\x80\xA6";
+
+	waiting.Settle();
+	CHECK(waiting.Table() == nullptr);
+}
+
+TEST_CASE("Git window: the local changes selection goes with its row")
+{
+	MarkedHistory history("LocalChangesGone", 1);
+	history.Marks.LocalChanges = "nothing to commit";
+	history.View.SelectLocalChanges();
+
+	history.Settle();
+	CHECK(history.View.IsLocalChangesSelected());
+
+	history.Marks.LocalChanges.reset();
+	history.Settle();
+
+	CHECK_FALSE(history.View.IsLocalChangesSelected());
 }

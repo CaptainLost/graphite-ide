@@ -3,6 +3,7 @@
 #include "Git/History/HistoryStatus.h"
 
 #include <optional>
+#include <string_view>
 
 namespace Graphite {
 
@@ -11,12 +12,15 @@ namespace Graphite {
 		// Load 500 more, or Search further.
 		More,
 		// Load all, or Search all.
-		All
+		All,
+		// Fold them: the line's newer commits go back into one row.
+		Fold
 	};
 
 	// One text line high, so the list above can leave exactly that much room for it.
 	float HistoryStatusLineHeight();
 
-	// The text, then either the busy loader or the pair of buttons against the right edge. Answers the button clicked.
-	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status);
+	// The text, then `foldFooter` and its "Fold them" link when it is given, then either the busy loader or the pair of
+	// buttons against the right edge. Answers what was clicked.
+	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status, std::string_view foldFooter = {});
 }

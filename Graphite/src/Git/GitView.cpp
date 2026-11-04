@@ -16,6 +16,7 @@
 #include "UI/Lists/ListRow.h"
 #include "Git/Branches/BranchLookup.h"
 #include "Git/GitRequests.h"
+#include "Git/History/CommitRows.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -463,7 +464,14 @@ namespace Graphite {
 		m_SelectedStash.reset();
 		m_LastSeenBranches.reset();
 		m_PendingRename.reset();
-		m_BaseSeen.reset();
+		m_LineAsked.reset();
+		m_LogHeld = false;
+		m_OpeningRef = false;
+		m_NewerShown.clear();
+		m_MarkedOf.reset();
+		m_Marked.clear();
+		m_FoldOf.reset();
+		m_Fold.reset();
 		m_WindowBarSource.reset();
 		m_MainLineDismissed = false;
 
@@ -558,12 +566,14 @@ namespace Graphite {
 
 	void GitView::RenderHistory(const GitPalette& palette)
 	{
+		AskLogAsNeeded();
 		RenderHistoryHeader();
 
 		const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
 		const std::function<void()> drawDiff = [this, &palette] { RenderPreview(palette); };
 
-		const bool hasSelection = m_Commits.GetSelectedFile().has_value() || m_Commits.GetSelectedCommit().has_value();
+		const bool hasSelection = m_Commits.GetSelectedFile().has_value() || m_Commits.GetSelectedCommit().has_value() ||
+								  m_Commits.IsLocalChangesSelected();
 
 		DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
 										   .ResultsHeight = m_ListHeight,
@@ -580,8 +590,26 @@ namespace Graphite {
 		m_SelectedRef = std::move(fullName);
 
 		DeselectStash();
+		StartOpening();
 
 		RequestLog(HistoryReach{});
+	}
+
+	void GitView::StartOpening()
+	{
+		// The checked-out branch opens on its Local changes; any other reference on the row its first page gives.
+		m_OpeningRef = !ShowsLocalChanges();
+		m_Commits.ClearSelection();
+
+		if (m_OpeningRef)
+		{
+			m_Commits.ClearRowSelection();
+		}
+		else
+		{
+			m_Commits.SelectLocalChanges();
+			m_Commits.ScrollToTop();
+		}
 	}
 
 	void GitView::RenderRefMenu(const Core::Branch& branch)
@@ -704,17 +732,51 @@ namespace Graphite {
 
 	void GitView::RequestLog(const HistoryReach& reach, LogAsk ask)
 	{
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-
 		m_Reach = reach;
-
-		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash, m_FirstParentsOnly),
-						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
 
 		// WARNING: Accept tells the settling filter that this query already carries what is typed,
 		// or its wait would run out afterwards and send the same query a second time.
 		m_LogRequested = true;
 		m_Filter.Accept();
+
+		// WARNING: Asked before the line read is in, the page would land without the fold row and the dimmed rows the
+		// line gives it, and they would appear in it later. AskLogAsNeeded asks it once the read is in.
+		m_LogHeld = WaitsForLines();
+
+		if (m_LogHeld)
+		{
+			return;
+		}
+
+		const HistoryFilter& filter = m_Filter.Get();
+		const HistoryLine refLine = ShownRefLine();
+		m_LineAsked = refLine;
+
+		// A file's history follows the file alone, so it neither folds the line nor walks it.
+		const bool isFileHistory = !Core::Trimmed(filter.Path).empty();
+		const HistoryLine line = isFileHistory ? HistoryLine{} : refLine;
+
+		Core::LogRequest log = BuildLogRequest(m_SelectedRef, filter, m_Reach, m_SelectedStash, m_FirstParentsOnly);
+		WidenToLine(log, line);
+
+		// A page narrowed by words keeps only some commits: there is no place in it for a fold row.
+		std::optional<GitModel::MarkedCommitsRequest> marked;
+		const std::optional<Core::LogRequest> markedQuery = MarkedQueryFor(line, log);
+
+		if (markedQuery.has_value() && Core::Trimmed(filter.Text).empty())
+		{
+			const GitModel::MarkedKind kind =
+				line.Fold == LineFold::Folded ? GitModel::MarkedKind::Own : GitModel::MarkedKind::Newer;
+			marked = GitModel::MarkedCommitsRequest{.Query = *markedQuery, .Label = line.LineName, .Kind = kind};
+		}
+
+		m_Model.RequestLog(std::move(log), std::move(marked));
+
+		// Asked with the log, so the fold row's count is most often measured by the time its page lands.
+		if (line.Fold == LineFold::Folded)
+		{
+			static_cast<void>(m_Lines.DistanceOf(line.BranchTip, line.LineTip));
+		}
 
 		if (ask == LogAsk::ByReader)
 		{
@@ -722,36 +784,36 @@ namespace Graphite {
 		}
 	}
 
-	std::optional<GitView::BaseSeen> GitView::BaseOf(const std::optional<ForkBase>& fork)
+	void GitView::AskLogAsNeeded()
 	{
-		if (!fork.has_value())
+		if (m_LogHeld)
 		{
-			return std::nullopt;
+			if (!WaitsForLines())
+			{
+				RequestLog(m_Reach);
+			}
+
+			return;
 		}
 
-		return BaseSeen{.Branch = *fork->OwnCommits.Ref, .BaseTip = *fork->OwnCommits.Exclude};
-	}
-
-	std::optional<ForkSeparator> GitView::ForkSeparatorFor(const Core::LogPage& page) const
-	{
-		const Core::Ref<const Core::LogPage> own = m_Model.GetOwnCommits();
-
-		if (!own)
+		if (!m_LogRequested)
 		{
-			return std::nullopt;
+			// The window's first history is opened as a reference picked in it is.
+			if (!m_Model.GetLog())
+			{
+				StartOpening();
+				RequestLog(HistoryReach{});
+			}
+
+			return;
 		}
 
-		// WARNING: The own commits land with the log they were asked with, so they belong to this page
-		// unless one of them was refreshed alone. A page that starts elsewhere is not theirs.
-		const bool startsAtOwnTip = own->Commits.empty() || (!page.Commits.empty() &&
-															  page.Commits.front().Id == own->Commits.front().Id);
-
-		if (!startsAtOwnTip)
+		// A new read that moved the shown reference's line, its tip or the reference's own tip asks the page and its
+		// marks again, so they keep to what the header says.
+		if (!WaitsForLines() && ShownRefLine() != m_LineAsked)
 		{
-			return std::nullopt;
+			RequestLog(m_Reach, LogAsk::Again);
 		}
-
-		return FindForkSeparator(page, *own, m_Model.GetOwnCommitsLabel());
 	}
 
 	const BranchLines* GitView::CurrentLines() const
@@ -759,34 +821,212 @@ namespace Graphite {
 		return m_SidebarLines.has_value() ? &*m_SidebarLines : nullptr;
 	}
 
-	std::optional<GitModel::OwnCommitsRequest> GitView::OwnCommitsToAsk(const std::vector<Core::Branch>& branches)
+	HistoryLine GitView::ShownRefLine() const
 	{
-		const std::optional<ForkBase> fork = FindForkBase(m_SelectedRef, branches, CurrentLines());
+		const BranchLines* const lines = CurrentLines();
+		const std::string shown = ShownRefName();
 
-		// WARNING: What was seen is kept even when a filter keeps the own commits from being asked, or
-		// the log would be asked again every frame that the filter and the base disagree.
-		m_BaseSeen = BaseOf(fork);
-
-		const HistoryFilter& filter = m_Filter.Get();
-		const bool showsWholeHistory = filter.Text.empty() && Core::Trimmed(filter.Path).empty() &&
-									   !m_SelectedStash.has_value();
-
-		if (!fork.has_value() || !showsWholeHistory)
+		if (lines == nullptr || shown.empty())
 		{
-			return std::nullopt;
+			return {};
 		}
 
-		return GitModel::OwnCommitsRequest{.Query = fork->OwnCommits, .Label = fork->BaseName};
+		return HistoryLineOf(*m_SidebarBuiltFrom->Read, *lines, shown, m_NewerShown.contains(shown));
 	}
 
-	void GitView::AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches)
+	bool GitView::WaitsForLines() const
 	{
-		if (BaseOf(FindForkBase(m_SelectedRef, branches, CurrentLines())) == m_BaseSeen)
+		const bool isFileHistory = !Core::Trimmed(m_Filter.Get().Path).empty();
+
+		if (m_SelectedStash.has_value() || isFileHistory)
+		{
+			return false;
+		}
+
+		const BranchLines* const lines = CurrentLines();
+
+		if (lines == nullptr)
+		{
+			// Neither a first read that failed nor one waiting for branches that could not be listed is coming.
+			const bool readFailed = m_Lines.GetError().has_value() && !m_Lines.IsReading();
+			const bool branchesFailed = !m_Model.GetBranches() && m_Model.GetBranchesError().has_value();
+
+			return !readFailed && !branchesFailed;
+		}
+
+		// A reference the read does not hold yet, one just made or renamed, is waited for while a read is on its way.
+		const bool readLacksSelected = m_SelectedRef.has_value() && !lines->IndexOf(*m_SelectedRef).has_value();
+
+		return readLacksSelected && m_Lines.IsReading();
+	}
+
+	bool GitView::ShowsLocalChanges() const
+	{
+		if (m_SelectedStash.has_value())
+		{
+			return false;
+		}
+
+		if (!m_SelectedRef.has_value())
+		{
+			return true;
+		}
+
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const Core::Branch* const checkedOut = branches ? CheckedOutBranch(*branches) : nullptr;
+
+		return checkedOut != nullptr && checkedOut->FullName == *m_SelectedRef;
+	}
+
+	bool GitView::ShowsCommitRows() const
+	{
+		if (m_LogHeld || WaitsForLines() || !m_Model.GetLog())
+		{
+			return false;
+		}
+
+		// WARNING: The page in hand may be another history's, kept while the one now asked for is read; its rows would
+		// stand under this history's name.
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+		const std::optional<Core::LogRequest>& asked = m_Model.GetAskedLogRequest();
+
+		return !(shown.has_value() && asked.has_value() && AnswersAnotherHistory(*shown, *asked));
+	}
+
+	const std::unordered_set<Core::Oid>& GitView::MarkedCommitsOnScreen()
+	{
+		const Core::Ref<const Core::LogPage> marked = m_Model.GetMarkedCommits();
+
+		if (marked != m_MarkedOf)
+		{
+			m_MarkedOf = marked;
+			m_Marked.clear();
+
+			if (marked)
+			{
+				m_Marked.reserve(marked->Commits.size());
+
+				for (const Core::CommitSummary& commit : marked->Commits)
+				{
+					m_Marked.insert(commit.Id);
+				}
+			}
+		}
+
+		return m_Marked;
+	}
+
+	HistoryMarks GitView::HistoryMarksFor(const Core::Ref<const Core::LogPage>& page)
+	{
+		HistoryMarks marks;
+
+		if (ShowsLocalChanges())
+		{
+			marks.LocalChanges = DescribeLocalChanges(m_Model.GetStatus().get());
+		}
+
+		// WARNING: The marks are read from what landed with the page, not from the line now, so the rows they give
+		// change only when a page asked with the new line lands.
+		const Core::Ref<const Core::LogPage> marked = m_Model.GetMarkedCommits();
+		const std::optional<GitModel::MarkedKind> kind = m_Model.GetMarkedKind();
+
+		if (!marked || !kind.has_value())
+		{
+			return marks;
+		}
+
+		const HistoryLine line = ShownRefLine();
+
+		if (*kind == GitModel::MarkedKind::Newer)
+		{
+			marks.Dimmed = &MarkedCommitsOnScreen();
+
+			if (line.Fold == LineFold::Shown)
+			{
+				marks.FoldFooter = m_Model.GetMarkedLabel() + "'s newer commits shown, dimmed \xC2\xB7 ";
+			}
+
+			return marks;
+		}
+
+		std::optional<std::size_t> behind;
+
+		if (line.Fold != LineFold::None)
+		{
+			if (const std::optional<Core::LineDistance> distance = m_Lines.DistanceOf(line.BranchTip, line.LineTip))
+			{
+				behind = distance->Behind;
+			}
+		}
+
+		FoldSource source{.Page = page, .Own = marked, .Line = m_Model.GetMarkedLabel(), .Behind = behind};
+
+		if (m_FoldOf != source)
+		{
+			m_Fold = FindFoldRow(*page, *marked, source.Line, behind);
+			m_FoldOf = std::move(source);
+		}
+
+		marks.Fold = m_Fold;
+		return marks;
+	}
+
+	void GitView::ToggleNewerShown()
+	{
+		const std::string shown = ShownRefName();
+
+		if (shown.empty())
 		{
 			return;
 		}
 
-		RequestLog(m_Reach, LogAsk::Again);
+		if (m_NewerShown.erase(shown) == 0)
+		{
+			m_NewerShown.insert(shown);
+		}
+
+		RequestLog(m_Reach);
+	}
+
+	void GitView::AnswerListClicks()
+	{
+		// The reader's own choice wins over the row an opening would pick.
+		if (m_Commits.TakeLocalChangesClick())
+		{
+			m_OpeningRef = false;
+		}
+
+		if (m_Commits.TakeFoldClick())
+		{
+			ToggleNewerShown();
+		}
+	}
+
+	void GitView::SelectOpenedStart()
+	{
+		if (!m_OpeningRef || m_LogHeld || !m_Model.IsLogAnswered(m_AskedLogGeneration))
+		{
+			return;
+		}
+
+		// Once only, whatever the answer: a page that lands later never moves the list.
+		m_OpeningRef = false;
+
+		if (!ShowsCommitRows())
+		{
+			return;
+		}
+
+		const std::optional<GitModel::MarkedKind> kind = m_Model.GetMarkedKind();
+		const std::unordered_set<Core::Oid>& marked = MarkedCommitsOnScreen();
+		const std::unordered_set<Core::Oid>* const own = kind == GitModel::MarkedKind::Own ? &marked : nullptr;
+		const std::unordered_set<Core::Oid>* const newer = kind == GitModel::MarkedKind::Newer ? &marked : nullptr;
+
+		if (const std::optional<Core::Oid> start = StartingCommit(*m_Model.GetLog(), own, newer))
+		{
+			m_Commits.SelectCommit(*start);
+			m_Commits.ScrollToCommit(*start);
+		}
 	}
 
 	void GitView::UpdateForNewPage()
@@ -808,6 +1048,7 @@ namespace Graphite {
 			}
 		}
 
+		SelectOpenedStart();
 		ConfirmRevealedFile();
 	}
 
@@ -838,36 +1079,55 @@ namespace Graphite {
 	{
 		const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
 
-		if (!page && !m_LogRequested)
-		{
-			RequestLog(HistoryReach{});
-		}
+		const auto diffOf = [this](const Core::Oid& commit) {
+			return m_Model.GetDiffFor(commit);
+		};
 
-		// WARNING: The page in hand may be another branch's, kept while the one now asked for is read; its rows
-		// would stand under this branch's name, so the wait is shown instead of them.
-		const std::optional<Core::LogRequest>& shownRequest = m_Model.GetShownLogRequest();
-		const std::optional<Core::LogRequest>& askedRequest = m_Model.GetAskedLogRequest();
-		const bool showsAnotherHistory = page && shownRequest.has_value() && askedRequest.has_value() &&
-										 AnswersAnotherHistory(*shownRequest, *askedRequest);
+		const auto diffFailed = [this](const Core::Oid& commit) { return m_Model.IsDiffFailed(commit); };
 
-		if (!page || showsAnotherHistory)
+		m_Commits.SetActionsEnabled(!m_Model.IsWriteUnsettled());
+		m_Commits.SetLocalChangesInk(ReadEditorPalette(m_Scheme.Get()).DiagnosticWarning);
+
+		if (!ShowsCommitRows())
 		{
+			// The Local changes row stands above the wait, as it will above the commits.
+			HistoryMarks marks;
+
+			if (ShowsLocalChanges())
+			{
+				marks.LocalChanges = DescribeLocalChanges(m_Model.GetStatus().get());
+			}
+
 			const LogAttempt attempt =
 				m_Model.IsLogAnswered(m_Model.GetLogGeneration()) ? LogAttempt::Settled : LogAttempt::InFlight;
 			const std::optional<std::string> placeholder = HistoryPlaceholder(
 				m_Model.GetStatus() != nullptr, m_Model.GetStatusError(), m_Model.GetLogError(), attempt);
 
-			if (placeholder.has_value())
+			if (m_LogHeld || WaitsForLines())
 			{
-				Core::EmptyState(*placeholder);
+				marks.Waiting = "Reading the branches' lines\xE2\x80\xA6";
+			}
+			else if (placeholder.has_value())
+			{
+				m_Commits.SetEmptyText(*placeholder);
 			}
 			else
 			{
-				Core::LoadingState("Loading history");
+				marks.Waiting = "Loading history";
 			}
+
+			const Core::LogPage noCommits;
+			const Core::CommitGraph noGraph;
+
+			m_Commits.SetRoomBelow(0.0f);
+			m_Commits.Render(noCommits, noGraph, palette, ReaderTimeZone(), diffOf, diffFailed, m_CommitRefs, {}, {},
+							 marks);
+
+			AnswerListClicks();
 		}
 		else
 		{
+			const std::optional<Core::LogRequest>& shownRequest = m_Model.GetShownLogRequest();
 			const Core::LayoutParents parents = shownRequest.has_value() && shownRequest->FirstParentOnly
 													? Core::LayoutParents::FirstOnly
 													: Core::LayoutParents::All;
@@ -879,11 +1139,6 @@ namespace Graphite {
 				m_Graph = Core::LayoutCommits(page->Commits, parents);
 			}
 
-			const auto diffOf = [this](const Core::Oid& commit) {
-				return m_Model.GetDiffFor(commit);
-			};
-
-			m_Commits.SetActionsEnabled(!m_Model.IsWriteUnsettled());
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 			if (branches != m_RefsOf)
@@ -892,22 +1147,21 @@ namespace Graphite {
 				m_CommitRefs = BuildCommitRefs(branches ? *branches : std::vector<Core::Branch>{});
 			}
 
-			const auto diffFailed = [this](const Core::Oid& commit) { return m_Model.IsDiffFailed(commit); };
+			const HistoryMarks marks = HistoryMarksFor(page);
 
-			if (branches)
+			std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
+
+			// The offer to fold the line's newer commits again needs the line even when the page has nothing to count.
+			if (!status.has_value() && !marks.FoldFooter.empty())
 			{
-				AskAgainWhenBaseMoved(*branches);
+				status = HistoryStatus{};
 			}
-
-			const std::optional<ForkSeparator> separator = ForkSeparatorFor(*page);
-
-			const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
 
 			m_Commits.SetRoomBelow(status.has_value() ? HistoryStatusLineHeight() : 0.0f);
 			m_Commits.SetEmptyText(IsShownLogNarrowed() ? "No matching commits." : "No commits yet.");
 
 			m_Commits.Render(*page, m_Graph, palette, ReaderTimeZone(), diffOf, diffFailed, m_CommitRefs,
-							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
+							 m_Filter.Get().Text, m_Filter.Get().Path, marks);
 
 			// WARNING: Drawn straight after the list, before anything else moves the cursor, so it sits
 			// in the room the list left for it.
@@ -915,10 +1169,11 @@ namespace Graphite {
 
 			if (status.has_value())
 			{
-				click = DrawHistoryStatusLine(*status);
+				click = DrawHistoryStatusLine(*status, marks.FoldFooter);
 			}
 
 			ApplyCommitAction();
+			AnswerListClicks();
 
 			std::unordered_set<Core::Oid> wanted;
 
@@ -966,13 +1221,18 @@ namespace Graphite {
 		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 		const std::optional<Core::LogRequest>& asked = m_Model.GetAskedLogRequest();
 
+		// WARNING: The count is of the reference alone, so a page that also walks its line's newer commits is not
+		// said to be a part of it.
+		const bool countsThePage = !shown.has_value() || shown->AlsoFrom.empty();
+
 		return HistoryStatusInput{.Shown = page.Commits.size(),
 								  .Walked = page.Walked,
 								  .Complete = page.Complete,
 								  .Filtered = IsShownLogNarrowed(),
 								  .Stash = shown.has_value() && shown->Stash.has_value(),
-								  .Total = m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt),
-								  .Counting = m_Model.IsCommitCountInFlight(),
+								  .Total = countsThePage ? m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt)
+														 : std::nullopt,
+								  .Counting = countsThePage && m_Model.IsCommitCountInFlight(),
 								  .Asking = !m_Model.IsLogAnswered(m_AskedLogGeneration),
 								  .AskedFiltered = asked.has_value() && NarrowsHistory(*asked)};
 	}
@@ -986,6 +1246,12 @@ namespace Graphite {
 
 	void GitView::AnswerHistoryClick(HistoryClick click, const Core::LogPage& page)
 	{
+		if (click == HistoryClick::Fold)
+		{
+			ToggleNewerShown();
+			return;
+		}
+
 		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 
 		if (!shown.has_value())
@@ -1000,6 +1266,12 @@ namespace Graphite {
 
 	void GitView::RenderPreview(const GitPalette& palette)
 	{
+		if (m_Commits.IsLocalChangesSelected())
+		{
+			RenderChanges(palette);
+			return;
+		}
+
 		if (m_Commits.GetSelectedFile().has_value())
 		{
 			RenderDiff(palette);
@@ -1042,7 +1314,7 @@ namespace Graphite {
 
 		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, ReaderTimeZone(), palette))
 		{
-			m_Commits.ClearCommitSelection();
+			m_Commits.ClearRowSelection();
 		}
 	}
 

@@ -771,7 +771,7 @@ TEST_CASE("A log is not requested without an open workspace")
 	CHECK(model.GetLog() == nullptr);
 }
 
-TEST_CASE("The commits a branch owns land in the same update as the log they were asked with")
+TEST_CASE("Git window: marked commits land with the log they were asked with")
 {
 	FakePort port;
 	port.Log.Commits.resize(2);
@@ -779,29 +779,43 @@ TEST_CASE("The commits a branch owns land in the same update as the log they wer
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
 
-	Graphite::GitModel::OwnCommitsRequest own;
-	own.Query.Ref = "refs/heads/topic";
-	own.Query.Exclude = OidWithFirstByte(7);
-	own.Label = "main";
+	Graphite::GitModel::MarkedCommitsRequest newer;
+	newer.Query.Ref = "refs/heads/develop";
+	newer.Query.Exclude = OidWithFirstByte(7);
+	newer.Label = "develop";
+	newer.Kind = Graphite::GitModel::MarkedKind::Newer;
 
-	model.RequestLog(Core::LogRequest{}, own);
+	model.RequestLog(Core::LogRequest{}, newer);
 
 	CHECK(model.GetLog() == nullptr);
-	CHECK(model.GetOwnCommits() == nullptr);
+	CHECK(model.GetMarkedCommits() == nullptr);
+	CHECK_FALSE(model.GetMarkedKind().has_value());
 
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	REQUIRE(model.GetLog() != nullptr);
-	REQUIRE(model.GetOwnCommits() != nullptr);
-	CHECK(model.GetOwnCommits()->Commits.size() == 2);
-	CHECK(model.GetOwnCommitsLabel() == "main");
+	REQUIRE(model.GetMarkedCommits() != nullptr);
+	CHECK(model.GetMarkedCommits()->Commits.size() == 2);
+	CHECK(model.GetMarkedLabel() == "develop");
+	CHECK(model.GetMarkedKind() == std::optional<Graphite::GitModel::MarkedKind>{Graphite::GitModel::MarkedKind::Newer});
 
 	CHECK(port.LogCalls == 2);
 	REQUIRE(port.LastLogRequest.has_value());
-	CHECK(port.LastLogRequest->Exclude == own.Query.Exclude);
+	CHECK(port.LastLogRequest->Exclude == newer.Query.Exclude);
+
+	// The next log asks for the branch's own commits instead; until it lands the newer ones stay with their page.
+	Graphite::GitModel::MarkedCommitsRequest own;
+	own.Label = "develop";
+	own.Kind = Graphite::GitModel::MarkedKind::Own;
+
+	model.RequestLog(Core::LogRequest{}, own);
+	CHECK(model.GetMarkedKind() == std::optional<Graphite::GitModel::MarkedKind>{Graphite::GitModel::MarkedKind::Newer});
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(model.GetMarkedKind() == std::optional<Graphite::GitModel::MarkedKind>{Graphite::GitModel::MarkedKind::Own});
 }
 
-TEST_CASE("A log asked without own commits asks for none")
+TEST_CASE("A log asked without marked commits asks for none")
 {
 	FakePort port;
 
@@ -812,7 +826,8 @@ TEST_CASE("A log asked without own commits asks for none")
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(port.LogCalls == 1);
-	CHECK(model.GetOwnCommits() == nullptr);
+	CHECK(model.GetMarkedCommits() == nullptr);
+	CHECK_FALSE(model.GetMarkedKind().has_value());
 }
 
 TEST_CASE("The log on screen names the request it answers")
@@ -884,43 +899,44 @@ TEST_CASE("A log ask is answered by its page or by its failure")
 	CHECK(model.IsLogAnswered(answeredByFailure));
 }
 
-TEST_CASE("The commits a branch owns are not requested without an open workspace")
+TEST_CASE("Marked commits are not requested without an open workspace")
 {
 	FakePort port;
 
 	Graphite::GitModel model{port, RunJobsInline()};
 
-	model.RequestLog(Core::LogRequest{}, Graphite::GitModel::OwnCommitsRequest{});
+	model.RequestLog(Core::LogRequest{}, Graphite::GitModel::MarkedCommitsRequest{});
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(port.LogCalls == 0);
-	CHECK(model.GetOwnCommits() == nullptr);
+	CHECK(model.GetMarkedCommits() == nullptr);
 }
 
-TEST_CASE("Own commits stay until the log asked without them lands, so the row they gave does not leave early")
+TEST_CASE("Marked commits stay until the log asked without them lands, so the rows they gave do not change early")
 {
 	FakePort port;
 
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
 
-	Graphite::GitModel::OwnCommitsRequest own;
+	Graphite::GitModel::MarkedCommitsRequest own;
 	own.Label = "main";
 
 	model.RequestLog(Core::LogRequest{}, own);
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
-	REQUIRE(model.GetOwnCommits() != nullptr);
+	REQUIRE(model.GetMarkedCommits() != nullptr);
 
 	model.RequestLog(Core::LogRequest{});
-	CHECK(model.GetOwnCommits() != nullptr);
+	CHECK(model.GetMarkedCommits() != nullptr);
 
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	CHECK(model.GetOwnCommits() == nullptr);
-	CHECK(model.GetOwnCommitsLabel().empty());
+	CHECK(model.GetMarkedCommits() == nullptr);
+	CHECK(model.GetMarkedLabel().empty());
+	CHECK_FALSE(model.GetMarkedKind().has_value());
 }
 
-TEST_CASE("A refresh asks the own commits again with the log")
+TEST_CASE("A refresh asks the marked commits again with the log")
 {
 	Core::EventBus events;
 	FakePort port;
@@ -929,7 +945,7 @@ TEST_CASE("A refresh asks the own commits again with the log")
 	model.SetRoot("C:/repo");
 	model.SubscribeTo(events);
 
-	Graphite::GitModel::OwnCommitsRequest own;
+	Graphite::GitModel::MarkedCommitsRequest own;
 	own.Query.Exclude = OidWithFirstByte(7);
 
 	model.RequestLog(Core::LogRequest{}, own);
@@ -944,7 +960,7 @@ TEST_CASE("A refresh asks the own commits again with the log")
 	CHECK(port.LastLogRequest->Exclude == own.Query.Exclude);
 }
 
-TEST_CASE("Closing the workspace forgets the own commits")
+TEST_CASE("Closing the workspace forgets the marked commits")
 {
 	Core::EventBus events;
 	FakePort port;
@@ -953,13 +969,13 @@ TEST_CASE("Closing the workspace forgets the own commits")
 	model.SetRoot("C:/repo");
 	model.SubscribeTo(events);
 
-	model.RequestLog(Core::LogRequest{}, Graphite::GitModel::OwnCommitsRequest{});
+	model.RequestLog(Core::LogRequest{}, Graphite::GitModel::MarkedCommitsRequest{});
 	model.OnUpdate(Core::Timestep{kNoSeconds});
-	REQUIRE(model.GetOwnCommits() != nullptr);
+	REQUIRE(model.GetMarkedCommits() != nullptr);
 
 	events.Publish(Graphite::WorkspaceClosedEvent{});
 
-	CHECK(model.GetOwnCommits() == nullptr);
+	CHECK(model.GetMarkedCommits() == nullptr);
 }
 
 TEST_CASE("A requested diff becomes readable after the next update")

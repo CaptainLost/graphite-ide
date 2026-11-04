@@ -2,6 +2,10 @@
 
 #include "Git/History/CommitRows.h"
 
+#include "GitFixtures.h"
+
+#include "Core/Git/Status.h"
+
 #include <cstddef>
 #include <functional>
 #include <optional>
@@ -9,6 +13,7 @@
 
 using Graphite::CommitRowKind;
 using Graphite::CommitRows;
+using Graphite::ExtraRows;
 
 namespace {
 
@@ -105,12 +110,12 @@ TEST_CASE("Every row's commit index is in range and every commit has a row")
 	}
 }
 
-TEST_CASE("A separator is a row of its own before the commit it precedes, and moves that commit down")
+TEST_CASE("A fold row is a row of its own before the commit it precedes, and moves that commit down")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({0, 0, 0}), 2);
+	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({0, 0, 0}), ExtraRows{.FoldBeforeCommit = 2});
 
 	REQUIRE(rows.Rows.size() == 4);
-	CHECK(rows.Rows[2].Kind == CommitRowKind::Separator);
+	CHECK(rows.Rows[2].Kind == CommitRowKind::Fold);
 	CHECK(rows.Rows[3].Kind == CommitRowKind::Commit);
 	CHECK(rows.Rows[3].Commit == 2);
 
@@ -118,32 +123,89 @@ TEST_CASE("A separator is a row of its own before the commit it precedes, and mo
 	CHECK(rows.RowOfCommit[2] == 3);
 }
 
-TEST_CASE("A separator before the first commit is the top row")
+TEST_CASE("A fold row before the first commit is the top row")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({0, 0}), 0);
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({0, 0}), ExtraRows{.FoldBeforeCommit = 0});
 
 	REQUIRE(rows.Rows.size() == 3);
-	CHECK(rows.Rows[0].Kind == CommitRowKind::Separator);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::Fold);
 	CHECK(rows.RowOfCommit[0] == 1);
 }
 
-TEST_CASE("A separator after an expanded commit comes after that commit's file rows")
+TEST_CASE("A fold row after an expanded commit comes after that commit's file rows")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({2, 0}), 1);
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({2, 0}), ExtraRows{.FoldBeforeCommit = 1});
 
 	REQUIRE(rows.Rows.size() == 5);
-	CHECK(rows.Rows[3].Kind == CommitRowKind::Separator);
+	CHECK(rows.Rows[3].Kind == CommitRowKind::Fold);
 	CHECK(rows.RowOfCommit[1] == 4);
 }
 
-TEST_CASE("Without a separator every row is a commit or a file")
+TEST_CASE("Without extra rows every row is a commit or a file")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({1, 0}), std::nullopt);
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({1, 0}));
 
 	for (const Graphite::CommitRow& row : rows.Rows)
 	{
-		CHECK(row.Kind != CommitRowKind::Separator);
+		CHECK((row.Kind == CommitRowKind::Commit || row.Kind == CommitRowKind::File));
 	}
+}
+
+TEST_CASE("Git window: the local changes row comes first and shifts every commit row")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({1, 0, 0}), ExtraRows{.LocalChanges = true});
+
+	REQUIRE(rows.Rows.size() == 5);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::LocalChanges);
+	CHECK(rows.Rows[1].Kind == CommitRowKind::Commit);
+	CHECK(rows.Rows[2].Kind == CommitRowKind::File);
+
+	REQUIRE(rows.RowOfCommit.size() == 3);
+	CHECK(rows.RowOfCommit[0] == 1);
+	CHECK(rows.RowOfCommit[1] == 3);
+	CHECK(rows.RowOfCommit[2] == 4);
+}
+
+TEST_CASE("Git window: the local changes row and a fold row together each take a row")
+{
+	const CommitRows rows =
+		Graphite::BuildCommitRows(3, FileRowCountsFrom({0, 0, 0}), ExtraRows{.LocalChanges = true, .FoldBeforeCommit = 1});
+
+	REQUIRE(rows.Rows.size() == 5);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::LocalChanges);
+	CHECK(rows.Rows[2].Kind == CommitRowKind::Fold);
+	CHECK(rows.RowOfCommit[0] == 1);
+	CHECK(rows.RowOfCommit[1] == 3);
+}
+
+TEST_CASE("Git window: with local changes and no commits one note row stands for the commits")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(0, FileRowCountsFrom({}), ExtraRows{.LocalChanges = true});
+
+	REQUIRE(rows.Rows.size() == 2);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::LocalChanges);
+	CHECK(rows.Rows[1].Kind == CommitRowKind::Note);
+	CHECK(rows.RowOfCommit.empty());
+}
+
+TEST_CASE("Git window: local changes are described in words")
+{
+	CHECK(Graphite::DescribeLocalChanges(nullptr) == "\xE2\x80\xA6");
+
+	const Core::WorkingTreeStatus clean;
+	CHECK(Graphite::DescribeLocalChanges(&clean) == "nothing to commit");
+
+	Core::FileStatus staged{.Path = "a.cpp", .Index = Core::StatusFlags::Modified};
+	Core::FileStatus both{.Path = "b.cpp", .Index = Core::StatusFlags::Modified, .WorkTree = Core::StatusFlags::Modified};
+	Core::FileStatus edited{.Path = "c.cpp", .WorkTree = Core::StatusFlags::Modified};
+	Core::FileStatus untracked{.Path = "d.cpp", .WorkTree = Core::StatusFlags::New, .IsUntracked = true};
+
+	const Core::WorkingTreeStatus status = WorkingTreeStatusOf({staged, both, edited, untracked});
+	CHECK(Graphite::DescribeLocalChanges(&status) == "2 staged \xC2\xB7 3 not staged");
+
+	Core::FileStatus conflicted{.Path = "e.cpp", .IsConflicted = true};
+	const Core::WorkingTreeStatus merging = WorkingTreeStatusOf({conflicted, edited});
+	CHECK(Graphite::DescribeLocalChanges(&merging) == "1 conflicted \xC2\xB7 0 staged \xC2\xB7 1 not staged");
 }
 
 TEST_CASE("An expanded commit always gets at least one file row, since zero files is both a diff still being fetched and a commit that changed nothing")

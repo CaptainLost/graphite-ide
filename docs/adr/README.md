@@ -701,4 +701,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0669](0669-show-references-in-a-sidebar-beside-the-history.md) | Show references in a sidebar beside the history | proposed | 2026-11-04 |
 | [0670](0670-take-a-branch-s-review-base-from-its-line.md) | Take a branch's review base from its line | proposed | 2026-11-04 |
 | [0671](0671-show-a-branch-s-history-by-first-parents-by-default.md) | Show a branch's history by first parents by default | proposed | 2026-11-04 |
+| [0672](0672-open-a-branch-s-history-on-its-own-commits-with-its-line-s-newer-commits-folded-into-one-row.md) | Open a branch's history on its own commits with its line's newer commits folded into one row | proposed | 2026-11-04 |
 <!-- /adr-index -->

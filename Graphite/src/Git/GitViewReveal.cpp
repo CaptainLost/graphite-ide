@@ -55,7 +55,8 @@ namespace Graphite {
 		std::copy_n(pathText.begin(), copiedLength, m_FilterPathBuffer.begin());
 
 		m_Commits.ClearSelection();
-		m_Commits.ClearCommitSelection();
+		m_Commits.ClearRowSelection();
+		m_OpeningRef = false;
 
 		m_Filter.Set(HistoryFilter{.Text = {}, .Path = std::string(m_FilterPathBuffer.data())});
 		RequestLog(HistoryReach{});

@@ -7,9 +7,11 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextMetrics.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include "Git/History/CommitColumns.h"
@@ -27,8 +29,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <format>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -62,6 +66,41 @@ namespace Graphite {
 		constexpr const char* kHashSample = "0000000";
 		constexpr const char* kAuthorSample = "Alice Johnson   ";
 		constexpr const char* kDateSample = "59 minutes ago";
+
+		constexpr std::string_view kLocalChangesTitle = "Local changes";
+		constexpr std::string_view kLocalChangesAge = "now";
+		constexpr const char* kFoldTooltip = "Show them, dimmed, beside the branch";
+		constexpr const char* kMiddleDot = " \xC2\xB7 ";
+		constexpr float kKeepFontSize = 0.0f;
+		constexpr float kUnderlineThickness = 1.0f;
+
+		// The mockup's sizes, in its pixels at a 13 px font.
+		constexpr float kMockupFontPixels = 13.0f;
+		constexpr float kMessagePiecesGap = 6.0f;
+		constexpr float kRingRadius = 3.5f;    // to the middle of its stroke
+		constexpr float kRingThickness = 2.0f;
+		constexpr int kRingDashes = 6;
+
+		float MockupPixels(float pixels)
+		{
+			return pixels * ImGui::GetFontSize() / kMockupFontPixels;
+		}
+
+		// The ring of work not yet committed, drawn in dashes.
+		void DrawDashedRing(ImVec2 centre, ImU32 ink)
+		{
+			constexpr int kSegmentsPerDash = 4;
+			const float dashAngle = std::numbers::pi_v<float> / static_cast<float>(kRingDashes);
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+			for (int dash = 0; dash < kRingDashes; ++dash)
+			{
+				const float from = dashAngle * static_cast<float>(dash * 2);
+
+				drawList->PathArcTo(centre, MockupPixels(kRingRadius), from, from + dashAngle, kSegmentsPerDash);
+				drawList->PathStroke(ink, ImDrawFlags_None, MockupPixels(kRingThickness));
+			}
+		}
 
 		GraphMetrics MetricsForCurrentFont()
 		{
@@ -192,7 +231,7 @@ namespace Graphite {
 		}
 
 		void RefLabels(const std::vector<CommitRef>& refs, const GitPalette& palette,
-					   std::string_view summary)
+					   std::string_view summary, float alpha)
 		{
 			if (refs.empty())
 			{
@@ -232,7 +271,8 @@ namespace Graphite {
 					ink = palette.GutterModified;
 				}
 
-				const ImU32 fill = Core::WithAlphaReplaced(ink, kLabelFillAlphaByte);
+				const ImU32 fill = Core::WithAlphaScaled(Core::WithAlphaReplaced(ink, kLabelFillAlphaByte), alpha);
+				ink = Core::WithAlphaScaled(ink, alpha);
 
 				const ImVec2 labelOrigin = ImGui::GetCursorScreenPos();
 				const ImVec2 labelSize(labelWidths[labelIndex], ImGui::GetTextLineHeight());
@@ -408,6 +448,26 @@ namespace Graphite {
 	{
 		m_SelectedCommit = commit;
 		m_SelectedFile.reset();
+		m_LocalChangesSelected = false;
+	}
+
+	void CommitListView::SelectFile(const FileSelection& file)
+	{
+		m_SelectedFile = file;
+		m_LocalChangesSelected = false;
+	}
+
+	void CommitListView::SelectLocalChanges()
+	{
+		m_LocalChangesSelected = true;
+		m_SelectedCommit.reset();
+		m_SelectedFile.reset();
+	}
+
+	void CommitListView::ClearRowSelection()
+	{
+		m_SelectedCommit.reset();
+		m_LocalChangesSelected = false;
 	}
 
 	void CommitListView::Reset()
@@ -415,7 +475,21 @@ namespace Graphite {
 		m_Expanded.clear();
 		m_SelectedFile.reset();
 		m_SelectedCommit.reset();
+		m_LocalChangesSelected = false;
 		m_ScrollTarget.reset();
+		m_ScrollToTop = false;
+		m_FoldClicked = false;
+		m_LocalChangesClicked = false;
+	}
+
+	bool CommitListView::TakeFoldClick()
+	{
+		return std::exchange(m_FoldClicked, false);
+	}
+
+	bool CommitListView::TakeLocalChangesClick()
+	{
+		return std::exchange(m_LocalChangesClicked, false);
 	}
 
 	std::optional<CommitAction> CommitListView::TakeCommitAction()
@@ -447,30 +521,49 @@ namespace Graphite {
 								const std::function<bool(const Core::Oid&)>& diffFailed,
 								const CommitRefMap& refs, std::string_view highlight,
 								std::string_view pathHighlight,
-								const std::optional<ForkSeparator>& separator)
+								const HistoryMarks& marks)
 	{
-		if (page.Commits.empty())
+		// WARNING: A Local changes row no longer drawn takes its selection with it, or the preview would go on showing
+		// the changes under a history that has no row for them.
+		if (!marks.LocalChanges.has_value())
+		{
+			m_LocalChangesSelected = false;
+		}
+
+		if (page.Commits.empty() && !marks.LocalChanges.has_value())
 		{
 			m_ScrollTarget.reset();
+			m_ScrollToTop = false;
 
 			constexpr float kSmallestRegion = 1.0f;
 			const float height = std::max(ImGui::GetContentRegionAvail().y - m_RoomBelow, kSmallestRegion);
 
-			Core::EmptyState(m_EmptyText, nullptr, ImVec2(0.0f, height));
+			if (marks.Waiting.has_value())
+			{
+				Core::LoadingState(marks.Waiting->c_str());
+			}
+			else
+			{
+				Core::EmptyState(m_EmptyText, nullptr, ImVec2(0.0f, height));
+			}
+
 			return;
 		}
 
 		const GraphMetrics metrics = MetricsForCurrentFont();
 
-		const bool hasSeparator = separator.has_value() && separator->BeforeCommit < page.Commits.size();
+		const bool hasFold = marks.Fold.has_value() && marks.Fold->BeforeCommit < page.Commits.size();
+		const ExtraRows extra{.LocalChanges = marks.LocalChanges.has_value(),
+							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt};
 
 		const CommitRows rows = BuildCommitRows(
 			page.Commits.size(),
-			[&](std::size_t commitIndex) { return FileRowCountUnder(page, commitIndex, diffOf); },
-			hasSeparator ? std::optional<std::size_t>{separator->BeforeCommit} : std::nullopt);
+			[&](std::size_t commitIndex) { return FileRowCountUnder(page, commitIndex, diffOf); }, extra);
 
-		const std::optional<std::size_t> separatorRow =
-			hasSeparator ? std::optional<std::size_t>{rows.RowOfCommit[separator->BeforeCommit] - 1} : std::nullopt;
+		// The ring of the Local changes row takes a lane even while no commit has one.
+		constexpr std::size_t kLocalChangesLanes = 1;
+		const std::size_t laneCount =
+			marks.LocalChanges.has_value() ? std::max(graph.LaneCount, kLocalChangesLanes) : graph.LaneCount;
 
 		const std::chrono::sys_seconds now =
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
@@ -497,7 +590,7 @@ namespace Graphite {
 
 			CommitColumnsInput columnInput;
 			columnInput.Available = widthBesideScrollbar;
-			columnInput.Graph = GraphWidth(metrics, graph.LaneCount);
+			columnInput.Graph = GraphWidth(metrics, laneCount);
 			columnInput.Chevron = std::max(SampleWidth(ChevronGlyph(false)), SampleWidth(ChevronGlyph(true)));
 			columnInput.Hash = WidthInUse(table, Column::Hash, HashSampleWidth());
 			columnInput.Author = WidthInUse(table, Column::Author, SampleWidth(kAuthorSample));
@@ -528,6 +621,11 @@ namespace Graphite {
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 			ImGui::TableHeadersRow();
 
+			if (std::exchange(m_ScrollToTop, false))
+			{
+				ImGui::SetScrollY(0.0f);
+			}
+
 			const std::optional<int> scrollRow = DisplayRowOf(std::exchange(m_ScrollTarget, std::nullopt), page, rows);
 
 			ImGuiListClipper clipper;
@@ -549,7 +647,6 @@ namespace Graphite {
 					 ++displayRow)
 				{
 					const CommitRow& row = rows.Rows[static_cast<std::size_t>(displayRow)];
-					const Core::CommitSummary& commit = page.Commits[row.Commit];
 
 					ImGui::TableNextRow(ImGuiTableRowFlags_None, metrics.RowHeight);
 					ImGui::PushID(displayRow);
@@ -559,24 +656,41 @@ namespace Graphite {
 					graphOrigin = ImVec2(graphCell.x, graphCell.y - cellPaddingY -
 														  static_cast<float>(displayRow) * metrics.RowHeight);
 
-					if (row.Kind == CommitRowKind::Separator)
+					switch (row.Kind)
 					{
-						RenderSeparatorRow(separator->Text);
-					}
-					else if (row.Kind == CommitRowKind::Commit)
+					case CommitRowKind::LocalChanges:
 					{
-						const bool isEarlierHistory = separatorRow.has_value() && static_cast<std::size_t>(displayRow) > *separatorRow;
+						constexpr std::size_t kFirstLane = 0;
+						const ImVec2 dotCentre(graphOrigin.x + LaneCentreX(metrics, kFirstLane),
+											   graphOrigin.y + RowCentreY(metrics, static_cast<std::size_t>(displayRow)));
 
-						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, isEarlierHistory);
+						RenderLocalChangesRow(*marks.LocalChanges, palette, dotCentre);
+						break;
+					}
+					case CommitRowKind::Fold:
+						RenderFoldRow(*marks.Fold);
+						break;
+					case CommitRowKind::Note:
+						RenderNoteRow(marks.Waiting);
+						break;
+					case CommitRowKind::Commit:
+					{
+						const Core::CommitSummary& commit = page.Commits[row.Commit];
+						const bool dimmed = marks.Dimmed != nullptr && marks.Dimmed->contains(commit.Id);
+
+						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, dimmed);
 
 						if (scrollRow == displayRow)
 						{
 							ImGui::SetScrollHereY(kHalf);
 						}
+
+						break;
 					}
-					else
-					{
-						RenderFileRow(commit, row.File, palette, diffOf, diffFailed, WithoutRootAnchor(pathHighlight));
+					case CommitRowKind::File:
+						RenderFileRow(page.Commits[row.Commit], row.File, palette, diffOf, diffFailed,
+									  WithoutRootAnchor(pathHighlight));
+						break;
 					}
 
 					ImGui::PopID();
@@ -602,7 +716,7 @@ namespace Graphite {
 	void CommitListView::RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 										 const GitPalette& palette, const CommitRefMap& refs,
 										 std::string_view highlight, std::chrono::sys_seconds now,
-										 const std::chrono::time_zone* zone, bool isEarlierHistory)
+										 const std::chrono::time_zone* zone, bool dimmed)
 	{
 		const bool expanded = IsExpanded(commit.Id);
 		const bool isSelectedCommit = m_SelectedCommit == commit.Id;
@@ -673,8 +787,15 @@ namespace Graphite {
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Hash));
 		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x;
 
-		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? palette.GutterAdded : dimmedInk;
+		// A dimmed row is dimmed whole, and less while it is pointed at or selected.
+		const float alpha =
+			!dimmed ? 1.0f
+					: (isSelectedCommit || selectableHovered ? CommitListView::kDimmedRowPointedAlpha
+															 : CommitListView::kDimmedRowAlpha);
+
+		const ImU32 dimmedInk = Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_TextDisabled), alpha);
+		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? Core::WithAlphaScaled(palette.GutterAdded, alpha) : dimmedInk;
+		const ImU32 summaryInk = dimmed ? Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_Text), alpha) : kThemeTextColor;
 
 		Core::PushCodeFont(Core::kInterfaceFontSize);
 		DrawFittedCell(commit.Id.ShortHex(), hashInk, highlight);
@@ -684,10 +805,10 @@ namespace Graphite {
 
 		if (refs.contains(commit.Id))
 		{
-			RefLabels(refs.at(commit.Id), palette, commit.Summary);
+			RefLabels(refs.at(commit.Id), palette, commit.Summary, alpha);
 		}
 
-		DrawFittedCell(commit.Summary, isEarlierHistory ? dimmedInk : kThemeTextColor, highlight);
+		DrawFittedCell(commit.Summary, summaryInk, highlight);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
 		DrawFittedCell(AuthorName(commit.Author), dimmedInk, highlight);
@@ -716,23 +837,86 @@ namespace Graphite {
 		}
 		else
 		{
-			m_SelectedCommit = commit.Id;
-			m_SelectedFile.reset();
+			SelectCommit(commit.Id);
 		}
 	}
 
-	void CommitListView::RenderSeparatorRow(const std::string& text)
+	void CommitListView::RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre)
+	{
+		DrawDashedRing(dotCentre, m_LocalChangesInk != 0 ? m_LocalChangesInk : palette.GutterModified);
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Chevron));
+
+		if (TableRowSelectable("##localChanges", m_LocalChangesSelected, kRowSelectableFlags))
+		{
+			SelectLocalChanges();
+			m_LocalChangesClicked = true;
+		}
+
+		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+		DrawFittedCell(kLocalChangesTitle, Core::EmphasisText(), kNoHighlight);
+		ImGui::SameLine(kNoOffset, MockupPixels(kMessagePiecesGap));
+		DrawFittedCell(summary, dimmedInk, kNoHighlight);
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Date));
+		DrawFittedCell(kLocalChangesAge, dimmedInk, kNoHighlight);
+	}
+
+	void CommitListView::RenderFoldRow(const FoldRow& fold)
+	{
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Chevron));
+
+		constexpr bool kNeverSelected = false;
+
+		if (TableRowSelectable("##fold", kNeverSelected, kRowSelectableFlags))
+		{
+			m_FoldClicked = true;
+		}
+
+		const bool hovered = ImGui::IsItemHovered();
+		ImGui::SetItemTooltip("%s", kFoldTooltip);
+
+		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		const ImU32 actionInk = ImGui::GetColorU32(ImGuiCol_CheckMark);
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+
+		// WARNING: The italic face is not loaded where no renderer is, and a null face keeps the current one.
+		ImGui::PushFont(Core::ImGuiRenderer::GetItalicFont(), kKeepFontSize);
+		DrawFittedCell(fold.Text + kMiddleDot, dimmedInk, kNoHighlight);
+		ImGui::PopFont();
+
+		ImGui::SameLine(kNoOffset, kNoSpacing);
+		const float actionLeft = ImGui::GetCursorScreenPos().x;
+		DrawFittedCell(fold.Action, actionInk, kNoHighlight);
+
+		if (hovered && ImGui::GetItemRectMax().x > actionLeft)
+		{
+			const float underline = std::floor(ImGui::GetItemRectMin().y + ImGui::GetFontSize());
+			ImGui::GetWindowDrawList()->AddLine(ImVec2(actionLeft, underline), ImVec2(ImGui::GetItemRectMax().x, underline),
+												actionInk, kUnderlineThickness);
+		}
+	}
+
+	void CommitListView::RenderNoteRow(const std::optional<std::string>& waiting)
 	{
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
-		const float spareRoom = ImGui::GetContentRegionAvail().x - Core::TextWidth(text);
-
-		if (spareRoom > 0.0f)
+		if (waiting.has_value())
 		{
-			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spareRoom * kHalf);
+			Core::LoadingLine(waiting->c_str());
+			return;
 		}
 
-		DrawFittedCell(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
+		DrawFittedCell(m_EmptyText, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
+
+		// WARNING: An empty text draws nothing, and a row must end on an item.
+		if (m_EmptyText.empty())
+		{
+			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
+		}
 	}
 
 	void CommitListView::RenderFileRow(
@@ -785,7 +969,7 @@ namespace Graphite {
 
 		if (TableRowSelectable("##file", isSelectedFile, kRowSelectableFlags))
 		{
-			m_SelectedFile = FileSelection{commit.Id, path};
+			SelectFile(FileSelection{commit.Id, path});
 		}
 
 		if (Core::BeginRightClickPopup("file-menu"))
