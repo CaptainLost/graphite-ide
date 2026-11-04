@@ -677,9 +677,9 @@ namespace Graphite {
 		}
 
 		ImGui::EndDisabled();
+		RenderWorktreeItem(branch);
 		RenderReviewItem(branch);
 		RenderLineItems(branch);
-		RenderWorktreeItem(branch);
 
 		ImGui::Separator();
 
