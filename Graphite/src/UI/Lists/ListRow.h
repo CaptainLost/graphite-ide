@@ -39,6 +39,11 @@ namespace Graphite {
 
 	bool ListRowSelectable(const char* id, bool selected, ImGuiSelectableFlags flags = ImGuiSelectableFlags_None);
 
+	// As ListRowSelectable, for a row of `height` instead of the pitch (a row of two text lines). The row's text is
+	// placed by the caller from the item's rectangle.
+	bool ListRowSelectableOfHeight(const char* id, bool selected, float height,
+								   ImGuiSelectableFlags flags = ImGuiSelectableFlags_None);
+
 	// WARNING: ImGui ends a line at its tallest piece plus the item spacing, so a row's text, centred and laid on the
 	// row's line, ends the row below its pitch while the item spacing is more than half the row spacing. A list body
 	// caps the spacing at that half for whatever is laid out inside it; outside one, ListRowTextTop holds the text

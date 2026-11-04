@@ -198,6 +198,11 @@ namespace Graphite {
 	// so the hover asked of the row lets go while an item laid over it is under the pointer, as Selectable's own does.
 	bool ListRowSelectable(const char* id, bool selected, ImGuiSelectableFlags flags)
 	{
+		return ListRowSelectableOfHeight(id, selected, ListRowPitch(), flags);
+	}
+
+	bool ListRowSelectableOfHeight(const char* id, bool selected, float height, ImGuiSelectableFlags flags)
+	{
 		ImGuiWindow* const window = ImGui::GetCurrentWindow();
 
 		if (window->SkipItems)
@@ -225,7 +230,7 @@ namespace Graphite {
 
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(itemSpacingX, kNoItemSpacing));
 		PushClearedSelectableColours();
-		const bool pressed = ImGui::Selectable(id, selected, flags, ImVec2(kToTheWorkRectEdge, ListRowPitch()));
+		const bool pressed = ImGui::Selectable(id, selected, flags, ImVec2(kToTheWorkRectEdge, height));
 		PopClearedSelectableColours();
 		ImGui::PopStyleVar();
 

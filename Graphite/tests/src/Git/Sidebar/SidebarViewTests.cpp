@@ -1,0 +1,269 @@
+#include <doctest/doctest.h>
+
+#include "DrawnGlyphs.h"
+#include "ImGuiFrames.h"
+#include "Git/Sidebar/SidebarView.h"
+#include "Theme/BuiltInSchemes.h"
+#include "UI/Lists/ListRow.h"
+
+#include <imgui.h>
+#include <imgui_internal.h>
+
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
+#include <functional>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace {
+
+	using namespace Graphite;
+
+	constexpr float kWidth = 300.0f;
+	constexpr float kHeight = 400.0f;
+
+	SidebarRow Section(std::string key)
+	{
+		SidebarRow row;
+		row.Kind = SidebarRowKind::Section;
+		row.Key = key;
+		row.Label = "Yours";
+		row.Count = 2;
+		row.Open = true;
+		return row;
+	}
+
+	SidebarRow BranchRow(std::size_t ref)
+	{
+		SidebarRow row;
+		row.Kind = SidebarRowKind::Branch;
+		row.Key = "yours";
+		row.Ref = ref;
+		return row;
+	}
+
+	SidebarRowText TextOfRow(const SidebarRow& row)
+	{
+		SidebarRowText text;
+		text.Head = "branch-" + std::to_string(row.Ref.value_or(0));
+		text.Meta.push_back({"3 days ago", SidebarTone::Dim});
+		text.Meta.push_back({"local only", SidebarTone::Local});
+		return text;
+	}
+
+	// The window the sidebar's rows scroll in, found by name since ImGui names a child after its parent.
+	ImGuiWindow* RowsWindowOf(std::string_view parentName)
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if (window->ParentWindow != nullptr && parentName == window->ParentWindow->Name &&
+				std::strstr(window->Name, "SidebarRows") != nullptr)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	struct Harness
+	{
+		ImGuiFrames Frames;
+		SidebarView View;
+		const char* WindowName;
+		const std::vector<SidebarRow>* Rows = nullptr;
+		std::function<SidebarRowText(const SidebarRow&)> TextOf = TextOfRow;
+		std::string Waiting = "Reading branches";
+		ResolvedScheme Scheme = DarkScheme();
+
+		explicit Harness(const char* windowName) : WindowName(windowName) {}
+
+		void Draw()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(kWidth, kHeight));
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+			ImGui::Begin(WindowName, nullptr,
+						 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+			View.Draw(Rows, TextOf, Waiting, SidebarSelection{}, ReadSidebarColours(Scheme));
+			ImGui::End();
+			ImGui::PopStyleVar();
+		}
+
+		void Next() { Frames.Next([&] { Draw(); }); }
+
+		void Settle()
+		{
+			Next();
+			Next();
+		}
+
+		void Click(ImVec2 at, ImGuiMouseButton button = ImGuiMouseButton_Left)
+		{
+			Frames.Click(at, [&] { Draw(); }, button);
+		}
+
+		ImGuiWindow* RowsWindow() const { return RowsWindowOf(WindowName); }
+	};
+
+	ImVec2 InRows(const ImGuiWindow& rows, float down)
+	{
+		return ImVec2(rows.Pos.x + 60.0f, rows.Pos.y + down);
+	}
+}
+
+TEST_CASE("Git window: clicking a branch row reports that row")
+{
+	Harness harness("SidebarClickBranch");
+	const std::vector<SidebarRow> rows = {Section("yours"), BranchRow(0), BranchRow(1)};
+	harness.Rows = &rows;
+
+	std::vector<SidebarRow> clicked;
+	harness.View.OnClick = [&](const SidebarRow& row) { clicked.push_back(row); };
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	const float secondBranchMiddle = ListRowPitch() + SidebarTwoLineRowHeight() * 1.5f;
+	harness.Click(InRows(*list, secondBranchMiddle));
+
+	REQUIRE(clicked.size() == 1);
+	CHECK(clicked[0].Kind == SidebarRowKind::Branch);
+	CHECK(clicked[0].Ref == std::optional<std::size_t>{1});
+}
+
+TEST_CASE("Git window: clicking a section header reports it for toggling")
+{
+	Harness harness("SidebarClickSection");
+	const std::vector<SidebarRow> rows = {Section("yours"), BranchRow(0)};
+	harness.Rows = &rows;
+
+	std::vector<SidebarRow> clicked;
+	harness.View.OnClick = [&](const SidebarRow& row) { clicked.push_back(row); };
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	harness.Click(InRows(*list, ListRowPitch() * 0.5f));
+
+	REQUIRE(clicked.size() == 1);
+	CHECK(clicked[0].Kind == SidebarRowKind::Section);
+	CHECK(clicked[0].Key == "yours");
+	CHECK(rows[0].Open);
+}
+
+TEST_CASE("Git window: right-clicking a branch row opens its menu")
+{
+	Harness harness("SidebarMenuBranch");
+	const std::vector<SidebarRow> rows = {Section("yours"), BranchRow(0)};
+	harness.Rows = &rows;
+
+	std::vector<SidebarRow> menuFor;
+	harness.View.DrawRowMenu = [&](const SidebarRow& row) {
+		menuFor.push_back(row);
+		ImGui::MenuItem("Checkout");
+	};
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	harness.Click(InRows(*list, ListRowPitch() * 0.5f), ImGuiMouseButton_Right);
+	harness.Next();
+	CHECK(menuFor.empty());
+
+	harness.Click(InRows(*list, ListRowPitch() + SidebarTwoLineRowHeight() * 0.5f), ImGuiMouseButton_Right);
+	harness.Next();
+
+	REQUIRE_FALSE(menuFor.empty());
+	CHECK(menuFor.back().Kind == SidebarRowKind::Branch);
+	CHECK(menuFor.back().Ref == std::optional<std::size_t>{0});
+}
+
+TEST_CASE("Git window: with no rows one waiting row is drawn")
+{
+	Harness harness("SidebarWaiting");
+	int described = 0;
+	harness.TextOf = [&](const SidebarRow& row) {
+		++described;
+		return TextOfRow(row);
+	};
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	std::size_t letters = 0;
+
+	for (const char character : harness.Waiting)
+	{
+		letters += character != ' ' ? 1 : 0;
+	}
+
+	CHECK(described == 0);
+	CHECK(DrawnGlyphs(*list->DrawList).size() == letters);
+	CHECK(list->ContentSize.y <= ListRowPitch() * 2.0f);
+}
+
+TEST_CASE("Git window: of ten thousand rows only those in view are described")
+{
+	Harness harness("SidebarTenThousand");
+
+	std::vector<SidebarRow> rows;
+
+	for (std::size_t index = 0; index < 10000; ++index)
+	{
+		rows.push_back(BranchRow(index));
+	}
+
+	harness.Rows = &rows;
+
+	std::size_t highest = 0;
+	std::size_t described = 0;
+	harness.TextOf = [&](const SidebarRow& row) {
+		++described;
+		highest = std::max(highest, row.Ref.value_or(0));
+		return TextOfRow(row);
+	};
+
+	harness.Next();
+	described = 0;
+	harness.Next();
+
+	CHECK(described > 0);
+	CHECK(described < 20);
+
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+	ImGui::GetIO().AddMousePosEvent(list->Pos.x + 60.0f, list->Pos.y + 100.0f);
+	harness.Next();
+	ImGui::GetIO().AddMouseWheelEvent(0.0f, -30.0f);
+	harness.Next();
+	described = 0;
+	harness.Next();
+
+	CHECK(highest > 20);
+	CHECK(described < 20);
+}
+
+TEST_CASE("Git window: typing in the search field changes the search")
+{
+	Harness harness("SidebarSearch");
+	const std::vector<SidebarRow> rows = {Section("yours"), BranchRow(0)};
+	harness.Rows = &rows;
+
+	harness.Settle();
+	CHECK(harness.View.GetSearch().empty());
+
+	harness.Click(ImVec2(100.0f, 20.0f));
+	ImGui::GetIO().AddInputCharactersUTF8("fix");
+	harness.Next();
+	harness.Next();
+
+	CHECK(harness.View.GetSearch() == "fix");
+}
