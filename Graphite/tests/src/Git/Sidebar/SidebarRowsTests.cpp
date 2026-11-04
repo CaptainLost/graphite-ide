@@ -321,6 +321,20 @@ TEST_CASE("Git window: search matches stashes on their message")
 	CHECK(Describe(read, RowsOf(read, options)) == Lines{"# stashes 1/2", "stash 0"});
 }
 
+TEST_CASE("Git window: while the lines are read only the stashes are listed")
+{
+	const LineRead noLines = LineReadBuilder{}.Build();
+	const std::vector<Core::StashEntry> stashes = {{.Index = 0, .Message = "On main: Parser WIP"}, {.Index = 1, .Message = "On a: docs"}};
+	const std::map<std::string, bool> noneClosed;
+
+	CHECK(Describe(noLines, BuildStashRows(&stashes, {}, noneClosed)) == Lines{"# stashes 2", "stash 0", "stash 1"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, "docs", noneClosed)) == Lines{"# stashes 1/2", "stash 1"});
+	CHECK(Describe(noLines, BuildStashRows(nullptr, {}, noneClosed)) == Lines{"# stashes 0"});
+
+	const std::map<std::string, bool> closed = {{"stashes", false}};
+	CHECK(Describe(noLines, BuildStashRows(&stashes, {}, closed)) == Lines{"# stashes 2 closed"});
+}
+
 TEST_CASE("Git window: search finds merged branches that are hidden")
 {
 	LineReadBuilder builder;

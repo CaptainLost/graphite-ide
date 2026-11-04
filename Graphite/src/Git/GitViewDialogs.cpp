@@ -315,10 +315,7 @@ namespace Graphite {
 					OnBranchRenamed(fromFullName, toFullName);
 				}
 
-				const bool threadIsRenamed =
-					m_Selection.View == GitWindowView::Thread && m_Selection.Branch == fromFullName;
-
-				if (m_SelectedRef == fromFullName || threadIsRenamed)
+				if (m_SelectedRef == fromFullName)
 				{
 					m_PendingRename = BranchRenameSent{.From = fromFullName, .To = toFullName};
 				}

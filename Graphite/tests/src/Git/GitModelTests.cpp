@@ -113,11 +113,7 @@ namespace {
 			return OwnAuthors;
 		}
 
-		Core::Result<std::optional<std::string>> ReadUserEmail() override
-		{
-			++EmailCalls;
-			return UserEmail;
-		}
+		Core::Result<std::optional<std::string>> ReadUserEmail() override { return UserEmail; }
 
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
 		{
@@ -356,7 +352,6 @@ namespace {
 		std::optional<std::string> UserEmail;
 		bool FailOwnAuthors = false;
 		int OwnAuthorsCalls = 0;
-		int EmailCalls = 0;
 		std::optional<Core::OwnAuthorsRequest> LastOwnAuthorsRequest;
 		Core::HeadState Head;
 		bool FailHead = false;
@@ -2608,7 +2603,38 @@ TEST_CASE("A listing asks again while no user e-mail is known")
 
 	ListBranchesAndLandAuthors(model);
 
-	CHECK(port.EmailCalls == 2);
+	CHECK(port.OwnAuthorsCalls == 2);
+}
+
+TEST_CASE("Git window: the user's e-mail is read with the branches")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.UserEmail = "ann@example.com";
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	CHECK_FALSE(model.GetUserEmail().has_value());
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	// Before the authors walk, which the listing only asks for, has landed.
+	CHECK(model.GetBranchAuthors() == nullptr);
+	CHECK(model.GetUserEmail() == std::optional<std::string>{"ann@example.com"});
+
+	port.UserEmail.reset();
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK_FALSE(model.GetUserEmail().has_value());
+
+	port.UserEmail = "ann@example.com";
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.Clear();
+
+	CHECK_FALSE(model.GetUserEmail().has_value());
 }
 
 TEST_CASE("A moved tip asks the authors again")
@@ -2693,7 +2719,6 @@ TEST_CASE("Without a trunk the authors are answered without the own-commit query
 	ListBranchesAndLandAuthors(model);
 
 	CHECK(port.OwnAuthorsCalls == 0);
-	CHECK(port.EmailCalls == 1);
 	REQUIRE(model.GetBranchAuthors() != nullptr);
 	CHECK(model.GetBranchAuthors()->ByTip.empty());
 }

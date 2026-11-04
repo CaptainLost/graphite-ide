@@ -22,7 +22,6 @@ namespace Graphite {
 	class LanguageServices;
 	class RepositoryGitPort;
 	class ReviewModel;
-	class ReviewProgress;
 	class ReviewStore;
 	class ReviewWindows;
 	class SessionWindows;
@@ -157,7 +156,6 @@ namespace Graphite {
 	{
 		ReviewWindows& Windows;
 		ReviewModel& Model;
-		ReviewProgress& Progress;
 		ReviewStore& Store;
 		Core::Ref<const std::vector<Core::Branch>>& ReviewedBranches;
 	};

@@ -54,3 +54,5 @@ A branch that is only looked at holds its base and settings in a draft: a sessio
 
 - [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md): the session this amends.
 - [0583](0583-keep-review-marks-in-their-own-file-beside-the-window-state.md): the file drafts stay out of.
+
+Superseded in part by [0669](0669-show-references-in-a-sidebar-beside-the-history.md): the thread view is gone with the threads. The branch menu's "Review" and "Open review" open the review tab, which keeps the draft as a session at once, so a draft lasts only from `OpenDraft` to `Keep`. The draft itself, the first viewed mark that keeps it, and drafts staying out of `reviews.json` are unchanged.

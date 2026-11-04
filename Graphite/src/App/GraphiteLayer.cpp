@@ -60,10 +60,8 @@
 #include "Core/Base/Log.h"
 
 #include "Core/ImGui/DetachedWindows.h"
-#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
-#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/Theme.h"
@@ -209,7 +207,7 @@ namespace Graphite {
 
 		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
-		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Work, m_GitWindowChanges, m_ActiveScheme,
+		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_GitWindowChanges, m_ActiveScheme,
 																   m_EditorSettings, m_DiffWindows, m_Modals,
 																   m_DocumentBuffers, m_Events));
 		gitView->Subscribe();
@@ -220,23 +218,6 @@ namespace Graphite {
 
 		gitView->OnBranchRenamed = [this](const std::string& from, const std::string& to) {
 			m_ReviewWindows.NoteRename(from, to);
-		};
-
-		gitView->DrawReview = [this](const std::string& branch) { DrawThreadReview(branch); };
-		gitView->TakeReviewClosed = [this] { return m_ReviewWindows.TakeEmbeddedClosed(); };
-		gitView->OpenReviewTab = [this](const std::string& branch) { OpenReviewTab(branch); };
-
-		gitView->ReviewProgressOf = [this](const std::string& branch) {
-			return m_ReviewProgress.CountOf(branch, m_Git.GetBranches(), m_ReviewStore.GetSessions(), m_Reviews);
-		};
-
-		gitView->ReviewProblemOf = [this](const std::string& branch) {
-			return m_ReviewProgress.ProblemOf(branch, m_Git.GetBranches(), m_ReviewStore.GetSessions(), m_Reviews);
-		};
-
-		gitView->SessionBaseOf = [this](const std::string& branch) -> std::optional<std::string> {
-			const ReviewSessions& sessions = m_ReviewStore.GetSessions();
-			return sessions.IsKept(branch) ? std::optional<std::string>{sessions.Find(branch)->Base} : std::nullopt;
 		};
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_DocumentBuffers, m_ActiveScheme, m_DiffWindows,
@@ -250,9 +231,6 @@ namespace Graphite {
 				   const std::filesystem::path& workingDirectory) {
 				return m_Terminals.OpenCommand(label, command.Program, command.Arguments, workingDirectory);
 			}));
-
-		gitView->TitlesNow = [this] { return m_SessionsPanel->GetTitles(); };
-		gitView->WantTitles = [this] { m_SessionsPanel->WantTitles(); };
 
 		// Until a tab takes the keyboard, editor commands act on the active tab, as they always did.
 		m_ActiveEditor.Set(m_DocumentWindows);
@@ -528,7 +506,6 @@ namespace Graphite {
 		m_Folder.Add(Core::CreateScope<DiffsOfFolder>(m_DiffWindows));
 		m_Folder.Add(Core::CreateScope<ReviewsOfFolder>(ReviewParts{.Windows = m_ReviewWindows,
 																	.Model = m_Reviews,
-																	.Progress = m_ReviewProgress,
 																	.Store = m_ReviewStore,
 																	.ReviewedBranches = m_ReviewedBranches}));
 	}
@@ -662,21 +639,15 @@ namespace Graphite {
 		{
 		case ReviewAction::Start:
 			m_ReviewStore.GetSessions().Start(item.Branch, item.Base);
-			ShowThread(item.Branch);
+			OpenReviewTab(item.Branch);
 			break;
 		case ReviewAction::Open:
-			ShowThread(item.Branch);
+			OpenReviewTab(item.Branch);
 			break;
 		case ReviewAction::End:
 			m_ReviewWindows.AskToEnd(item.Branch);
 			break;
 		}
-	}
-
-	void GraphiteLayer::ShowThread(const std::string& branch)
-	{
-		m_GitView->OpenThread(branch);
-		RevealPanel("git");
 	}
 
 	bool GraphiteLayer::OpenReviewDraft(const std::string& branch)
@@ -704,31 +675,6 @@ namespace Graphite {
 
 		sessions.OpenDraft(branch, *base);
 		return true;
-	}
-
-	void GraphiteLayer::DrawThreadReview(const std::string& branch)
-	{
-		if (OpenReviewDraft(branch))
-		{
-			const GitPalette palette = ReadGitPalette(m_ActiveScheme.Get());
-			const SyntaxPalette syntax = ReadSyntaxPalette(m_ActiveScheme.Get());
-
-			m_ReviewWindows.RenderEmbedded(branch, ReviewInputWith(palette, syntax));
-			return;
-		}
-
-		if (const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches(); branches != nullptr)
-		{
-			Core::EmptyState(NoReviewBaseMessage(branch, *branches));
-		}
-		else if (const std::optional<Core::Error>& error = m_Git.GetBranchesError(); error.has_value())
-		{
-			Core::EmptyState("Could not read the branches: " + error->Message);
-		}
-		else
-		{
-			Core::LoadingState("Loading branches");
-		}
 	}
 
 	void GraphiteLayer::OpenReviewTab(const std::string& branch)

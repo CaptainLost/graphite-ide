@@ -683,11 +683,11 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0651](0651-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
 | [0652](0652-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md) | Place non-document rows as blocks from a source the language server does not own | proposed | 2026-10-26 |
 | [0653](0653-read-binary-files-on-demand-into-a-hex-view-with-no-size-limit-and-no-file-handle-held.md) | Read binary files on demand into a hex view, with no size limit and no file handle held | proposed | 2026-10-28 |
-| [0654](0654-count-a-branch-as-holding-work-while-a-commit-of-its-own-has-no-patch-twin-in-the-trunk-or-its-worktree-has-changes.md) | Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes | proposed | 2026-10-28 |
+| [0654](0654-count-a-branch-as-holding-work-while-a-commit-of-its-own-has-no-patch-twin-in-the-trunk-or-its-worktree-has-changes.md) | Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes | superseded by 0669 | 2026-10-28 |
 | [0655](0655-start-a-branch-review-on-its-first-viewed-mark-and-keep-drafts-out-of-reviews-json.md) | Start a branch review on its first viewed mark and keep drafts out of reviews.json | proposed | 2026-10-28 |
 | [0656](0656-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md) | Draw Changes as one view hosted by the side panel and the Git window, sharing one commit draft | proposed | 2026-10-28 |
-| [0657](0657-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md) | Browse every branch in a table in the Git window's main area | proposed | 2026-10-28 |
-| [0658](0658-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md) | Open the Git window on a navigator of work, changes, branches and stashes beside one main area | proposed | 2026-10-28 |
+| [0657](0657-browse-every-branch-in-a-table-in-the-git-window-s-main-area.md) | Browse every branch in a table in the Git window's main area | superseded by 0669 | 2026-10-28 |
+| [0658](0658-open-the-git-window-on-a-navigator-of-work-changes-branches-and-stashes-beside-one-main-area.md) | Open the Git window on a navigator of work, changes, branches and stashes beside one main area | superseded by 0669 | 2026-10-28 |
 | [0659](0659-let-each-shortcut-say-whether-it-fires-while-the-user-types.md) | Let each shortcut say whether it fires while the user types | proposed | 2026-11-02 |
 | [0660](0660-carry-a-folder-s-trust-with-it-when-it-moves-while-open.md) | Carry a folder's trust with it when it moves while open | proposed | 2026-11-03 |
 | [0661](0661-take-the-open-folder-through-its-transitions-in-one-module-whose-participants-decide-every-step.md) | Take the open folder through its transitions in one module whose participants decide every step | proposed | 2026-11-03 |
@@ -698,4 +698,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0666](0666-count-who-holds-each-document-open-with-a-language-server.md) | Count who holds each document open with a language server | proposed | 2026-11-03 |
 | [0667](0667-apply-what-a-landed-git-write-changes-in-one-module-outside-the-panels.md) | Apply what a landed git write changes in one module outside the panels | proposed | 2026-11-03 |
 | [0668](0668-let-a-tab-follow-a-file-that-graphite-itself-renames.md) | Let a tab follow a file that Graphite itself renames | proposed | 2026-11-03 |
+| [0669](0669-show-references-in-a-sidebar-beside-the-history.md) | Show references in a sidebar beside the history | proposed | 2026-11-04 |
 <!-- /adr-index -->

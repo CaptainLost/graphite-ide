@@ -7,7 +7,6 @@
 #include "Git/CheckoutQuestion.h"
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/Branches/BranchDeletion.h"
-#include "Git/Branches/BranchTableView.h"
 #include "Git/Changes/ChangesView.h"
 #include "Git/Diff/DiffBody.h"
 #include "Git/History/CommitLabels.h"
@@ -26,15 +25,12 @@
 #include "Git/History/HistoryReach.h"
 #include "Git/History/HistoryStatus.h"
 #include "Git/History/HistoryStatusLine.h"
-#include "Git/Window/GitWindowSelection.h"
-#include "Git/Window/NavigatorRows.h"
-#include "Git/Window/NavigatorView.h"
-#include "Git/Work/WorkBoard.h"
-#include "Git/Work/WorkModel.h"
-#include "Git/Work/WorkView.h"
+#include "Git/Lines/BranchLines.h"
+#include "Git/Lines/LinesModel.h"
+#include "Git/Sidebar/SidebarRows.h"
+#include "Git/Sidebar/SidebarText.h"
+#include "Git/Sidebar/SidebarView.h"
 #include "Persistence/PersistedState.h"
-#include "Review/ReviewFiles.h"
-#include "Sessions/SessionTitles.h"
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Events/EventBus.h"
@@ -53,8 +49,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -64,12 +62,11 @@
 namespace Graphite {
 	std::string RefLabel(const Core::Branch& branch);
 
-	// The Git window: a navigator of work, changes, branches and stashes beside one main area that shows
-	// what the navigator selects.
+	// The Git window: a sidebar of every reference and stash beside the history of the one selected.
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, WorkModel& work, ChangesView& changes, const ActiveScheme& scheme,
+		GitView(GitModel& model, LinesModel& lines, ChangesView& changes, const ActiveScheme& scheme,
 				EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
 				Core::EventBus& events);
 
@@ -95,32 +92,9 @@ namespace Graphite {
 
 		std::function<void(const std::string& from, const std::string& to)> OnBranchRenamed;
 
-		// Every hook below may be left unset: the window then draws without what it would bring.
-		std::function<Core::Ref<const SessionTitles>()> TitlesNow;
-
-		// Asks for the titles to be read, while the window is on screen.
-		std::function<void()> WantTitles;
-
-		// Draws the embedded review of the thread's branch.
-		std::function<void(const std::string& branch)> DrawReview;
-		std::function<bool()> TakeReviewClosed;
-		std::function<void(const std::string& branch)> OpenReviewTab;
-
-		// Empty while the count is unknown.
-		std::function<std::optional<ViewedCount>(const std::string& branch)> ReviewProgressOf;
-
-		// Why the count will not come; empty while it may.
-		std::function<std::optional<std::string>(const std::string& branch)> ReviewProblemOf;
-
-		// A kept session's base.
-		std::function<std::optional<std::string>(const std::string& branch)> SessionBaseOf;
-
-		void OpenThread(const std::string& branchFullName);
-		void ShowWork(bool expandReady);
-
 		GitWindowState CaptureWindowState() const;
 
-		// Applied through SelectionToRestore once the branches are known.
+		// Applied through RefToRestore once the branches are known.
 		void RestoreWindowState(const GitWindowState& state);
 
 	private:
@@ -193,37 +167,41 @@ namespace Graphite {
 
 		void ConnectViews();
 
-		void Select(const GitWindowSelection& selection);
-
 		// The history of the ref, or HEAD's with none.
 		void SelectRef(std::optional<std::string> fullName);
-		void SelectBranch(const Core::Branch& branch);
 
-		// History's selection names the ref the history shows, so it follows m_SelectedRef.
-		void KeepHistorySelectionOnRef();
-
-		void FollowWork(bool panelOnScreen);
 		void ApplyPendingRestore();
-		void RebuildBoardWhenOutOfDate();
-		void RebuildNavigatorWhenOutOfDate();
 
-		void RenderNavigator();
-		void RenderNavigatorHeader();
-		void RenderMain(const GitPalette& palette);
-		void RenderWork();
-		void RenderThread();
+		// The folder's name and path, then HEAD's branch with its distance to its upstream.
+		void RenderFolderHeader();
+
+		void RenderSidebar();
+		void RebuildSidebarWhenOutOfDate();
+
+		// What a row stands for in the snapshots its rows were built from; null for another kind of row.
+		const Core::Branch* SidebarBranchOf(const SidebarRow& row) const;
+		const Core::StashEntry* SidebarStashOf(const SidebarRow& row) const;
+
+		SidebarRowText SidebarTextOf(const SidebarRow& row) const;
+		SidebarSelection SidebarSelectionNow() const;
+		void AnswerSidebarClick(const SidebarRow& row);
+		void AnswerSidebarLink(SidebarLink link, const std::string& remote);
+
+		// Fills the menu the sidebar opened for a branch, base or stash row.
+		void DrawSidebarRowMenu(const SidebarRow& row);
+
+		// WARNING: Reached from nowhere until the history's Local changes row shows them in its preview.
 		void RenderChanges(const GitPalette& palette);
 		void RenderChangesDiff(const GitPalette& palette);
+
 		void RenderHistory(const GitPalette& palette);
 		void RenderHistoryHeader();
-		void RenderBranchTable();
 
-		const WorkCard* CardOfBranch(const std::string& branchFullName) const;
 		std::string HistoryTitle() const;
 
 		void FollowSelectedRef();
-		void FollowThreadBranch(const std::vector<Core::Branch>& branches, bool renameLanded);
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
+		void FollowSelectedStash();
 
 		// Opens the menu on a right-click of the last item.
 		void RenderRefMenu(const Core::Branch& branch);
@@ -234,8 +212,8 @@ namespace Graphite {
 		void RenderReviewItem(const Core::Branch& branch);
 		void DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items);
 
-		void RenderStashes();
-		void RenderStashMenu(const Core::StashEntry& stash);
+		// Fills a menu already open.
+		void RenderStashMenuItems(const Core::StashEntry& stash);
 
 		void SelectStash(const Core::Oid& stash);
 		void DeselectStash();
@@ -315,7 +293,7 @@ namespace Graphite {
 		std::optional<BaseSeen> m_BaseSeen;
 
 		GitModel& m_Model;
-		WorkModel& m_Work;
+		LinesModel& m_Lines;
 		ChangesView& m_Changes;
 		const ActiveScheme& m_Scheme;
 
@@ -330,57 +308,42 @@ namespace Graphite {
 		CommitListView m_Commits;
 		DiffView m_Diff;
 
-		GitWindowSelection m_Selection;
-
-		// A restored thread or history waits here for the branches it names.
+		// A restored history waits here for the branches it names.
 		std::optional<GitWindowState> m_PendingRestore;
 
-		NavigatorView m_Navigator;
-		WorkView m_WorkView;
-		BranchTableView m_BranchTable;
+		SidebarView m_Sidebar;
 
-		struct BoardInputs
+		struct SidebarInputs
 		{
-			Core::Ref<const WorkFacts> Facts;
-			Core::Ref<const std::vector<Core::Branch>> Branches;
-			Core::Ref<const Core::WorkingTreeStatus> Status;
-			Core::Ref<const SessionTitles> Titles;
+			Core::Ref<const LineRead> Read;
+			Core::Ref<const std::vector<Core::StashEntry>> Stashes;
+			Core::Ref<const BranchAuthors> Authors;
+			std::string Search;
 
-			friend bool operator==(const BoardInputs&, const BoardInputs&) = default;
-		};
+			// Moved by every section or group opened or closed and every remote's merged branches shown or hidden.
+			std::uint64_t ChoicesVersion = 0;
 
-		// WARNING: The inputs are held, not only compared, so a snapshot freed and another made at its address can
-		// never pass for the one the board was built from.
-		std::optional<BoardInputs> m_BoardBuiltFrom;
-		WorkBoard m_Board;
-		std::uint64_t m_BoardVersion = 0;
-		std::vector<std::filesystem::path> m_CardWorktrees;
-
-		Core::Ref<const std::vector<Core::Branch>> m_FollowedBranches;
-
-		struct NavigatorInputs
-		{
-			std::uint64_t BoardVersion = 0;
-			Core::Ref<const std::vector<Core::Branch>> Branches;
-			std::optional<std::size_t> ChangeCount;
-			GitWindowSelection Selection;
-
-			// In whole minutes, so the branch ages rebuild the rows once a minute, not each frame.
+			// In whole minutes, so the activity groups are rebuilt once a minute, not each frame.
 			std::chrono::sys_seconds Now{};
 
-			friend bool operator==(const NavigatorInputs&, const NavigatorInputs&) = default;
+			friend bool operator==(const SidebarInputs&, const SidebarInputs&) = default;
 		};
 
-		// The rows' indices point into the branches held here.
-		std::optional<NavigatorInputs> m_NavigatorBuiltFrom;
-		std::vector<NavigatorRow> m_NavigatorRows;
+		// WARNING: The inputs are held, not only compared: the rows' indices point into the read and the stashes held
+		// here, m_SidebarLines views into the read, and a snapshot freed and another made at its address must never
+		// pass for the one the rows were built from. Without a read the rows are the stashes alone.
+		std::optional<SidebarInputs> m_SidebarBuiltFrom;
+		std::vector<SidebarRow> m_SidebarRows;
+		std::optional<BranchLines> m_SidebarLines;
+		std::string m_MostCommonLine;
+		std::optional<std::size_t> m_HeadRef; // the checked-out branch's ref: its row stands for HEAD's history
 
-		// WARNING: The table compares its input's snapshots by address, so these are the ones it was last handed,
-		// held until the next frame it draws: a snapshot freed while the table remembers its address could come
-		// back as another at the same address and pass for it.
-		Core::Ref<const std::vector<Core::Branch>> m_TableBranches;
-		Core::Ref<const BranchAuthors> m_TableAuthors;
-		Core::Ref<const WorkFacts> m_TableFacts;
+		std::map<std::string, bool> m_OpenByUser;
+		std::set<std::string> m_ShowingMerged;
+		std::uint64_t m_SidebarChoicesVersion = 0;
+
+		// The full name of the branch, or the id of the stash, the open row menu was opened for.
+		std::string m_SidebarMenuFor;
 
 		// WARNING: A working-tree diff asks GitModel's single working-tree slot, which a diff tab shares, so it is
 		// asked for only while it is drawn.
@@ -389,8 +352,6 @@ namespace Graphite {
 		bool m_ChangesDrawn = false;
 
 		std::optional<std::string> m_SelectedRef;
-
-		bool m_StashesCollapsed = false;
 
 		std::optional<Core::Oid> m_SelectedStash;
 

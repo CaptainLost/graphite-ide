@@ -410,3 +410,71 @@ TEST_CASE("Git window: a base with empty qualities is not described by zero coun
 	base.Reason = Core::BaseReason::Authors;
 	CHECK(BaseReasonText(base, read) == "Found from the data");
 }
+
+TEST_CASE("Git window: the waiting row counts the branches being read")
+{
+	const std::optional<Core::Error> none;
+	std::vector<Core::Branch> branches(3448);
+
+	const std::optional<SidebarWaitingRow> many = DescribeSidebarWait(
+		{.HasRead = false, .Reading = true, .LinesError = none, .Branches = &branches, .BranchesError = none});
+	REQUIRE(many.has_value());
+	CHECK(many->Text == "Reading 3,448 branches\xE2\x80\xA6");
+	CHECK_FALSE(many->Failed);
+
+	branches.resize(1);
+	CHECK(DescribeSidebarWait({.HasRead = false, .Reading = true, .LinesError = none, .Branches = &branches, .BranchesError = none})->Text ==
+		  "Reading 1 branch\xE2\x80\xA6");
+
+	const std::optional<SidebarWaitingRow> unread = DescribeSidebarWait(
+		{.HasRead = false, .Reading = false, .LinesError = none, .Branches = nullptr, .BranchesError = none});
+	REQUIRE(unread.has_value());
+	CHECK(unread->Text == "Reading branches\xE2\x80\xA6");
+	CHECK_FALSE(unread->Failed);
+
+	CHECK_FALSE(DescribeSidebarWait({.HasRead = true, .Reading = true, .LinesError = none, .Branches = &branches, .BranchesError = none})
+					.has_value());
+}
+
+TEST_CASE("Git window: a lines error stands in the waiting row without a loader")
+{
+	const std::optional<Core::Error> none;
+	const std::optional<Core::Error> linesError = Core::Error{Core::ErrorCode::IoFailure, "graph.bin is locked"};
+	const std::vector<Core::Branch> branches(2);
+
+	const std::optional<SidebarWaitingRow> failed = DescribeSidebarWait(
+		{.HasRead = false, .Reading = false, .LinesError = linesError, .Branches = &branches, .BranchesError = none});
+	REQUIRE(failed.has_value());
+	CHECK(failed->Text == "Cannot read the branches' lines: graph.bin is locked");
+	CHECK(failed->Failed);
+
+	// A read asked again after the failure is on its way, so the row waits for it.
+	CHECK_FALSE(DescribeSidebarWait({.HasRead = false, .Reading = true, .LinesError = linesError, .Branches = &branches, .BranchesError = none})
+					->Failed);
+
+	// Once a read is in hand, a later failure leaves its rows on screen.
+	CHECK_FALSE(DescribeSidebarWait({.HasRead = true, .Reading = false, .LinesError = linesError, .Branches = &branches, .BranchesError = none})
+					.has_value());
+
+	const std::optional<Core::Error> branchesError = Core::Error{Core::ErrorCode::IoFailure, "packed-refs is locked"};
+	const std::optional<SidebarWaitingRow> unlisted = DescribeSidebarWait(
+		{.HasRead = false, .Reading = false, .LinesError = none, .Branches = nullptr, .BranchesError = branchesError});
+	REQUIRE(unlisted.has_value());
+	CHECK(unlisted->Text == "Cannot read the branches: packed-refs is locked");
+	CHECK(unlisted->Failed);
+}
+
+TEST_CASE("Git window: a stash row reads its message and its age")
+{
+	const Core::StashEntry stash{.Index = 0,
+								 .Message = "On develop: try lazy counts\nsecond line",
+								 .SecondsSinceEpoch = LineReadBuilder::Now().time_since_epoch().count() - 2 * 86400 - 90 * 60};
+
+	const SidebarRowText text = DescribeStashRow(stash, LineReadBuilder::Now(), nullptr);
+
+	CHECK(text.Head == "On develop: try lazy counts");
+	CHECK(text.Right == "2d");
+	CHECK(text.Tooltip.starts_with("On develop: try lazy counts\nsecond line\n"));
+	CHECK(text.Meta.empty());
+	CHECK_FALSE(text.IsHead);
+}

@@ -76,5 +76,13 @@ namespace Graphite {
 
 	inline constexpr std::size_t kFlatGroupMost = 15;
 
+	// The open-state key of the Yours section, the first of the sections.
+	inline constexpr const char* kYoursSectionKey = "yours";
+
 	std::vector<SidebarRow> BuildSidebarRows(const SidebarInput& input);
+
+	// The rows that need no line model, for while the lines are read: the Stashes section alone, as BuildSidebarRows
+	// lists it.
+	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, std::string_view search,
+										   const std::map<std::string, bool>& openByUser);
 }

@@ -5,8 +5,6 @@
 #include "Git/Changes/ChangeBases.h"
 #include "Git/GitPort.h"
 #include "Git/Lines/LinesPort.h"
-#include "Git/Work/WorkPort.h"
-#include "Core/Git/PatchMatch.h"
 #include "Review/ReviewPort.h"
 #include "Settings/UserDirectories.h"
 
@@ -23,7 +21,7 @@ namespace Graphite {
 
 	// WARNING: A git_repository must not be used from two threads at once, so each worker thread
 	// caches its own handle per root.
-	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public WorkPort, public LinesPort
+	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public LinesPort
 	{
 	public:
 		// Each repository's line store is a folder under lineStoreRoot (LineStoreFor).
@@ -87,8 +85,8 @@ namespace Graphite {
 												  const std::filesystem::path& newPath) override;
 		Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) override;
 
-		Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request, const WorkFactsProgress& progress) override;
-		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override;
+		// The files with uncommitted changes in the worktree at that folder, a wholly untracked folder counted as one.
+		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree);
 
 		Core::Result<LineRead> ReadLines(const LineReadInput& input) override;
 		Core::Result<LineRead> RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now) override;
@@ -116,8 +114,5 @@ namespace Graphite {
 
 		// Set once, read on worker threads.
 		const std::filesystem::path m_LineStoreRoot;
-
-		// Needs no reset when the root changes: an object id names the same commit in any repository.
-		Core::PatchIdCache m_PatchIds;
 	};
 }

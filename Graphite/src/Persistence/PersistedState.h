@@ -87,22 +87,10 @@ namespace Graphite {
 		friend bool operator==(const ReviewTabState&, const ReviewTabState&) = default;
 	};
 
-	// What the Git window shows beside its navigator.
-	enum class GitWindowView
-	{
-		Work,
-		Thread,
-		Changes,
-		History,
-		Branches
-	};
-
+	// What the Git window shows beside its sidebar: the history of one reference.
 	struct GitWindowState
 	{
-		GitWindowView View = GitWindowView::Work;
-
-		// Thread: its branch. History: its ref, empty for HEAD's.
-		std::string Branch;
+		std::string Ref; // its full name; empty for HEAD's history
 
 		friend bool operator==(const GitWindowState&, const GitWindowState&) = default;
 	};

@@ -12,8 +12,8 @@
 
 namespace Graphite {
 
-	// What a chip says by its colour: green for work that could go into the trunk as it is, amber for a branch behind
-	// it or an operation under way, blue for uncommitted work and twins in the trunk, plain for the rest.
+	// What a chip says by its colour: green for a state that needs nothing done (a branch in sync), amber for one that
+	// needs a look, blue for information, plain for the rest.
 	enum class ChipTone
 	{
 		Plain,

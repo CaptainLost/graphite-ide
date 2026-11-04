@@ -1,7 +1,10 @@
 #include "Git/Sidebar/SidebarText.h"
 
 #include "Git/Branches/BranchAge.h"
+#include "Git/History/CommitDetails.h"
 
+#include "Core/Base/Count.h"
+#include "Core/Base/Strings.h"
 #include "Core/Git/OwnAuthors.h"
 
 #include <algorithm>
@@ -15,24 +18,7 @@ namespace Graphite {
 
 		constexpr std::int64_t kSecondsPerDay = 86400;
 		constexpr const char* kSeparator = " \xC2\xB7 "; // " · "
-
-		std::string WithCommas(std::size_t number)
-		{
-			const std::string digits = std::to_string(number);
-			std::string text;
-
-			for (std::size_t index = 0; index < digits.size(); ++index)
-			{
-				if (index > 0 && (digits.size() - index) % 3 == 0)
-				{
-					text += ',';
-				}
-
-				text += digits[index];
-			}
-
-			return text;
-		}
+		constexpr const char* kEllipsis = "\xE2\x80\xA6";
 
 		std::string LastSegment(const std::string& name)
 		{
@@ -162,12 +148,12 @@ namespace Graphite {
 
 			if (branch.Ahead > 0)
 			{
-				words = WithCommas(branch.Ahead) + " to push";
+				words = Core::FormatCount(branch.Ahead) + " to push";
 			}
 
 			if (branch.Behind > 0)
 			{
-				words += (words.empty() ? "" : kSeparator) + WithCommas(branch.Behind) + " to pull";
+				words += (words.empty() ? "" : kSeparator) + Core::FormatCount(branch.Behind) + " to pull";
 			}
 
 			return words;
@@ -203,7 +189,7 @@ namespace Graphite {
 				return "Merged into " + name;
 			}
 
-			const std::string ahead = WithCommas(line.Ahead) + " ahead of " + name;
+			const std::string ahead = Core::FormatCount(line.Ahead) + " ahead of " + name;
 			return line.Kind == Core::ComparedKind::Branch ? "Built on " + name + ": " + ahead : ahead;
 		}
 
@@ -319,12 +305,12 @@ namespace Graphite {
 		if (base.Reason == Core::BaseReason::MergedLines)
 		{
 			return qualities.MergedLines == 1 ? "1 different branch merged into it in the last 90 days"
-											  : WithCommas(qualities.MergedLines) + " different branches merged into it in the last 90 days";
+											  : Core::FormatCount(qualities.MergedLines) + " different branches merged into it in the last 90 days";
 		}
 
 		const std::int64_t days = std::max<std::int64_t>(1, qualities.Span / kSecondsPerDay);
-		const std::string people = qualities.Authors == 1 ? "1 person" : WithCommas(qualities.Authors) + " people";
-		return people + " worked on it over " + WithCommas(static_cast<std::size_t>(days)) + (days == 1 ? " day" : " days");
+		const std::string people = qualities.Authors == 1 ? "1 person" : Core::FormatCount(qualities.Authors) + " people";
+		return people + " worked on it over " + Core::FormatCount(static_cast<std::size_t>(days)) + (days == 1 ? " day" : " days");
 	}
 
 	SidebarRowText DescribeSidebarRow(const SidebarRow& row, const SidebarTextInput& input)
@@ -435,7 +421,7 @@ namespace Graphite {
 		{
 			if (place.Tone == SidebarTone::Both && localBranch->DistanceKnown)
 			{
-				tip += "\nLocal copy: " + WithCommas(localBranch->Ahead) + " to push, " + WithCommas(localBranch->Behind) + " to pull";
+				tip += "\nLocal copy: " + Core::FormatCount(localBranch->Ahead) + " to push, " + Core::FormatCount(localBranch->Behind) + " to pull";
 			}
 			else if (place.Tone != SidebarTone::Both)
 			{
@@ -448,6 +434,46 @@ namespace Graphite {
 			tip += "\nDeleted on " + place.Gone + "; only the local copy is left";
 		}
 
+		return text;
+	}
+
+	std::optional<SidebarWaitingRow> DescribeSidebarWait(const SidebarWaitInput& input)
+	{
+		if (input.HasRead)
+		{
+			return std::nullopt;
+		}
+
+		if (input.LinesError.has_value() && !input.Reading)
+		{
+			return SidebarWaitingRow{.Text = "Cannot read the branches' lines: " + input.LinesError->Message, .Failed = true};
+		}
+
+		if (input.Branches != nullptr)
+		{
+			const std::size_t count = input.Branches->size();
+			const char* const noun = count == 1 ? " branch" : " branches";
+
+			return SidebarWaitingRow{.Text = "Reading " + Core::FormatCount(count) + noun + kEllipsis};
+		}
+
+		if (input.BranchesError.has_value())
+		{
+			return SidebarWaitingRow{.Text = "Cannot read the branches: " + input.BranchesError->Message, .Failed = true};
+		}
+
+		return SidebarWaitingRow{.Text = std::string("Reading branches") + kEllipsis};
+	}
+
+	SidebarRowText DescribeStashRow(const Core::StashEntry& stash, std::chrono::sys_seconds now,
+									const std::chrono::time_zone* zone)
+	{
+		const std::chrono::sys_seconds made{std::chrono::seconds{stash.SecondsSinceEpoch}};
+
+		SidebarRowText text;
+		text.Head = std::string(Core::FirstLine(stash.Message));
+		text.Right = FormatBranchAge(made, now);
+		text.Tooltip = stash.Message + "\n" + FormattedTimestamp(made, zone);
 		return text;
 	}
 }

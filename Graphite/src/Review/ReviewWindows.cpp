@@ -72,20 +72,6 @@ namespace Graphite {
 		}
 	}
 
-	// WARNING: A tab and the embedded review can show one branch, so what one of them leaves stays in the model
-	// while the other still shows it, or the other would drop back to its loader.
-	void ReviewWindows::ForgetUnlessShown(const Tab& leaving, ReviewModel& model) const
-	{
-		const auto showsTheSame = [&leaving](const Tab& other) { return &other != &leaving && other.Key == leaving.Key; };
-		const bool stillShown =
-			std::ranges::any_of(m_Tabs, showsTheSame) || (m_Embedded.has_value() && showsTheSame(*m_Embedded));
-
-		if (!stillShown)
-		{
-			ForgetTab(leaving, model);
-		}
-	}
-
 	bool ReviewWindows::FollowSession(Tab& tab, const ReviewSessions& sessions, ReviewModel& model)
 	{
 		const ReviewSession* session = sessions.Find(tab.Branch);
@@ -155,14 +141,6 @@ namespace Graphite {
 		}
 
 		m_Tabs.clear();
-
-		if (m_Embedded.has_value())
-		{
-			ForgetTab(*m_Embedded, model);
-			m_Embedded.reset();
-		}
-
-		m_EmbeddedClosed = false;
 		m_PendingRenames.clear();
 
 		if (m_EndQuestion.IsAsked())
@@ -285,11 +263,6 @@ namespace Graphite {
 				++tabIndex;
 			}
 
-			if (m_Embedded.has_value() && m_Embedded->Branch == rename.From)
-			{
-				FollowRename(*m_Embedded, rename.To, model);
-			}
-
 			followed.push_back(std::move(rename));
 		}
 
@@ -363,11 +336,6 @@ namespace Graphite {
 			}
 
 			++tabIndex;
-		}
-
-		if (m_Embedded.has_value() && !FollowSession(*m_Embedded, sessions, model))
-		{
-			m_Embedded.reset();
 		}
 	}
 
@@ -674,7 +642,7 @@ namespace Graphite {
 
 			if (!frame.Open || tab.CloseRequested)
 			{
-				ForgetUnlessShown(tab, input.Model);
+				ForgetTab(tab, input.Model);
 				m_Tabs.erase(m_Tabs.begin() + static_cast<std::ptrdiff_t>(tabIndex));
 				continue;
 			}
@@ -683,38 +651,5 @@ namespace Graphite {
 		}
 
 		RenderEndDialog(input);
-	}
-
-	void ReviewWindows::RenderEmbedded(const std::string& branch, const ReviewRenderInput& input)
-	{
-		if (m_Embedded.has_value() && m_Embedded->Branch != branch)
-		{
-			ForgetUnlessShown(*m_Embedded, input.Model);
-			m_Embedded.reset();
-			m_EmbeddedClosed = false;
-		}
-
-		if (!m_Embedded.has_value())
-		{
-			m_Embedded.emplace();
-			m_Embedded->Branch = branch;
-			m_Embedded->Embedded = true;
-		}
-
-		if (!FollowSession(*m_Embedded, input.Sessions, input.Model))
-		{
-			m_Embedded.reset();
-			return;
-		}
-
-		// Each branch keeps its own lists' scroll and column widths, as each tab's window does.
-		ImGui::PushID(branch.c_str());
-		RenderTab(*m_Embedded, input);
-		ImGui::PopID();
-	}
-
-	bool ReviewWindows::TakeEmbeddedClosed()
-	{
-		return std::exchange(m_EmbeddedClosed, false);
 	}
 }

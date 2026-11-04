@@ -1,6 +1,6 @@
 # 0657. Browse every branch in a table in the Git window's main area
 
-Status: proposed
+Status: superseded by 0669
 Date: 2026-10-28
 
 ## Context

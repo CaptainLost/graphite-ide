@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "ImGuiFrames.h"
-#include "Git/Work/ChipRow.h"
+#include "Git/Window/ChipRow.h"
 #include "Theme/BuiltInSchemes.h"
 
 #include <imgui.h>

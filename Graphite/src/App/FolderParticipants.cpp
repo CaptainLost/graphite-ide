@@ -7,7 +7,6 @@
 #include "Language/Server/LanguageServices.h"
 #include "Persistence/StateKeeper.h"
 #include "Review/ReviewModel.h"
-#include "Review/ReviewProgress.h"
 #include "Review/ReviewStore.h"
 #include "Review/ReviewWindows.h"
 #include "Sessions/SessionWindows.h"
@@ -204,7 +203,6 @@ namespace Graphite {
 	void ReviewsOfFolder::LetGo(FolderExit)
 	{
 		m_Parts.Windows.CloseAll(m_Parts.Model);
-		m_Parts.Progress.Clear();
 		m_Parts.Store.Close();
 		m_Parts.ReviewedBranches.reset();
 	}

@@ -104,14 +104,4 @@ namespace Graphite {
 
 		return std::format("\"{}{}\" ({})", shown, truncationSuffix, position);
 	}
-
-	std::string StashSectionCount(std::optional<std::size_t> stashCount)
-	{
-		if (!stashCount.has_value())
-		{
-			return {};
-		}
-
-		return std::format("({})", *stashCount);
-	}
 }

@@ -18,7 +18,7 @@ namespace Graphite {
 
 	struct SidebarSelection
 	{
-		std::optional<std::size_t> Ref;
+		std::optional<std::size_t> Ref; // a base's local copy selects the base's row
 		std::optional<std::size_t> Stash;
 	};
 
@@ -46,10 +46,11 @@ namespace Graphite {
 	class SidebarView
 	{
 	public:
-		// With `rows` null, one waiting row with `waitingText` stands in for the sections that need the model. Only the
-		// rows in view are described (`textOf`) and drawn.
+		// With `waiting`, its one row comes first, in place of the sections that need the model, and `rows` are those that
+		// work without it (the stashes); null `rows` are none. Only the rows in view are described (`textOf`) and drawn.
 		void Draw(const std::vector<SidebarRow>* rows, const std::function<SidebarRowText(const SidebarRow&)>& textOf,
-				  std::string_view waitingText, const SidebarSelection& selected, const SidebarColours& colours);
+				  const std::optional<SidebarWaitingRow>& waiting, const SidebarSelection& selected,
+				  const SidebarColours& colours);
 
 		std::function<void(const SidebarRow&)> OnClick;     // Branch, Base, Stash, Group, Section, Link rows
 		std::function<void(const SidebarRow&)> DrawRowMenu; // right-click on Branch, Base and Stash rows; fills an open popup. Runs inside the row loop: the owner must not rebuild rows from it

@@ -49,16 +49,9 @@ namespace Graphite {
 			{SessionTab::Requests, "requests"},
 		};
 
-		constexpr std::string_view kGitWindowView = "restore.gitWindow.view";
-		constexpr std::string_view kGitWindowBranch = "restore.gitWindow.branch";
-
-		constexpr std::pair<GitWindowView, std::string_view> kGitWindowViewNames[] = {
-			{GitWindowView::Work, "work"},
-			{GitWindowView::Thread, "thread"},
-			{GitWindowView::Changes, "changes"},
-			{GitWindowView::History, "history"},
-			{GitWindowView::Branches, "branches"},
-		};
+		// WARNING: Not the "restore.gitWindow.view" and "restore.gitWindow.branch" of the views the window had before, which
+		// are no longer read: a file that still holds them restores HEAD's history.
+		constexpr std::string_view kGitWindowRef = "restore.gitWindow.ref";
 
 		constexpr std::pair<Core::DiffTarget, std::string_view> kDiffTargetNames[] = {
 			{Core::DiffTarget::WorkTreeToIndex, "unstaged"},
@@ -410,8 +403,7 @@ namespace Graphite {
 			}
 		}
 
-		file.Set(kGitWindowView, std::string{NameFromTable(kGitWindowViewNames, state.GitWindow.View)});
-		file.Set(kGitWindowBranch, state.GitWindow.Branch);
+		file.Set(kGitWindowRef, state.GitWindow.Ref);
 	}
 
 	WorkspaceState ReadWorkspaceState(const Core::JsonFile& file, const std::filesystem::path& root)
@@ -517,12 +509,7 @@ namespace Graphite {
 			state.Terminals = std::move(terminals);
 		}
 
-		// WARNING: An unknown view drops the branch kept with it: the branch means something only to its own view.
-		if (const std::optional<GitWindowView> view = ValueNamed(kGitWindowViewNames, file.Get(kGitWindowView)))
-		{
-			state.GitWindow.View = *view;
-			state.GitWindow.Branch = file.Get(kGitWindowBranch);
-		}
+		state.GitWindow.Ref = file.Get(kGitWindowRef);
 
 		return state;
 	}

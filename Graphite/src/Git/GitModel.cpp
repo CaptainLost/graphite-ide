@@ -90,6 +90,7 @@ namespace Graphite {
 		m_Branches.Clear();
 		m_BranchAuthors.Clear();
 		m_LastAuthorsRequest.reset();
+		m_UserEmail.Clear();
 		m_Stashes.Clear();
 		m_Head.Clear();
 		m_Log.Clear();
@@ -241,6 +242,8 @@ namespace Graphite {
 
 	void GitModel::RequestBranches()
 	{
+		RequestUserEmail();
+
 		const std::uint64_t generation = m_Branches.Begin();
 
 		// WARNING: A listing equal to the snapshot held keeps that snapshot's pointer. Every reader follows the snapshot by
@@ -261,6 +264,27 @@ namespace Graphite {
 				}
 			});
 		});
+	}
+
+	void GitModel::RequestUserEmail()
+	{
+		const std::uint64_t generation = m_UserEmail.Begin();
+
+		m_Submit([this, generation]() {
+			Core::Result<std::optional<std::string>> result = m_Port.ReadUserEmail();
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				m_UserEmail.Land(generation, std::move(result));
+			});
+		});
+	}
+
+	const std::optional<std::string>& GitModel::GetUserEmail() const
+	{
+		static const std::optional<std::string> kUnread;
+		const Core::Ref<const std::optional<std::string>> email = m_UserEmail.Get();
+
+		return email ? *email : kUnread;
 	}
 
 	void GitModel::RequestBranchAuthorsWhenTipsMoved()

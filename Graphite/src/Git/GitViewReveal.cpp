@@ -45,7 +45,6 @@ namespace Graphite {
 		m_SelectedRef.reset();
 		DeselectStash();
 		m_PendingRestore.reset();
-		m_Selection = {GitWindowView::History, {}};
 
 		m_FilterBuffer = {};
 		m_FilterPathBuffer = {};

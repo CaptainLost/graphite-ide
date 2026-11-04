@@ -39,11 +39,10 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr float kNavigatorWidthInFontSizes = 15.0f;
 		constexpr float kPathBoxWidthInFontSizes = 14.0f;
 		constexpr int kGitTableColumnCount = 2;
-		constexpr int kNavigatorColumn = 0;
-		constexpr int kMainColumn = 1;
+		constexpr int kSidebarColumn = 0;
+		constexpr int kHistoryColumn = 1;
 
 		std::filesystem::path RelativeOrClimbing(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
@@ -79,12 +78,12 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, WorkModel& work, ChangesView& changes, const ActiveScheme& scheme,
+	GitView::GitView(GitModel& model, LinesModel& lines, ChangesView& changes, const ActiveScheme& scheme,
 					 EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
 					 Core::EventBus& events)
-		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Work(work),
+		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines),
 		  m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
-		  m_Buffers(buffers), m_Events(events), m_Navigator(scheme), m_WorkView(scheme), m_DetachQuestion(modals, "###GitDetach"),
+		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
@@ -94,7 +93,7 @@ namespace Graphite {
 		ConnectViews();
 	}
 
-	void GitView::OnUpdate(Core::Timestep timestep)
+	void GitView::OnUpdate(Core::Timestep)
 	{
 		const bool panelOnScreen = HasBeenDrawnOnLatestFrame();
 
@@ -115,10 +114,9 @@ namespace Graphite {
 
 		m_ChangesDrawn = false;
 
+		ApplyPendingRestore();
 		FollowSelectedRef();
-
-		m_Work.OnUpdate(timestep);
-		FollowWork(panelOnScreen);
+		FollowSelectedStash();
 
 		if (const std::optional<Core::CheckoutTarget> heldTarget = m_HeldCheckout.TakeOnceOnScreen(panelOnScreen))
 		{
@@ -163,31 +161,11 @@ namespace Graphite {
 								  BranchWithFullName(*branches, m_PendingRename->From) == nullptr &&
 								  BranchWithFullName(*branches, m_PendingRename->To) != nullptr;
 
-		FollowThreadBranch(*branches, renameLanded);
 		FollowHistoryRef(*branches, renameLanded);
 
 		if (renameLanded)
 		{
 			m_PendingRename.reset();
-		}
-	}
-
-	void GitView::FollowThreadBranch(const std::vector<Core::Branch>& branches, bool renameLanded)
-	{
-		if (m_Selection.View != GitWindowView::Thread)
-		{
-			return;
-		}
-
-		if (renameLanded && m_Selection.Branch == m_PendingRename->From)
-		{
-			m_Selection.Branch = m_PendingRename->To;
-			return;
-		}
-
-		if (BranchWithFullName(branches, m_Selection.Branch) == nullptr)
-		{
-			ShowWork(false);
 		}
 	}
 
@@ -214,7 +192,6 @@ namespace Graphite {
 		}
 
 		m_PendingRename.reset();
-		KeepHistorySelectionOnRef();
 		RequestLog(reach);
 	}
 
@@ -487,23 +464,19 @@ namespace Graphite {
 		m_PendingRename.reset();
 		m_BaseSeen.reset();
 
-		// WARNING: Subscribe runs before GraphiteLayer subscribes its own handlers, so a view the opening folder
+		// WARNING: Subscribe runs before GraphiteLayer subscribes its own handlers, so a history the opening folder
 		// restores from its handler of the same event is asked for after this has let go of the last one.
-		m_Selection = {};
 		m_PendingRestore.reset();
 
-		m_Work.Clear();
-		m_FollowedBranches.reset();
-		m_BoardBuiltFrom.reset();
-		m_Board = {};
-		m_CardWorktrees.clear();
-		m_NavigatorBuiltFrom.reset();
-		m_NavigatorRows.clear();
-
-		m_BranchTable.Reset();
-		m_TableBranches.reset();
-		m_TableAuthors.reset();
-		m_TableFacts.reset();
+		// WARNING: The lines view into the read held with the rows, so they go first.
+		m_SidebarLines.reset();
+		m_SidebarBuiltFrom.reset();
+		m_SidebarRows.clear();
+		m_MostCommonLine.clear();
+		m_HeadRef.reset();
+		m_OpenByUser.clear();
+		m_ShowingMerged.clear();
+		++m_SidebarChoicesVersion;
 
 		m_ChangesPicked = false;
 		m_ChangesDiff.Diff = {};
@@ -547,21 +520,22 @@ namespace Graphite {
 
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
-		// WARNING: Not the "git" of the refs and history this replaced, so the navigator opens at its own width
-		// rather than at the width ImGui saved for the old refs column.
-		if (ImGui::BeginTable("gitWindow", kGitTableColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+		RenderFolderHeader();
+
+		// WARNING: Not the "gitWindow" of the navigator this replaced, so the sidebar opens at its own width rather than
+		// at the width ImGui saved for the navigator's column.
+		if (ImGui::BeginTable("gitWindowA", kGitTableColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
-			ImGui::TableSetupColumn("navigator", ImGuiTableColumnFlags_WidthFixed,
-									ImGui::GetFontSize() * kNavigatorWidthInFontSizes);
-			ImGui::TableSetupColumn("main", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("sidebar", ImGuiTableColumnFlags_WidthFixed, SidebarColumnWidth());
+			ImGui::TableSetupColumn("history", ImGuiTableColumnFlags_WidthStretch);
 
 			ImGui::TableNextRow();
 
-			ImGui::TableSetColumnIndex(kNavigatorColumn);
-			RenderNavigator();
+			ImGui::TableSetColumnIndex(kSidebarColumn);
+			RenderSidebar();
 
-			ImGui::TableSetColumnIndex(kMainColumn);
-			RenderMain(palette);
+			ImGui::TableSetColumnIndex(kHistoryColumn);
+			RenderHistory(palette);
 
 			ImGui::EndTable();
 		}
@@ -598,28 +572,14 @@ namespace Graphite {
 										   .SplitterId = "##gitSplit"});
 	}
 
-	void GitView::SelectBranch(const Core::Branch& branch)
-	{
-		SelectRef(branch.FullName);
-	}
-
 	void GitView::SelectRef(std::optional<std::string> fullName)
 	{
 		m_PendingRestore.reset();
 		m_SelectedRef = std::move(fullName);
-		m_Selection = {GitWindowView::History, m_SelectedRef.value_or(std::string{})};
 
 		DeselectStash();
 
 		RequestLog(HistoryReach{});
-	}
-
-	void GitView::KeepHistorySelectionOnRef()
-	{
-		if (m_Selection.View == GitWindowView::History)
-		{
-			m_Selection.Branch = m_SelectedRef.value_or(std::string{});
-		}
 	}
 
 	void GitView::RenderRefMenu(const Core::Branch& branch)

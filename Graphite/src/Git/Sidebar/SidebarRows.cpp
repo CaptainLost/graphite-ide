@@ -70,6 +70,12 @@ namespace Graphite {
 				return std::move(m_Rows);
 			}
 
+			std::vector<SidebarRow> BuildStashes()
+			{
+				AddStashes();
+				return std::move(m_Rows);
+			}
+
 		private:
 			const std::vector<Core::Branch>& Branches() const { return *m_Input.Read.Branches; }
 
@@ -245,7 +251,7 @@ namespace Graphite {
 					return;
 				}
 
-				if (AddSection(SidebarSection::Yours, "yours", "Yours", shown.size(), all.size()))
+				if (AddSection(SidebarSection::Yours, kYoursSectionKey, "Yours", shown.size(), all.size()))
 				{
 					for (const std::size_t ref : shown)
 					{
@@ -519,5 +525,21 @@ namespace Graphite {
 	std::vector<SidebarRow> BuildSidebarRows(const SidebarInput& input)
 	{
 		return Builder{input}.Build();
+	}
+
+	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, std::string_view search,
+										   const std::map<std::string, bool>& openByUser)
+	{
+		static const LineRead kNoLines;
+		static const std::set<std::string> kNoneShowingMerged;
+
+		const SidebarInput input{.Read = kNoLines,
+								 .Stashes = stashes,
+								 .Authors = nullptr,
+								 .Search = search,
+								 .OpenByUser = openByUser,
+								 .ShowingMerged = kNoneShowingMerged,
+								 .Now = {}};
+		return Builder{input}.BuildStashes();
 	}
 }

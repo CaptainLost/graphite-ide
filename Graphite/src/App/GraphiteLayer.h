@@ -23,7 +23,6 @@
 #include "Git/GitModel.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/RepositoryGitPort.h"
-#include "Git/Work/WorkModel.h"
 #include "Git/WriteConsequences.h"
 #include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
@@ -212,14 +211,9 @@ namespace Graphite {
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
 		void ApplyReviewMenuItem(const ReviewMenuItem& item);
 
-		// Selects the branch's thread in the Git window and brings the window forward.
-		void ShowThread(const std::string& branch);
-
 		// Opens a draft against ReviewBaseOf's base for a branch with neither a draft nor a session. False while the
 		// branch still has neither: the branches are unread, or there is nothing to review it against.
 		bool OpenReviewDraft(const std::string& branch);
-
-		void DrawThreadReview(const std::string& branch);
 
 		// The tab exists only with a kept session, so the draft is kept first.
 		void OpenReviewTab(const std::string& branch);
@@ -375,10 +369,10 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these nine is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel,
-		// ReviewModel, WorkModel and LinesModel submit captures `this` and reads m_GitPort, so the two queues are
-		// declared LAST of the nine: members are destroyed in reverse order, which joins every worker before the models
-		// and the port go away. Declaring a queue first compiles and fails only under real threading.
+		// The order among these eight is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel,
+		// ReviewModel and LinesModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST
+		// of the eight: members are destroyed in reverse order, which joins every worker before the models and the port
+		// go away. Declaring a queue first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 					   [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); }};
@@ -387,7 +381,6 @@ namespace Graphite {
 		BlameModel m_Blame{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  WatchWithDirectoryWatcher()};
-		WorkModel m_Work{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		Core::JobQueue m_Jobs;
 
@@ -424,7 +417,6 @@ namespace Graphite {
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
-		ReviewProgress m_ReviewProgress;
 
 		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
 

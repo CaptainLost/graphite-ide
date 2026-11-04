@@ -5,6 +5,7 @@
 #include "Core/Base/JsonFile.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <string>
@@ -626,38 +627,41 @@ TEST_CASE("A stored review without a branch is dropped")
 	CHECK(reviews.front().Branch == "refs/heads/side");
 }
 
-TEST_CASE("The Git window's view and branch are kept and read back")
+TEST_CASE("Git window: the window state round-trips the shown ref")
 {
-	const std::vector<std::pair<GitWindowState, std::string>> cases = {
-		{GitWindowState{.View = GitWindowView::Work}, "work"},
-		{GitWindowState{.View = GitWindowView::Thread, .Branch = "refs/heads/feature/x"}, "thread"},
-		{GitWindowState{.View = GitWindowView::Changes}, "changes"},
-		{GitWindowState{.View = GitWindowView::History, .Branch = "refs/remotes/origin/side"}, "history"},
-		{GitWindowState{.View = GitWindowView::Branches}, "branches"},
-	};
-
-	for (const auto& [kept, name] : cases)
+	for (const std::string& ref : {std::string{"refs/remotes/origin/side"}, std::string{"refs/heads/feature/x"}, std::string{}})
 	{
-		CAPTURE(name);
+		CAPTURE(ref);
 
 		WorkspaceState state;
-		state.GitWindow = kept;
+		state.GitWindow = GitWindowState{.Ref = ref};
 
 		Core::JsonFile file;
+		file.Set("restore.gitWindow.view", "thread");
+		file.Set("restore.gitWindow.branch", "refs/heads/stale");
 		WriteWorkspaceState(state, kRoot, file);
 
-		CHECK(file.Get("restore.gitWindow.view") == name);
-		CHECK(file.Get("restore.gitWindow.branch") == kept.Branch);
-		CHECK(ReadWorkspaceState(file, kRoot).GitWindow == kept);
+		const std::vector<std::string> keys = file.CollectKeys();
+
+		CHECK(file.Get("restore.gitWindow.ref") == ref);
+		CHECK(std::ranges::find(keys, "restore.gitWindow.view") == keys.end());
+		CHECK(std::ranges::find(keys, "restore.gitWindow.branch") == keys.end());
+		CHECK(ReadWorkspaceState(file, kRoot).GitWindow == state.GitWindow);
 	}
 }
 
-TEST_CASE("An unknown Git window view reads back as Work")
+TEST_CASE("Git window: an old window state file restores head's history")
 {
-	Core::JsonFile file;
-	file.Set("restore.gitWindow.view", "sideways");
-	file.Set("restore.gitWindow.branch", "refs/heads/side");
+	for (const char* view : {"work", "thread", "changes", "history", "branches"})
+	{
+		CAPTURE(view);
 
-	CHECK(ReadWorkspaceState(file, kRoot).GitWindow == GitWindowState{});
+		Core::JsonFile file;
+		file.Set("restore.gitWindow.view", view);
+		file.Set("restore.gitWindow.branch", "refs/heads/side");
+
+		CHECK(ReadWorkspaceState(file, kRoot).GitWindow == GitWindowState{});
+	}
+
 	CHECK(ReadWorkspaceState(Core::JsonFile{}, kRoot).GitWindow == GitWindowState{});
 }

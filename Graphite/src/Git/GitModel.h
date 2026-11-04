@@ -164,6 +164,10 @@ namespace Graphite {
 
 		const std::optional<Core::Error>& GetBranchesError() const { return m_Branches.GetError(); }
 
+		// Read beside every branch listing, so what needs it never waits for the authors walk. Empty while unread and
+		// when git has none.
+		const std::optional<std::string>& GetUserEmail() const;
+
 		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
 		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
 		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
@@ -386,6 +390,8 @@ namespace Graphite {
 
 		void RequestBranchAuthorsWhenTipsMoved();
 
+		void RequestUserEmail();
+
 		bool AnswersWantedWorkingTreeDiff() const
 		{
 			return m_WorkingTreeDiffFor.has_value() && m_WorkingTreeDiffFor == m_WantedWorkingTreeDiff;
@@ -565,6 +571,7 @@ namespace Graphite {
 		GenerationSlot<Core::WorkingTreeStatus> m_Status;
 		GenerationSlot<std::vector<Core::Branch>> m_Branches;
 		GenerationSlot<BranchAuthors> m_BranchAuthors;
+		GenerationSlot<std::optional<std::string>> m_UserEmail;
 		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;
 		GenerationSlot<Core::HeadState> m_Head;

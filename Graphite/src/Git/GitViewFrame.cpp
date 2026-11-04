@@ -10,18 +10,15 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
-#include "Core/Platform/Shell.h"
 
 #include "Git/DefaultBranch.h"
 #include "Git/GitStatusText.h"
 #include "Git/History/CommitLabels.h"
+#include "Git/Window/ChipRow.h"
 #include "Git/Window/GitWindowRestore.h"
-#include "Git/Window/ThreadHeader.h"
 #include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/FittedText.h"
-#include "UI/Lists/ListRow.h"
-#include "UI/ToastEvent.h"
 
 #include <IconsLucide.h>
 
@@ -29,7 +26,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -40,15 +36,10 @@ namespace Graphite {
 		constexpr float kChangesListWidthInFontSizes = 22.0f;
 		constexpr int kChangesColumnCount = 2;
 
-		constexpr const char* kNoTrunkName = "the trunk";
-
 		// The header's path is in the code face, smaller than the folder's name beside it.
 		constexpr float kHeaderPathScale = 0.8f;
 		constexpr float kHistoryTitleScale = 0.9f;
 		constexpr float kKeepFontSize = 0.0f;
-
-		// The ref every stash is kept under: while a stash's history is shown, no branch row reads as shown.
-		constexpr const char* kStashRef = "refs/stash";
 
 		const std::vector<Core::Branch>& BranchesOrNone(const Core::Ref<const std::vector<Core::Branch>>& branches)
 		{
@@ -59,16 +50,6 @@ namespace Graphite {
 		std::chrono::sys_seconds NowInSeconds()
 		{
 			return std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-		}
-
-		std::optional<std::size_t> ChangeCountOf(const Core::Ref<const Core::WorkingTreeStatus>& status)
-		{
-			if (!status)
-			{
-				return std::nullopt;
-			}
-
-			return status->Entries.size();
 		}
 
 		std::string FolderName(const std::filesystem::path& folder)
@@ -84,46 +65,30 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.c_str());
 			ImGui::PopStyleColor();
 		}
+
+		std::optional<std::size_t> CheckedOutRefOf(const LineRead& read)
+		{
+			if (!read.Branches)
+			{
+				return std::nullopt;
+			}
+
+			const std::vector<Core::Branch>& branches = *read.Branches;
+			const auto checkedOut = std::ranges::find(branches, true, &Core::Branch::IsHead);
+
+			if (checkedOut == branches.end())
+			{
+				return std::nullopt;
+			}
+
+			return static_cast<std::size_t>(checkedOut - branches.begin());
+		}
 	}
 
 	void GitView::ConnectViews()
 	{
-		m_Navigator.OnSelect = [this](const GitWindowSelection& selection) { Select(selection); };
-		m_Navigator.OnShowReady = [this] { ShowWork(true); };
-		m_Navigator.DrawBranchMenu = [this](const Core::Branch& branch) { RenderRefMenu(branch); };
-
-		m_WorkView.OnReview = [this](const WorkCard& card) { OpenThread(card.Branch); };
-		m_WorkView.OnChanges = [this] { Select(GitWindowSelection{GitWindowView::Changes, {}}); };
-
-		m_WorkView.OnOpenFolder = [this](const std::filesystem::path& folder) {
-			if (const Core::Result<void> opened = Core::Shell::OpenFolder(folder); !opened)
-			{
-				m_Events.Publish(FolderToast(Core::ToastKind::Error, "Cannot open folder", opened.GetError().Message,
-											 m_Model.GetWorkingDirectory()));
-			}
-		};
-
-		m_WorkView.DrawBranchMenu = [this](const std::string& branchFullName) {
-			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-
-			if (const Core::Branch* branch = BranchWithFullName(BranchesOrNone(branches), branchFullName))
-			{
-				RenderRefMenuItems(*branch);
-			}
-		};
-
-		m_WorkView.ReviewProgressOf = [this](const std::string& branchFullName) {
-			return ReviewProgressOf ? ReviewProgressOf(branchFullName) : std::optional<ViewedCount>{};
-		};
-
-		m_WorkView.ReviewProblemOf = [this](const std::string& branchFullName) {
-			return ReviewProblemOf ? ReviewProblemOf(branchFullName) : std::optional<std::string>{};
-		};
-
-		m_WorkView.OnRefresh = [this] { m_Work.Refresh(); };
-
-		m_BranchTable.OnBranchClicked = [this](const Core::Branch& branch) { SelectBranch(branch); };
-		m_BranchTable.DrawBranchMenu = [this](const Core::Branch& branch) { RenderRefMenu(branch); };
+		m_Sidebar.OnClick = [this](const SidebarRow& row) { AnswerSidebarClick(row); };
+		m_Sidebar.DrawRowMenu = [this](const SidebarRow& row) { DrawSidebarRowMenu(row); };
 
 		m_Changes.OnFileChosen = [this](const OpenDiff& diff) {
 			// WARNING: GitModel keeps a single slot for the working-tree diff, so a working-tree tab of another diff
@@ -138,59 +103,16 @@ namespace Graphite {
 		};
 	}
 
-	void GitView::Select(const GitWindowSelection& selection)
-	{
-		switch (selection.View)
-		{
-		case GitWindowView::Work:
-			ShowWork(false);
-			return;
-		case GitWindowView::Thread:
-			OpenThread(selection.Branch);
-			return;
-		case GitWindowView::History:
-			SelectRef(selection.Branch.empty() ? std::nullopt : std::optional<std::string>{selection.Branch});
-			return;
-		case GitWindowView::Changes:
-		case GitWindowView::Branches:
-			m_PendingRestore.reset();
-			m_Selection = {selection.View, {}};
-			return;
-		}
-	}
-
-	void GitView::OpenThread(const std::string& branchFullName)
-	{
-		if (branchFullName.empty())
-		{
-			ShowWork(false);
-			return;
-		}
-
-		m_PendingRestore.reset();
-		m_Selection = {GitWindowView::Thread, branchFullName};
-	}
-
-	void GitView::ShowWork(bool expandReady)
-	{
-		m_PendingRestore.reset();
-		m_Selection = {GitWindowView::Work, {}};
-
-		if (expandReady)
-		{
-			m_WorkView.ExpandReady();
-		}
-	}
-
 	GitWindowState GitView::CaptureWindowState() const
 	{
-		// WARNING: A restore still waiting for the branches is what the window will show, not the Work it shows meanwhile.
+		// WARNING: A restore still waiting for the branches is what the window will show, not HEAD's history it shows
+		// meanwhile.
 		if (m_PendingRestore.has_value())
 		{
 			return *m_PendingRestore;
 		}
 
-		return GitWindowState{.View = m_Selection.View, .Branch = m_Selection.Branch};
+		return GitWindowState{.Ref = m_SelectedRef.value_or(std::string{})};
 	}
 
 	void GitView::RestoreWindowState(const GitWindowState& state)
@@ -207,11 +129,8 @@ namespace Graphite {
 		}
 
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-		const bool namesBranch = (m_PendingRestore->View == GitWindowView::Thread ||
-								  m_PendingRestore->View == GitWindowView::History) &&
-								 !m_PendingRestore->Branch.empty();
 
-		if (namesBranch && !branches)
+		if (!m_PendingRestore->Ref.empty() && !branches)
 		{
 			return;
 		}
@@ -219,136 +138,18 @@ namespace Graphite {
 		const GitWindowState state = *m_PendingRestore;
 		m_PendingRestore.reset();
 
-		Select(SelectionToRestore(state, BranchesOrNone(branches)));
-	}
+		const std::optional<std::string> ref = RefToRestore(state, BranchesOrNone(branches));
 
-	void GitView::FollowWork(bool panelOnScreen)
-	{
-		ApplyPendingRestore();
-
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-
-		// WARNING: Only the Git window reads the facts, and a read lists every worktree and counts the changes in
-		// each, so a window that is not on screen asks for none; the snapshot it missed is asked for once it is.
-		if (panelOnScreen && branches && branches != m_FollowedBranches)
-		{
-			m_FollowedBranches = branches;
-			m_Work.FollowBranches(*branches);
-		}
-
-		// WARNING: The sessions are indexed only once something asks: the cards' titles come from them, and the
-		// Sessions panel may never have been shown.
-		if (panelOnScreen && WantTitles)
-		{
-			WantTitles();
-		}
-
-		RebuildBoardWhenOutOfDate();
-		m_Work.SetPolled(m_CardWorktrees, panelOnScreen && m_Selection.View == GitWindowView::Work);
-	}
-
-	void GitView::RebuildBoardWhenOutOfDate()
-	{
-		BoardInputs inputs{.Facts = m_Work.GetFacts(),
-						   .Branches = m_Model.GetBranches(),
-						   .Status = m_Model.GetStatus(),
-						   .Titles = TitlesNow ? TitlesNow() : Core::Ref<const SessionTitles>{}};
-
-		if (m_BoardBuiltFrom == inputs)
+		// HEAD's history, already what the window shows, is asked for once the history is first drawn.
+		if (ref == m_SelectedRef && !m_SelectedStash.has_value())
 		{
 			return;
 		}
 
-		const Core::Ref<const SessionTitles>& titles = inputs.Titles;
-
-		m_Board = BuildWorkBoard(WorkBoardInput{
-			.Branches = inputs.Branches.get(),
-			.Facts = inputs.Facts.get(),
-			.WorkingCopyChanges = ChangeCountOf(inputs.Status),
-			.WorkingDirectory = m_Model.GetWorkingDirectory(),
-			.TitleOf =[&titles](const std::filesystem::path& worktree) -> std::optional<std::string> {
-				return titles ? SessionTitleFor(*titles, worktree) : std::nullopt;
-			}});
-
-		m_CardWorktrees.clear();
-
-		for (const WorkCard& card : m_Board.Cards)
-		{
-			if (card.Kind != WorkCardKind::WorkingCopy && card.Worktree.has_value())
-			{
-				m_CardWorktrees.push_back(*card.Worktree);
-			}
-		}
-
-		m_BoardBuiltFrom = std::move(inputs);
-		++m_BoardVersion;
+		SelectRef(ref);
 	}
 
-	void GitView::RebuildNavigatorWhenOutOfDate()
-	{
-		const bool showsStash = m_Selection.View == GitWindowView::History && m_SelectedStash.has_value();
-
-		NavigatorInputs inputs{.BoardVersion = m_BoardVersion,
-							   .Branches = m_Model.GetBranches(),
-							   .ChangeCount = ChangeCountOf(m_Model.GetStatus()),
-							   .Selection = showsStash ? GitWindowSelection{GitWindowView::History, kStashRef} : m_Selection,
-							   .Now = std::chrono::floor<std::chrono::minutes>(NowInSeconds())};
-
-		if (m_NavigatorBuiltFrom == inputs)
-		{
-			return;
-		}
-
-		m_NavigatorRows = BuildNavigatorRows(NavigatorInput{.Board = &m_Board,
-															.ChangeCount = inputs.ChangeCount,
-															.Branches = inputs.Branches.get(),
-															.Selection = inputs.Selection,
-															.Now = inputs.Now});
-		m_NavigatorBuiltFrom = std::move(inputs);
-	}
-
-	void GitView::RenderNavigator()
-	{
-		RenderNavigatorHeader();
-		RebuildNavigatorWhenOutOfDate();
-
-		const ImVec2 fillTheRest{0.0f, 0.0f};
-
-		if (ImGui::BeginChild("##navigator", fillTheRest))
-		{
-			const ListBodyScope listBody;
-			ImGui::Indent(ListRowEndInset());
-
-			const Core::Ref<const std::vector<Core::Branch>>& branches = m_NavigatorBuiltFrom->Branches;
-			m_Navigator.Draw(m_NavigatorRows, BranchesOrNone(branches));
-
-			const std::optional<Core::Error>& branchesError = m_Model.GetBranchesError();
-
-			if (!branches && branchesError.has_value())
-			{
-				ImGui::TextDisabled("%s", FitToWidth(branchesError->Message, ImGui::GetContentRegionAvail().x).c_str());
-			}
-			else if (!branches)
-			{
-				ImGui::PushID("##branchesLoading");
-				Core::LoadingLine("Loading branches");
-				ImGui::PopID();
-			}
-
-			// WARNING: Drawn before the branch list is read, the stashes sit under the loader, then jump down once
-			// the branches land.
-			if (branches || branchesError.has_value())
-			{
-				RenderStashes();
-			}
-
-			ImGui::Unindent(ListRowEndInset());
-		}
-
-		ImGui::EndChild();
-	}
-
-	void GitView::RenderNavigatorHeader()
+	void GitView::RenderFolderHeader()
 	{
 		const float room = ImGui::GetContentRegionAvail().x;
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -447,94 +248,239 @@ namespace Graphite {
 		ImGui::Separator();
 	}
 
-	void GitView::RenderMain(const GitPalette& palette)
+	void GitView::RenderSidebar()
 	{
-		switch (m_Selection.View)
+		RebuildSidebarWhenOutOfDate();
+
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const std::optional<SidebarWaitingRow> waiting = DescribeSidebarWait(SidebarWaitInput{
+			.HasRead = m_SidebarBuiltFrom->Read != nullptr,
+			.Reading = m_Lines.IsReading(),
+			.LinesError = m_Lines.GetError(),
+			.Branches = branches.get(),
+			.BranchesError = m_Model.GetBranchesError()});
+
+		const std::function<SidebarRowText(const SidebarRow&)> textOf = [this](const SidebarRow& row) {
+			return SidebarTextOf(row);
+		};
+
+		m_Sidebar.Draw(&m_SidebarRows, textOf, waiting, SidebarSelectionNow(), ReadSidebarColours(m_Scheme.Get()));
+	}
+
+	void GitView::RebuildSidebarWhenOutOfDate()
+	{
+		SidebarInputs inputs{.Read = m_Lines.GetRead(),
+							 .Stashes = m_Model.GetStashes(),
+							 .Authors = m_Model.GetBranchAuthors(),
+							 .Search = m_Sidebar.GetSearch(),
+							 .ChoicesVersion = m_SidebarChoicesVersion,
+							 .Now = std::chrono::floor<std::chrono::minutes>(NowInSeconds())};
+
+		if (m_SidebarBuiltFrom == inputs)
 		{
-		case GitWindowView::Work:
-			RenderWork();
-			return;
-		case GitWindowView::Thread:
-			RenderThread();
-			return;
-		case GitWindowView::Changes:
-			RenderChanges(palette);
-			return;
-		case GitWindowView::History:
-			RenderHistory(palette);
-			return;
-		case GitWindowView::Branches:
-			RenderBranchTable();
 			return;
 		}
-	}
 
-	void GitView::RenderWork()
-	{
-		// The branches are read before the facts are asked for, so the wait for them is the board's wait too.
-		const bool branchesPending = !m_Model.GetBranches() && !m_Model.GetBranchesError().has_value();
-		const ImVec2 fillTheRest{0.0f, 0.0f};
-
-		if (ImGui::BeginChild("##work", fillTheRest))
+		// WARNING: The lines view into the read they were built from, so they go before that read can.
+		if (!m_SidebarBuiltFrom.has_value() || m_SidebarBuiltFrom->Read != inputs.Read)
 		{
-			m_WorkView.Draw(m_Board, m_Work.IsReading() || branchesPending, m_Work.GetError(), NowInSeconds());
-		}
+			m_SidebarLines.reset();
+			m_MostCommonLine.clear();
+			m_HeadRef.reset();
 
-		ImGui::EndChild();
-	}
-
-	const WorkCard* GitView::CardOfBranch(const std::string& branchFullName) const
-	{
-		const auto found = std::ranges::find_if(m_Board.Cards, [&branchFullName](const WorkCard& card) {
-			return card.Kind == WorkCardKind::Branch && card.Branch == branchFullName;
-		});
-
-		return found == m_Board.Cards.end() ? nullptr : &*found;
-	}
-
-	void GitView::RenderThread()
-	{
-		// A copy: the header's button and the review below may each change the selection.
-		const std::string branch = m_Selection.Branch;
-		const std::string trunkName = m_Board.Trunk.has_value() ? Core::ShortBranchName(*m_Board.Trunk) : kNoTrunkName;
-		const std::optional<std::string> base = SessionBaseOf ? SessionBaseOf(branch) : std::nullopt;
-		const bool againstTrunk = !base.has_value() || base == m_Board.Trunk;
-
-		const ThreadHeaderInput header{
-			.Card = CardOfBranch(branch),
-			.TrunkName = trunkName,
-			.AgainstBase = againstTrunk ? std::nullopt : std::optional<std::string>{Core::ShortBranchName(*base)},
-			.Branch = branch,
-			.Viewed = ReviewProgressOf ? ReviewProgressOf(branch) : std::nullopt,
-			.ReviewProblem = ReviewProblemOf ? ReviewProblemOf(branch) : std::nullopt,
-			.Colours = ReadChipColours(m_Scheme.Get())};
-
-		switch (DrawThreadHeader(header))
-		{
-		case ThreadHeaderClick::OpenInOwnTab:
-			if (OpenReviewTab)
+			if (inputs.Read)
 			{
-				OpenReviewTab(branch);
+				m_SidebarLines.emplace(*inputs.Read);
+				m_MostCommonLine = MostCommonLineOf(*inputs.Read);
+				m_HeadRef = CheckedOutRefOf(*inputs.Read);
 			}
-			break;
-		case ThreadHeaderClick::BackToWork:
-			ShowWork(false);
-			return;
-		case ThreadHeaderClick::None:
-			break;
 		}
 
-		if (!DrawReview)
+		if (inputs.Read)
 		{
-			Core::EmptyState("The review cannot be shown in this window.");
+			m_SidebarRows = BuildSidebarRows(SidebarInput{.Read = *inputs.Read,
+														  .Stashes = inputs.Stashes.get(),
+														  .Authors = inputs.Authors.get(),
+														  .Search = inputs.Search,
+														  .OpenByUser = m_OpenByUser,
+														  .ShowingMerged = m_ShowingMerged,
+														  .Now = inputs.Now});
+		}
+		else
+		{
+			m_SidebarRows = BuildStashRows(inputs.Stashes.get(), inputs.Search, m_OpenByUser);
+		}
+
+		m_SidebarBuiltFrom = std::move(inputs);
+	}
+
+	const Core::Branch* GitView::SidebarBranchOf(const SidebarRow& row) const
+	{
+		const Core::Ref<const LineRead>& read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read : nullptr;
+
+		if (!read || !read->Branches || !row.Ref.has_value() || *row.Ref >= read->Branches->size())
+		{
+			return nullptr;
+		}
+
+		return &(*read->Branches)[*row.Ref];
+	}
+
+	const Core::StashEntry* GitView::SidebarStashOf(const SidebarRow& row) const
+	{
+		const Core::Ref<const std::vector<Core::StashEntry>>& stashes =
+			m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Stashes : nullptr;
+
+		if (!stashes || !row.Stash.has_value() || *row.Stash >= stashes->size())
+		{
+			return nullptr;
+		}
+
+		return &(*stashes)[*row.Stash];
+	}
+
+	SidebarRowText GitView::SidebarTextOf(const SidebarRow& row) const
+	{
+		if (row.Kind == SidebarRowKind::Stash)
+		{
+			const Core::StashEntry* stash = SidebarStashOf(row);
+			return stash != nullptr ? DescribeStashRow(*stash, NowInSeconds(), ReaderTimeZone()) : SidebarRowText{};
+		}
+
+		if (!m_SidebarLines.has_value())
+		{
+			return SidebarRowText{};
+		}
+
+		return DescribeSidebarRow(row, SidebarTextInput{.Read = *m_SidebarBuiltFrom->Read,
+														.Lines = *m_SidebarLines,
+														.UserEmail = m_Model.GetUserEmail(),
+														.MostCommonLine = m_MostCommonLine,
+														.Now = NowInSeconds()});
+	}
+
+	SidebarSelection GitView::SidebarSelectionNow() const
+	{
+		SidebarSelection selection;
+
+		if (m_SelectedStash.has_value())
+		{
+			const Core::Ref<const std::vector<Core::StashEntry>>& stashes =
+				m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Stashes : nullptr;
+
+			if (stashes)
+			{
+				const auto shown = std::ranges::find(*stashes, *m_SelectedStash, &Core::StashEntry::Id);
+
+				if (shown != stashes->end())
+				{
+					selection.Stash = static_cast<std::size_t>(shown - stashes->begin());
+				}
+			}
+
+			return selection;
+		}
+
+		if (m_SidebarLines.has_value())
+		{
+			selection.Ref = m_SelectedRef.has_value() ? m_SidebarLines->IndexOf(*m_SelectedRef) : m_HeadRef;
+		}
+
+		return selection;
+	}
+
+	void GitView::AnswerSidebarClick(const SidebarRow& row)
+	{
+		switch (row.Kind)
+		{
+		case SidebarRowKind::Branch:
+		case SidebarRowKind::Base:
+			if (const Core::Branch* branch = SidebarBranchOf(row))
+			{
+				SelectRef(branch->FullName);
+			}
+			return;
+		case SidebarRowKind::Stash:
+			if (const Core::StashEntry* stash = SidebarStashOf(row))
+			{
+				SelectStash(stash->Id);
+			}
+			return;
+		case SidebarRowKind::Section:
+		case SidebarRowKind::Group:
+			m_OpenByUser[row.Key] = !row.Open;
+			++m_SidebarChoicesVersion;
+			return;
+		case SidebarRowKind::Link:
+			if (row.Link.has_value())
+			{
+				AnswerSidebarLink(*row.Link, row.Remote);
+			}
+			return;
+		}
+	}
+
+	void GitView::AnswerSidebarLink(SidebarLink link, const std::string& remote)
+	{
+		switch (link)
+		{
+		case SidebarLink::ToYours:
+			// Yours is the first section.
+			m_OpenByUser[kYoursSectionKey] = true;
+			++m_SidebarChoicesVersion;
+			m_Sidebar.ScrollToTop();
+			return;
+		case SidebarLink::ShowMerged:
+			m_ShowingMerged.insert(remote);
+			++m_SidebarChoicesVersion;
+			return;
+		case SidebarLink::HideMerged:
+			m_ShowingMerged.erase(remote);
+			++m_SidebarChoicesVersion;
+			return;
+		case SidebarLink::WhyBases:
+			// Answered by the explanation of the vs picker, which this window does not have yet.
+			return;
+		}
+	}
+
+	void GitView::DrawSidebarRowMenu(const SidebarRow& row)
+	{
+		const bool isStash = row.Kind == SidebarRowKind::Stash;
+		const Core::Branch* branch = isStash ? nullptr : SidebarBranchOf(row);
+		const Core::StashEntry* stash = isStash ? SidebarStashOf(row) : nullptr;
+
+		std::string shownFor;
+
+		if (branch != nullptr)
+		{
+			shownFor = branch->FullName;
+		}
+		else if (stash != nullptr)
+		{
+			shownFor = stash->Id.ToHex();
+		}
+
+		// WARNING: The sidebar keys a row by its place in the read or the stash list, which a branch or stash made or
+		// gone shifts, so a menu left open while the rows are rebuilt could come to stand on another reference. It
+		// closes instead of offering that one's actions under the one the reader right-clicked.
+		if (ImGui::IsWindowAppearing())
+		{
+			m_SidebarMenuFor = shownFor;
+		}
+		else if (shownFor.empty() || shownFor != m_SidebarMenuFor)
+		{
+			ImGui::CloseCurrentPopup();
 			return;
 		}
 
-		DrawReview(branch);
-
-		if (TakeReviewClosed && TakeReviewClosed())
+		if (branch != nullptr)
 		{
-			ShowWork(false);
+			RenderRefMenuItems(*branch);
+		}
+		else if (stash != nullptr)
+		{
+			RenderStashMenuItems(*stash);
 		}
 	}
 
@@ -683,38 +629,5 @@ namespace Graphite {
 			RenderRefMenu(*named);
 			ImGui::PopID();
 		}
-	}
-
-	void GitView::RenderBranchTable()
-	{
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-
-		// WARNING: The held snapshots stay as they are on this path: the table builds no rows without branches, so
-		// it still remembers the addresses of the ones it was handed last.
-		if (!branches)
-		{
-			if (const std::optional<Core::Error>& error = m_Model.GetBranchesError(); error.has_value())
-			{
-				Core::EmptyState("Could not read the branches: " + error->Message);
-			}
-			else
-			{
-				Core::LoadingState("Loading branches");
-			}
-
-			return;
-		}
-
-		m_TableBranches = branches;
-		m_TableAuthors = m_Model.GetBranchAuthors();
-		m_TableFacts = m_Work.GetFacts();
-
-		m_BranchTable.Draw(BranchTableInput{.Branches = m_TableBranches.get(),
-											.Authors = m_TableAuthors.get(),
-											.Facts = m_TableFacts.get(),
-											.HeldByWorktree = BranchesHeldByOtherWorktrees(m_TableFacts.get(),
-																						   m_Model.GetWorkingDirectory()),
-											.Now = NowInSeconds()},
-						   ReaderTimeZone());
 	}
 }

@@ -1,4 +1,4 @@
-#include "Git/Work/ChipRow.h"
+#include "Git/Window/ChipRow.h"
 
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"

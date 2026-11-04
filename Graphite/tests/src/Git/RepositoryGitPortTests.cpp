@@ -8,6 +8,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Git/Lines/LineStore.h"
+#include "Review/ReviewRepository.h"
 
 #include <git2.h>
 
@@ -940,4 +941,28 @@ TEST_CASE("Git window: the git port reads lines into the store root it was given
 
 	port.SetRoot({});
 	port.LetGoOfHandlesNoLongerCurrent();
+}
+
+TEST_CASE("Counting a worktree's uncommitted files reads that folder alone")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("fork point");
+	repository.Branch("side");
+	repository.Checkout("side");
+	repository.Write("b.txt", "on side\n");
+	repository.Commit("side work");
+	repository.Checkout("master");
+
+	const std::filesystem::path worktree = repository.AddWorktree("side");
+	ReviewRepository::WriteFileAt(worktree / "p.txt", "p\n");
+	ReviewRepository::WriteFileAt(worktree / "q.txt", "q\n");
+	ReviewRepository::WriteFileAt(worktree / "r.txt", "r\n");
+	repository.Write("main-only.txt", "m\n");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	const Core::Result<std::size_t> count = port.CountUncommitted(worktree);
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue() == 3);
 }

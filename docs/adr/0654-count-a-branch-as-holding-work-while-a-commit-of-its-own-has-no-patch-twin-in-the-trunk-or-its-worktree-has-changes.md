@@ -1,6 +1,6 @@
 # 0654. Count a branch as holding work while a commit of its own has no patch twin in the trunk or its worktree has changes
 
-Status: proposed
+Status: superseded by 0669
 Date: 2026-10-28
 
 ## Context

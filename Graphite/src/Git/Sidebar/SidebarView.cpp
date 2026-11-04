@@ -10,6 +10,7 @@
 #include "UI/Lists/ListRow.h"
 
 #include "Core/Base/Color.h"
+#include "Core/Base/Count.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/LoadingState.h"
@@ -110,33 +111,14 @@ namespace Graphite {
 												text.data() + text.size());
 		}
 
-		std::string GroupDigits(std::size_t number)
-		{
-			constexpr std::size_t kDigitsInAGroup = 3;
-			const std::string digits = std::to_string(number);
-			std::string grouped;
-
-			for (std::size_t index = 0; index < digits.size(); ++index)
-			{
-				if (index != 0 && (digits.size() - index) % kDigitsInAGroup == 0)
-				{
-					grouped += ',';
-				}
-
-				grouped += digits[index];
-			}
-
-			return grouped;
-		}
-
 		std::string CountText(const SidebarRow& row)
 		{
 			if (row.Total.has_value())
 			{
-				return GroupDigits(row.Count) + " of " + GroupDigits(*row.Total);
+				return Core::FormatCount(row.Count) + " of " + Core::FormatCount(*row.Total);
 			}
 
-			return GroupDigits(row.Count);
+			return Core::FormatCount(row.Count);
 		}
 
 		std::string Uppercase(std::string_view text)
@@ -228,7 +210,8 @@ namespace Graphite {
 		{
 			if (IsTwoLine(row))
 			{
-				return row.Ref.has_value() && selected.Ref == row.Ref;
+				const bool isLocalCopy = row.LocalCopy.has_value() && selected.Ref == row.LocalCopy;
+				return row.Ref.has_value() && (selected.Ref == row.Ref || isLocalCopy);
 			}
 
 			return row.Kind == SidebarRowKind::Stash && row.Stash.has_value() && selected.Stash == row.Stash;
@@ -458,6 +441,31 @@ namespace Graphite {
 			}
 		}
 
+		// One list row high, its text where a one-line row's text is. A failure turns no loader: nothing is on its way, and
+		// a loader would have every frame drawn for good.
+		void DrawWaitingRow(const SidebarWaitingRow& waiting, ImVec2 contentStart)
+		{
+			ImGui::SetCursorPos(ImVec2(contentStart.x + Em(kRowSide), ListRowTextTop(contentStart.y)));
+			ImGui::PushID("##SidebarWaiting");
+
+			if (waiting.Failed)
+			{
+				bool cut = false;
+				ImGui::TextDisabled("%s", FitToWidth(waiting.Text, ImGui::GetContentRegionAvail().x - Em(kRowSide), &cut).c_str());
+
+				if (cut && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+				{
+					ImGui::SetTooltip("%s", waiting.Text.c_str());
+				}
+			}
+			else
+			{
+				Core::LoadingLine(waiting.Text.c_str(), Core::WhileLoaderWaits::ShowText);
+			}
+
+			ImGui::PopID();
+		}
+
 		void DrawHeadDot(ImVec2 centre, const SidebarColours& colours)
 		{
 			ImDrawList* const drawing = ImGui::GetWindowDrawList();
@@ -538,8 +546,9 @@ namespace Graphite {
 	}
 
 	void SidebarView::Draw(const std::vector<SidebarRow>* rows,
-						   const std::function<SidebarRowText(const SidebarRow&)>& textOf, std::string_view waitingText,
-						   const SidebarSelection& selected, const SidebarColours& colours)
+						   const std::function<SidebarRowText(const SidebarRow&)>& textOf,
+						   const std::optional<SidebarWaitingRow>& waiting, const SidebarSelection& selected,
+						   const SidebarColours& colours)
 	{
 		{
 			const ImVec2 start = ImGui::GetCursorPos();
@@ -568,20 +577,21 @@ namespace Graphite {
 				m_ScrollToTop = false;
 			}
 
-			if (rows == nullptr)
+			// WARNING: Row positions are relative to where the child's content starts, which a window padding moves.
+			const ImVec2 contentStart = ImGui::GetCursorStartPos();
+			float listTop = 0.0f;
+
+			if (waiting.has_value())
 			{
-				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Em(kRowSide));
-				ImGui::PushID("##SidebarWaiting");
-				Core::LoadingLine(std::string(waitingText).c_str(), Core::WhileLoaderWaits::ShowText);
-				ImGui::PopID();
+				DrawWaitingRow(*waiting, contentStart);
+				listTop = ListRowPitch();
 			}
-			else
+
+			if (rows != nullptr)
 			{
-				// WARNING: Row positions are relative to where the child's content starts, which a window padding moves.
-				const ImVec2 contentStart = ImGui::GetCursorStartPos();
 				const std::vector<std::string> searchWords = LoweredWordsOf(m_Search);
 				m_RowTops.resize(rows->size() + 1);
-				float top = 0.0f;
+				float top = listTop;
 
 				for (std::size_t index = 0; index < rows->size(); ++index)
 				{

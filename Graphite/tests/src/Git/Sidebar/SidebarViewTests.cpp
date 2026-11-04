@@ -76,7 +76,7 @@ namespace {
 		const char* WindowName;
 		const std::vector<SidebarRow>* Rows = nullptr;
 		std::function<SidebarRowText(const SidebarRow&)> TextOf = TextOfRow;
-		std::string Waiting = "Reading branches";
+		std::optional<SidebarWaitingRow> Waiting;
 		ResolvedScheme Scheme = DarkScheme();
 
 		explicit Harness(const char* windowName) : WindowName(windowName) {}
@@ -188,6 +188,7 @@ TEST_CASE("Git window: right-clicking a branch row opens its menu")
 TEST_CASE("Git window: with no rows one waiting row is drawn")
 {
 	Harness harness("SidebarWaiting");
+	harness.Waiting = SidebarWaitingRow{.Text = "Reading branches"};
 	int described = 0;
 	harness.TextOf = [&](const SidebarRow& row) {
 		++described;
@@ -200,7 +201,7 @@ TEST_CASE("Git window: with no rows one waiting row is drawn")
 
 	std::size_t letters = 0;
 
-	for (const char character : harness.Waiting)
+	for (const char character : harness.Waiting->Text)
 	{
 		letters += character != ' ' ? 1 : 0;
 	}
@@ -208,6 +209,67 @@ TEST_CASE("Git window: with no rows one waiting row is drawn")
 	CHECK(described == 0);
 	CHECK(DrawnGlyphs(*list->DrawList).size() == letters);
 	CHECK(list->ContentSize.y <= ListRowPitch() * 2.0f);
+}
+
+TEST_CASE("Git window: a failed waiting row turns no loader beside its text")
+{
+	// Past the wait before a loader shows, the loader stands before the text of a row still waiting.
+	constexpr int kFramesPastTheLoaderWait = 30;
+
+	const auto firstGlyphLeft = [](const char* windowName, bool failed) {
+		Harness harness(windowName);
+		harness.Waiting = SidebarWaitingRow{.Text = "Cannot read", .Failed = failed};
+
+		for (int frame = 0; frame < kFramesPastTheLoaderWait; ++frame)
+		{
+			harness.Next();
+		}
+
+		const ImGuiWindow* list = harness.RowsWindow();
+		REQUIRE(list != nullptr);
+
+		const std::vector<DrawnGlyph> glyphs = DrawnGlyphs(*list->DrawList);
+		REQUIRE_FALSE(glyphs.empty());
+
+		float left = glyphs.front().Box.Min.x;
+
+		for (const DrawnGlyph& glyph : glyphs)
+		{
+			left = std::min(left, glyph.Box.Min.x);
+		}
+
+		return left;
+	};
+
+	CHECK(firstGlyphLeft("SidebarFailedRow", true) < firstGlyphLeft("SidebarWaitingRow", false));
+}
+
+TEST_CASE("Git window: rows under the waiting row answer clicks")
+{
+	Harness harness("SidebarRowsUnderWaiting");
+	harness.Waiting = SidebarWaitingRow{.Text = "Reading branches"};
+
+	SidebarRow stashes = Section("stashes");
+	stashes.Section = SidebarSection::Stashes;
+	SidebarRow stash;
+	stash.Kind = SidebarRowKind::Stash;
+	stash.Section = SidebarSection::Stashes;
+	stash.Stash = 0;
+	const std::vector<SidebarRow> rows = {stashes, stash};
+	harness.Rows = &rows;
+
+	std::vector<SidebarRow> clicked;
+	harness.View.OnClick = [&](const SidebarRow& row) { clicked.push_back(row); };
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	harness.Click(InRows(*list, ListRowPitch() * 2.5f));
+
+	REQUIRE(clicked.size() == 1);
+	CHECK(clicked[0].Kind == SidebarRowKind::Stash);
+	CHECK(clicked[0].Stash == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("Git window: of ten thousand rows only those in view are described")

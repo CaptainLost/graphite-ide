@@ -1,6 +1,6 @@
 # 0658. Open the Git window on a navigator of work, changes, branches and stashes beside one main area
 
-Status: proposed
+Status: superseded by 0669
 Date: 2026-10-28
 
 ## Context
