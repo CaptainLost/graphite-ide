@@ -1,5 +1,6 @@
 #include "Git/Sidebar/SidebarView.h"
 
+#include "Git/Branches/BranchListFilter.h"
 #include "Theme/ChromeColor.h"
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <utility>
 
 namespace Graphite {
 
@@ -164,6 +166,64 @@ namespace Graphite {
 			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash;
 		}
 
+		// Rows whose line 1 and line 2 come from `textOf`.
+		bool HasText(const SidebarRow& row)
+		{
+			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash;
+		}
+
+		char LowerOf(char character)
+		{
+			return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+		}
+
+		// Where each search word occurs in `text`, ignoring case; overlapping or touching occurrences are one range.
+		std::vector<std::pair<std::size_t, std::size_t>> MatchRanges(std::string_view text,
+																	 const std::vector<std::string>& loweredWords)
+		{
+			std::vector<std::pair<std::size_t, std::size_t>> ranges;
+
+			for (const std::string& word : loweredWords)
+			{
+				if (word.empty() || word.size() > text.size())
+				{
+					continue;
+				}
+
+				for (std::size_t at = 0; at + word.size() <= text.size(); ++at)
+				{
+					bool same = true;
+
+					for (std::size_t offset = 0; same && offset < word.size(); ++offset)
+					{
+						same = LowerOf(text[at + offset]) == word[offset];
+					}
+
+					if (same)
+					{
+						ranges.emplace_back(at, at + word.size());
+					}
+				}
+			}
+
+			std::ranges::sort(ranges);
+			std::vector<std::pair<std::size_t, std::size_t>> merged;
+
+			for (const std::pair<std::size_t, std::size_t>& range : ranges)
+			{
+				if (!merged.empty() && range.first <= merged.back().second)
+				{
+					merged.back().second = std::max(merged.back().second, range.second);
+				}
+				else
+				{
+					merged.push_back(range);
+				}
+			}
+
+			return merged;
+		}
+
 		bool IsSelected(const SidebarRow& row, const SidebarSelection& selected)
 		{
 			if (IsTwoLine(row))
@@ -172,6 +232,34 @@ namespace Graphite {
 			}
 
 			return row.Kind == SidebarRowKind::Stash && row.Stash.has_value() && selected.Stash == row.Stash;
+		}
+
+		// Pieces side by side, the ones in a matched range in `matchInk`.
+		void DrawHighlightedText(ImVec2 at, ImU32 ink, ImU32 matchInk, std::string_view text,
+								 const std::vector<std::string>& loweredWords)
+		{
+			std::size_t done = 0;
+			float x = at.x;
+
+			const auto piece = [&](std::size_t from, std::size_t to, ImU32 colour) {
+				if (from >= to)
+				{
+					return;
+				}
+
+				const std::string_view part = text.substr(from, to - from);
+				DrawText(ImVec2(x, at.y), colour, part);
+				x += WidthOf(part);
+			};
+
+			for (const std::pair<std::size_t, std::size_t>& range : MatchRanges(text, loweredWords))
+			{
+				piece(done, range.first, ink);
+				piece(range.first, range.second, matchInk);
+				done = range.second;
+			}
+
+			piece(done, text.size(), ink);
 		}
 
 		// WARNING: A row keeps its id when the rows are rebuilt around it, so keyboard focus and an open menu stay on
@@ -311,7 +399,7 @@ namespace Graphite {
 		}
 
 		void DrawStashRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
-						  const SidebarColours& colours)
+						  const SidebarColours& colours, const std::vector<std::string>& searchWords)
 		{
 			const ImU32 dim = colours.Of(SidebarTone::Dim);
 			float left = IndentedLeft(box, row);
@@ -329,8 +417,8 @@ namespace Graphite {
 				textRight = ageLeft - Em(kGap);
 			}
 
-			DrawText(ImVec2(left, ListRowTextTop(box.Top)), ListRowNameColour(selected),
-					 FitToWidth(text.Head, textRight - left));
+			DrawHighlightedText(ImVec2(left, ListRowTextTop(box.Top)), ListRowNameColour(selected), colours.Link,
+								FitToWidth(text.Head, textRight - left), searchWords);
 		}
 
 		// The spans of line 2 joined by a dim separator; the piece that would pass `right` is cut with an ellipsis.
@@ -379,7 +467,7 @@ namespace Graphite {
 		}
 
 		void DrawRefRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
-						const SidebarColours& colours)
+						const SidebarColours& colours, const std::vector<std::string>& searchWords)
 		{
 			const float left = IndentedLeft(box, row);
 			const float textLeft = left + Em(kRefLeadSlot) + Em(kTwoLineGap);
@@ -406,8 +494,8 @@ namespace Graphite {
 			const float blockTop = box.Top + std::floor((box.Height - blockHeight) * kHalf);
 
 			const ImU32 headInk = text.IsHead ? Core::EmphasisText() : ListRowNameColour(selected);
-			DrawText(ImVec2(textLeft, blockTop + std::floor((firstLineHeight - ImGui::GetFontSize()) * kHalf)), headInk,
-					 FitToWidth(text.Head, textRight - textLeft));
+			DrawHighlightedText(ImVec2(textLeft, blockTop + std::floor((firstLineHeight - ImGui::GetFontSize()) * kHalf)),
+								headInk, colours.Link, FitToWidth(text.Head, textRight - textLeft), searchWords);
 
 			const TextAtSize small(smallSize);
 			const float secondLineTop =
@@ -489,6 +577,9 @@ namespace Graphite {
 			}
 			else
 			{
+				// WARNING: Row positions are relative to where the child's content starts, which a window padding moves.
+				const ImVec2 contentStart = ImGui::GetCursorStartPos();
+				const std::vector<std::string> searchWords = LoweredWordsOf(m_Search);
 				m_RowTops.resize(rows->size() + 1);
 				float top = 0.0f;
 
@@ -513,7 +604,7 @@ namespace Graphite {
 					const float height = HeightOf(row);
 
 					const int pushed = PushRowId(row);
-					ImGui::SetCursorPos(ImVec2(0.0f, m_RowTops[index]));
+					ImGui::SetCursorPos(ImVec2(contentStart.x, contentStart.y + m_RowTops[index]));
 
 					if (ListRowSelectableOfHeight("##row", isSelected, height))
 					{
@@ -537,7 +628,7 @@ namespace Graphite {
 						}
 					}
 
-					const SidebarRowText text = OpensMenu(row) ? textOf(row) : SidebarRowText{};
+					const SidebarRowText text = HasText(row) ? textOf(row) : SidebarRowText{};
 
 					if (hovered && !text.Tooltip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 					{
@@ -556,11 +647,11 @@ namespace Graphite {
 						DrawLinkRow(row, box, hovered, colours);
 						break;
 					case SidebarRowKind::Stash:
-						DrawStashRow(row, box, text, isSelected, colours);
+						DrawStashRow(row, box, text, isSelected, colours, searchWords);
 						break;
 					case SidebarRowKind::Branch:
 					case SidebarRowKind::Base:
-						DrawRefRow(row, box, text, isSelected, colours);
+						DrawRefRow(row, box, text, isSelected, colours, searchWords);
 						break;
 					}
 
@@ -570,7 +661,7 @@ namespace Graphite {
 					}
 				}
 
-				ImGui::SetCursorPos(ImVec2(0.0f, top));
+				ImGui::SetCursorPos(ImVec2(contentStart.x, contentStart.y + top));
 				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 			}
 		}

@@ -267,3 +267,36 @@ TEST_CASE("Git window: typing in the search field changes the search")
 
 	CHECK(harness.View.GetSearch() == "fix");
 }
+
+TEST_CASE("Git window: a search word is drawn in the match colour in a row's name")
+{
+	Harness harness("SidebarHighlight");
+	const std::vector<SidebarRow> rows = {BranchRow(0)};
+	harness.Rows = &rows;
+	harness.TextOf = [](const SidebarRow&) {
+		SidebarRowText text;
+		text.Head = "login-Fix-page";
+		text.Meta.push_back({"3 days ago", SidebarTone::Dim});
+		return text;
+	};
+
+	harness.Settle();
+	harness.Click(ImVec2(100.0f, 20.0f));
+	ImGui::GetIO().AddInputCharactersUTF8("fix");
+	harness.Next();
+	harness.Next();
+	REQUIRE(harness.View.GetSearch() == "fix");
+
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	const ImU32 match = ReadSidebarColours(harness.Scheme).Link;
+	std::size_t matched = 0;
+
+	for (const DrawnGlyph& glyph : DrawnGlyphs(*list->DrawList))
+	{
+		matched += glyph.Colour == match ? 1 : 0;
+	}
+
+	CHECK(matched == 3);
+}

@@ -52,7 +52,7 @@ namespace Graphite {
 				  std::string_view waitingText, const SidebarSelection& selected, const SidebarColours& colours);
 
 		std::function<void(const SidebarRow&)> OnClick;     // Branch, Base, Stash, Group, Section, Link rows
-		std::function<void(const SidebarRow&)> DrawRowMenu; // right-click on Branch, Base and Stash rows; fills an open popup
+		std::function<void(const SidebarRow&)> DrawRowMenu; // right-click on Branch, Base and Stash rows; fills an open popup. Runs inside the row loop: the owner must not rebuild rows from it
 
 		const std::string& GetSearch() const { return m_Search; }
 
