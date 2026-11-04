@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -119,6 +120,8 @@ namespace Graphite::Fixtures {
 			Entry entry;
 			entry.Ref = Core::LineRef{.FullName = fullName, .Remote = remote, .ShortName = shortName, .Kind = kind};
 			entry.State = spec.State;
+			entry.Ref.Tip.Bytes[0] = static_cast<std::uint8_t>(m_Entries.size() + 1); // a tip of its own, so an answer keyed by tip is for one branch
+			entry.Branch.Tip = entry.Ref.Tip;
 
 			entry.Branch.Name = branchName;
 			entry.Branch.FullName = fullName;

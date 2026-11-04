@@ -23,13 +23,14 @@ namespace {
 		std::map<std::string, bool> OpenByUser;
 		std::set<std::string> ShowingMerged;
 		const std::vector<Core::StashEntry>* Stashes = nullptr;
+		const BranchAuthors* Authors = nullptr;
 	};
 
 	std::vector<SidebarRow> RowsOf(const LineRead& read, const Options& options = {})
 	{
 		const SidebarInput input{.Read = read,
 								 .Stashes = options.Stashes,
-								 .Authors = nullptr,
+								 .Authors = options.Authors,
 								 .Search = options.Search,
 								 .OpenByUser = options.OpenByUser,
 								 .ShowingMerged = options.ShowingMerged,
@@ -397,4 +398,48 @@ TEST_CASE("Git window: six thousand branches build into rows")
 
 	// yours + 1000, bases + base + link, remote + 3 groups + 1667 open ones, stashes.
 	CHECK(rows.size() == 1 + 1000 + 3 + 1 + 3 + 1667 + 1);
+}
+
+TEST_CASE("Git window: search finds a branch through the authors read for its tip")
+{
+	LineReadBuilder builder;
+	const std::size_t alpha = builder.AddLocal("alpha", {.AgeDays = 1});
+	builder.AddLocal("beta", {.AgeDays = 2});
+	const LineRead read = builder.Build();
+
+	BranchAuthors authors;
+	Core::TipAuthors answer;
+	answer.Tip = (*read.Branches)[alpha].Tip;
+	answer.Authors = {Core::Signature{.Name = "Zed Zealot", .Email = "zed@example.com", .When = {}}};
+	answer.OwnCommits = 1;
+	authors.ByTip[answer.Tip] = answer;
+
+	Options search;
+	search.Search = "zealot";
+
+	CHECK(Describe(read, RowsOf(read, search)).empty());
+
+	search.Authors = &authors;
+	CHECK(Describe(read, RowsOf(read, search)) == Lines{"# yours 1/2", "alpha"});
+
+	search.Search = "zed@example";
+	CHECK(Describe(read, RowsOf(read, search)) == Lines{"# yours 1/2", "alpha"});
+}
+
+TEST_CASE("Git window: search with authors read but none for a tip falls back to the tip's author")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("alpha", {.AgeDays = 1, .AuthorName = "Ann Author", .AuthorEmail = "ann@example.com"});
+	builder.AddLocal("beta", {.AgeDays = 2, .AuthorName = "Bob Builder", .AuthorEmail = "bob@example.com"});
+	const LineRead read = builder.Build();
+
+	const BranchAuthors authors;
+	Options search;
+	search.Authors = &authors;
+
+	search.Search = "builder";
+	CHECK(Describe(read, RowsOf(read, search)) == Lines{"# yours 1/2", "beta"});
+
+	search.Search = "zealot";
+	CHECK(RowsOf(read, search).empty());
 }
