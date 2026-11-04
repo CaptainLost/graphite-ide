@@ -40,7 +40,6 @@ namespace Graphite {
 		constexpr float kChangesListWidthInFontSizes = 22.0f;
 		constexpr int kChangesColumnCount = 2;
 
-		constexpr float kHistoryTitleScale = 0.9f;
 		constexpr float kKeepFontSize = 0.0f;
 		constexpr float kVsPickerGap = 4.0f; // mockup px between the vs button and its popup
 
@@ -587,9 +586,9 @@ namespace Graphite {
 		{
 		case Core::HeadKind::Branch:
 		case Core::HeadKind::Unborn:
-			return "HEAD \xC2\xB7 " + head->BranchName;
+			return head->BranchName;
 		case Core::HeadKind::Detached:
-			return "HEAD \xC2\xB7 " + (head->Commit.has_value() ? head->Commit->ShortHex() : std::string{}) + " (detached)";
+			return "detached at " + (head->Commit.has_value() ? head->Commit->ShortHex() : std::string{});
 		}
 
 		return "HEAD";
@@ -649,8 +648,7 @@ namespace Graphite {
 			}
 		}
 
-		// A branch's history is named in the code face after the branch icon, a stash's after the archive's, HEAD's after
-		// its dot.
+		// A branch's history is named after the branch icon, a stash's after the archive's, HEAD's after its dot.
 		ImGui::AlignTextToFramePadding();
 		ImGui::BeginGroup();
 
@@ -658,9 +656,9 @@ namespace Graphite {
 
 		if (namesHead)
 		{
+			// As tall as the frame, so the dot's middle is the text's.
 			const float dot = WindowBarEm(7.0f);
-			const float lineHeight = ImGui::GetTextLineHeight();
-			ImGui::Dummy(ImVec2(dot, lineHeight));
+			ImGui::Dummy(ImVec2(dot, ImGui::GetFrameHeight()));
 			const ImVec2 centre((ImGui::GetItemRectMin().x + ImGui::GetItemRectMax().x) * 0.5f,
 								(ImGui::GetItemRectMin().y + ImGui::GetItemRectMax().y) * 0.5f);
 			ImGui::GetWindowDrawList()->AddCircleFilled(centre, dot * 0.5f, colours.Accent);
@@ -675,11 +673,10 @@ namespace Graphite {
 		constexpr float kTitleShare = 0.4f;
 		const float titleRoom = std::max(0.0f, rowWidth * kTitleShare - (ImGui::GetCursorScreenPos().x - rowStartX));
 
-		Core::PushCodeFont(ImGui::GetFontSize() * kHistoryTitleScale);
-
 		const float operationWidth =
 			operation.empty() ? 0.0f : ImGui::CalcTextSize(operation.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
 		const float nameRoom = std::max(0.0f, titleRoom - operationWidth);
+		const float prefixWidth = ImGui::CalcTextSize(prefix.c_str()).x;
 
 		if (!prefix.empty())
 		{
@@ -689,7 +686,8 @@ namespace Graphite {
 			ImGui::SameLine(0.0f, 0.0f);
 		}
 
-		EmphasisedLine(FitToWidth(title, std::max(0.0f, nameRoom - ImGui::CalcTextSize(prefix.c_str()).x)));
+		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+		EmphasisedLine(FitToWidth(title, std::max(0.0f, nameRoom - prefixWidth)));
 		ImGui::PopFont();
 
 		if (!operation.empty())
