@@ -1205,8 +1205,8 @@ namespace Graphite {
 			HistoryMarks marks = HistoryMarksFor(page);
 			const HistoryMarks broughtMarks = BroughtMarks();
 			marks.BroughtOf = broughtMarks.BroughtOf;
-			marks.BroughtFailed = broughtMarks.BroughtFailed;
-			AskBroughtByOpenMerges(*page);
+			marks.BroughtFailure = broughtMarks.BroughtFailure;
+			AskBroughtByOpenMerges(*page, broughtMarks);
 
 			std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
 
@@ -1258,7 +1258,7 @@ namespace Graphite {
 			}
 
 			// A selected commit a merge brought shows its details like any other.
-			if (selectedCommit.has_value() && !wanted.contains(*selectedCommit) && FindShownCommit(*page, *selectedCommit))
+			if (selectedCommit.has_value() && !wanted.contains(*selectedCommit) && FindShownCommit(*page, *selectedCommit, broughtMarks))
 			{
 				wanted.insert(*selectedCommit);
 
@@ -1347,14 +1347,23 @@ namespace Graphite {
 		}
 
 		marks.BroughtOf = [this](const Core::Oid& merge) { return m_Model.GetBrought(merge); };
-		marks.BroughtFailed = [this](const Core::Oid& merge) { return m_Model.IsBroughtFailed(merge); };
+		marks.BroughtFailure = [this](const Core::Oid& merge) -> std::optional<std::string> {
+			const std::optional<Core::Error> failure = m_Model.GetBroughtFailure(merge);
+
+			if (!failure.has_value())
+			{
+				return std::nullopt;
+			}
+
+			return failure->Message;
+		};
 
 		return marks;
 	}
 
-	void GitView::AskBroughtByOpenMerges(const Core::LogPage& page)
+	void GitView::AskBroughtByOpenMerges(const Core::LogPage& page, const HistoryMarks& brought)
 	{
-		if (!BroughtMarks().BroughtOf)
+		if (!brought.BroughtOf)
 		{
 			return;
 		}
@@ -1363,14 +1372,25 @@ namespace Graphite {
 		// is read again.
 		for (const Core::CommitSummary& commit : page.Commits)
 		{
-			if (IsMerge(commit) && m_Commits.IsExpanded(commit.Id))
+			if (!IsMerge(commit))
+			{
+				continue;
+			}
+
+			// Closing a merge forgets a failed read, so opening it again asks again, as a diff does.
+			if (m_Commits.IsExpanded(commit.Id))
 			{
 				m_Model.RequestBrought(commit.Id, commit.Parents[0], commit.Parents[1]);
+			}
+			else
+			{
+				m_Model.ForgetFailedBrought(commit.Id);
 			}
 		}
 	}
 
-	std::optional<Core::CommitSummary> GitView::FindShownCommit(const Core::LogPage& page, const Core::Oid& id) const
+	std::optional<Core::CommitSummary> GitView::FindShownCommit(const Core::LogPage& page, const Core::Oid& id,
+																const HistoryMarks& broughtMarks) const
 	{
 		for (const Core::CommitSummary& commit : page.Commits)
 		{
@@ -1380,7 +1400,7 @@ namespace Graphite {
 			}
 		}
 
-		if (!BroughtMarks().BroughtOf)
+		if (!broughtMarks.BroughtOf)
 		{
 			return std::nullopt;
 		}
@@ -1434,7 +1454,7 @@ namespace Graphite {
 			return;
 		}
 
-		if (const std::optional<Core::CommitSummary> summary = FindShownCommit(*page, *commit))
+		if (const std::optional<Core::CommitSummary> summary = FindShownCommit(*page, *commit, BroughtMarks()))
 		{
 			RenderDetails(*summary, palette);
 			return;

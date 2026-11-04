@@ -274,10 +274,11 @@ namespace Graphite {
 		// The Merges history lists what an opened merge brought; empty marks in the other.
 		HistoryMarks BroughtMarks() const;
 
-		void AskBroughtByOpenMerges(const Core::LogPage& page);
+		void AskBroughtByOpenMerges(const Core::LogPage& page, const HistoryMarks& brought);
 
 		// The commit in the page, or among the commits an opened merge of it brought.
-		std::optional<Core::CommitSummary> FindShownCommit(const Core::LogPage& page, const Core::Oid& id) const;
+		std::optional<Core::CommitSummary> FindShownCommit(const Core::LogPage& page, const Core::Oid& id,
+															const HistoryMarks& brought) const;
 
 		void RenderDiff(const GitPalette& palette);
 

@@ -526,3 +526,37 @@ TEST_CASE("Git window: an opened merge whose commits are being read is followed 
 	history.ClickRow(2, kRowCount);
 	CHECK(history.View.GetSelectedCommit() == std::optional<Core::Oid>{history.Page.Commits[1].Id});
 }
+
+TEST_CASE("Git window: a collapsed merge still takes its count from the page it holds")
+{
+	Core::CommitSummary merge = CommitNumbered(1);
+	merge.Parents.resize(2);
+	const Core::CommitSummary plain = CommitNumbered(2);
+
+	const Core::Ref<const Core::LogPage> held = Core::CreateRef<const Core::LogPage>();
+
+	HistoryMarks marks;
+	CHECK(BroughtCountedFor(marks, merge) == nullptr);
+
+	marks.BroughtOf = [held](const Core::Oid&) { return held; };
+
+	CommitListView view;
+	CHECK_FALSE(view.IsExpanded(merge.Id));
+	CHECK(BroughtCountedFor(marks, merge) == held);
+	CHECK(BroughtCountedFor(marks, plain) == nullptr);
+}
+
+TEST_CASE("Git window: an opened merge whose commits could not be read is followed by one row saying so")
+{
+	MarkedHistory history("BroughtFailed", 2);
+	history.Page.Commits[0].Parents.resize(2);
+	history.Marks.BroughtOf = [](const Core::Oid&) { return Core::Ref<const Core::LogPage>{}; };
+	history.Marks.BroughtFailure = [](const Core::Oid&) { return std::optional<std::string>{"bad object"}; };
+	history.View.SetExpanded(history.Page.Commits[0].Id, true);
+
+	history.Settle();
+
+	constexpr int kRowCount = 3;
+	history.ClickRow(2, kRowCount);
+	CHECK(history.View.GetSelectedCommit() == std::optional<Core::Oid>{history.Page.Commits[1].Id});
+}

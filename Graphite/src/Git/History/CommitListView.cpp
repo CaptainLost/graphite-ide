@@ -70,7 +70,7 @@ namespace Graphite {
 		constexpr std::string_view kLocalChangesTitle = "Local changes";
 		constexpr std::string_view kLocalChangesAge = "now";
 		constexpr const char* kBroughtWaiting = "Reading the commits this merge brought\xE2\x80\xA6";
-		constexpr const char* kBroughtFailed = "Could not read the commits this merge brought";
+		constexpr const char* kBroughtFailed = "Cannot read the commits this merge brought: ";
 		constexpr const char* kBroughtNone = "This merge brought no commits of its own";
 		constexpr float kBroughtIndentPixels = 18.0f;
 		constexpr float kElbowLeftPixels = 4.0f;
@@ -427,6 +427,16 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
+	Core::Ref<const Core::LogPage> BroughtCountedFor(const HistoryMarks& marks, const Core::CommitSummary& commit)
+	{
+		if (!marks.BroughtOf || !IsMerge(commit))
+		{
+			return nullptr;
+		}
+
+		return marks.BroughtOf(commit.Id);
+	}
+
 	void CommitListView::KeepSelectionWithin(const Core::LogPage& page, const HistoryMarks& marks)
 	{
 		m_SelectedFile = SelectionSurviving(m_SelectedFile, page);
@@ -749,8 +759,7 @@ namespace Graphite {
 						const Core::CommitSummary& commit = page.Commits[row.Commit];
 						const bool dimmed = marks.Dimmed != nullptr && marks.Dimmed->contains(commit.Id);
 
-						const Core::Ref<const Core::LogPage> brought =
-							opensBrought(row.Commit) ? marks.BroughtOf(commit.Id) : nullptr;
+						const Core::Ref<const Core::LogPage> brought = BroughtCountedFor(marks, commit);
 
 						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, dimmed,
 										BroughtDrawing{.Page = brought.get(), .IsBrought = false});
@@ -778,7 +787,8 @@ namespace Graphite {
 						}
 						else
 						{
-							RenderBroughtNote(brought.get(), !brought && marks.BroughtFailed && marks.BroughtFailed(merge.Id));
+							RenderBroughtNote(brought.get(), brought || !marks.BroughtFailure ? std::nullopt
+																								 : marks.BroughtFailure(merge.Id));
 						}
 
 						ImGui::PopID();
@@ -966,18 +976,20 @@ namespace Graphite {
 		}
 	}
 
-	void CommitListView::RenderBroughtNote(const Core::LogPage* brought, bool failed)
+	void CommitListView::RenderBroughtNote(const Core::LogPage* brought, const std::optional<std::string>& failure)
 	{
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 		ImGui::Indent(MockupPixels(kBroughtIndentPixels));
 
-		if (brought == nullptr && !failed)
+		if (brought == nullptr && !failure.has_value())
 		{
 			Core::LoadingLine(kBroughtWaiting);
 		}
 		else
 		{
-			DrawFittedCell(failed ? kBroughtFailed : kBroughtNone, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
+			const std::string text = failure.has_value() ? kBroughtFailed + *failure : std::string{kBroughtNone};
+
+			DrawFittedCell(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
 		}
 
 		ImGui::Unindent(MockupPixels(kBroughtIndentPixels));

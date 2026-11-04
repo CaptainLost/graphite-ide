@@ -74,7 +74,9 @@ namespace Graphite {
 		// Set in the Merges history: an opened merge lists the commits it brought, which this answers (null while they
 		// are being read), instead of its files.
 		std::function<Core::Ref<const Core::LogPage>(const Core::Oid&)> BroughtOf;
-		std::function<bool(const Core::Oid&)> BroughtFailed;
+
+		// Why the commits an opened merge brought could not be read; none while they were read or are on their way.
+		std::function<std::optional<std::string>(const Core::Oid&)> BroughtFailure;
 	};
 
 	// What a commit row draws of the merge it is, or of the merge it was brought by.
@@ -83,6 +85,9 @@ namespace Graphite {
 		const Core::LogPage* Page = nullptr; // an opened merge's: the commits it brought; adds their count to its text
 		bool IsBrought = false;              // the row is one of the commits a merge brought
 	};
+
+	// The page a merge row's count of commits is read from: held while the merge is closed too.
+	Core::Ref<const Core::LogPage> BroughtCountedFor(const HistoryMarks& marks, const Core::CommitSummary& commit);
 
 	class CommitListView
 	{
@@ -163,7 +168,7 @@ namespace Graphite {
 							 std::string_view highlight, std::chrono::sys_seconds now,
 							 const std::chrono::time_zone* zone, bool dimmed, const BroughtDrawing& brought);
 
-		void RenderBroughtNote(const Core::LogPage* brought, bool failed);
+		void RenderBroughtNote(const Core::LogPage* brought, const std::optional<std::string>& failure);
 
 		// Entered in the graph column, where the ring for the work in progress is drawn around `dotCentre`.
 		void RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre);

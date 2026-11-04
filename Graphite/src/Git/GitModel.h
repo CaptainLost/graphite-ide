@@ -146,6 +146,11 @@ namespace Graphite {
 
 		bool IsBroughtFailed(const Core::Oid& merge) const { return m_Brought.IsFailed(merge); }
 
+		std::optional<Core::Error> GetBroughtFailure(const Core::Oid& merge) const { return m_Brought.FailureOf(merge); }
+
+		// A failed read is asked again by the next RequestBrought.
+		void ForgetFailedBrought(const Core::Oid& merge) { m_Brought.ForgetFailed(merge); }
+
 		// WARNING: `key` is the path that names the file, never `oldPath` or `newPath`: either
 		// may be empty to say a side is absent, so every file deleted in one commit would share
 		// one key, and so would every file added.

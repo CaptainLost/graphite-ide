@@ -3233,3 +3233,36 @@ TEST_CASE("Git window: brought pages are kept for the last sixteen merges")
 	model.Clear();
 	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge + kMergeCount - 1)) == nullptr);
 }
+
+TEST_CASE("Git window: a failed read of what a merge brought keeps its message until the merge is closed")
+{
+	FakePort port;
+	port.FailLog = true;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	const Core::Oid merge = OidWithFirstByte(10);
+
+	model.RequestBrought(merge, OidWithFirstByte(11), OidWithFirstByte(12));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.IsBroughtFailed(merge));
+	REQUIRE(model.GetBroughtFailure(merge).has_value());
+	CHECK_FALSE(model.GetBroughtFailure(merge)->Message.empty());
+
+	// Asking again changes nothing while the failure is held.
+	const int callsBefore = port.LogCalls;
+	model.RequestBrought(merge, OidWithFirstByte(11), OidWithFirstByte(12));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(port.LogCalls == callsBefore);
+
+	port.FailLog = false;
+	model.ForgetFailedBrought(merge);
+	CHECK_FALSE(model.IsBroughtFailed(merge));
+
+	model.RequestBrought(merge, OidWithFirstByte(11), OidWithFirstByte(12));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(port.LogCalls == callsBefore + 1);
+	CHECK(model.GetBrought(merge) != nullptr);
+}
