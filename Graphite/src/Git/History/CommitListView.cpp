@@ -199,14 +199,15 @@ namespace Graphite {
 			return requestedWidth > 0.0f ? requestedWidth : usualWidth;
 		}
 
-		void DrawFittedCell(std::string_view text, ImU32 color, std::string_view needle)
+		// `keptFree` is left at the cell's end for what is drawn after the text.
+		void DrawFittedCell(std::string_view text, ImU32 color, std::string_view needle, float keptFree = 0.0f)
 		{
 			if (text.empty())
 			{
 				return;
 			}
 
-			const float roomInCell = ImGui::GetContentRegionAvail().x + kRoundedUpPixel;
+			const float roomInCell = ImGui::GetContentRegionAvail().x + kRoundedUpPixel - keptFree;
 			const float ellipsisWidth = Core::TextWidth(kEllipsis);
 
 			const std::optional<std::size_t> cut = CutToFit(text, roomInCell, ellipsisWidth, Core::TextWidth);
@@ -927,12 +928,20 @@ namespace Graphite {
 			RefLabels(refs.at(commit.Id), palette, commit.Summary, alpha);
 		}
 
-		// An opened merge says how many commits it brought after its own subject.
-		const std::string summaryWithCount =
-			brought.Page != nullptr ? commit.Summary + kMiddleDot + DescribeBrought(*brought.Page) : std::string{};
+		// An opened merge says how many commits it brought after its own subject, dim as the mockup's count.
+		const std::string count = brought.Page != nullptr ? kMiddleDot + DescribeBrought(*brought.Page) : std::string{};
 
-		DrawFittedCell(brought.Page != nullptr ? std::string_view{summaryWithCount} : std::string_view{commit.Summary},
-					   summaryInk, highlight);
+		DrawFittedCell(commit.Summary, summaryInk, highlight, Core::TextWidth(count));
+
+		if (!count.empty())
+		{
+			if (!commit.Summary.empty())
+			{
+				ImGui::SameLine(kNoOffset, kNoSpacing);
+			}
+
+			DrawFittedCell(count, dimmedInk, kNoHighlight);
+		}
 
 		if (brought.IsBrought)
 		{
