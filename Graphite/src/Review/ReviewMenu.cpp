@@ -3,12 +3,13 @@
 #include "Review/ReviewFiles.h"
 
 #include <optional>
+#include <string>
 
 namespace Graphite {
 
 	namespace {
 
-		constexpr const char* kReview = "Review";
+		constexpr const char* kReview = "Review against";
 		constexpr const char* kOpenReview = "Open review";
 		constexpr const char* kEndReview = "End review\xE2\x80\xA6";
 		constexpr const char* kReviewAgainst = "Review against";
@@ -45,7 +46,7 @@ namespace Graphite {
 	}
 
 	ReviewMenu ReviewMenuFor(const Core::Branch& branch, const std::vector<Core::Branch>& branches,
-							 const ReviewSessions& sessions)
+							 const ReviewSessions& sessions, const BranchLines* lines)
 	{
 		if (sessions.IsKept(branch.FullName))
 		{
@@ -53,12 +54,14 @@ namespace Graphite {
 		}
 
 		ReviewMenu menu;
-		const std::optional<ReviewOffer> offer = OfferReview(branch, branches);
+		const std::optional<ReviewOffer> offer = OfferReview(branch, branches, lines);
 
 		// The review tab it opens drafts its own base (ReviewBaseOf); the offer only says there is one.
 		if (offer.has_value() && offer->Base.has_value())
 		{
-			menu.Items.push_back(ReviewMenuItem{.Label = kReview, .Action = ReviewAction::Open, .Branch = offer->Branch});
+			menu.Items.push_back(ReviewMenuItem{.Label = std::string{kReview} + " " + Core::ShortBranchName(*offer->Base),
+													   .Action = ReviewAction::Open,
+													   .Branch = offer->Branch});
 		}
 
 		AddBasePicker(menu, branch, branches);

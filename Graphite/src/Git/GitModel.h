@@ -162,6 +162,11 @@ namespace Graphite {
 
 		bool IsBranchAuthorsInFlight() const { return m_BranchAuthors.IsInFlight(); }
 
+		// The tips "own" authors leave out, the tips of the line read's bases (BaseTipsOf). The authors are asked again
+		// when they or the branch tips changed. WARNING: Until it is first called the authors are not asked at all, since
+		// with nothing hidden every commit would count as its own.
+		void SetAuthorsHidden(std::vector<Core::Oid> baseTips);
+
 		const std::optional<Core::Error>& GetBranchesError() const { return m_Branches.GetError(); }
 
 		// Read beside every branch listing, so what needs it never waits for the authors walk. Empty while unread and
@@ -573,6 +578,7 @@ namespace Graphite {
 		GenerationSlot<BranchAuthors> m_BranchAuthors;
 		GenerationSlot<std::optional<std::string>> m_UserEmail;
 		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
+		std::optional<std::vector<Core::Oid>> m_AuthorsHidden;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;
 		GenerationSlot<Core::HeadState> m_Head;
 		GenerationSlot<Core::LogPage> m_Log;

@@ -1,6 +1,6 @@
 #include "Review/ReviewFiles.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/History/CommitLabels.h"
 
 #include "Core/Base/Strings.h"
@@ -64,21 +64,27 @@ namespace Graphite {
 		}
 	}
 
-	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches)
+	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches,
+										   const BranchLines* lines)
 	{
-		const Core::Branch* base = TrunkBranch(branches);
-
-		if (base == nullptr)
+		if (lines == nullptr)
 		{
-			return ReviewOffer{.Branch = branch.FullName, .Base = std::nullopt};
+			return std::nullopt;
 		}
 
-		if (base->FullName == branch.FullName)
+		if (lines->BaseNamed(branch.FullName) != nullptr)
 		{
 			return OfferAgainstUpstream(branch, branches);
 		}
 
-		return OfferAgainst(branch, *base);
+		const std::optional<std::string> line = lines->ComparedWithName(branch.FullName);
+
+		if (!line.has_value())
+		{
+			return ReviewOffer{.Branch = branch.FullName, .Base = std::nullopt};
+		}
+
+		return ReviewOffer{.Branch = branch.FullName, .Base = *line};
 	}
 
 	RangeEnds EndsOfCommit(const Core::CommitSummary& commit)

@@ -1,7 +1,10 @@
 #include <doctest/doctest.h>
 
+#include "Git/Branches/BranchLookup.h"
+#include "Git/Lines/LineReadFixtures.h"
 #include "Review/ReviewMenu.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -14,86 +17,106 @@ namespace {
 
 	const std::string kMain = "refs/heads/main";
 	const std::string kSide = "refs/heads/side";
-	constexpr bool kCheckedOut = true;
-	constexpr bool kNotCheckedOut = false;
 
-	Core::Branch LocalBranch(const std::string& name, bool isHead)
+	// main is a base tracking origin/main; side is compared with main; lone is a base with no upstream; orphan is
+	// compared with nothing.
+	struct Repository
 	{
-		Core::Branch branch;
-		branch.Name = name;
-		branch.FullName = "refs/heads/" + name;
-		branch.Kind = Core::RefKind::Local;
-		branch.IsHead = isHead;
-		return branch;
-	}
+		Repository()
+		{
+			Graphite::Fixtures::LineReadBuilder builder;
+			builder.AddRemote("origin");
+			const std::size_t main = builder.AddLocal("main");
+			const std::size_t side = builder.AddLocal("side");
+			const std::size_t lone = builder.AddLocal("lone");
+			builder.AddLocal("orphan");
+			const std::size_t originMain = builder.AddRemoteBranch("origin", "main");
+			builder.MakeBase(main);
+			builder.MakeBase(lone);
+			builder.Track(main, originMain);
+			builder.Compare(side, main);
+			Read = builder.Build();
+			Lines.emplace(Read);
+		}
 
-	Core::Branch RemoteBranch(const std::string& name)
-	{
-		Core::Branch branch;
-		branch.Name = name;
-		branch.FullName = "refs/remotes/" + name;
-		branch.Kind = Core::RefKind::Remote;
-		return branch;
-	}
+		Graphite::LineRead Read;
+		std::optional<Graphite::BranchLines> Lines;
+
+		const std::vector<Core::Branch>& Branches() const { return *Read.Branches; }
+		const Core::Branch& Named(const std::string& name) const { return *Graphite::BranchWithFullName(Branches(), name); }
+
+		ReviewMenu MenuOf(const std::string& name, const ReviewSessions& sessions, bool withLines = true) const
+		{
+			return Graphite::ReviewMenuFor(Named(name), Branches(), sessions, withLines ? &*Lines : nullptr);
+		}
+	};
 }
 
-TEST_CASE("A branch without a kept session offers Review and a submenu of other bases")
+TEST_CASE("Git window: a branch without a kept session offers a review against its line and a submenu of other bases")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
+	const Repository repository;
 	const ReviewSessions sessions;
 
-	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
+	const ReviewMenu menu = repository.MenuOf(kSide, sessions);
 
 	REQUIRE(menu.Items.size() == 1);
-	CHECK(menu.Items[0].Label == "Review");
+	CHECK(menu.Items[0].Label == "Review against main");
 	CHECK(menu.Items[0].Action == ReviewAction::Open);
 	CHECK(menu.Items[0].Branch == kSide);
 	CHECK(menu.Items[0].Base.empty());
 	CHECK(menu.Submenu == "Review against");
-	REQUIRE(menu.SubmenuItems.size() == 1);
+	REQUIRE(menu.SubmenuItems.size() == 3);
 	CHECK(menu.SubmenuItems[0].Label == "main");
 	CHECK(menu.SubmenuItems[0].Action == ReviewAction::Start);
 	CHECK(menu.SubmenuItems[0].Branch == kSide);
 	CHECK(menu.SubmenuItems[0].Base == kMain);
 }
 
-TEST_CASE("A draft counts as no session in the review menu")
+TEST_CASE("Git window: a draft counts as no session in the review menu")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
+	const Repository repository;
 	ReviewSessions sessions;
 	sessions.OpenDraft(kSide, kMain);
 
-	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
+	const ReviewMenu menu = repository.MenuOf(kSide, sessions);
 
 	REQUIRE(menu.Items.size() == 1);
-	CHECK(menu.Items[0].Label == "Review");
-	CHECK(menu.Items[0].Action == ReviewAction::Open);
+	CHECK(menu.Items[0].Label == "Review against main");
 	CHECK(menu.Submenu == "Review against");
 }
 
-TEST_CASE("The checked-out branch is offered a review when it has an upstream and nothing without one")
+TEST_CASE("Git window: a base is offered a review against its upstream and nothing without one")
 {
-	Core::Branch main = LocalBranch("main", kCheckedOut);
-	main.Upstream = "origin/main";
-	const std::vector<Core::Branch> branches = {main, RemoteBranch("origin/main")};
+	const Repository repository;
 	const ReviewSessions sessions;
 
-	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[0], branches, sessions);
+	const ReviewMenu menu = repository.MenuOf(kMain, sessions);
 
 	REQUIRE(menu.Items.size() == 1);
-	CHECK(menu.Items[0].Label == "Review");
+	CHECK(menu.Items[0].Label == "Review against origin/main");
 
-	const std::vector<Core::Branch> withoutUpstream = {LocalBranch("main", kCheckedOut)};
-	CHECK(Graphite::ReviewMenuFor(withoutUpstream[0], withoutUpstream, sessions).Items.empty());
+	CHECK(repository.MenuOf("refs/heads/lone", sessions).Items.empty());
 }
 
-TEST_CASE("A kept session offers Open review and End review")
+TEST_CASE("Git window: a branch compared with nothing is offered only a base to pick")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
+	const Repository repository;
+	const ReviewSessions sessions;
+
+	const ReviewMenu menu = repository.MenuOf("refs/heads/orphan", sessions);
+
+	CHECK(menu.Items.empty());
+	CHECK(menu.Submenu == "Review against");
+	CHECK_FALSE(menu.SubmenuItems.empty());
+}
+
+TEST_CASE("Git window: a kept session offers Open review and End review")
+{
+	const Repository repository;
 	ReviewSessions sessions;
 	sessions.Start(kSide, kMain);
 
-	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
+	const ReviewMenu menu = repository.MenuOf(kSide, sessions);
 
 	CHECK(menu.Submenu.empty());
 	CHECK(menu.SubmenuItems.empty());
@@ -105,31 +128,18 @@ TEST_CASE("A kept session offers Open review and End review")
 	CHECK(menu.Items[1].Branch == kSide);
 }
 
-TEST_CASE("With HEAD detached the other local branches are offered as bases in a submenu")
+TEST_CASE("Git window: without a line read only review against is offered, listing every other local branch")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", kNotCheckedOut), LocalBranch("side", kNotCheckedOut),
-												LocalBranch("next", kNotCheckedOut), RemoteBranch("origin/main")};
+	const Repository repository;
 	const ReviewSessions sessions;
 
-	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[1], branches, sessions);
+	const ReviewMenu menu = repository.MenuOf(kSide, sessions, false);
 
 	CHECK(menu.Items.empty());
 	CHECK(menu.Submenu == "Review against");
-	REQUIRE(menu.SubmenuItems.size() == 2);
+	REQUIRE(menu.SubmenuItems.size() == 3);
 	CHECK(menu.SubmenuItems[0].Label == "main");
 	CHECK(menu.SubmenuItems[0].Base == kMain);
-	CHECK(menu.SubmenuItems[1].Label == "next");
 	CHECK(menu.SubmenuItems[1].Branch == kSide);
 	CHECK(menu.SubmenuItems[1].Action == ReviewAction::Start);
-}
-
-TEST_CASE("With HEAD detached and no other local branch nothing is offered")
-{
-	const std::vector<Core::Branch> branches = {LocalBranch("side", kNotCheckedOut), RemoteBranch("origin/main")};
-	const ReviewSessions sessions;
-
-	const ReviewMenu menu = Graphite::ReviewMenuFor(branches[0], branches, sessions);
-
-	CHECK(menu.Items.empty());
-	CHECK(menu.SubmenuItems.empty());
 }

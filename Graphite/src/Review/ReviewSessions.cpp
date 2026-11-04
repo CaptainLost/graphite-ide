@@ -1,6 +1,6 @@
 #include "Review/ReviewSessions.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/History/CommitLabels.h"
 #include "Persistence/StoredVersion.h"
 

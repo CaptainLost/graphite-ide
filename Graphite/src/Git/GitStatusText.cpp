@@ -2,7 +2,7 @@
 
 #include "Core/Base/Strings.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "UI/TypographicMarks.h"
 
 #include <IconsLucide.h>

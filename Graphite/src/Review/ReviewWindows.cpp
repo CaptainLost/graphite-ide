@@ -1,6 +1,6 @@
 #include "Review/ReviewWindows.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
 

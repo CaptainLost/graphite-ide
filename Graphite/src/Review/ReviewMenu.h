@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include "Git/Lines/BranchLines.h"
 #include "Review/ReviewSessions.h"
 
 #include "Core/Git/Ref.h"
@@ -36,6 +37,7 @@ namespace Graphite {
 		std::vector<ReviewMenuItem> SubmenuItems;
 	};
 
+	// `lines` is null until the first line read lands; the menu then offers no review of its own, only a base to pick.
 	ReviewMenu ReviewMenuFor(const Core::Branch& branch, const std::vector<Core::Branch>& branches,
-							 const ReviewSessions& sessions);
+							 const ReviewSessions& sessions, const BranchLines* lines);
 }

@@ -14,7 +14,7 @@
 #include "UI/ClipboardCopy.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/GitRequests.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
@@ -752,9 +752,14 @@ namespace Graphite {
 		return FindForkSeparator(page, *own, m_Model.GetOwnCommitsLabel());
 	}
 
+	const BranchLines* GitView::CurrentLines() const
+	{
+		return m_SidebarLines.has_value() ? &*m_SidebarLines : nullptr;
+	}
+
 	std::optional<GitModel::OwnCommitsRequest> GitView::OwnCommitsToAsk(const std::vector<Core::Branch>& branches)
 	{
-		const std::optional<ForkBase> fork = FindForkBase(m_SelectedRef, branches);
+		const std::optional<ForkBase> fork = FindForkBase(m_SelectedRef, branches, CurrentLines());
 
 		// WARNING: What was seen is kept even when a filter keeps the own commits from being asked, or
 		// the log would be asked again every frame that the filter and the base disagree.
@@ -774,7 +779,7 @@ namespace Graphite {
 
 	void GitView::AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches)
 	{
-		if (BaseOf(FindForkBase(m_SelectedRef, branches)) == m_BaseSeen)
+		if (BaseOf(FindForkBase(m_SelectedRef, branches, CurrentLines())) == m_BaseSeen)
 		{
 			return;
 		}

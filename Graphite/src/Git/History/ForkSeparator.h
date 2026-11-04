@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Git/Lines/BranchLines.h"
+
 #include "Core/Git/Commit.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
@@ -20,10 +22,11 @@ namespace Graphite {
 		std::string BaseName;
 	};
 
-	// The base is the one a review of the branch would take, so the history and the review agree on
-	// where a branch begins. Without a selected ref the checked-out branch is the one shown.
+	// The base is the one a review of the branch would take, its line, so the history and the review agree on
+	// where a branch begins. Without a selected ref the checked-out branch is the one shown. Nothing while `lines` is
+	// null, until the first line read lands.
 	std::optional<ForkBase> FindForkBase(const std::optional<std::string>& selectedRef,
-										 const std::vector<Core::Branch>& branches);
+										 const std::vector<Core::Branch>& branches, const BranchLines* lines);
 
 	struct ForkSeparator
 	{

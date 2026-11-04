@@ -39,7 +39,7 @@ namespace Graphite {
 
 			authors.UserEmail = std::move(email).GetValue();
 
-			// WARNING: Without a trunk every commit a tip reaches would count as its own, naming
+			// WARNING: Without a base every commit a tip reaches would count as its own, naming
 			// everyone in the history; each branch then counts its tip's author instead.
 			if (request.Hidden.empty())
 			{
@@ -90,6 +90,7 @@ namespace Graphite {
 		m_Branches.Clear();
 		m_BranchAuthors.Clear();
 		m_LastAuthorsRequest.reset();
+		m_AuthorsHidden.reset();
 		m_UserEmail.Clear();
 		m_Stashes.Clear();
 		m_Head.Clear();
@@ -287,10 +288,32 @@ namespace Graphite {
 		return email ? *email : kUnread;
 	}
 
+	void GitModel::SetAuthorsHidden(std::vector<Core::Oid> baseTips)
+	{
+		if (m_AuthorsHidden == baseTips)
+		{
+			return;
+		}
+
+		m_AuthorsHidden = std::move(baseTips);
+
+		if (m_Branches.Get())
+		{
+			RequestBranchAuthorsWhenTipsMoved();
+		}
+	}
+
 	void GitModel::RequestBranchAuthorsWhenTipsMoved()
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Branches.Get();
-		Core::OwnAuthorsRequest request = OwnAuthorsRequestFor(*branches);
+
+		// WARNING: The line read says which tips are the bases; walking before it lands would count every commit as own.
+		if (!m_AuthorsHidden.has_value())
+		{
+			return;
+		}
+
+		Core::OwnAuthorsRequest request = OwnAuthorsRequestFor(*branches, *m_AuthorsHidden);
 
 		// WARNING: An answer without the user's e-mail is asked again by every listing, or a
 		// user.email set afterwards would wait for some tip to move before the user is pinned first

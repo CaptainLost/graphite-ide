@@ -1,6 +1,6 @@
 #include "Git/Window/GitWindowRestore.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 
 namespace Graphite {
 

@@ -618,7 +618,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md) | Treat a branch review as a session with a fixed base | proposed | 2026-10-14 |
 | [0587](0587-show-a-changed-file-s-diff-since-the-version-that-was-viewed.md) | Show a changed file's diff since the version that was viewed | proposed | 2026-10-14 |
 | [0588](0588-draw-checkboxes-with-a-tick-box-of-the-app-s-own.md) | Draw checkboxes with a tick box of the app's own | proposed | 2026-10-14 |
-| [0589](0589-default-a-review-s-base-to-the-branch-tracking-origin-s-head.md) | Default a review's base to the branch tracking origin's HEAD | proposed | 2026-10-14 |
+| [0589](0589-default-a-review-s-base-to-the-branch-tracking-origin-s-head.md) | Default a review's base to the branch tracking origin's HEAD | superseded by 0670 | 2026-10-14 |
 | [0590](0590-compile-the-bundled-fonts-into-the-executable.md) | Compile the bundled fonts into the executable | proposed | 2026-10-15 |
 | [0591](0591-count-everyone-with-an-own-commit-as-a-branch-s-author.md) | Count everyone with an own commit as a branch's author | proposed | 2026-10-15 |
 | [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md) | Build the branch list as rows from a pure function and draw only the rows on screen | proposed | 2026-10-15 |
@@ -699,4 +699,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0667](0667-apply-what-a-landed-git-write-changes-in-one-module-outside-the-panels.md) | Apply what a landed git write changes in one module outside the panels | proposed | 2026-11-03 |
 | [0668](0668-let-a-tab-follow-a-file-that-graphite-itself-renames.md) | Let a tab follow a file that Graphite itself renames | proposed | 2026-11-03 |
 | [0669](0669-show-references-in-a-sidebar-beside-the-history.md) | Show references in a sidebar beside the history | proposed | 2026-11-04 |
+| [0670](0670-take-a-branch-s-review-base-from-its-line.md) | Take a branch's review base from its line | proposed | 2026-11-04 |
 <!-- /adr-index -->

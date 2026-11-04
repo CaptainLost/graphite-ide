@@ -1,11 +1,11 @@
 #include "Review/ReviewProgress.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 
 namespace Graphite {
 
 	std::optional<std::string> ReviewBaseOf(const std::string& branch, const std::vector<Core::Branch>& branches,
-											const ReviewSessions& sessions)
+											const ReviewSessions& sessions, const BranchLines* lines)
 	{
 		if (const ReviewSession* session = sessions.Find(branch); session != nullptr)
 		{
@@ -14,26 +14,28 @@ namespace Graphite {
 
 		if (const Core::Branch* reviewed = BranchWithFullName(branches, branch); reviewed != nullptr)
 		{
-			if (const std::optional<ReviewOffer> offer = OfferReview(*reviewed, branches);
+			if (const std::optional<ReviewOffer> offer = OfferReview(*reviewed, branches, lines);
 				offer && offer->Base && *offer->Base != branch)
 			{
 				return offer->Base;
 			}
 		}
 
-		// WARNING: The trunk would otherwise be drafted against itself, an empty review that its tab would keep in
-		// reviews.json.
-		const Core::Branch* trunk = TrunkBranch(branches);
-		return trunk != nullptr && trunk->FullName != branch ? std::optional<std::string>{trunk->FullName} : std::nullopt;
+		return std::nullopt;
 	}
 
-	std::string NoReviewBaseMessage(const std::string& branch, const std::vector<Core::Branch>& branches)
+	std::string NoReviewBaseMessage(const std::string& branch, const std::vector<Core::Branch>& branches,
+									const BranchLines* lines)
 	{
-		if (const Core::Branch* trunk = TrunkBranch(branches); trunk != nullptr && trunk->FullName == branch)
+		const Core::Branch* named = BranchWithFullName(branches, branch);
+		const std::string shortName = named != nullptr ? named->Name : Core::ShortBranchName(branch);
+
+		if (lines != nullptr && lines->BaseNamed(branch) != nullptr)
 		{
-			return "There is nothing to review " + trunk->Name + " against.";
+			return "There is nothing to review " + shortName + " against.";
 		}
 
-		return "There is no trunk to review this branch against.";
+		return shortName + " is compared with nothing, so there is nothing to review it against. "
+						   "Pick a line with Compare with\xE2\x80\xA6 or use Review against.";
 	}
 }

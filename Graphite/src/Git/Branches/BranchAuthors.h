@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Git/Lines/LineReader.h"
+
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Ref.h"
 
@@ -30,9 +32,14 @@ namespace Graphite {
 		std::chrono::sys_seconds When;
 	};
 
-	// Only tips whose commit was read. Sorted and without repeats, so two listings with the same
+	// The tips of every base of the read that git could read as a commit, sorted and without repeats: what "own" authors
+	// leave out.
+	std::vector<Core::Oid> BaseTipsOf(const LineRead& read);
+
+	// Only tips whose commit was read, the hidden ones too. Sorted and without repeats, so two listings with the same
 	// tips ask the same question.
-	Core::OwnAuthorsRequest OwnAuthorsRequestFor(const std::vector<Core::Branch>& branches);
+	Core::OwnAuthorsRequest OwnAuthorsRequestFor(const std::vector<Core::Branch>& branches,
+												 const std::vector<Core::Oid>& hidden);
 
 	std::vector<BranchAuthor> AuthorsOfBranch(const Core::Branch& branch, const BranchAuthors& authors);
 

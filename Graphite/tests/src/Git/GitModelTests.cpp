@@ -481,6 +481,12 @@ namespace {
 		return {main, originMain, feature};
 	}
 
+	// What GraphiteLayer passes once the line read lands: the tips of the bases TrunkAndFeature stands for.
+	void HideTrunkTips(Graphite::GitModel& model)
+	{
+		model.SetAuthorsHidden({OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
+	}
+
 	void ListBranchesAndLandAuthors(Graphite::GitModel& model)
 	{
 		model.RequestBranches();
@@ -2533,6 +2539,7 @@ TEST_CASE("Branch authors are asked once a branch list lands and read an update 
 										.OwnCommits = 1}};
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 
 	model.RequestBranches();
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
@@ -2556,6 +2563,7 @@ TEST_CASE("Branch authors are in flight from the listing that asks them until th
 	port.Branches = TrunkAndFeature(kFeatureTipByte);
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 
 	CHECK_FALSE(model.IsBranchAuthorsInFlight());
 
@@ -2576,6 +2584,7 @@ TEST_CASE("A listing whose tips did not move asks the authors nothing")
 	port.UserEmail = "ann@example.com";
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 
 	ListBranchesAndLandAuthors(model);
 	ListBranchesAndLandAuthors(model);
@@ -2589,6 +2598,7 @@ TEST_CASE("A listing asks again while no user e-mail is known")
 	port.Branches = TrunkAndFeature(kFeatureTipByte);
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 
 	ListBranchesAndLandAuthors(model);
 
@@ -2604,6 +2614,38 @@ TEST_CASE("A listing asks again while no user e-mail is known")
 	ListBranchesAndLandAuthors(model);
 
 	CHECK(port.OwnAuthorsCalls == 2);
+}
+
+TEST_CASE("Git window: the authors wait for the hidden tips and are asked again when they change")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.OwnAuthorsCalls == 0);
+	CHECK(model.GetBranchAuthors() == nullptr);
+
+	HideTrunkTips(model);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.OwnAuthorsCalls == 1);
+	REQUIRE(port.LastOwnAuthorsRequest.has_value());
+	CHECK(port.LastOwnAuthorsRequest->Hidden ==
+		  std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
+
+	HideTrunkTips(model);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.OwnAuthorsCalls == 1);
+
+	model.SetAuthorsHidden({OidWithFirstByte(kMainTipByte)});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.OwnAuthorsCalls == 2);
+	CHECK(port.LastOwnAuthorsRequest->Hidden == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte)});
 }
 
 TEST_CASE("Git window: the user's e-mail is read with the branches")
@@ -2643,6 +2685,7 @@ TEST_CASE("A moved tip asks the authors again")
 	port.Branches = TrunkAndFeature(kFeatureTipByte);
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 
 	ListBranchesAndLandAuthors(model);
 
@@ -2709,12 +2752,13 @@ TEST_CASE("Git window: a listing whose branches changed lands a new snapshot")
 	CHECK(*model.GetBranches() == port.Branches);
 }
 
-TEST_CASE("Without a trunk the authors are answered without the own-commit query")
+TEST_CASE("Without a base the authors are answered without the own-commit query")
 {
 	FakePort port;
 	port.Branches = {TrunkAndFeature(kFeatureTipByte).back()};
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetAuthorsHidden({});
 
 	ListBranchesAndLandAuthors(model);
 
@@ -2728,6 +2772,7 @@ TEST_CASE("An empty branch list gets authors with nothing in them")
 	FakePort port;
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetAuthorsHidden({});
 
 	ListBranchesAndLandAuthors(model);
 
@@ -2743,6 +2788,7 @@ TEST_CASE("A failed authors read is asked again by the next listing with the sam
 	port.FailOwnAuthors = true;
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 
 	ListBranchesAndLandAuthors(model);
 
@@ -2764,6 +2810,7 @@ TEST_CASE("Closing the workspace drops the branch authors")
 	port.Branches = TrunkAndFeature(kFeatureTipByte);
 
 	Graphite::GitModel model{port, RunJobsInline()};
+	HideTrunkTips(model);
 	model.SetRoot("C:/repo");
 	model.SubscribeTo(events);
 

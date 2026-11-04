@@ -61,12 +61,19 @@ namespace Graphite::Fixtures {
 		// The local branch tracks the remote branch and is one row with it (BranchLine::SameRowAs).
 		void SameRow(std::size_t local, std::size_t remote)
 		{
-			m_Entries[local].Ref.UpstreamFullName = m_Entries[remote].Ref.FullName;
+			Track(local, remote);
 			m_SameRowAs.emplace_back(local, remote);
 		}
 
 		// The local branch tracks the remote branch without being one row with it (a base that is itself local).
-		void Track(std::size_t local, std::size_t remote) { m_Entries[local].Ref.UpstreamFullName = m_Entries[remote].Ref.FullName; }
+		void Track(std::size_t local, std::size_t remote)
+		{
+			m_Entries[local].Ref.UpstreamFullName = m_Entries[remote].Ref.FullName;
+			m_Entries[local].Branch.Upstream = m_Entries[remote].Branch.Name;
+		}
+
+		// The branch is compared with `base` (any ref).
+		void Compare(std::size_t branch, std::size_t base) { m_Entries[branch].ComparedWith = base; }
 
 		LineRead Build() const
 		{
@@ -95,6 +102,7 @@ namespace Graphite::Fixtures {
 				Core::BranchLine line;
 				line.Ref = index;
 				line.State = m_Entries[index].State;
+				line.ComparedWith = m_Entries[index].ComparedWith;
 
 				for (const auto& [local, remote] : m_SameRowAs)
 				{
@@ -116,6 +124,7 @@ namespace Graphite::Fixtures {
 			Core::LineRef Ref;
 			Core::Branch Branch;
 			Core::BranchState State = Core::BranchState::NotMerged;
+			std::optional<std::size_t> ComparedWith;
 		};
 
 		std::size_t Add(const std::string& branchName, const std::string& fullName, const std::string& remote,

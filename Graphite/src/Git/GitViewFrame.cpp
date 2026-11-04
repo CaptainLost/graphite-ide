@@ -11,7 +11,7 @@
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/GitStatusText.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/Window/ChipRow.h"

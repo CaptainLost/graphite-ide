@@ -1,6 +1,6 @@
 # 0589. Default a review's base to the branch tracking origin's HEAD
 
-Status: proposed
+Status: superseded by 0670
 Date: 2026-10-14
 
 ## Context

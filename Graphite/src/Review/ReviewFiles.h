@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Lines/BranchLines.h"
 #include "Review/ReviewPort.h"
 #include "Review/ViewedMarks.h"
 
@@ -22,7 +23,10 @@ namespace Graphite {
 		std::optional<std::string> Base;
 	};
 
-	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches);
+	// The base a review of the branch is offered against: its line, and for a base its upstream. A branch compared with
+	// nothing is offered with no base. No offer while `lines` is null, until the first line read lands.
+	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches,
+										   const BranchLines* lines);
 
 
 	RangeEnds EndsOfCommit(const Core::CommitSummary& commit);

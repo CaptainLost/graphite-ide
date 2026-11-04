@@ -21,6 +21,7 @@
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
+#include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/RepositoryGitPort.h"
 #include "Git/WriteConsequences.h"
@@ -209,6 +210,9 @@ namespace Graphite {
 		void FollowBranchesIntoReviews();
 
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
+
+		// Takes what the review bases and the own-authors walk need from a line read that has just landed.
+		void FollowLinesIntoReviewsAndAuthors();
 		void ApplyReviewMenuItem(const ReviewMenuItem& item);
 
 		// Opens a draft against ReviewBaseOf's base for a branch with neither a draft nor a session. False while the
@@ -419,6 +423,10 @@ namespace Graphite {
 		ReviewStore m_ReviewStore;
 
 		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
+
+		// WARNING: m_ReviewLines views into m_ReviewLinesRead, which it keeps alive; the two are replaced together.
+		Core::Ref<const LineRead> m_ReviewLinesRead;
+		std::optional<BranchLines> m_ReviewLines;
 
 		// WARNING: Declared before m_Panels, because SessionsPanel holds a reference to each and ClaudeSessionsPage to the settings.
 		// m_SessionWindows joins a worker per open session in its own destructor, and nothing it refers to is declared after it.

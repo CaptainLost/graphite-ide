@@ -286,6 +286,9 @@ namespace Graphite {
 
 		std::optional<ForkSeparator> ForkSeparatorFor(const Core::LogPage& page) const;
 
+		// The sidebar's lines of the read on screen; null before the first read lands.
+		const BranchLines* CurrentLines() const;
+
 		std::optional<GitModel::OwnCommitsRequest> OwnCommitsToAsk(const std::vector<Core::Branch>& branches);
 
 		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches);

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "GitFixtures.h"
+#include "Git/Lines/LineReadFixtures.h"
 
 #include "Git/History/ForkSeparator.h"
 
@@ -31,86 +32,108 @@ namespace {
 
 namespace {
 
-	constexpr bool kIsHead = true;
-
-	Core::Branch LocalBranch(std::string name, std::uint8_t tip, bool isHead = false,
-							 std::optional<std::string> upstream = std::nullopt)
+	// main is a base tracking origin/main; feature, checked out, is compared with main; lone is a base with no
+	// upstream.
+	struct Repository
 	{
-		Core::Branch branch;
-		branch.Name = name;
-		branch.FullName = "refs/heads/" + name;
-		branch.Tip = OidWithFirstByte(tip);
-		branch.IsHead = isHead;
-		branch.Upstream = std::move(upstream);
-		return branch;
-	}
+		Repository()
+		{
+			Graphite::Fixtures::LineReadBuilder builder;
+			builder.AddRemote("origin");
+			const std::size_t main = builder.AddLocal("main");
+			const std::size_t feature = builder.AddLocal("feature", Graphite::Fixtures::BranchSpec{.Head = true});
+			const std::size_t lone = builder.AddLocal("lone");
+			const std::size_t originMain = builder.AddRemoteBranch("origin", "main");
+			builder.MakeBase(main);
+			builder.MakeBase(lone);
+			builder.Track(main, originMain);
+			builder.Compare(feature, main);
+			Read = builder.Build();
+			Lines.emplace(Read);
+		}
 
-	Core::Branch OriginDefault(std::uint8_t tip)
-	{
-		Core::Branch branch;
-		branch.Name = "origin/main";
-		branch.FullName = "refs/remotes/origin/main";
-		branch.Kind = Core::RefKind::Remote;
-		branch.Tip = OidWithFirstByte(tip);
-		branch.IsRemoteDefault = true;
-		return branch;
-	}
+		Graphite::LineRead Read;
+		std::optional<Graphite::BranchLines> Lines;
 
-	std::vector<Core::Branch> Repository()
-	{
-		return {LocalBranch("main", 1, false, "origin/main"), LocalBranch("feature", 5, kIsHead), OriginDefault(1)};
-	}
+		std::optional<Graphite::ForkBase> ForkOf(const std::optional<std::string>& selectedRef) const
+		{
+			return Graphite::FindForkBase(selectedRef, *Read.Branches, &*Lines);
+		}
+	};
 }
 
-TEST_CASE("A selected branch is measured against the default branch")
+TEST_CASE("Git window: the fork base of a branch is its line")
 {
-	const std::optional<Graphite::ForkBase> fork = Graphite::FindForkBase("refs/heads/feature", Repository());
+	const Repository repository;
+
+	const std::optional<Graphite::ForkBase> fork = repository.ForkOf("refs/heads/feature");
 
 	REQUIRE(fork.has_value());
 	CHECK(fork->BaseName == "main");
 	CHECK(fork->OwnCommits.Ref == "refs/heads/feature");
-	CHECK(fork->OwnCommits.Exclude == OidWithFirstByte(1));
+	CHECK(fork->OwnCommits.Exclude == (*repository.Read.Branches)[0].Tip);
 }
 
-TEST_CASE("Without a selected branch the checked-out one is measured")
+TEST_CASE("Git window: without a selected branch the checked-out one is measured")
 {
-	const std::optional<Graphite::ForkBase> fork = Graphite::FindForkBase(std::nullopt, Repository());
+	const Repository repository;
+
+	const std::optional<Graphite::ForkBase> fork = repository.ForkOf(std::nullopt);
 
 	REQUIRE(fork.has_value());
 	CHECK(fork->OwnCommits.Ref == "refs/heads/feature");
 }
 
-TEST_CASE("A detached HEAD has no branch to measure")
+TEST_CASE("Git window: a detached HEAD has no branch to measure")
 {
-	std::vector<Core::Branch> branches = Repository();
-	branches[1].IsHead = false;
+	Graphite::Fixtures::LineReadBuilder builder;
+	const std::size_t main = builder.AddLocal("main");
+	const std::size_t feature = builder.AddLocal("feature");
+	builder.MakeBase(main);
+	builder.Compare(feature, main);
+	const Graphite::LineRead read = builder.Build();
+	const Graphite::BranchLines lines(read);
 
-	CHECK_FALSE(Graphite::FindForkBase(std::nullopt, branches).has_value());
+	CHECK_FALSE(Graphite::FindForkBase(std::nullopt, *read.Branches, &lines).has_value());
 }
 
-TEST_CASE("A selected ref that is not a branch has nothing to measure")
+TEST_CASE("Git window: a selected ref that is not a branch has nothing to measure")
 {
-	CHECK_FALSE(Graphite::FindForkBase("refs/heads/gone", Repository()).has_value());
+	const Repository repository;
+
+	CHECK_FALSE(repository.ForkOf("refs/heads/gone").has_value());
 }
 
-TEST_CASE("The default branch is measured against its upstream")
+TEST_CASE("Git window: a base is measured against its upstream")
 {
-	const std::optional<Graphite::ForkBase> fork = Graphite::FindForkBase("refs/heads/main", Repository());
+	const Repository repository;
+
+	const std::optional<Graphite::ForkBase> fork = repository.ForkOf("refs/heads/main");
 
 	REQUIRE(fork.has_value());
 	CHECK(fork->BaseName == "origin/main");
 }
 
-TEST_CASE("The remote of the default branch has no fork point either")
+TEST_CASE("Git window: the remote of a base has no fork point either")
 {
-	CHECK_FALSE(Graphite::FindForkBase("refs/remotes/origin/main", Repository()).has_value());
+	const Repository repository;
+
+	CHECK_FALSE(repository.ForkOf("refs/remotes/origin/main").has_value());
 }
 
-TEST_CASE("A repository that names no base gets no separator unless a branch is checked out")
+TEST_CASE("Git window: a branch compared with nothing, a base with no upstream and a missing line read get no separator")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("only", 1)};
+	const Repository repository;
 
-	CHECK_FALSE(Graphite::FindForkBase("refs/heads/only", branches).has_value());
+	CHECK_FALSE(repository.ForkOf("refs/heads/lone").has_value());
+	CHECK_FALSE(Graphite::FindForkBase("refs/heads/feature", *repository.Read.Branches, nullptr).has_value());
+
+	Graphite::Fixtures::LineReadBuilder builder;
+	builder.AddLocal("orphan");
+	const Graphite::LineRead read = builder.Build();
+	const Graphite::BranchLines lines(read);
+
+	CHECK_FALSE(Graphite::FindForkBase("refs/heads/orphan", *read.Branches, &lines).has_value());
 }
 
 TEST_CASE("The separator sits before the first commit the branch does not own")

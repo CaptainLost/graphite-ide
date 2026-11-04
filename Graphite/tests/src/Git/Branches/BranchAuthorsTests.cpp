@@ -2,8 +2,11 @@
 
 #include "GitFixtures.h"
 #include "Git/Branches/BranchAuthors.h"
+#include "Git/Lines/LineReadFixtures.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,7 +53,7 @@ namespace {
 	}
 }
 
-TEST_CASE("The authors request lists every tip once in a fixed order and hides the trunk")
+TEST_CASE("Git window: the authors request lists every tip once in a fixed order and hides the given tips")
 {
 	Core::Branch main = BranchWithTip("main", Core::RefKind::Local, kMainTipByte);
 	main.IsHead = true;
@@ -63,14 +66,15 @@ TEST_CASE("The authors request lists every tip once in a fixed order and hides t
 		BranchWithTip("origin/feature", Core::RefKind::Remote, kFeatureTipByte),
 	};
 
-	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(branches);
+	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(
+		branches, {OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
 
 	CHECK(request.Tips == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte),
 												 OidWithFirstByte(kFeatureTipByte)});
 	CHECK(request.Hidden == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
 }
 
-TEST_CASE("A branch whose tip cannot be read is left out of the authors request")
+TEST_CASE("Git window: a branch whose tip cannot be read is left out of the authors request")
 {
 	Core::Branch main = BranchWithTip("main", Core::RefKind::Local, kMainTipByte);
 	main.IsHead = true;
@@ -84,30 +88,44 @@ TEST_CASE("A branch whose tip cannot be read is left out of the authors request"
 		unreadable,
 	};
 
-	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(branches);
+	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(
+		branches, {OidWithFirstByte(kMainTipByte), OidWithFirstByte(kUnreadableTipByte)});
 
 	CHECK(request.Tips == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kFeatureTipByte)});
 	CHECK(request.Hidden == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte)});
 }
 
-TEST_CASE("A trunk branch whose tip cannot be read is not hidden from the authors request")
+TEST_CASE("Git window: own authors hide every base's tip")
 {
-	Core::Branch main = BranchWithTip("main", Core::RefKind::Local, kMainTipByte);
-	main.IsHead = true;
-	main.Upstream = "origin/main";
-	main.TipCommit.reset();
+	Graphite::Fixtures::LineReadBuilder builder;
+	builder.AddRemote("origin");
+	const std::size_t main = builder.AddLocal("main");
+	const std::size_t develop = builder.AddRemoteBranch("origin", "develop");
+	const std::size_t unreadable = builder.AddLocal("unreadable", Graphite::Fixtures::BranchSpec{.AgeDays = std::nullopt});
+	builder.AddLocal("feature");
+	builder.MakeBase(develop);
+	builder.MakeBase(main);
+	builder.MakeBase(unreadable);
+	const Graphite::LineRead read = builder.Build();
 
-	const std::vector<Core::Branch> branches = {
-		BranchWithTip("feature", Core::RefKind::Local, kFeatureTipByte),
-		main,
-		BranchWithTip("origin/main", Core::RefKind::Remote, kOriginMainTipByte),
-	};
+	const std::vector<Core::Oid> hidden = Graphite::BaseTipsOf(read);
 
-	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(branches);
+	std::vector<Core::Oid> expected = {read.Refs[main].Tip, read.Refs[develop].Tip};
+	std::sort(expected.begin(), expected.end(), [](const Core::Oid& a, const Core::Oid& b) { return a.Bytes < b.Bytes; });
+	CHECK(hidden == expected);
 
-	CHECK(request.Tips ==
-		  std::vector<Core::Oid>{OidWithFirstByte(kOriginMainTipByte), OidWithFirstByte(kFeatureTipByte)});
-	CHECK(request.Hidden == std::vector<Core::Oid>{OidWithFirstByte(kOriginMainTipByte)});
+	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(*read.Branches, hidden);
+	CHECK(request.Hidden == expected);
+	CHECK(request.Tips.size() == 3);
+}
+
+TEST_CASE("Git window: a hidden tip that no readable branch has is not hidden")
+{
+	const std::vector<Core::Branch> branches = {BranchWithTip("feature", Core::RefKind::Local, kFeatureTipByte)};
+
+	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(branches, {OidWithFirstByte(kMainTipByte)});
+
+	CHECK(request.Hidden.empty());
 }
 
 TEST_CASE("A branch with own commits is written by their authors")

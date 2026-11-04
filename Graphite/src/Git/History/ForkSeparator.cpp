@@ -1,6 +1,6 @@
 #include "Git/History/ForkSeparator.h"
 
-#include "Git/DefaultBranch.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Review/ReviewFiles.h"
 
 #include "Core/Git/Oid.h"
@@ -36,7 +36,7 @@ namespace Graphite {
 	}
 
 	std::optional<ForkBase> FindForkBase(const std::optional<std::string>& selectedRef,
-										 const std::vector<Core::Branch>& branches)
+										 const std::vector<Core::Branch>& branches, const BranchLines* lines)
 	{
 		const Core::Branch* branch = BranchShown(selectedRef, branches);
 
@@ -45,7 +45,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const std::optional<ReviewOffer> offer = OfferReview(*branch, branches);
+		const std::optional<ReviewOffer> offer = OfferReview(*branch, branches, lines);
 
 		if (!offer.has_value() || !offer->Base.has_value())
 		{

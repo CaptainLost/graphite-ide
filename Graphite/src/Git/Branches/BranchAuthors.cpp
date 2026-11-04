@@ -1,7 +1,5 @@
 #include "Git/Branches/BranchAuthors.h"
 
-#include "Git/DefaultBranch.h"
-
 #include "Core/Base/Ascii.h"
 
 #include <algorithm>
@@ -56,7 +54,31 @@ namespace Graphite {
 		}
 	}
 
-	Core::OwnAuthorsRequest OwnAuthorsRequestFor(const std::vector<Core::Branch>& branches)
+	std::vector<Core::Oid> BaseTipsOf(const LineRead& read)
+	{
+		std::vector<Core::Oid> tips;
+
+		if (!read.Branches)
+		{
+			return tips;
+		}
+
+		for (const Core::LineBase& base : read.Model.Bases)
+		{
+			const bool isReadable = base.Ref < read.Branches->size() && (*read.Branches)[base.Ref].TipCommit.has_value();
+
+			if (isReadable)
+			{
+				tips.push_back(read.Refs[base.Ref].Tip);
+			}
+		}
+
+		SortWithoutRepeats(tips);
+		return tips;
+	}
+
+	Core::OwnAuthorsRequest OwnAuthorsRequestFor(const std::vector<Core::Branch>& branches,
+												 const std::vector<Core::Oid>& hidden)
 	{
 		Core::OwnAuthorsRequest request;
 
@@ -70,11 +92,11 @@ namespace Graphite {
 			}
 		}
 
-		for (const Core::Oid& trunkTip : TrunkTips(branches))
+		for (const Core::Oid& baseTip : hidden)
 		{
-			if (IsReadableTip(trunkTip, branches))
+			if (IsReadableTip(baseTip, branches))
 			{
-				request.Hidden.push_back(trunkTip);
+				request.Hidden.push_back(baseTip);
 			}
 		}
 

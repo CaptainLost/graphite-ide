@@ -22,6 +22,7 @@
 #include "Theme/GitPalette.h"
 #include "Git/GitRequests.h"
 #include "Git/GitStatusText.h"
+#include "Git/Branches/BranchAuthors.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/WriteFailureTitle.h"
@@ -547,6 +548,7 @@ namespace Graphite {
 		// the window is on screen.
 		m_Lines.Follow(m_Git.GetBranches());
 		m_Lines.OnUpdate();
+		FollowLinesIntoReviewsAndAuthors();
 
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);
@@ -621,6 +623,28 @@ namespace Graphite {
 		m_Reviews.InvalidateRanges();
 	}
 
+	void GraphiteLayer::FollowLinesIntoReviewsAndAuthors()
+	{
+		const Core::Ref<const LineRead> read = m_Lines.GetRead();
+
+		if (read == m_ReviewLinesRead)
+		{
+			return;
+		}
+
+		// WARNING: The lines view into the read, so they go before the pointer that keeps it alive is replaced.
+		m_ReviewLines.reset();
+		m_ReviewLinesRead = read;
+
+		if (!read)
+		{
+			return;
+		}
+
+		m_ReviewLines.emplace(*read);
+		m_Git.SetAuthorsHidden(BaseTipsOf(*read));
+	}
+
 	ReviewMenu GraphiteLayer::ReviewMenuOfBranch(const Core::Branch& branch) const
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
@@ -630,7 +654,7 @@ namespace Graphite {
 			return ReviewMenu{};
 		}
 
-		return ReviewMenuFor(branch, *branches, m_ReviewStore.GetSessions());
+		return ReviewMenuFor(branch, *branches, m_ReviewStore.GetSessions(), m_ReviewLines ? &*m_ReviewLines : nullptr);
 	}
 
 	void GraphiteLayer::ApplyReviewMenuItem(const ReviewMenuItem& item)
@@ -666,7 +690,7 @@ namespace Graphite {
 			return false;
 		}
 
-		const std::optional<std::string> base = ReviewBaseOf(branch, *branches, sessions);
+		const std::optional<std::string> base = ReviewBaseOf(branch, *branches, sessions, m_ReviewLines ? &*m_ReviewLines : nullptr);
 
 		if (!base.has_value())
 		{
