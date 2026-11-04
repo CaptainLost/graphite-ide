@@ -26,6 +26,10 @@ namespace Graphite {
 		const Core::LineBase* BaseNamed(std::string_view fullName) const;
 		const Core::OldCopy* OldCopyNamed(std::string_view fullName) const;
 
+		// The base or old copy whose row a local branch is shown in (SameRowAs), while it has no commits of its own and the
+		// user picked no line for it; else `fullName` itself. A view of the read's name or of `fullName`.
+		std::string_view ShownAs(std::string_view fullName) const;
+
 		// The full name of what the branch is compared with; empty when it is compared with nothing or is no branch line.
 		std::optional<std::string> ComparedWithName(std::string_view fullName) const;
 

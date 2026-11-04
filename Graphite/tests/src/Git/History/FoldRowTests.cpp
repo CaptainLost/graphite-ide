@@ -188,6 +188,24 @@ TEST_CASE("Git window: a base and a branch without a line show the ref alone")
 	}
 }
 
+TEST_CASE("Git window: a base's local copy with no commits of its own is shown alone as the base is")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+
+	const std::size_t base = builder.AddRemoteBranch("origin", "develop");
+	builder.MakeBase(base);
+	const std::size_t copy = builder.AddLocal("develop", BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(copy, base);
+	builder.Compare(copy, base);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.FeatureLine().Kind = Core::ComparedKind::Base;
+
+	CHECK(scene.LineOf("refs/heads/develop").Fold == LineFold::None);
+}
+
 TEST_CASE("Git window: a folded history asks the branch alone and its own commits")
 {
 	const Scene scene = MakeScene();

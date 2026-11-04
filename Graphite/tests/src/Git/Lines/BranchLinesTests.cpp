@@ -74,3 +74,20 @@ TEST_CASE("Git window: branch lines find what a branch is compared with")
 	CHECK_FALSE(lines.ComparedWithName("refs/remotes/origin/main").has_value());
 	CHECK_FALSE(lines.ComparedWithName("refs/heads/gone").has_value());
 }
+
+TEST_CASE("Git window: a base's local copy is shown as the base until it has commits of its own or a picked line")
+{
+	LineRead read = ReadOfSixRefs();
+
+	CHECK(BranchLines{read}.ShownAs("refs/heads/main") == "refs/remotes/origin/main");
+	CHECK(BranchLines{read}.ShownAs("refs/heads/feature") == "refs/heads/feature");
+	CHECK(BranchLines{read}.ShownAs("refs/remotes/origin/main") == "refs/remotes/origin/main");
+	CHECK(BranchLines{read}.ShownAs("refs/heads/gone") == "refs/heads/gone");
+
+	read.Model.Branches[0].ByAnswer = true;
+	CHECK(BranchLines{read}.ShownAs("refs/heads/main") == "refs/heads/main");
+
+	read.Model.Branches[0].ByAnswer = false;
+	read.Model.Branches[0].State = Core::BranchState::NotMerged;
+	CHECK(BranchLines{read}.ShownAs("refs/heads/main") == "refs/heads/main");
+}

@@ -51,12 +51,14 @@ namespace Graphite {
 
 	std::optional<std::string> HistoryBannerFor(const VsInput& input)
 	{
-		if (const Core::OldCopy* const copy = input.Lines.OldCopyNamed(input.ShownRef); copy != nullptr)
+		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+
+		if (const Core::OldCopy* const copy = input.Lines.OldCopyNamed(shown); copy != nullptr)
 		{
 			return OldCopyBanner(input, *copy);
 		}
 
-		const Core::BranchLine* const line = input.Lines.LineOf(input.ShownRef);
+		const Core::BranchLine* const line = input.Lines.LineOf(shown);
 
 		return line != nullptr ? BranchBanner(input, *line) : std::nullopt;
 	}

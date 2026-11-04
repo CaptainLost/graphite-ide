@@ -109,17 +109,19 @@ namespace Graphite {
 
 	VsLabel DescribeVs(const VsInput& input)
 	{
-		if (input.Lines.BaseNamed(input.ShownRef) != nullptr)
+		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+
+		if (input.Lines.BaseNamed(shown) != nullptr)
 		{
 			return Plain("compare with\xE2\x80\xA6");
 		}
 
-		if (input.Lines.OldCopyNamed(input.ShownRef) != nullptr)
+		if (input.Lines.OldCopyNamed(shown) != nullptr)
 		{
 			return Plain("compared with nothing");
 		}
 
-		const Core::BranchLine* const line = input.Lines.LineOf(input.ShownRef);
+		const Core::BranchLine* const line = input.Lines.LineOf(shown);
 
 		return line != nullptr ? DescribeBranch(input, *line) : VsLabel{};
 	}

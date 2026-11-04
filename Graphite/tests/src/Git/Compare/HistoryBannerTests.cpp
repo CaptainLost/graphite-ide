@@ -99,6 +99,31 @@ TEST_CASE("Git window: an old copy of another remote's default gets the old copy
 	CHECK(Banner(scene, "refs/remotes/fork/main")->find("\xE2\x80\xA6 commits behind it") != std::string::npos);
 }
 
+TEST_CASE("Git window: the local copy of a base or of an old copy is bannered as what its row stands for")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("fork");
+
+	const std::size_t origin = builder.AddRemoteBranch("origin", "main");
+	builder.MakeBase(origin);
+	const std::size_t copy = builder.AddRemoteBranch("fork", "main");
+	const std::size_t originLocal = builder.AddLocal("main", Graphite::Fixtures::BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(originLocal, origin);
+	builder.Compare(originLocal, origin);
+	const std::size_t copyLocal = builder.AddLocal("fork-main", Graphite::Fixtures::BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(copyLocal, copy);
+	builder.Compare(copyLocal, origin);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.Read.Model.OldCopies.push_back(Core::OldCopy{.Ref = copy, .Of = origin});
+
+	CHECK_FALSE(Banner(scene, "refs/heads/main").has_value());
+	REQUIRE(Banner(scene, "refs/heads/fork-main").has_value());
+	CHECK(Banner(scene, "refs/heads/fork-main")->starts_with("The default branch of fork, made when the fork was."));
+}
+
 TEST_CASE("Git window: a history cut off and no common history each get a banner")
 {
 	Scene scene = MakeScene();

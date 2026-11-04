@@ -726,7 +726,10 @@ namespace Graphite {
 	{
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
 		const BranchLines* const lines = CurrentLines();
-		const BranchMenu menu = MenuFor(read.get(), lines, branch.FullName);
+
+		// A base's local copy answers for the base its row shows.
+		const std::string shown = lines != nullptr ? std::string{lines->ShownAs(branch.FullName)} : branch.FullName;
+		const BranchMenu menu = MenuFor(read.get(), lines, shown);
 
 		if (!menu.CompareWith && !menu.UseAsBase && !menu.StopUsingAsBase && !menu.UseAsMainLine)
 		{
@@ -743,17 +746,17 @@ namespace Graphite {
 
 		if (menu.UseAsBase && ImGui::MenuItem("Use as base"))
 		{
-			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsBase, .Ref = branch.FullName});
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsBase, .Ref = shown});
 		}
 
 		if (menu.StopUsingAsBase && ImGui::MenuItem("Stop using as base"))
 		{
-			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::StopUsingAsBase, .Ref = branch.FullName});
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::StopUsingAsBase, .Ref = shown});
 		}
 
 		if (menu.UseAsMainLine && ImGui::MenuItem("Use as main line"))
 		{
-			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsMainLine, .Ref = branch.FullName});
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsMainLine, .Ref = shown});
 		}
 	}
 

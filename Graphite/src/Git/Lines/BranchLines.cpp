@@ -80,6 +80,21 @@ namespace Graphite {
 		return &m_Read.Model.OldCopies[*m_OldCopyOfRef[*ref]];
 	}
 
+	std::string_view BranchLines::ShownAs(std::string_view fullName) const
+	{
+		const Core::BranchLine* const line = LineOf(fullName);
+
+		if (line == nullptr || !line->SameRowAs.has_value() || line->State != Core::BranchState::NoOwnCommits || line->ByAnswer)
+		{
+			return fullName;
+		}
+
+		const std::size_t row = *line->SameRowAs;
+		const bool standsForAnother = m_BaseOfRef[row].has_value() || m_OldCopyOfRef[row].has_value();
+
+		return standsForAnother ? std::string_view{m_Read.Refs[row].FullName} : fullName;
+	}
+
 	std::optional<std::string> BranchLines::ComparedWithName(std::string_view fullName) const
 	{
 		const Core::BranchLine* line = LineOf(fullName);

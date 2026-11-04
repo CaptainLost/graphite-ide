@@ -170,7 +170,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		if (const Core::OldCopy* const copy = lines->OldCopyNamed(shownRef); copy != nullptr)
+		if (const Core::OldCopy* const copy = lines->OldCopyNamed(lines->ShownAs(shownRef)); copy != nullptr)
 		{
 			return m_Lines.DistanceOf(read.Refs[copy->Ref].Tip, read.Refs[copy->Of].Tip);
 		}

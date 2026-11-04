@@ -60,8 +60,10 @@ namespace Graphite {
 
 	HistoryLine HistoryLineOf(const LineRead& read, const BranchLines& lines, std::string_view shownRef, bool newerShown)
 	{
-		// An old copy and a base are compared with nothing, so they are shown alone.
-		if (lines.OldCopyNamed(shownRef) != nullptr || lines.BaseNamed(shownRef) != nullptr)
+		// An old copy and a base are compared with nothing, so they are shown alone; so is a local branch shown as one.
+		const std::string_view shown = lines.ShownAs(shownRef);
+
+		if (lines.OldCopyNamed(shown) != nullptr || lines.BaseNamed(shown) != nullptr)
 		{
 			return {};
 		}

@@ -122,6 +122,30 @@ TEST_CASE("Git window: a base shown reads compare with")
 	CHECK(label.Counts.empty());
 }
 
+TEST_CASE("Git window: a base's local copy with no commits of its own reads compare with as the base does")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+
+	Scene scene;
+	scene.Develop = builder.AddRemoteBranch("origin", "develop");
+	builder.MakeBase(scene.Develop);
+	const std::size_t copy = builder.AddLocal("develop", BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(copy, scene.Develop);
+	builder.Compare(copy, scene.Develop);
+	scene.Read = builder.Build();
+	scene.Line().Kind = Core::ComparedKind::Base;
+
+	CHECK(Describe(scene, "refs/heads/develop").Lead == "compare with\xE2\x80\xA6");
+
+	scene.Line().ByAnswer = true;
+	CHECK(Describe(scene, "refs/heads/develop").Lead == "no own commits \xC2\xB7 points into");
+
+	scene.Line().ByAnswer = false;
+	scene.Line().State = Core::BranchState::NotMerged;
+	CHECK(Describe(scene, "refs/heads/develop").Lead == "vs");
+}
+
 TEST_CASE("Git window: a branch compared with nothing by the user's answer says so and is marked as a pick")
 {
 	Scene scene = MakeScene();
