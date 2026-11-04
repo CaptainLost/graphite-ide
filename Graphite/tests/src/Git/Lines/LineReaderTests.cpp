@@ -152,6 +152,11 @@ namespace {
 		std::ofstream out{file, std::ios::binary | std::ios::trunc};
 		out << text;
 	}
+
+	bool Holds(const std::vector<std::string>& names, const std::string& name)
+	{
+		return std::ranges::find(names, name) != names.end();
+	}
 }
 
 TEST_CASE("Lines: a branch tracking a local branch names it under refs/heads")
@@ -244,6 +249,7 @@ TEST_CASE("Lines: a read drops kept bases and comparisons that name references g
 
 	Core::LineAnswers answers;
 	answers.KeptBases = {"refs/remotes/origin/gone", "refs/heads/feature"};
+	answers.BaseOrder = {"refs/remotes/origin/gone", "refs/heads/feature"};
 	answers.RemovedBases = {"refs/remotes/origin/gone-too"};
 	answers.Comparisons["refs/heads/gone"] = "refs/remotes/origin/master";
 	answers.Comparisons["refs/heads/feature"] = "refs/heads/gone";
@@ -256,6 +262,7 @@ TEST_CASE("Lines: a read drops kept bases and comparisons that name references g
 
 	const Core::LineAnswers saved = LoadLineAnswers(paths.Answers);
 	CHECK(saved.KeptBases == std::vector<std::string>{"refs/heads/feature"});
+	CHECK(saved.BaseOrder == std::vector<std::string>{"refs/heads/feature"});
 	CHECK(saved.RemovedBases == std::vector<std::string>{"refs/remotes/origin/gone-too"});
 	REQUIRE(saved.Comparisons.size() == 1);
 	CHECK(saved.Comparisons.contains("refs/heads/master"));
@@ -306,22 +313,27 @@ TEST_CASE("Lines: a read's own changes to the answers are merged into what the f
 	{
 		Core::LineAnswers loaded;
 		loaded.KeptBases = {"refs/remotes/origin/gone", "refs/remotes/origin/release"};
+		loaded.BaseOrder = {"refs/remotes/origin/gone", "refs/remotes/origin/release"};
 		loaded.Comparisons["refs/heads/gone"] = "refs/remotes/origin/main";
 		loaded.Comparisons["refs/heads/kept"] = std::nullopt;
 
 		Core::LineAnswers meanwhile = loaded;
 		meanwhile.Comparisons["refs/heads/new"] = "refs/remotes/origin/release";
 		meanwhile.MainLine = "refs/remotes/origin/main";
+		meanwhile.AddedBases = {"refs/heads/staging"};
+		meanwhile.BaseOrder.push_back("refs/heads/staging");
 		REQUIRE(SaveLineAnswers(file, meanwhile));
 
 		Core::LineAnswers computed = loaded;
 		computed.KeptBases = {"refs/remotes/origin/release"};
+		computed.BaseOrder = {"refs/remotes/origin/release"};
 		computed.Comparisons.erase("refs/heads/gone");
 
 		SaveAnswerChanges(file, loaded, computed);
 
 		Core::LineAnswers expected = meanwhile;
 		expected.KeptBases = {"refs/remotes/origin/release"};
+		expected.BaseOrder = {"refs/remotes/origin/release", "refs/heads/staging"};
 		expected.Comparisons.erase("refs/heads/gone");
 		CHECK(LoadLineAnswers(file) == expected);
 	}
@@ -598,4 +610,97 @@ TEST_CASE("Lines: an answers file from a newer build is not overwritten by a rea
 	// The rules did find release, so an unguarded read would have saved it over the newer file.
 	CHECK(std::ranges::find(read.GetValue().Answers.KeptBases, "refs/remotes/origin/release") != read.GetValue().Answers.KeptBases.end());
 	CHECK(ReadWhole(paths.Answers) == newer);
+}
+
+TEST_CASE("Git window: a read appends newly found bases to the base order")
+{
+	// staging, one commit on master, was added by the user before this read; the rules find release.
+	GitFixture fixture;
+	BuildReleaseScenario(fixture);
+	fixture.Branch("staging");
+	fixture.Checkout("staging");
+	fixture.Write("s.txt", "s");
+	fixture.CommitAt("staging", "ann@example.com", 21);
+
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(store);
+	Core::LineAnswers answers;
+	answers.AddedBases = {"refs/heads/staging"};
+	answers.BaseOrder = {"refs/heads/staging"};
+	REQUIRE(SaveLineAnswers(paths.Answers, answers));
+
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> read = ReadLines(repository, paths, kReleaseScenarioNow);
+	REQUIRE(read.HasValue());
+
+	const std::vector<std::string> expected = {"refs/heads/staging", "refs/remotes/origin/release"};
+	const Core::LineAnswers saved = LoadLineAnswers(paths.Answers);
+	CHECK(saved.BaseOrder == expected);
+	CHECK(saved.KeptBases == std::vector<std::string>{"refs/remotes/origin/release"});
+	CHECK(saved == read.GetValue().Answers);
+}
+
+TEST_CASE("Git window: a base the user stopped is never kept again")
+{
+	SUBCASE("stopped before the read")
+	{
+		GitFixture fixture;
+		BuildReleaseScenario(fixture);
+		TempDirectory store;
+		const LineStorePaths paths = StoreIn(store);
+		Core::LineAnswers answers;
+		answers.RemovedBases = {"refs/remotes/origin/release"};
+		REQUIRE(SaveLineAnswers(paths.Answers, answers));
+
+		const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+		const Core::Result<LineRead> read = ReadLines(repository, paths, kReleaseScenarioNow);
+		REQUIRE(read.HasValue());
+
+		const Core::LineAnswers saved = LoadLineAnswers(paths.Answers);
+		CHECK_FALSE(Holds(saved.KeptBases, "refs/remotes/origin/release"));
+		CHECK_FALSE(Holds(saved.BaseOrder, "refs/remotes/origin/release"));
+		CHECK(saved == read.GetValue().Answers);
+	}
+
+	SUBCASE("stopped while the read ran")
+	{
+		// The read found release; before it saved, the user stopped release.
+		TempDirectory directory;
+		const std::filesystem::path file = directory.GetPath() / "store" / "answers.json";
+		Core::LineAnswers meanwhile;
+		meanwhile.RemovedBases = {"refs/remotes/origin/release"};
+		REQUIRE(SaveLineAnswers(file, meanwhile));
+
+		Core::LineAnswers computed;
+		computed.KeptBases = {"refs/remotes/origin/release"};
+		computed.BaseOrder = {"refs/remotes/origin/release"};
+
+		const Core::LineAnswers result = SaveAnswerChanges(file, Core::LineAnswers{}, computed);
+
+		CHECK(LoadLineAnswers(file) == meanwhile);
+		CHECK(result == meanwhile);
+	}
+}
+
+TEST_CASE("Git window: a base order entry added while a read ran survives its save")
+{
+	// The user added staging while a read that found release ran.
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "store" / "answers.json";
+	Core::LineAnswers meanwhile;
+	meanwhile.AddedBases = {"refs/heads/staging"};
+	meanwhile.BaseOrder = {"refs/heads/staging"};
+	REQUIRE(SaveLineAnswers(file, meanwhile));
+
+	Core::LineAnswers computed;
+	computed.KeptBases = {"refs/remotes/origin/release"};
+	computed.BaseOrder = {"refs/remotes/origin/release"};
+
+	const Core::LineAnswers result = SaveAnswerChanges(file, Core::LineAnswers{}, computed);
+
+	Core::LineAnswers expected = meanwhile;
+	expected.KeptBases = {"refs/remotes/origin/release"};
+	expected.BaseOrder = {"refs/heads/staging", "refs/remotes/origin/release"};
+	CHECK(LoadLineAnswers(file) == expected);
+	CHECK(result == expected);
 }

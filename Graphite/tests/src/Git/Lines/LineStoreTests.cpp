@@ -5,6 +5,8 @@
 #include "TempDirectory.h"
 
 #include <cctype>
+#include <string>
+#include <vector>
 
 using namespace Graphite;
 
@@ -56,6 +58,30 @@ TEST_CASE("Lines: answers survive a save and a load")
 	answers.MainLine = "refs/heads/trunk";
 	REQUIRE(SaveLineAnswers(file, answers));
 	CHECK(LoadLineAnswers(file) == answers);
+}
+
+TEST_CASE("Git window: the base order survives a save and a load")
+{
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "answers.json";
+
+	Core::LineAnswers answers;
+	answers.AddedBases = {"refs/heads/staging"};
+	answers.KeptBases = {"refs/remotes/origin/release/2", "refs/remotes/origin/release/1"};
+	answers.BaseOrder = {"refs/remotes/origin/release/2", "refs/heads/staging", "refs/remotes/origin/release/1"};
+
+	REQUIRE(SaveLineAnswers(file, answers));
+	CHECK(LoadLineAnswers(file).BaseOrder == answers.BaseOrder);
+	CHECK(LoadLineAnswers(file) == answers);
+
+	const std::filesystem::path written =
+		directory.MakeFile("written.json", R"({"version": 1, "keptBases": ["refs/heads/x"], "baseOrder": ["refs/heads/x"]})");
+	CHECK(LoadLineAnswers(written).BaseOrder == std::vector<std::string>{"refs/heads/x"});
+
+	const std::filesystem::path withoutOrder = directory.MakeFile("without-order.json", R"({"version": 1, "keptBases": ["refs/heads/x"]})");
+	const Core::LineAnswers loaded = LoadLineAnswers(withoutOrder);
+	CHECK(loaded.KeptBases == std::vector<std::string>{"refs/heads/x"});
+	CHECK(loaded.BaseOrder.empty());
 }
 
 TEST_CASE("Lines: a missing or malformed or newer answers file reads as no answers")

@@ -89,7 +89,9 @@ namespace Core {
 
 	struct LineModel
 	{
-		std::vector<LineBase> Bases; // server defaults or the main line first, then in the order found
+		// Server defaults or the main line first, then the added and kept bases in LineAnswers::BaseOrder (any the order
+		// lacks after them), then the ones this computation found, in the order found.
+		std::vector<LineBase> Bases;
 		std::vector<OldCopy> OldCopies;
 		std::vector<BranchLine> Branches; // every ref that is not a base, in input order
 		bool MainLineGuessed = false;

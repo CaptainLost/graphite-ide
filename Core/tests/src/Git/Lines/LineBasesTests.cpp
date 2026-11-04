@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -48,6 +49,20 @@ namespace {
 		}
 
 		return false;
+	}
+
+	// GraphBuilder::kNoRef when the ref is a base or is compared with nothing, so that a check against a ref fails.
+	std::size_t ComparedRef(const Core::LineModel& model, std::size_t ref)
+	{
+		for (const Core::BranchLine& branch : model.Branches)
+		{
+			if (branch.Ref == ref)
+			{
+				return branch.ComparedWith.value_or(GraphBuilder::kNoRef);
+			}
+		}
+
+		return GraphBuilder::kNoRef;
 	}
 
 	// develop d1..dN by three authors on days 1..N.
@@ -95,6 +110,19 @@ namespace {
 		builder.Chain("u", 30, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
 		builder.Ref("refs/remotes/origin/main", "u5", true);
 		builder.Ref("refs/remotes/upstream/main", "u30", upstreamReportsDefault);
+		builder.SetNow(40);
+	}
+
+	// The fork's origin/main stopped at u5; upstream's main line `upstreamMainLine` is u1..u30 by three authors, and
+	// upstream/feature, f1..f8 from u5 by four others over seven days, is a base by its authors and the heavier line
+	// above u5.
+	void AddForkWithHeavierFeature(GraphBuilder& builder, std::string_view upstreamMainLine, bool upstreamReportsDefault)
+	{
+		builder.Chain("u", 30, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+		builder.Chain("f", 8, "u5", 6, {"d@example.com", "e@example.com", "f@example.com", "g@example.com"});
+		builder.Ref("refs/remotes/origin/main", "u5", true);
+		builder.Ref(upstreamMainLine, "u30", upstreamReportsDefault);
+		builder.Ref("refs/remotes/upstream/feature", "f8");
 		builder.SetNow(40);
 	}
 
@@ -295,6 +323,100 @@ TEST_CASE("Lines: an integration branch on a remote with fewer branches does not
 	CHECK_FALSE(model.MainLineGuessed);
 }
 
+TEST_CASE("Lines: a stale default hands the main line to the other remote's default over a heavier line")
+{
+	GraphBuilder builder;
+	AddForkWithHeavierFeature(builder, "refs/remotes/upstream/main", true);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::ServerDefault);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/upstream/feature"));
+	CHECK(model.Bases[1].Reason == Core::BaseReason::Authors);
+	REQUIRE(model.OldCopies.size() == 1);
+	CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
+	CHECK_FALSE(model.MainLineGuessed);
+}
+
+TEST_CASE("Lines: a stale default hands the main line to the user's main line answer")
+{
+	GraphBuilder builder;
+	AddForkWithHeavierFeature(builder, "refs/remotes/upstream/develop", false);
+	Core::LineAnswers answers;
+	answers.MainLine = "refs/remotes/upstream/develop";
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/develop"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::MainLineByUser);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/upstream/feature"));
+	REQUIRE(model.OldCopies.size() == 1);
+	CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/develop"));
+	CHECK_FALSE(model.MainLineGuessed);
+}
+
+TEST_CASE("Lines: without another default the main line after a stale copy is voted among the candidates")
+{
+	// Only the fork reports a default, at u5. upstream/a (three authors) and upstream/b (four, so the heavier line
+	// above u5) both go on from it and are bases by their authors; three active fixes fork from upstream/a and none
+	// from upstream/b.
+	GraphBuilder builder;
+	builder.Chain("u", 5, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+	builder.Chain("a", 8, "u5", 6, {"p@example.com", "q@example.com", "r@example.com"});
+	builder.Chain("b", 8, "u5", 6, {"s@example.com", "t@example.com", "v@example.com", "w@example.com"});
+	builder.Commit("x1", {"a2"}, 14, "x@example.com");
+	builder.Commit("y1", {"a3"}, 15, "y@example.com");
+	builder.Commit("z1", {"a4"}, 16, "z@example.com");
+	builder.Ref("refs/remotes/origin/main", "u5", true);
+	builder.Ref("refs/remotes/upstream/a", "a8");
+	builder.Ref("refs/remotes/upstream/b", "b8");
+	builder.Ref("refs/heads/fix/1", "x1");
+	builder.Ref("refs/heads/fix/2", "y1");
+	builder.Ref("refs/heads/fix/3", "z1");
+	builder.SetNow(40);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/a"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::Authors);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/upstream/b"));
+	REQUIRE(model.OldCopies.size() == 1);
+	CHECK(model.OldCopies[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/a"));
+	CHECK_FALSE(model.MainLineGuessed);
+	CHECK_FALSE(AnyBaseIsGuessed(model));
+	CHECK(ComparedRef(model, builder.RefIndex("refs/heads/fix/1")) == builder.RefIndex("refs/remotes/upstream/a"));
+}
+
+TEST_CASE("Lines: with no branch active the main line after a stale copy is the line going on from its tip")
+{
+	// No vote is cast. The kept upstream/release/1 is listed before upstream/main, but upstream/main's line is the
+	// one that goes on from u5 with nothing pinned.
+	GraphBuilder builder;
+	AddFork(builder, false);
+	builder.Chain("r", 4, "u10", 11, {"p@example.com", "q@example.com"});
+	builder.Ref("refs/remotes/upstream/release/1", "r4");
+	builder.SetNow(300);
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/upstream/release/1"};
+	answers.BaseOrder = {"refs/remotes/upstream/release/1"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.OldCopies.size() == 1);
+	CHECK(model.OldCopies[0].Of == builder.RefIndex("refs/remotes/upstream/main"));
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/upstream/release/1"));
+	CHECK_FALSE(model.MainLineGuessed);
+}
+
 TEST_CASE("Lines: with no default anywhere the most forked-from line is guessed")
 {
 	GraphBuilder builder;
@@ -399,6 +521,55 @@ TEST_CASE("Lines: a kept base whose line still qualifies carries the rule's reas
 	REQUIRE(model.Bases.size() == 2);
 	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/2"));
 	CHECK(model.Bases[1].Reason == Core::BaseReason::Authors);
+}
+
+TEST_CASE("Lines: a base added on a kept base's tip does not take the kept base's line")
+{
+	// release/2 was found and kept; the user then added staging at its tip. backport forks from release/2's line
+	// below that tip.
+	GraphBuilder builder;
+	AddSquashOnlyRelease(builder);
+	builder.Commit("bp1", {"r3"}, 20, "d@example.com");
+	builder.Ref("refs/heads/staging", "r6");
+	builder.Ref("refs/heads/backport", "bp1");
+	builder.SetNow(30);
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/origin/release/2"};
+	answers.AddedBases = {"refs/heads/staging"};
+	answers.BaseOrder = {"refs/remotes/origin/release/2", "refs/heads/staging"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.Bases.size() == 3);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/2"));
+	CHECK(model.Bases[1].Qualities.Commits == 6);
+	CHECK(model.Bases[2].Ref == builder.RefIndex("refs/heads/staging"));
+	CHECK(model.Bases[2].Reason == Core::BaseReason::AddedByUser);
+	CHECK(ComparedRef(model, builder.RefIndex("refs/heads/backport")) == builder.RefIndex("refs/remotes/origin/release/2"));
+}
+
+TEST_CASE("Lines: bases are ordered by when each became a base")
+{
+	// staging was added before release/2 was found and kept.
+	GraphBuilder builder;
+	AddSquashOnlyRelease(builder);
+	builder.Commit("s1", {"m15"}, 21, "d@example.com");
+	builder.Ref("refs/heads/staging", "s1");
+	builder.SetNow(30);
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/origin/release/2"};
+	answers.AddedBases = {"refs/heads/staging"};
+	answers.BaseOrder = {"refs/heads/staging", "refs/remotes/origin/release/2"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.Bases.size() == 3);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+	CHECK(model.Bases[0].Reason == Core::BaseReason::ServerDefault);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/heads/staging"));
+	CHECK(model.Bases[1].Reason == Core::BaseReason::AddedByUser);
+	CHECK(model.Bases[2].Ref == builder.RefIndex("refs/remotes/origin/release/2"));
 }
 
 TEST_CASE("Lines: a reference whose tip the graph lacks is never a base")

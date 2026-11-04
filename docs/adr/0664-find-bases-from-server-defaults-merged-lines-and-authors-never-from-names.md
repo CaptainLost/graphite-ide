@@ -26,13 +26,17 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
   default's commit time, so a badly skewed clock can hide an old copy but never make one. When two defaults from
   different remotes are at the same commit, the one whose remote has fewer refs becomes the old copy of the other;
   with as many refs on each, the one whose remote name sorts later does. Old copies are listed as such and never used.
-  The test runs once, against every base, after the other rules have run. Of the bases a default copies, it is named
-  a copy of the one its tip goes on into along the heaviest line with nothing pinned (the first it copies when none
-  is on that line), so a release line forked above the stale tip and listed earlier does not take it from the
-  upstream's main line. That base takes over the default's role: it moves into the default's place in the list, is
-  pinned as the default was, and stands for the main line, so nothing is guessed. The lines are then computed once
-  more without the old copies. Old copies exist for forks, which are a matter of remotes and not of names: a fork
-  whose `origin` reports a stale default finds the real main line from the upstream's default or from the rules below
+  The test runs once, against every base, after the other rules have run. Of the bases a default copies, one takes
+  over its role: the user's main line when it is one of them, else another remote's server default, else the one on
+  the line that the most active branches are compared with, counted as the guess counts them (below) with nothing
+  pinned, over the lines of those bases only; with as many votes, the one on the line that goes on from the default's
+  tip with nothing pinned, then the one listed first. A heavier feature or release line built on the stale tip so
+  never takes the main line from a default the upstream reports or from the user's answer, and a release line listed
+  earlier does not take it from the line most work is compared with. That base moves into the default's place in the
+  list, is pinned as the default was, and stands for the main line, so nothing is guessed; the default is named an
+  old copy of it, the base whose line then holds the default's tip. The lines are then computed once more without the
+  old copies. Old copies exist for forks, which are a matter of remotes and not of names: a fork whose `origin`
+  reports a stale default finds the real main line from the upstream's default, the user's answer or the rules below,
   and asks no question.
 - **The user's answers.** Bases the user added are bases; bases the user removed are not. The user's choice of the main
   line is a base.
@@ -43,7 +47,16 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
   base. This finds release lines in teams that squash and leave no merges.
 - **Active and kept.** A base is active when its tip is within 90 days; the others are listed folded. A line found by
   the rules stays a base afterwards, stored with the repository's answers, until the user stops it or the branch is
-  deleted.
+  deleted. A base the user stopped is never kept again, not even by a read that found it and was still running when
+  the user stopped it.
+- **Order.** The bases are listed with the server defaults (in the order of the refs) or the main line first, then
+  the bases the user added and those the rules found, in the order each first became a base, which the answers keep
+  as `baseOrder`; last come the ones this computation found that the order lacks yet, in the order found. A read
+  appends each base it finds to the order, and a name that is neither added nor kept any more leaves it. The order,
+  not the kind of answer, decides where two bases collide in the split
+  ([0663](0663-compare-each-branch-with-the-line-it-forked-from.md): a later-listed base on an earlier one's chain owns
+  no line of its own until it has a commit of its own), so a base the user adds at the tip of a base kept before it
+  leaves that base its line.
 - **Bases before lines.** Bases are fixed before the lines are split, because the rules read lines and the lines
   are pinned to the bases. The split is run with the server defaults and the user's answers pinned, the lines that
   qualify are added as bases, and the split is run again, until a pass adds none. Real repositories settle in two
@@ -86,6 +99,8 @@ The guess has to be a question because in a copy of this repository the plain he
 
 - Thresholds (three lines, three authors, five commits, seven days, 90 days) live in one header; changing one is a
   code change and not a setting.
+- The order of the bases is history: two clones of one repository can list them differently, and so split a
+  collision differently, when their bases were added or found in another order.
 
 ## Alternatives Considered
 

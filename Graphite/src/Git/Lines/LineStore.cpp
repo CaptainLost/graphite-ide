@@ -108,6 +108,7 @@ namespace Graphite {
 			answers.AddedBases = NamesFrom(document, "addedBases");
 			answers.RemovedBases = NamesFrom(document, "removedBases");
 			answers.KeptBases = NamesFrom(document, "keptBases");
+			answers.BaseOrder = NamesFrom(document, "baseOrder");
 
 			if (const auto mainLine = document.find("mainLine"); mainLine != document.end() && mainLine->is_string())
 			{
@@ -219,6 +220,7 @@ namespace Graphite {
 		document["addedBases"] = answers.AddedBases;
 		document["removedBases"] = answers.RemovedBases;
 		document["keptBases"] = answers.KeptBases;
+		document["baseOrder"] = answers.BaseOrder;
 		document["mainLine"] = NameOrNull(answers.MainLine);
 
 		nlohmann::json comparisons = nlohmann::json::object();

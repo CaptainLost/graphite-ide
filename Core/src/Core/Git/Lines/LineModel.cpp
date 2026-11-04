@@ -569,6 +569,27 @@ namespace Core {
 			}
 		}
 
+		bool Contains(const std::vector<std::string>& names, const std::string& name)
+		{
+			return std::ranges::find(names, name) != names.end();
+		}
+
+		// A name in the base order that is neither added nor kept any more stands for nothing.
+		void AddBaseInOrder(const RefTable& table, const LineAnswers& answers, const std::vector<bool>& removed, const std::string& name,
+							BaseList& list)
+		{
+			if (Contains(answers.AddedBases, name))
+			{
+				AddNamedBase(table, removed, name, BaseReason::AddedByUser, list);
+			}
+			else if (Contains(answers.KeptBases, name))
+			{
+				AddNamedBase(table, removed, name, BaseReason::Kept, list);
+			}
+		}
+
+		// Server defaults and the user's main line first, then the answered bases in the order each became a base, which
+		// decides where two of them collide in the split; added and kept names the order lacks follow.
 		BaseList StartingBases(const RefTable& table, const LineAnswers& answers, const std::vector<bool>& removed)
 		{
 			BaseList list;
@@ -585,6 +606,11 @@ namespace Core {
 			if (answers.MainLine.has_value())
 			{
 				AddNamedBase(table, removed, *answers.MainLine, BaseReason::MainLineByUser, list);
+			}
+
+			for (const std::string& name : answers.BaseOrder)
+			{
+				AddBaseInOrder(table, answers, removed, name, list);
 			}
 
 			for (const std::string& name : answers.AddedBases)
@@ -769,14 +795,56 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		// Of the bases a stale default copies, the one its tip goes on into along the heaviest line, as the split sees it
-		// with nothing pinned: upstream's main line rather than a release line forked above the stale tip. The first it
-		// copies when none of them is on that line; nullopt when it copies none but old copies.
+		constexpr std::size_t kUsersMainLineRank = 0;
+		constexpr std::size_t kServerDefaultRank = 1;
+		constexpr std::size_t kAnyOtherBaseRank = 2;
+
+		// What a base a stale default copies brings to taking over the default's role.
+		struct TakeoverClaim
+		{
+			std::size_t Rank = kAnyOtherBaseRank;
+			std::size_t Votes = 0;       // the guess's votes for its line, split with nothing pinned
+			bool HoldsCopiedTip = false; // that line holds the stale default's tip
+		};
+
+		std::size_t TakeoverRankOf(BaseReason reason)
+		{
+			if (reason == BaseReason::MainLineByUser)
+			{
+				return kUsersMainLineRank;
+			}
+
+			return reason == BaseReason::ServerDefault ? kServerDefaultRank : kAnyOtherBaseRank;
+		}
+
+		// The user's main line first, then a server default, then any other base; within a rank more votes, then the
+		// line that holds the stale tip. On a full tie the base listed first keeps it.
+		bool IsStrongerClaim(const TakeoverClaim& candidate, const TakeoverClaim& current)
+		{
+			if (candidate.Rank != current.Rank)
+			{
+				return candidate.Rank < current.Rank;
+			}
+
+			if (candidate.Votes != current.Votes)
+			{
+				return candidate.Votes > current.Votes;
+			}
+
+			return candidate.HoldsCopiedTip && !current.HoldsCopiedTip;
+		}
+
+		// Of the bases a stale default copies, the one that takes over its role: a main line the user or a server named,
+		// else the one on the line the most active branches are compared with, as the guess counts them with nothing
+		// pinned, so that a heavier feature or release line going on from the stale tip does not take it. nullopt when it
+		// copies none but old copies.
 		std::optional<std::size_t> BaseThatTakesOver(const AncestryGraph& graph, const RefTable& table, const std::vector<LineBase>& bases,
-													 std::size_t position, const std::vector<bool>& isOldCopy, const IndexedSplit& unpinned)
+													 std::size_t position, const std::vector<bool>& isOldCopy, const IndexedSplit& unpinned,
+													 const std::vector<std::size_t>& votes)
 		{
 			const std::uint32_t lineOfCopy = unpinned.Split.LineOf[table.Tips[bases[position].Ref]];
-			std::optional<std::size_t> firstCopied;
+			std::optional<std::size_t> strongest;
+			TakeoverClaim strongestClaim;
 
 			for (std::size_t other = 0; other < bases.size(); ++other)
 			{
@@ -785,24 +853,23 @@ namespace Core {
 					continue;
 				}
 
-				if (unpinned.Split.LineOf[table.Tips[bases[other].Ref]] == lineOfCopy)
-				{
-					return other;
-				}
+				const std::uint32_t line = unpinned.Split.LineOf[table.Tips[bases[other].Ref]];
+				const TakeoverClaim claim{.Rank = TakeoverRankOf(bases[other].Reason), .Votes = votes[line], .HoldsCopiedTip = line == lineOfCopy};
 
-				if (!firstCopied.has_value())
+				if (!strongest.has_value() || IsStrongerClaim(claim, strongestClaim))
 				{
-					firstCopied = other;
+					strongest = other;
+					strongestClaim = claim;
 				}
 			}
 
-			return firstCopied;
+			return strongest;
 		}
 
 		// An old copy stops being a base, and the base it copies takes over its role: it moves into the copy's place
 		// in the list, so that it is pinned as the default was and keeps the line below a release line that was listed
 		// before it. True when any was set aside.
-		bool SetAsideOldCopies(const AncestryGraph& graph, const RefTable& table, BaseList& list, std::vector<OldCopy>& oldCopies)
+		bool SetAsideOldCopies(const AncestryGraph& graph, const RefTable& table, std::int64_t now, BaseList& list, std::vector<OldCopy>& oldCopies)
 		{
 			const std::vector<LineBase>& bases = list.Bases;
 			const std::vector<bool> noneSkipped(bases.size(), false);
@@ -821,6 +888,7 @@ namespace Core {
 			}
 
 			const IndexedSplit unpinned = SplitAndIndex(graph, table, {});
+			const std::vector<std::size_t> votes = CountVotesPerLine(graph, table, unpinned, now);
 			std::vector<bool> placed(bases.size(), false);
 			std::vector<LineBase> remaining;
 
@@ -828,7 +896,7 @@ namespace Core {
 			{
 				// The bases it copies may all be old copies themselves (one went on along a remote that is its own,
 				// or a skewed clock cut a walk short); with none left to name, it stays a base.
-				const std::optional<std::size_t> takesOver = isOldCopy[position] ? BaseThatTakesOver(graph, table, bases, position, isOldCopy, unpinned)
+				const std::optional<std::size_t> takesOver = isOldCopy[position] ? BaseThatTakesOver(graph, table, bases, position, isOldCopy, unpinned, votes)
 																				 : std::nullopt;
 
 				if (takesOver.has_value())
@@ -1402,7 +1470,7 @@ namespace Core {
 		IndexedSplit indexed = FindBasesByRules(graph, table, removed, input.Now, list);
 
 		// Run once, after the rules. A default set aside leaves the base it copies as the main line: nothing is guessed.
-		if (SetAsideOldCopies(graph, table, list, model.OldCopies))
+		if (SetAsideOldCopies(graph, table, input.Now, list, model.OldCopies))
 		{
 			indexed = SplitAndIndex(graph, table, list.Bases);
 		}

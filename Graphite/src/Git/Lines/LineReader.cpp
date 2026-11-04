@@ -75,6 +75,12 @@ namespace Graphite {
 			return std::ranges::find(names, name) != names.end();
 		}
 
+		// Only an added or a kept base has a place in the base order.
+		bool IsAddedOrKept(const Core::LineAnswers& answers, const std::string& name)
+		{
+			return Contains(answers.AddedBases, name) || Contains(answers.KeptBases, name);
+		}
+
 		// Each tip once, leaving out a branch whose tip git cannot read as a commit (a missing object, or one that is
 		// no commit): asking git to walk from it would fail the whole read, and the model reports it as TipMissing.
 		std::vector<Core::Oid> ReadableTips(const std::vector<Core::Branch>& branches)
@@ -93,8 +99,9 @@ namespace Graphite {
 			return tips;
 		}
 
-		// Answers about refs that are gone: a kept base or a comparison naming a ref the read did not list. A removed
-		// base stays removed, so that a branch pushed again under the same name does not come back as a base.
+		// Answers about refs that are gone: a kept base or a comparison naming a ref the read did not list, and the place
+		// in the base order of a base no longer added or kept. A removed base stays removed, so that a branch pushed
+		// again under the same name does not come back as a base.
 		void DropAnswersAboutGoneRefs(Core::LineAnswers& answers, const std::vector<Core::LineRef>& refs)
 		{
 			std::unordered_set<std::string_view> names;
@@ -106,10 +113,13 @@ namespace Graphite {
 
 			const auto isGone = [&names](const std::string& name) { return !names.contains(std::string_view{name}); };
 			std::erase_if(answers.KeptBases, isGone);
+			std::erase_if(answers.BaseOrder, [&answers](const std::string& name) { return !IsAddedOrKept(answers, name); });
 			std::erase_if(answers.Comparisons,
 						  [&isGone](const auto& entry) { return isGone(entry.first) || (entry.second.has_value() && isGone(*entry.second)); });
 		}
 
+		// A base the rules found is kept and takes the next place in the base order the first time; one the user
+		// stopped never is.
 		void AddKeptBasesFound(Core::LineAnswers& answers, const Core::LineModel& model, const std::vector<Core::LineRef>& refs)
 		{
 			for (const Core::LineBase& base : model.Bases)
@@ -117,9 +127,19 @@ namespace Graphite {
 				const bool found = base.Reason == Core::BaseReason::MergedLines || base.Reason == Core::BaseReason::Authors;
 				const std::string& name = refs[base.Ref].FullName;
 
-				if (found && !Contains(answers.KeptBases, name))
+				if (!found || Contains(answers.RemovedBases, name))
+				{
+					continue;
+				}
+
+				if (!Contains(answers.KeptBases, name))
 				{
 					answers.KeptBases.push_back(name);
+				}
+
+				if (!Contains(answers.BaseOrder, name))
+				{
+					answers.BaseOrder.push_back(name);
 				}
 			}
 		}
@@ -188,9 +208,10 @@ namespace Graphite {
 
 		Core::LineAnswers merged = *current;
 
+		// A base the user stopped while the read ran is not kept again.
 		for (const std::string& name : computed.KeptBases)
 		{
-			if (!Contains(loaded.KeptBases, name) && !Contains(merged.KeptBases, name))
+			if (!Contains(loaded.KeptBases, name) && !Contains(merged.KeptBases, name) && !Contains(merged.RemovedBases, name))
 			{
 				merged.KeptBases.push_back(name);
 			}
@@ -201,6 +222,23 @@ namespace Graphite {
 			if (!Contains(computed.KeptBases, name))
 			{
 				std::erase(merged.KeptBases, name);
+			}
+		}
+
+		// Places the user gave meanwhile stay where they are; the read's new ones follow them.
+		for (const std::string& name : computed.BaseOrder)
+		{
+			if (!Contains(loaded.BaseOrder, name) && !Contains(merged.BaseOrder, name) && IsAddedOrKept(merged, name))
+			{
+				merged.BaseOrder.push_back(name);
+			}
+		}
+
+		for (const std::string& name : loaded.BaseOrder)
+		{
+			if (!Contains(computed.BaseOrder, name) && !IsAddedOrKept(merged, name))
+			{
+				std::erase(merged.BaseOrder, name);
 			}
 		}
 

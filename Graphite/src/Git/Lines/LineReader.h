@@ -31,15 +31,17 @@ namespace Graphite {
 	};
 
 	// Synchronous. Loads the cached graph, reads only what it lacks, computes the model, records newly found bases in
-	// KeptBases, drops kept bases and comparisons that name refs no longer there, and saves the graph and the answers
-	// when they changed. A ref whose tip git cannot read as a commit is not read and is TipMissing in the model.
+	// KeptBases and at the end of BaseOrder (never one the user removed), drops kept bases and comparisons that name
+	// refs no longer there and the BaseOrder names no longer added or kept, and saves the graph and the answers when
+	// they changed. A ref whose tip git cannot read as a commit is not read and is TipMissing in the model.
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, std::int64_t now);
 
 	// The answers file after a read: re-reads it and applies only what the read changed itself, from `loaded` (what it
-	// read at its start) to `computed`: the names it added to and dropped from KeptBases and the Comparisons entries it
-	// dropped. An answer the user gave while the read ran survives. A file from a newer build, or one that exists and
-	// cannot be read, is not written. Returns the answers as they then stand: the file's, or `computed` when the file
-	// is left alone.
+	// read at its start) to `computed`: the names it added to and dropped from KeptBases and BaseOrder and the
+	// Comparisons entries it dropped. An answer the user gave while the read ran survives: a base removed meanwhile is
+	// not kept again, and the read's new BaseOrder names follow those added meanwhile. A file from a newer build, or
+	// one that exists and cannot be read, is not written. Returns the answers as they then stand: the file's, or
+	// `computed` when the file is left alone.
 	Core::LineAnswers SaveAnswerChanges(const std::filesystem::path& file, const Core::LineAnswers& loaded, const Core::LineAnswers& computed);
 
 	// The LineRefs for QueryBranches' answer, each remote branch given to the longest remote name that prefixes it
