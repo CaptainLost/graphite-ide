@@ -157,6 +157,15 @@ namespace {
 	{
 		return std::ranges::find(names, name) != names.end();
 	}
+
+	Core::Ref<const std::vector<Core::Branch>> BranchesOf(const Core::Repository& repository)
+	{
+		Core::Result<std::vector<Core::Branch>> branches = repository.QueryBranches();
+		REQUIRE(branches.HasValue());
+		return Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue());
+	}
+
+	constexpr std::int64_t kReadNow = 1800000000;
 }
 
 TEST_CASE("Lines: a branch tracking a local branch names it under refs/heads")
@@ -203,11 +212,11 @@ TEST_CASE("Lines: a read hands back the graph its model was computed on")
 		const Core::Result<LineRead> read = ReadLines(repository, StoreIn(store), 1800000000);
 		REQUIRE(read.HasValue());
 		const LineRead& value = read.GetValue();
-		CHECK(value.Graph.Size() == 4);
+		CHECK(value.Graph->Size() == 4);
 
 		for (const Core::LineRef& ref : value.Refs)
 		{
-			CHECK(value.Graph.Find(ref.Tip) != Core::AncestryGraph::kNoCommit);
+			CHECK(value.Graph->Find(ref.Tip) != Core::AncestryGraph::kNoCommit);
 		}
 	}
 }
@@ -703,4 +712,84 @@ TEST_CASE("Git window: a base order entry added while a read ran survives its sa
 	expected.BaseOrder = {"refs/heads/staging", "refs/remotes/origin/release"};
 	CHECK(LoadLineAnswers(file) == expected);
 	CHECK(result == expected);
+}
+
+TEST_CASE("Git window: a read reuses the graph it is given")
+{
+	GitFixture fixture;
+	BuildMasterAndFeature(fixture);
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(store);
+
+	Core::Ref<const Core::AncestryGraph> given;
+	{
+		const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+		const Core::Result<LineRead> first = ReadLines(repository, paths, LineReadInput{.Branches = BranchesOf(repository), .Now = kReadNow});
+		REQUIRE(first.HasValue());
+		given = first.GetValue().Graph;
+	}
+
+	// Without the cache file only the graph given holds the four commits read before.
+	REQUIRE(std::filesystem::remove(paths.Graph));
+	fixture.Write("b.txt", "g");
+	const std::string newer = fixture.Commit("more feature work");
+
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> second = ReadLines(repository, paths, LineReadInput{.Branches = BranchesOf(repository), .Graph = given, .Now = kReadNow});
+	REQUIRE(second.HasValue());
+	const LineRead& read = second.GetValue();
+
+	CHECK(read.CommitsRead == 1);
+	CHECK(read.Graph != given);
+	CHECK(read.Graph->Size() == 5);
+	CHECK(read.Graph->Find(*Core::Oid::FromHex(newer)) != Core::AncestryGraph::kNoCommit);
+	CHECK(given->Size() == 4);
+	REQUIRE(read.Generations != nullptr);
+	CHECK(read.Generations->size() == 5);
+
+	const Core::BranchLine* feature = BranchNamed(read, "refs/heads/feature");
+	REQUIRE(feature != nullptr);
+	CHECK(feature->Ahead == 2);
+
+	const std::optional<Core::AncestryGraph> saved = LoadGraph(paths.Graph);
+	REQUIRE(saved.has_value());
+	CHECK(saved->Size() == 5);
+}
+
+TEST_CASE("Git window: a read of the same tips appends nothing and keeps the graph pointer")
+{
+	GitFixture fixture;
+	BuildMasterAndFeature(fixture);
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(store);
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Core::Result<LineRead> first = ReadLines(repository, paths, LineReadInput{.Branches = BranchesOf(repository), .Now = kReadNow});
+	REQUIRE(first.HasValue());
+	const LineRead& earlier = first.GetValue();
+	REQUIRE(earlier.Generations != nullptr);
+	CHECK(earlier.Generations->size() == earlier.Graph->Size());
+
+	const Core::Ref<const std::vector<Core::Branch>> snapshot = BranchesOf(repository);
+	const Core::Result<LineRead> second = ReadLines(
+		repository, paths, LineReadInput{.Branches = snapshot, .Graph = earlier.Graph, .Now = kReadNow, .Generations = earlier.Generations});
+	REQUIRE(second.HasValue());
+	const LineRead& later = second.GetValue();
+
+	CHECK(later.CommitsRead == 0);
+	CHECK(later.Graph == earlier.Graph);
+	CHECK(later.Generations == earlier.Generations);
+	CHECK(SameModel(earlier.Model, later.Model));
+
+	// The read describes the snapshot it was given, ref for branch, with the remotes beside it.
+	CHECK(later.Branches == snapshot);
+	REQUIRE(later.Refs.size() == snapshot->size());
+	for (std::size_t index = 0; index < later.Refs.size(); ++index)
+	{
+		CHECK(later.Refs[index].FullName == (*snapshot)[index].FullName);
+	}
+
+	REQUIRE(later.Remotes.size() == 1);
+	CHECK(later.Remotes.front().Name == "origin");
+	CHECK_FALSE(later.Remotes.front().Url.empty());
 }

@@ -1,0 +1,94 @@
+#include "Git/Lines/BranchLines.h"
+
+namespace Graphite {
+
+	BranchLines::BranchLines(const LineRead& read)
+		: m_Read(read),
+		  m_LineOfRef(read.Refs.size()),
+		  m_BaseOfRef(read.Refs.size()),
+		  m_OldCopyOfRef(read.Refs.size())
+	{
+		m_RefByName.reserve(read.Refs.size());
+
+		for (std::size_t ref = 0; ref < read.Refs.size(); ++ref)
+		{
+			m_RefByName.emplace(read.Refs[ref].FullName, ref);
+		}
+
+		for (std::size_t line = 0; line < read.Model.Branches.size(); ++line)
+		{
+			m_LineOfRef[read.Model.Branches[line].Ref] = line;
+		}
+
+		for (std::size_t base = 0; base < read.Model.Bases.size(); ++base)
+		{
+			m_BaseOfRef[read.Model.Bases[base].Ref] = base;
+		}
+
+		for (std::size_t copy = 0; copy < read.Model.OldCopies.size(); ++copy)
+		{
+			m_OldCopyOfRef[read.Model.OldCopies[copy].Ref] = copy;
+		}
+	}
+
+	std::optional<std::size_t> BranchLines::IndexOf(std::string_view fullName) const
+	{
+		const std::unordered_map<std::string_view, std::size_t>::const_iterator found = m_RefByName.find(fullName);
+
+		if (found == m_RefByName.end())
+		{
+			return std::nullopt;
+		}
+
+		const auto& [name, ref] = *found;
+		return ref;
+	}
+
+	const Core::BranchLine* BranchLines::LineOf(std::string_view fullName) const
+	{
+		const std::optional<std::size_t> ref = IndexOf(fullName);
+
+		if (!ref.has_value() || !m_LineOfRef[*ref].has_value())
+		{
+			return nullptr;
+		}
+
+		return &m_Read.Model.Branches[*m_LineOfRef[*ref]];
+	}
+
+	const Core::LineBase* BranchLines::BaseNamed(std::string_view fullName) const
+	{
+		const std::optional<std::size_t> ref = IndexOf(fullName);
+
+		if (!ref.has_value() || !m_BaseOfRef[*ref].has_value())
+		{
+			return nullptr;
+		}
+
+		return &m_Read.Model.Bases[*m_BaseOfRef[*ref]];
+	}
+
+	const Core::OldCopy* BranchLines::OldCopyNamed(std::string_view fullName) const
+	{
+		const std::optional<std::size_t> ref = IndexOf(fullName);
+
+		if (!ref.has_value() || !m_OldCopyOfRef[*ref].has_value())
+		{
+			return nullptr;
+		}
+
+		return &m_Read.Model.OldCopies[*m_OldCopyOfRef[*ref]];
+	}
+
+	std::optional<std::string> BranchLines::ComparedWithName(std::string_view fullName) const
+	{
+		const Core::BranchLine* line = LineOf(fullName);
+
+		if (line == nullptr || !line->ComparedWith.has_value())
+		{
+			return std::nullopt;
+		}
+
+		return m_Read.Refs[*line->ComparedWith].FullName;
+	}
+}

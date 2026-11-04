@@ -21,6 +21,7 @@
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
+#include "Git/Lines/LinesModel.h"
 #include "Git/RepositoryGitPort.h"
 #include "Git/Work/WorkModel.h"
 #include "Git/WriteConsequences.h"
@@ -138,6 +139,9 @@ namespace Graphite {
 		// WARNING: An idle worker keeps its last folder's packfiles mapped until its next call, which blocks moving
 		// or deleting that folder on Windows.
 		void LetGoOfOldRepositoryOnWriteWorker();
+
+		// The `now` of the line model: seconds since the epoch by the system clock.
+		static std::int64_t SystemClockSeconds();
 
 		void OpenStartupFolder();
 
@@ -371,10 +375,10 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these eight is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel,
-		// ReviewModel and WorkModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST
-		// of the eight: members are destroyed in reverse order, which joins every worker before the models and the
-		// port go away. Declaring a queue first compiles and fails only under real threading.
+		// The order among these nine is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel,
+		// ReviewModel, WorkModel and LinesModel submit captures `this` and reads m_GitPort, so the two queues are
+		// declared LAST of the nine: members are destroyed in reverse order, which joins every worker before the models
+		// and the port go away. Declaring a queue first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 					   [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); }};
@@ -384,6 +388,7 @@ namespace Graphite {
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  WatchWithDirectoryWatcher()};
 		WorkModel m_Work{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		Core::JobQueue m_Jobs;
 
 		static constexpr std::size_t kGitWriteWorkers = 1;

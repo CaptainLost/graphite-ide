@@ -3,14 +3,17 @@
 #include "Git/RepositoryGitPort.h"
 
 #include "FileFixtures.h"
+#include "GitFixture.h"
 #include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Git/Lines/LineStore.h"
 
 #include <git2.h>
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -897,4 +900,44 @@ TEST_CASE("Blame port blames an empty file as having no lines")
 	CHECK(blamed.GetValue().Blame->Hunks.empty());
 	CHECK(blamed.GetValue().Blame->At == first);
 	CHECK(blamed.GetValue().Blame->File == std::filesystem::path{"a.txt"});
+}
+
+TEST_CASE("Git window: the git port reads lines into the store root it was given")
+{
+	constexpr std::int64_t kNow = 1800000000;
+
+	GitFixture fixture;
+	fixture.Write("a.txt", "1");
+	const std::string master = fixture.Commit("one");
+	fixture.PushTo("master", master);
+	fixture.SetRemoteHead("master");
+	fixture.Branch("feature");
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{fixture.GetPath(), storeRoot.GetPath()};
+
+	Core::Result<std::vector<Core::Branch>> branches = port.QueryBranches();
+	REQUIRE(branches.HasValue());
+	const Core::Ref<const std::vector<Core::Branch>> snapshot = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue());
+
+	const Core::Result<Graphite::LineRead> read = port.ReadLines(Graphite::LineReadInput{.Branches = snapshot, .Now = kNow});
+	INFO((read.HasValue() ? std::string{} : read.GetError().Message));
+	REQUIRE(read.HasValue());
+	CHECK(read.GetValue().Branches == snapshot);
+	CHECK(read.GetValue().CommitsRead == 1);
+
+	const Graphite::LineStorePaths store = Graphite::LineStoreFor(OpenRepositoryAt(fixture.GetPath()).CommonDirectory(), storeRoot.GetPath());
+	CHECK(std::filesystem::exists(store.Graph));
+
+	const Graphite::LineAnswerChange change{.What = Graphite::LineAnswerChange::Kind::CompareWithNothing, .Ref = "refs/heads/feature"};
+	const Core::Result<Graphite::LineRead> recomputed = port.RecomputeLines(read.GetValue(), change, kNow);
+	INFO((recomputed.HasValue() ? std::string{} : recomputed.GetError().Message));
+	REQUIRE(recomputed.HasValue());
+
+	const Core::LineAnswers saved = Graphite::LoadLineAnswers(store.Answers);
+	REQUIRE(saved.Comparisons.contains("refs/heads/feature"));
+	CHECK_FALSE(saved.Comparisons.at("refs/heads/feature").has_value());
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
 }

@@ -53,8 +53,8 @@ namespace Graphite {
 		}
 	}
 
-	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root)
-		: m_Root(Core::ToUtf8(root))
+	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot)
+		: m_Root(Core::ToUtf8(root)), m_LineStoreRoot(std::move(lineStoreRoot))
 	{
 	}
 
@@ -1340,5 +1340,33 @@ namespace Graphite {
 		answer.Texts.New = std::move(current).GetValue();
 		answer.Texts.HasNew = true;
 		return answer;
+	}
+
+	Core::Result<LineRead> RepositoryGitPort::ReadLines(const LineReadInput& input)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const Core::Repository* repository = opened.GetValue();
+
+		return Graphite::ReadLines(*repository, LineStoreFor(repository->CommonDirectory(), m_LineStoreRoot), input);
+	}
+
+	Core::Result<LineRead> RepositoryGitPort::RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const Core::Repository* repository = opened.GetValue();
+
+		return Graphite::RecomputeLines(last, LineStoreFor(repository->CommonDirectory(), m_LineStoreRoot), change, now);
 	}
 }

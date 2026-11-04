@@ -447,6 +447,10 @@ namespace Graphite {
 	void GraphiteLayer::SubscribeToWorkspaceEvents()
 	{
 		m_Git.SubscribeTo(m_Events);
+
+		// WARNING: Before AddFolderParticipants, so the lines model is cleared before the port is pointed at the next
+		// folder: a read asked for the folder before must find it cleared, or it would write the next folder's line store.
+		m_Lines.SubscribeTo(m_Events);
 		m_ChangeMarkers.SubscribeTo(m_Events);
 		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
@@ -504,6 +508,11 @@ namespace Graphite {
 		m_GitWrites.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
 	}
 
+	std::int64_t GraphiteLayer::SystemClockSeconds()
+	{
+		return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	}
+
 	void GraphiteLayer::AddFolderParticipants()
 	{
 		// WARNING: The order is the order of every transition. The servers' root comes before the documents, which
@@ -556,6 +565,11 @@ namespace Graphite {
 		// reports it, and the watcher never sees `.git/` when the workspace is a subfolder of the repository or a linked
 		// worktree, so writes made by this process reach the change markers and blame only from here.
 		m_WriteConsequences.Apply();
+
+		// WARNING: Here, not in the Git window, so the lines are read as soon as a folder's branches are, whether or not
+		// the window is on screen.
+		m_Lines.Follow(m_Git.GetBranches());
+		m_Lines.OnUpdate();
 
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);

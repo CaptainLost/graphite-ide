@@ -4,9 +4,11 @@
 #include "Git/Blame/HeadBlame.h"
 #include "Git/Changes/ChangeBases.h"
 #include "Git/GitPort.h"
+#include "Git/Lines/LinesPort.h"
 #include "Git/Work/WorkPort.h"
 #include "Core/Git/PatchMatch.h"
 #include "Review/ReviewPort.h"
+#include "Settings/UserDirectories.h"
 
 #include <atomic>
 #include <cstddef>
@@ -21,10 +23,11 @@ namespace Graphite {
 
 	// WARNING: A git_repository must not be used from two threads at once, so each worker thread
 	// caches its own handle per root.
-	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public WorkPort
+	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public WorkPort, public LinesPort
 	{
 	public:
-		explicit RepositoryGitPort(std::filesystem::path root);
+		// Each repository's line store is a folder under lineStoreRoot (LineStoreFor).
+		explicit RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot = UserDirectories::GitRepositoriesDirectory());
 
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override;
 		Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
@@ -87,6 +90,9 @@ namespace Graphite {
 		Core::Result<WorkFacts> ReadWorkFacts(const WorkFactsRequest& request, const WorkFactsProgress& progress) override;
 		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override;
 
+		Core::Result<LineRead> ReadLines(const LineReadInput& input) override;
+		Core::Result<LineRead> RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now) override;
+
 		void SetRoot(std::filesystem::path root);
 
 		// WARNING: Reaches the calling thread's handles only, so it is run on the thread whose handles of a closed or
@@ -107,6 +113,9 @@ namespace Graphite {
 		std::uint64_t m_Generation = 0;
 
 		std::atomic<std::uint64_t> m_OpenCount{0};
+
+		// Set once, read on worker threads.
+		const std::filesystem::path m_LineStoreRoot;
 
 		// Needs no reset when the root changes: an object id names the same commit in any repository.
 		Core::PatchIdCache m_PatchIds;

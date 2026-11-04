@@ -3,6 +3,7 @@
 #include "Git/Lines/GraphFile.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Git/Lines/LineQuestions.h"
 #include "Core/Git/Requests.h"
 
 #include <algorithm>
@@ -80,6 +81,56 @@ namespace Graphite {
 		{
 			return Contains(answers.AddedBases, name) || Contains(answers.KeptBases, name);
 		}
+
+		std::vector<std::string> NamesOf(const std::vector<Core::Remote>& remotes)
+		{
+			std::vector<std::string> names;
+			names.reserve(remotes.size());
+
+			for (const Core::Remote& remote : remotes)
+			{
+				names.push_back(remote.Name);
+			}
+
+			return names;
+		}
+
+		// The graph a read works on. One it is given is shared with the read before and is never changed: appending to
+		// it appends to a copy, and a read that appends nothing hands the same pointer back.
+		class WorkingGraph
+		{
+		public:
+			explicit WorkingGraph(Core::Ref<const Core::AncestryGraph> shared) : m_Shared(std::move(shared)) {}
+			explicit WorkingGraph(Core::AncestryGraph owned) : m_Owned(std::move(owned)) {}
+
+			const Core::AncestryGraph& Get() const { return m_Owned.has_value() ? *m_Owned : *m_Shared; }
+
+			void StartAfresh()
+			{
+				m_Owned.emplace();
+				m_Shared.reset();
+			}
+
+			void Append(std::vector<Core::GraphCommit> commits)
+			{
+				if (!m_Owned.has_value())
+				{
+					m_Owned = *m_Shared;
+					m_Shared.reset();
+				}
+
+				m_Owned->Append(std::move(commits));
+			}
+
+			Core::Ref<const Core::AncestryGraph> Share() &&
+			{
+				return m_Owned.has_value() ? Core::CreateRef<const Core::AncestryGraph>(std::move(*m_Owned)) : m_Shared;
+			}
+
+		private:
+			Core::Ref<const Core::AncestryGraph> m_Shared;
+			std::optional<Core::AncestryGraph> m_Owned;
+		};
 
 		// Each tip once, leaving out a branch whose tip git cannot read as a commit (a missing object, or one that is
 		// no commit): asking git to walk from it would fail the whole read, and the model reports it as TipMissing.
@@ -269,37 +320,46 @@ namespace Graphite {
 
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, std::int64_t now)
 	{
-		const Core::Result<std::vector<Core::Branch>> branches = repository.QueryBranches();
+		Core::Result<std::vector<Core::Branch>> branches = repository.QueryBranches();
 		if (!branches.HasValue())
 		{
 			return branches.GetError();
 		}
 
-		const Core::Result<std::vector<std::string>> remotes = repository.QueryRemoteNames();
+		return ReadLines(repository, store, LineReadInput{.Branches = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue()), .Now = now});
+	}
+
+	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, const LineReadInput& input)
+	{
+		CORE_ASSERT(input.Branches != nullptr, "a read describes a branch snapshot");
+
+		Core::Result<std::vector<Core::Remote>> remotes = repository.QueryRemotes();
 		if (!remotes.HasValue())
 		{
 			return remotes.GetError();
 		}
 
 		LineRead read;
-		read.Refs = LineRefsOf(branches.GetValue(), remotes.GetValue());
+		read.Branches = input.Branches;
+		read.Remotes = std::move(remotes).GetValue();
+		read.Refs = LineRefsOf(*read.Branches, NamesOf(read.Remotes));
 
-		Core::AncestryGraph graph = LoadGraph(store.Graph).value_or(Core::AncestryGraph{});
+		WorkingGraph graph = input.Graph != nullptr ? WorkingGraph{input.Graph} : WorkingGraph{LoadGraph(store.Graph).value_or(Core::AncestryGraph{})};
 		bool graphChanged = false;
 
 		// Once the repository is deepened the cut commits would stay cut for ever, so the whole graph is read again.
-		if (!repository.IsShallow() && HasCutCommit(graph))
+		if (!repository.IsShallow() && HasCutCommit(graph.Get()))
 		{
-			graph = Core::AncestryGraph{};
+			graph.StartAfresh();
 			graphChanged = true;
 		}
 
-		const std::vector<Core::Oid> readableTips = ReadableTips(branches.GetValue());
+		const std::vector<Core::Oid> readableTips = ReadableTips(*read.Branches);
 		Core::GraphReadRequest request;
 
 		for (const Core::Oid& tip : readableTips)
 		{
-			if (graph.Find(tip) == Core::AncestryGraph::kNoCommit)
+			if (graph.Get().Find(tip) == Core::AncestryGraph::kNoCommit)
 			{
 				request.Tips.push_back(tip);
 			}
@@ -307,14 +367,14 @@ namespace Graphite {
 
 		if (!request.Tips.empty())
 		{
-			request.Known = HeadsOf(graph);
+			request.Known = HeadsOf(graph.Get());
 
 			Core::Result<std::vector<Core::GraphCommit>> commits = repository.ReadGraphCommits(request);
 			if (!commits.HasValue() && !request.Known.empty())
 			{
 				// Only a fallback, since a cached head git lacks is passed over: whatever else went wrong, the read
 				// starts once more from nothing.
-				graph = Core::AncestryGraph{};
+				graph.StartAfresh();
 				graphChanged = true;
 				request.Known.clear();
 				request.Tips = readableTips;
@@ -327,12 +387,16 @@ namespace Graphite {
 			}
 
 			read.CommitsRead = commits.GetValue().size();
-			graph.Append(std::move(commits).GetValue());
-			graphChanged = graphChanged || read.CommitsRead > 0;
+
+			if (read.CommitsRead > 0)
+			{
+				graph.Append(std::move(commits).GetValue());
+				graphChanged = true;
+			}
 		}
 
 		const Core::LineAnswers loaded = LoadLineAnswers(store.Answers);
-		read.Model = Core::ComputeLines(Core::LineModelInput{graph, read.Refs, loaded, now});
+		read.Model = Core::ComputeLines(Core::LineModelInput{graph.Get(), read.Refs, loaded, input.Now});
 
 		Core::LineAnswers computed = loaded;
 		AddKeptBasesFound(computed, read.Model, read.Refs);
@@ -340,7 +404,7 @@ namespace Graphite {
 
 		if (graphChanged)
 		{
-			const Core::Result<void> saved = SaveGraph(store.Graph, graph);
+			const Core::Result<void> saved = SaveGraph(store.Graph, graph.Get());
 			if (!saved.HasValue())
 			{
 				APP_WARN("Could not save the commit graph cache: {}", saved.GetError().Message);
@@ -348,7 +412,10 @@ namespace Graphite {
 		}
 
 		read.Answers = computed == loaded ? loaded : SaveAnswerChanges(store.Answers, loaded, computed);
-		read.Graph = std::move(graph);
+		read.Graph = std::move(graph).Share();
+
+		const bool generationsHeld = read.Graph == input.Graph && input.Generations != nullptr;
+		read.Generations = generationsHeld ? input.Generations : Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*read.Graph));
 		return read;
 	}
 }
