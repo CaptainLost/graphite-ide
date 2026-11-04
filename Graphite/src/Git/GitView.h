@@ -32,8 +32,8 @@
 #include "Git/Sidebar/SidebarRows.h"
 #include "Git/Sidebar/SidebarText.h"
 #include "Git/Sidebar/SidebarView.h"
-#include "Git/Worktrees/WorktreesModel.h"
 #include "Git/Window/WindowBar.h"
+#include "Git/Worktrees/WorktreesModel.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
 

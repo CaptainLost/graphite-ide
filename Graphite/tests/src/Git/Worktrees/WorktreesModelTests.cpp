@@ -6,6 +6,7 @@
 #include "GitFixtures.h"
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -177,4 +178,91 @@ TEST_CASE("Git window: worktrees of a folder cleared meanwhile are dropped")
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK_FALSE(model.WorktreeOf("refs/heads/side").has_value());
+}
+
+TEST_CASE("Git window: a worktree is not counted again while its count is still running")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide)};
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(kPoll);
+	model.OnUpdate(kPoll);
+	jobs.RunAll();
+
+	CHECK(port.Counted.size() == 1);
+}
+
+TEST_CASE("Git window: a count asked for a folder cleared meanwhile is dropped")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide)};
+	port.Changes[kSide.generic_string()] = 2;
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(jobs.Count() == 1);
+
+	model.Clear();
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Counted.empty());
+	CHECK_FALSE(model.IsDirty(kSide).has_value());
+}
+
+TEST_CASE("Git window: a count that lands after the window left the screen is kept")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide)};
+	port.Changes[kSide.generic_string()] = 1;
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.SetOnScreen(false);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.IsDirty(kSide) == true);
+	CHECK(port.Counted.size() == 1);
+}
+
+TEST_CASE("Git window: a count of a worktree that left the list is not kept")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide)};
+	port.Changes[kSide.generic_string()] = 1;
+	std::vector<std::function<void()>> waiting;
+	WorktreesModel model(port, [&waiting](std::function<void()> job) { waiting.push_back(std::move(job)); });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	waiting.back()();
+	waiting.clear();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(waiting.size() == 1);
+
+	port.Entries.clear();
+	model.Follow(NewSnapshot(), kOpen);
+	REQUIRE(waiting.size() == 2);
+
+	// The new list lands before the count that was asked of the old one.
+	waiting[1]();
+	waiting[0]();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(model.IsDirty(kSide).has_value());
 }

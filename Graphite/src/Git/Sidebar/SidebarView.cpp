@@ -499,11 +499,18 @@ namespace Graphite {
 			drawing->AddCircleFilled(centre, Em(kHeadDot) * kHalf, colours.Accent);
 		}
 
+		// As wide as the dot, and as the "…" that stands in its place while the count is unknown.
+		float WorktreeDotRoom()
+		{
+			const TextAtSize small(Em(kSmallText));
+			return std::max(Em(kWorktreeDotRoom), WidthOf(kEllipsis));
+		}
+
 		// The worktree marker has the right edge of every row that has a worktree, its icon and the room for the dot
 		// always, so a count that lands later moves nothing. Returns the left edge of what it drew.
 		float DrawWorktreeMarker(const RowBox& box, const SidebarRowText& text, const SidebarColours& colours)
 		{
-			const float dotRoom = Em(kWorktreeDotRoom);
+			const float dotRoom = WorktreeDotRoom();
 			const float iconLeft = box.Right - dotRoom - Em(kWorktreeIcon);
 
 			{

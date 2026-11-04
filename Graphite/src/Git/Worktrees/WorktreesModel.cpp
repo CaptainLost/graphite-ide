@@ -46,6 +46,7 @@ namespace Graphite {
 		m_LastAsked.reset();
 		m_WorktreeOfBranch.clear();
 		m_Dirty.clear();
+		m_Listed.clear();
 		m_Counting.clear();
 		m_SinceCount = kPollSeconds;
 	}
@@ -104,6 +105,7 @@ namespace Graphite {
 		}
 
 		std::erase_if(m_Dirty, [&present](const auto& counted) { return !present.contains(counted.first); });
+		m_Listed = std::move(present);
 		m_SinceCount = kPollSeconds;
 	}
 
@@ -180,7 +182,7 @@ namespace Graphite {
 
 					m_Counting.erase(key);
 
-					if (dirty.has_value())
+					if (dirty.has_value() && m_Listed.contains(key))
 					{
 						m_Dirty[key] = *dirty;
 					}

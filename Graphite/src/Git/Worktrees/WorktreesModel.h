@@ -75,6 +75,7 @@ namespace Graphite {
 
 		std::map<std::string, std::filesystem::path, std::less<>> m_WorktreeOfBranch; // by full name
 		std::map<Core::PathKeyText, bool> m_Dirty;
+		std::set<Core::PathKeyText> m_Listed; // worktrees of the last list: a count of one that left it is dropped
 		std::set<Core::PathKeyText> m_Counting;
 
 		bool m_OnScreen = false;
