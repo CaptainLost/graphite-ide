@@ -69,6 +69,14 @@ namespace Graphite {
 
 		constexpr std::string_view kLocalChangesTitle = "Local changes";
 		constexpr std::string_view kLocalChangesAge = "now";
+		constexpr const char* kBroughtWaiting = "Reading the commits this merge brought\xE2\x80\xA6";
+		constexpr const char* kBroughtFailed = "Could not read the commits this merge brought";
+		constexpr const char* kBroughtNone = "This merge brought no commits of its own";
+		constexpr float kBroughtIndentPixels = 18.0f;
+		constexpr float kElbowLeftPixels = 4.0f;
+		constexpr float kElbowSizePixels = 8.0f;
+		constexpr float kElbowBottomPixels = 1.0f;
+		constexpr float kElbowAlpha = 0.5f;
 		constexpr const char* kFoldTooltip = "Show them, dimmed, beside the branch";
 		constexpr const char* kMiddleDot = " \xC2\xB7 ";
 		constexpr float kKeepFontSize = 0.0f;
@@ -100,6 +108,20 @@ namespace Graphite {
 				drawList->PathArcTo(centre, MockupPixels(kRingRadius), from, from + dashAngle, kSegmentsPerDash);
 				drawList->PathStroke(ink, ImDrawFlags_None, MockupPixels(kRingThickness));
 			}
+		}
+
+		// The small elbow in front of a brought commit's text, tying it to its merge.
+		void DrawBroughtElbow()
+		{
+			const ImVec2 cell = ImGui::GetCursorScreenPos();
+			const float left = cell.x + MockupPixels(kElbowLeftPixels);
+			const float bottom = cell.y + ImGui::GetTextLineHeight() * kHalf + MockupPixels(kElbowBottomPixels);
+			const float top = bottom - MockupPixels(kElbowSizePixels);
+			const ImU32 ink = Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_TextDisabled), kElbowAlpha);
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddLine(ImVec2(left, top), ImVec2(left, bottom), ink);
+			drawList->AddLine(ImVec2(left, bottom), ImVec2(left + MockupPixels(kElbowSizePixels), bottom), ink);
 		}
 
 		GraphMetrics MetricsForCurrentFont()
@@ -405,10 +427,44 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	void CommitListView::KeepSelectionWithin(const Core::LogPage& page)
+	void CommitListView::KeepSelectionWithin(const Core::LogPage& page, const HistoryMarks& marks)
 	{
 		m_SelectedFile = SelectionSurviving(m_SelectedFile, page);
-		m_SelectedCommit = CommitSelectionSurviving(m_SelectedCommit, page);
+
+		const std::optional<Core::Oid> selected = m_SelectedCommit;
+		m_SelectedCommit = CommitSelectionSurviving(selected, page);
+
+		// A commit a merge brought is kept by that merge, as long as it is in the page and open.
+		if (selected.has_value() && !m_SelectedCommit.has_value() && ListedUnderOpenMerge(*selected, page, marks))
+		{
+			m_SelectedCommit = selected;
+		}
+	}
+
+	bool CommitListView::ListedUnderOpenMerge(const Core::Oid& commit, const Core::LogPage& page,
+											  const HistoryMarks& marks) const
+	{
+		if (!marks.BroughtOf)
+		{
+			return false;
+		}
+
+		for (const Core::CommitSummary& merge : page.Commits)
+		{
+			if (!IsMerge(merge) || !IsExpanded(merge.Id))
+			{
+				continue;
+			}
+
+			const Core::Ref<const Core::LogPage> brought = marks.BroughtOf(merge.Id);
+
+			if (brought && CommitSelectionSurviving(commit, *brought).has_value())
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	bool CommitListView::IsExpanded(const Core::Oid& commit) const
@@ -553,9 +609,27 @@ namespace Graphite {
 							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt,
 							  .Waiting = marks.Waiting.has_value()};
 
+		// In the Merges history an opened merge lists what it brought where another commit lists its files.
+		const auto opensBrought = [&](std::size_t commitIndex) {
+			return marks.BroughtOf && IsMerge(page.Commits[commitIndex]) && IsExpanded(page.Commits[commitIndex].Id);
+		};
+
+		ExtraRows extraWithBrought = extra;
+		extraWithBrought.BroughtRowsUnder = [&](std::size_t commitIndex) -> std::size_t {
+			if (!opensBrought(commitIndex))
+			{
+				return kNoFileRows;
+			}
+
+			return BroughtRowsOf(marks.BroughtOf(page.Commits[commitIndex].Id).get());
+		};
+
 		const CommitRows rows = BuildCommitRows(
 			page.Commits.size(),
-			[&](std::size_t commitIndex) { return FileRowCountUnder(page, commitIndex, diffOf); }, extra);
+			[&](std::size_t commitIndex) {
+				return opensBrought(commitIndex) ? kNoFileRows : FileRowCountUnder(page, commitIndex, diffOf);
+			},
+			extraWithBrought);
 
 		// The ring of the Local changes row takes a lane even while no commit has one.
 		constexpr std::size_t kLocalChangesLanes = 1;
@@ -675,13 +749,39 @@ namespace Graphite {
 						const Core::CommitSummary& commit = page.Commits[row.Commit];
 						const bool dimmed = marks.Dimmed != nullptr && marks.Dimmed->contains(commit.Id);
 
-						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, dimmed);
+						const Core::Ref<const Core::LogPage> brought =
+							opensBrought(row.Commit) ? marks.BroughtOf(commit.Id) : nullptr;
+
+						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, dimmed,
+										BroughtDrawing{.Page = brought.get(), .IsBrought = false});
 
 						if (scrollRow == displayRow)
 						{
 							ImGui::SetScrollHereY(kHalf);
 						}
 
+						break;
+					}
+					case CommitRowKind::Brought:
+					{
+						const Core::CommitSummary& merge = page.Commits[row.Commit];
+						const Core::Ref<const Core::LogPage> brought = marks.BroughtOf(merge.Id);
+
+						// Scoped by the merge, not the row: opening a merge above moves this row to another index.
+						const char* const idBytes = reinterpret_cast<const char*>(merge.Id.Bytes.data());
+						ImGui::PushID(idBytes, idBytes + merge.Id.Bytes.size());
+
+						if (brought && row.File < brought->Commits.size())
+						{
+							RenderCommitRow(*brought, brought->Commits[row.File], palette, refs, highlight, now, zone,
+											false, BroughtDrawing{.Page = nullptr, .IsBrought = true});
+						}
+						else
+						{
+							RenderBroughtNote(brought.get(), !brought && marks.BroughtFailed && marks.BroughtFailed(merge.Id));
+						}
+
+						ImGui::PopID();
 						break;
 					}
 					case CommitRowKind::File:
@@ -713,7 +813,8 @@ namespace Graphite {
 	void CommitListView::RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 										 const GitPalette& palette, const CommitRefMap& refs,
 										 std::string_view highlight, std::chrono::sys_seconds now,
-										 const std::chrono::time_zone* zone, bool dimmed)
+										 const std::chrono::time_zone* zone, bool dimmed,
+										 const BroughtDrawing& brought)
 	{
 		const bool expanded = IsExpanded(commit.Id);
 		const bool isSelectedCommit = m_SelectedCommit == commit.Id;
@@ -779,7 +880,12 @@ namespace Graphite {
 		}
 
 		ImGui::SetCursorPos(rowStart);
-		DrawChevron(expanded);
+
+		// A commit a merge brought does not open files.
+		if (!brought.IsBrought)
+		{
+			DrawChevron(expanded);
+		}
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Hash));
 		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x;
@@ -800,12 +906,28 @@ namespace Graphite {
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
+		if (brought.IsBrought)
+		{
+			DrawBroughtElbow();
+			ImGui::Indent(MockupPixels(kBroughtIndentPixels));
+		}
+
 		if (refs.contains(commit.Id))
 		{
 			RefLabels(refs.at(commit.Id), palette, commit.Summary, alpha);
 		}
 
-		DrawFittedCell(commit.Summary, summaryInk, highlight);
+		// An opened merge says how many commits it brought after its own subject.
+		const std::string summaryWithCount =
+			brought.Page != nullptr ? commit.Summary + kMiddleDot + DescribeBrought(*brought.Page) : std::string{};
+
+		DrawFittedCell(brought.Page != nullptr ? std::string_view{summaryWithCount} : std::string_view{commit.Summary},
+					   summaryInk, highlight);
+
+		if (brought.IsBrought)
+		{
+			ImGui::Unindent(MockupPixels(kBroughtIndentPixels));
+		}
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
 		DrawFittedCell(AuthorName(commit.Author), dimmedInk, highlight);
@@ -823,6 +945,12 @@ namespace Graphite {
 			return;
 		}
 
+		if (brought.IsBrought)
+		{
+			SelectCommit(commit.Id);
+			return;
+		}
+
 		// WARNING: A Selectable fires on release, so where the press landed decides, not where the pointer is now. Hover is checked too, so an activation that did not come from the mouse, which leaves MouseClickedPos stale, falls to selecting.
 		const float pressedX = ImGui::GetIO().MouseClickedPos[kLeftMouseButton].x;
 		const bool onChevron =
@@ -836,6 +964,23 @@ namespace Graphite {
 		{
 			SelectCommit(commit.Id);
 		}
+	}
+
+	void CommitListView::RenderBroughtNote(const Core::LogPage* brought, bool failed)
+	{
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+		ImGui::Indent(MockupPixels(kBroughtIndentPixels));
+
+		if (brought == nullptr && !failed)
+		{
+			Core::LoadingLine(kBroughtWaiting);
+		}
+		else
+		{
+			DrawFittedCell(failed ? kBroughtFailed : kBroughtNone, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
+		}
+
+		ImGui::Unindent(MockupPixels(kBroughtIndentPixels));
 	}
 
 	void CommitListView::RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre)

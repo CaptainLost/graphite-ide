@@ -261,7 +261,13 @@ namespace Core {
 
 		// Measured against the ref itself, not the page: it is a property of the branch, so a
 		// filtered page still marks the rows it does show correctly.
-		UnpushedCommits unpushed = CollectUnpushed(m_Handle.get(), request.Ref, request.MaxWalk);
+		// A walk started at From has no branch whose upstream could lack commits, and Ref/HEAD are not what it walks.
+		UnpushedCommits unpushed;
+
+		if (!request.From.has_value())
+		{
+			unpushed = CollectUnpushed(m_Handle.get(), request.Ref, request.MaxWalk);
+		}
 
 		std::vector<CommitSummary> commits;
 		git_oid commitId{};

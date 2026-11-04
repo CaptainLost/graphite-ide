@@ -109,6 +109,13 @@ namespace Graphite {
 			return entry->Value;
 		}
 
+		bool IsLoading(const Key& key) const
+		{
+			const Entry* entry = Find(key);
+
+			return entry != nullptr && IsInFlight(*entry);
+		}
+
 		bool IsFailed(const Key& key) const
 		{
 			const Entry* entry = Find(key);

@@ -1092,7 +1092,7 @@ namespace Graphite {
 
 			if (page)
 			{
-				m_Commits.KeepSelectionWithin(*page);
+				m_Commits.KeepSelectionWithin(*page, BroughtMarks());
 				AdvanceReveal(*page);
 			}
 			else
@@ -1202,7 +1202,11 @@ namespace Graphite {
 
 			m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash};
 
-			const HistoryMarks marks = HistoryMarksFor(page);
+			HistoryMarks marks = HistoryMarksFor(page);
+			const HistoryMarks broughtMarks = BroughtMarks();
+			marks.BroughtOf = broughtMarks.BroughtOf;
+			marks.BroughtFailed = broughtMarks.BroughtFailed;
+			AskBroughtByOpenMerges(*page);
 
 			std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
 
@@ -1236,7 +1240,9 @@ namespace Graphite {
 
 			for (const Core::CommitSummary& commit : page->Commits)
 			{
-				const bool isWanted = m_Commits.IsExpanded(commit.Id) || selectedCommit == commit.Id;
+				// An opened merge of the Merges history lists what it brought, not its files.
+				const bool listsFiles = m_Commits.IsExpanded(commit.Id) && !(marks.BroughtOf && IsMerge(commit));
+				const bool isWanted = listsFiles || selectedCommit == commit.Id;
 
 				if (!isWanted)
 				{
@@ -1248,6 +1254,17 @@ namespace Graphite {
 				if (!m_Model.GetDiffFor(commit.Id))
 				{
 					m_Model.RequestDiffFor(commit.Id);
+				}
+			}
+
+			// A selected commit a merge brought shows its details like any other.
+			if (selectedCommit.has_value() && !wanted.contains(*selectedCommit) && FindShownCommit(*page, *selectedCommit))
+			{
+				wanted.insert(*selectedCommit);
+
+				if (!m_Model.GetDiffFor(*selectedCommit))
+				{
+					m_Model.RequestDiffFor(*selectedCommit);
 				}
 			}
 
@@ -1319,6 +1336,81 @@ namespace Graphite {
 								   page.Commits.size(), page.Walked));
 	}
 
+	HistoryMarks GitView::BroughtMarks() const
+	{
+		HistoryMarks marks;
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+
+		if (!shown.has_value() || !shown->FirstParentOnly)
+		{
+			return marks;
+		}
+
+		marks.BroughtOf = [this](const Core::Oid& merge) { return m_Model.GetBrought(merge); };
+		marks.BroughtFailed = [this](const Core::Oid& merge) { return m_Model.IsBroughtFailed(merge); };
+
+		return marks;
+	}
+
+	void GitView::AskBroughtByOpenMerges(const Core::LogPage& page)
+	{
+		if (!BroughtMarks().BroughtOf)
+		{
+			return;
+		}
+
+		// WARNING: Asked each frame: a page already held or on its way is not asked again, and one the cache let go of
+		// is read again.
+		for (const Core::CommitSummary& commit : page.Commits)
+		{
+			if (IsMerge(commit) && m_Commits.IsExpanded(commit.Id))
+			{
+				m_Model.RequestBrought(commit.Id, commit.Parents[0], commit.Parents[1]);
+			}
+		}
+	}
+
+	std::optional<Core::CommitSummary> GitView::FindShownCommit(const Core::LogPage& page, const Core::Oid& id) const
+	{
+		for (const Core::CommitSummary& commit : page.Commits)
+		{
+			if (commit.Id == id)
+			{
+				return commit;
+			}
+		}
+
+		if (!BroughtMarks().BroughtOf)
+		{
+			return std::nullopt;
+		}
+
+		for (const Core::CommitSummary& merge : page.Commits)
+		{
+			if (!IsMerge(merge) || !m_Commits.IsExpanded(merge.Id))
+			{
+				continue;
+			}
+
+			const Core::Ref<const Core::LogPage> brought = m_Model.GetBrought(merge.Id);
+
+			if (!brought)
+			{
+				continue;
+			}
+
+			for (const Core::CommitSummary& commit : brought->Commits)
+			{
+				if (commit.Id == id)
+				{
+					return commit;
+				}
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	void GitView::RenderPreview(const GitPalette& palette)
 	{
 		if (m_Commits.IsLocalChangesSelected())
@@ -1342,13 +1434,10 @@ namespace Graphite {
 			return;
 		}
 
-		for (const Core::CommitSummary& summary : page->Commits)
+		if (const std::optional<Core::CommitSummary> summary = FindShownCommit(*page, *commit))
 		{
-			if (summary.Id == *commit)
-			{
-				RenderDetails(summary, palette);
-				return;
-			}
+			RenderDetails(*summary, palette);
+			return;
 		}
 
 		// WARNING: UpdateForNewPage runs at the top of the frame but the model is read again here, so

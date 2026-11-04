@@ -112,6 +112,7 @@ namespace Graphite {
 		m_WorkingTreeDiffSettled.reset();
 		m_WorkingTreeDiffStale = false;
 		m_CommitDiffs.Clear();
+		m_Brought.Clear();
 		m_Texts.Clear();
 		m_Untracked.clear();
 
@@ -675,6 +676,41 @@ namespace Graphite {
 				{
 					m_CommitDiffError.reset();
 				}
+			});
+		});
+	}
+
+	void GitModel::RequestBrought(const Core::Oid& merge, const Core::Oid& firstParent, const Core::Oid& secondParent)
+	{
+		if (!HasOpenFolder())
+		{
+			return;
+		}
+
+		const std::optional<std::uint64_t> generation = m_Brought.Request(merge);
+
+		if (!generation.has_value())
+		{
+			return;
+		}
+
+		Core::LogRequest request;
+		request.From = secondParent;
+		request.Exclude = firstParent;
+		request.FirstParentOnly = true;
+		request.MaxCount = Core::kLogPageSize;
+
+		m_Submit([this, merge, generation = *generation, request]() {
+			Core::Result<Core::LogPage> result = m_Port.QueryLog(request);
+
+			Deliver([this, merge, generation, result = std::move(result)]() mutable {
+				if (!result.HasValue())
+				{
+					m_Brought.Fail(merge, generation, result.GetError());
+					return;
+				}
+
+				m_Brought.Succeed(merge, generation, Core::CreateRef<const Core::LogPage>(std::move(result).GetValue()));
 			});
 		});
 	}

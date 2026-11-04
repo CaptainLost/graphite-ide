@@ -3172,3 +3172,64 @@ TEST_CASE("A log is submitted before the length of its history, so its first pag
 	CHECK(port.CountCalls == 1);
 	CHECK(port.LastCountRef == request.Ref);
 }
+
+TEST_CASE("Git window: opening a merge in merges mode asks what it brought")
+{
+	FakePort port;
+	port.Log.Commits.resize(2);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	const Core::Oid merge = OidWithFirstByte(10);
+	const Core::Oid firstParent = OidWithFirstByte(11);
+	const Core::Oid secondParent = OidWithFirstByte(12);
+
+	model.RequestBrought(merge, firstParent, secondParent);
+
+	CHECK(model.GetBrought(merge) == nullptr);
+	CHECK(model.IsBroughtLoading(merge));
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->From == std::optional<Core::Oid>{secondParent});
+	CHECK(port.LastLogRequest->Exclude == std::optional<Core::Oid>{firstParent});
+	CHECK(port.LastLogRequest->FirstParentOnly);
+	CHECK(port.LastLogRequest->MaxCount == Core::kLogPageSize);
+
+	REQUIRE(model.GetBrought(merge) != nullptr);
+	CHECK(model.GetBrought(merge)->Commits.size() == 2);
+	CHECK_FALSE(model.IsBroughtLoading(merge));
+
+	// A page held is not asked again.
+	const int callsBefore = port.LogCalls;
+	model.RequestBrought(merge, firstParent, secondParent);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(port.LogCalls == callsBefore);
+}
+
+TEST_CASE("Git window: brought pages are kept for the last sixteen merges")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	constexpr std::uint8_t kFirstMerge = 20;
+	constexpr std::uint8_t kMergeCount = 17;
+
+	for (std::uint8_t offset = 0; offset < kMergeCount; ++offset)
+	{
+		model.RequestBrought(OidWithFirstByte(kFirstMerge + offset), OidWithFirstByte(1), OidWithFirstByte(2));
+		model.OnUpdate(Core::Timestep{kFrameSeconds});
+	}
+
+	CHECK(Graphite::GitModel::kCachedBrought == 16);
+	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge)) == nullptr);
+	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge + 1)) != nullptr);
+	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge + kMergeCount - 1)) != nullptr);
+
+	model.Clear();
+	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge + kMergeCount - 1)) == nullptr);
+}

@@ -606,6 +606,8 @@ TEST_CASE("Git: a log from a merge's second parent without its first parent list
 
 	REQUIRE(brought.HasValue());
 	CHECK(SummariesOf(brought.GetValue()) == std::vector<std::string>{"side two", "side one"});
+	CHECK_FALSE(brought.GetValue().UpstreamKnown);
+	CHECK(brought.GetValue().Unpushed.empty());
 }
 
 TEST_CASE("Git: a log from two tips walks both with children before parents")

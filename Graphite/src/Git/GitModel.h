@@ -135,6 +135,17 @@ namespace Graphite {
 
 		static constexpr std::size_t kCachedDiffs = 32;
 
+		static constexpr std::size_t kCachedBrought = 16;
+
+		// Reads the commits a merge brought: its second parent's first-parent chain down to what the first parent had.
+		void RequestBrought(const Core::Oid& merge, const Core::Oid& firstParent, const Core::Oid& secondParent);
+
+		Core::Ref<const Core::LogPage> GetBrought(const Core::Oid& merge) const { return m_Brought.Get(merge); }
+
+		bool IsBroughtLoading(const Core::Oid& merge) const { return m_Brought.IsLoading(merge); }
+
+		bool IsBroughtFailed(const Core::Oid& merge) const { return m_Brought.IsFailed(merge); }
+
 		// WARNING: `key` is the path that names the file, never `oldPath` or `newPath`: either
 		// may be empty to say a side is absent, so every file deleted in one commit would share
 		// one key, and so would every file added.
@@ -641,6 +652,7 @@ namespace Graphite {
 		bool m_WorkingTreeDiffStale = false;
 
 		LruResultCache<Core::Oid, Core::Diff> m_CommitDiffs{kCachedDiffs};
+		LruResultCache<Core::Oid, Core::LogPage> m_Brought{kCachedBrought};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_Texts{kCachedTexts};
 
 		std::optional<Core::Error> m_CommitDiffError;

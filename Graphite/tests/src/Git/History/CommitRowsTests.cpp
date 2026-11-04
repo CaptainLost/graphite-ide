@@ -238,3 +238,46 @@ TEST_CASE("An expanded commit with no files is a commit row and one placeholder 
 	CHECK(rows.Rows[2].Kind == CommitRowKind::Commit);
 	CHECK(rows.RowOfCommit[1] == 2);
 }
+
+TEST_CASE("Git window: brought commits are listed under their merge")
+{
+	ExtraRows extra;
+	extra.BroughtRowsUnder = [](std::size_t commit) { return commit == 0 ? std::size_t{3} : std::size_t{0}; };
+
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({0, 0}), extra);
+
+	REQUIRE(rows.Rows.size() == 5);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::Commit);
+	CHECK(rows.Rows[1].Kind == CommitRowKind::Brought);
+	CHECK(rows.Rows[1].Commit == 0);
+	CHECK(rows.Rows[1].File == 0);
+	CHECK(rows.Rows[3].File == 2);
+	CHECK(rows.Rows[4].Kind == CommitRowKind::Commit);
+	CHECK(rows.RowOfCommit[1] == 4);
+
+	// Before the commits are read, one row stands for them.
+	CHECK(Graphite::BroughtRowsOf(nullptr) == 1);
+
+	Core::LogPage none;
+	CHECK(Graphite::BroughtRowsOf(&none) == 1);
+}
+
+TEST_CASE("Git window: a merge row counts its commits once opened")
+{
+	Core::LogPage page;
+	page.Commits.resize(3);
+	CHECK(Graphite::DescribeBrought(page) == "3 commits");
+
+	page.Commits.resize(1);
+	CHECK(Graphite::DescribeBrought(page) == "1 commit");
+
+	page.Commits.resize(500);
+	page.Complete = false;
+	CHECK(Graphite::DescribeBrought(page) == "500+ commits");
+
+	Core::CommitSummary merge;
+	merge.Parents.resize(2);
+	CHECK(Graphite::IsMerge(merge));
+	merge.Parents.resize(1);
+	CHECK_FALSE(Graphite::IsMerge(merge));
+}

@@ -483,3 +483,46 @@ TEST_CASE("Git window: the local changes selection goes with its row")
 
 	CHECK_FALSE(history.View.IsLocalChangesSelected());
 }
+
+TEST_CASE("Git window: a brought commit is selected by a click on its row")
+{
+	MarkedHistory history("BroughtHistory", 2);
+	history.Page.Commits[0].Parents.resize(2);
+
+	Core::LogPage brought;
+	brought.Commits.push_back(CommitNumbered(7));
+	brought.Commits.push_back(CommitNumbered(8));
+	const Core::Ref<const Core::LogPage> held = Core::CreateRef<const Core::LogPage>(brought);
+
+	history.Marks.BroughtOf = [held](const Core::Oid&) { return held; };
+	history.View.SetExpanded(history.Page.Commits[0].Id, true);
+
+	history.Settle();
+
+	constexpr int kRowCount = 4;
+	history.ClickRow(2, kRowCount);
+
+	CHECK(history.View.GetSelectedCommit() == std::optional<Core::Oid>{CommitNumbered(8).Id});
+
+	// The selection stays while its merge is in the page and open.
+	history.View.KeepSelectionWithin(history.Page, history.Marks);
+	CHECK(history.View.GetSelectedCommit().has_value());
+
+	history.View.SetExpanded(history.Page.Commits[0].Id, false);
+	history.View.KeepSelectionWithin(history.Page, history.Marks);
+	CHECK_FALSE(history.View.GetSelectedCommit().has_value());
+}
+
+TEST_CASE("Git window: an opened merge whose commits are being read is followed by one waiting row")
+{
+	MarkedHistory history("BroughtWaiting", 2);
+	history.Page.Commits[0].Parents.resize(2);
+	history.Marks.BroughtOf = [](const Core::Oid&) { return Core::Ref<const Core::LogPage>{}; };
+	history.View.SetExpanded(history.Page.Commits[0].Id, true);
+
+	history.Settle();
+
+	constexpr int kRowCount = 3;
+	history.ClickRow(2, kRowCount);
+	CHECK(history.View.GetSelectedCommit() == std::optional<Core::Oid>{history.Page.Commits[1].Id});
+}

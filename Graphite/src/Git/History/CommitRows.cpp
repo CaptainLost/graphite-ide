@@ -4,6 +4,8 @@
 
 #include "Core/Base/Count.h"
 
+#include <algorithm>
+
 namespace Graphite {
 
 	namespace {
@@ -22,6 +24,25 @@ namespace Graphite {
 	std::size_t FileRowsOfExpanded(std::size_t fileCount)
 	{
 		return fileCount == 0 ? kPlaceholderFileRowCount : fileCount;
+	}
+
+	bool IsMerge(const Core::CommitSummary& commit)
+	{
+		return commit.Parents.size() > 1;
+	}
+
+	std::size_t BroughtRowsOf(const Core::LogPage* brought)
+	{
+		constexpr std::size_t kStandInRow = 1;
+
+		return brought == nullptr ? kStandInRow : std::max(brought->Commits.size(), kStandInRow);
+	}
+
+	std::string DescribeBrought(const Core::LogPage& brought)
+	{
+		const std::size_t count = brought.Commits.size();
+
+		return Core::FormatCount(count) + (brought.Complete ? "" : "+") + (count == 1 && brought.Complete ? " commit" : " commits");
 	}
 
 	CommitRows BuildCommitRows(std::size_t commitCount,
@@ -51,6 +72,15 @@ namespace Graphite {
 
 			rows.RowOfCommit.push_back(rows.Rows.size());
 			rows.Rows.push_back(RowOfKind(CommitRowKind::Commit, commit));
+
+			const std::size_t broughtRowCount = extra.BroughtRowsUnder ? extra.BroughtRowsUnder(commit) : 0;
+
+			for (std::size_t brought = 0; brought < broughtRowCount; ++brought)
+			{
+				CommitRow broughtRow = RowOfKind(CommitRowKind::Brought, commit);
+				broughtRow.File = brought;
+				rows.Rows.push_back(broughtRow);
+			}
 
 			const std::size_t fileRowCount = fileRowsUnder(commit);
 

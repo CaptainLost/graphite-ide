@@ -70,6 +70,18 @@ namespace Graphite {
 
 		// The page is on its way: one waiting row saying this stands in place of the commits.
 		std::optional<std::string> Waiting;
+
+		// Set in the Merges history: an opened merge lists the commits it brought, which this answers (null while they
+		// are being read), instead of its files.
+		std::function<Core::Ref<const Core::LogPage>(const Core::Oid&)> BroughtOf;
+		std::function<bool(const Core::Oid&)> BroughtFailed;
+	};
+
+	// What a commit row draws of the merge it is, or of the merge it was brought by.
+	struct BroughtDrawing
+	{
+		const Core::LogPage* Page = nullptr; // an opened merge's: the commits it brought; adds their count to its text
+		bool IsBrought = false;              // the row is one of the commits a merge brought
 	};
 
 	class CommitListView
@@ -86,7 +98,8 @@ namespace Graphite {
 					std::string_view pathHighlight = {},
 					const HistoryMarks& marks = {});
 
-		void KeepSelectionWithin(const Core::LogPage& page);
+		// A commit a merge brought stays selected while its merge is in the page and open.
+		void KeepSelectionWithin(const Core::LogPage& page, const HistoryMarks& marks = {});
 
 		void ClearSelection() { m_SelectedFile.reset(); }
 
@@ -139,6 +152,8 @@ namespace Graphite {
 		void SetLocalChangesInk(ImU32 ink) { m_LocalChangesInk = ink; }
 
 	private:
+		bool ListedUnderOpenMerge(const Core::Oid& commit, const Core::LogPage& page, const HistoryMarks& marks) const;
+
 		std::size_t FileRowCountUnder(
 			const Core::LogPage& page, std::size_t commitIndex,
 			const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf) const;
@@ -146,7 +161,9 @@ namespace Graphite {
 		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 							 const GitPalette& palette, const CommitRefMap& refs,
 							 std::string_view highlight, std::chrono::sys_seconds now,
-							 const std::chrono::time_zone* zone, bool dimmed);
+							 const std::chrono::time_zone* zone, bool dimmed, const BroughtDrawing& brought);
+
+		void RenderBroughtNote(const Core::LogPage* brought, bool failed);
 
 		// Entered in the graph column, where the ring for the work in progress is drawn around `dotCentre`.
 		void RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre);

@@ -271,6 +271,14 @@ namespace Graphite {
 		void AnswerHistoryClick(HistoryClick click, const Core::LogPage& page);
 		void RenderPreview(const GitPalette& palette);
 
+		// The Merges history lists what an opened merge brought; empty marks in the other.
+		HistoryMarks BroughtMarks() const;
+
+		void AskBroughtByOpenMerges(const Core::LogPage& page);
+
+		// The commit in the page, or among the commits an opened merge of it brought.
+		std::optional<Core::CommitSummary> FindShownCommit(const Core::LogPage& page, const Core::Oid& id) const;
+
 		void RenderDiff(const GitPalette& palette);
 
 		void RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette);
