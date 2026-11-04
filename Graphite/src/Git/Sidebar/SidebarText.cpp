@@ -459,7 +459,7 @@ namespace Graphite {
 
 		if (input.BranchesError.has_value())
 		{
-			return SidebarWaitingRow{.Text = "Cannot read the branches' lines: " + input.BranchesError->Message, .Failed = true};
+			return SidebarWaitingRow{.Text = "Cannot read the branches: " + input.BranchesError->Message, .Failed = true};
 		}
 
 		return SidebarWaitingRow{.Text = std::string("Reading branches") + kEllipsis};

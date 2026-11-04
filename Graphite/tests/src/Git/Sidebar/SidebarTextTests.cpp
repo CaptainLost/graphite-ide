@@ -460,7 +460,7 @@ TEST_CASE("Git window: a lines error stands in the waiting row without a loader"
 	const std::optional<SidebarWaitingRow> unlisted = DescribeSidebarWait(
 		{.HasRead = false, .Reading = false, .LinesError = none, .Branches = nullptr, .BranchesError = branchesError});
 	REQUIRE(unlisted.has_value());
-	CHECK(unlisted->Text == "Cannot read the branches' lines: packed-refs is locked");
+	CHECK(unlisted->Text == "Cannot read the branches: packed-refs is locked");
 	CHECK(unlisted->Failed);
 }
 
