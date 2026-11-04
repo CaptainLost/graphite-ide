@@ -138,7 +138,8 @@ namespace Graphite {
 			answer = MainLineAnswer::UseGuess;
 		}
 
-		if (DrawButton(notNowLabel.c_str(), ImVec2(buttonsLeft + useWidth + Em(kButtonGap), buttonTop), notNowWidth, 0, 0))
+		if (DrawButton(notNowLabel.c_str(), ImVec2(buttonsLeft + useWidth + Em(kButtonGap), buttonTop), notNowWidth,
+					   colours.ChipHoveredFill, 0))
 		{
 			answer = MainLineAnswer::NotNow;
 		}
