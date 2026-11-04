@@ -124,8 +124,17 @@ namespace Graphite {
 			}
 		}
 
-		void DescribeRemotes(const std::vector<Core::Remote>* remotes, WindowBarText& text)
+		void DescribeRemotes(const WindowBarInput& input, WindowBarText& text)
 		{
+			const std::vector<Core::Remote>* remotes = input.Remotes;
+
+			if (input.RemotesFailure != nullptr)
+			{
+				text.Remotes = "cannot read remotes";
+				text.RemotesTooltip = *input.RemotesFailure;
+				return;
+			}
+
 			if (remotes == nullptr)
 			{
 				text.Remotes = kUnreadRemotes;
@@ -310,7 +319,7 @@ namespace Graphite {
 		text.Repository = FolderName(input.WorkingDirectory);
 		text.Busy = input.CheckingOut;
 
-		DescribeRemotes(input.Remotes, text);
+		DescribeRemotes(input, text);
 
 		if (input.Head != nullptr && !input.CheckingOut)
 		{

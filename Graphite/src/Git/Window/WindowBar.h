@@ -21,6 +21,9 @@ namespace Graphite {
 		const std::vector<Core::Branch>* Branches;
 		const std::vector<Core::Remote>* Remotes;
 		bool CheckingOut;
+
+		// The message of a failed remotes read; null otherwise. Said instead of "no remotes", which only an answer may say.
+		const std::string* RemotesFailure = nullptr;
 	};
 
 	struct WindowBarText

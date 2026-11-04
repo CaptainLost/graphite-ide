@@ -155,10 +155,11 @@ namespace Graphite {
 
 		if (m_WindowBarSource != source)
 		{
-			static const std::vector<Core::Remote> kNoRemotes;
-			const std::vector<Core::Remote>* shownRemotes = remotes ? remotes.get() : (remotesFailed ? &kNoRemotes : nullptr);
+			const std::optional<Core::Error>& remotesError = m_Model.GetRemotesError();
+			const std::string* remotesFailure = remotesFailed && !remotes ? &remotesError->Message : nullptr;
 
-			m_WindowBarText = DescribeWindowBar(WindowBarInput{folder, head.get(), branches.get(), shownRemotes, checkingOut.has_value()});
+			m_WindowBarText = DescribeWindowBar(
+				WindowBarInput{folder, head.get(), branches.get(), remotes.get(), checkingOut.has_value(), remotesFailure});
 
 			if (checkingOut.has_value())
 			{

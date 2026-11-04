@@ -72,6 +72,19 @@ TEST_CASE("Git window: the bar says so when there are no remotes and holds the p
 	CHECK(Describe(&head, &branches, nullptr).Remotes == "\xE2\x80\xA6");
 }
 
+TEST_CASE("Git window: a failed remotes read is not said to be no remotes")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::string failure = "cannot open the config";
+
+	const Graphite::WindowBarText text = Graphite::DescribeWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, nullptr, false, &failure});
+
+	CHECK(text.Remotes == "cannot read remotes");
+	CHECK(text.RemotesTooltip == failure);
+}
+
 TEST_CASE("Git window: the head chip says what is to push and pull in words")
 {
 	const Core::HeadState head = OnBranch("main");
