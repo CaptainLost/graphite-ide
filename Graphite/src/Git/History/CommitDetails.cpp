@@ -1,7 +1,10 @@
 #include "Git/History/CommitDetails.h"
 
+#include "Git/Compare/VsLabel.h"
+
 #include "Core/Time/TimeZone.h"
 
+#include <algorithm>
 #include <format>
 
 namespace Graphite {
@@ -46,5 +49,28 @@ namespace Graphite {
 	{
 		return commit.Committer.Name != commit.Author.Name ||
 			   commit.Committer.Email != commit.Author.Email;
+	}
+
+	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding)
+	{
+		InBases bases;
+
+		if (!holding.has_value())
+		{
+			bases.Pending = true;
+			return bases;
+		}
+
+		const std::size_t known = std::min(holding->size(), read.Model.Bases.size());
+
+		for (std::size_t index = 0; index < known; ++index)
+		{
+			if ((*holding)[index])
+			{
+				bases.Holding.push_back(LineNameOf(read, read.Model.Bases[index].Ref));
+			}
+		}
+
+		return bases;
 	}
 }

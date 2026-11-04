@@ -1,11 +1,15 @@
 #pragma once
 
+#include "Git/Lines/LineReader.h"
+
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -30,4 +34,14 @@ namespace Graphite {
 	std::string CommitMessageText(const Core::CommitSummary& commit);
 
 	bool ShowsCommitter(const Core::CommitSummary& commit);
+
+	// The bases that hold a commit, as the "In bases" line names them.
+	struct InBases
+	{
+		std::vector<std::string> Holding; // short names in model order; a remote base keeps its remote
+		bool Pending = false;             // the answer has not landed
+	};
+
+	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked.
+	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding);
 }

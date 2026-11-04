@@ -15,6 +15,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 #include "Git/Branches/BranchLookup.h"
+#include "Git/Compare/BranchMenu.h"
 #include "Git/GitRequests.h"
 #include "Git/History/CommitRows.h"
 #include "Git/History/HistoryFilter.h"
@@ -675,6 +676,7 @@ namespace Graphite {
 
 		ImGui::EndDisabled();
 		RenderReviewItem(branch);
+		RenderLineItems(branch);
 
 		ImGui::Separator();
 
@@ -686,6 +688,41 @@ namespace Graphite {
 		if (ImGui::MenuItem("Copy Tip Hash"))
 		{
 			CopyToClipboard(m_Events, "tip hash", branch.Tip.ToHex());
+		}
+	}
+
+	void GitView::RenderLineItems(const Core::Branch& branch)
+	{
+		const Core::Ref<const LineRead> read = m_Lines.GetRead();
+		const BranchLines* const lines = CurrentLines();
+		const BranchMenu menu = MenuFor(read.get(), lines, branch.FullName);
+
+		if (!menu.CompareWith && !menu.UseAsBase && !menu.StopUsingAsBase && !menu.UseAsMainLine)
+		{
+			return;
+		}
+
+		ImGui::Separator();
+
+		if (menu.CompareWith && ImGui::MenuItem("Compare with…"))
+		{
+			SelectRef(branch.FullName);
+			m_VsPicker.Open(branch.FullName, ImGui::GetMousePos());
+		}
+
+		if (menu.UseAsBase && ImGui::MenuItem("Use as base"))
+		{
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsBase, .Ref = branch.FullName});
+		}
+
+		if (menu.StopUsingAsBase && ImGui::MenuItem("Stop using as base"))
+		{
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::StopUsingAsBase, .Ref = branch.FullName});
+		}
+
+		if (menu.UseAsMainLine && ImGui::MenuItem("Use as main line"))
+		{
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsMainLine, .Ref = branch.FullName});
 		}
 	}
 
@@ -1378,7 +1415,7 @@ namespace Graphite {
 			}
 
 			// Closing a merge forgets a failed read, so opening it again asks again, as a diff does.
-			if (m_Commits.IsExpanded(commit.Id))
+			if (m_Commits.IsExpanded(commit.Id) || m_Commits.GetSelectedCommit() == commit.Id)
 			{
 				m_Model.RequestBrought(commit.Id, commit.Parents[0], commit.Parents[1]);
 			}
@@ -1476,9 +1513,48 @@ namespace Graphite {
 
 		const bool diffFailed = m_Model.IsDiffFailed(commit.Id);
 
-		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, ReaderTimeZone(), palette))
+		CommitDetailsContent content;
+
+		// Without a read there is no answer to wait for or to give; the line shows its ellipsis.
+		const Core::Ref<const LineRead> read = m_Lines.GetRead();
+		content.Bases = read ? DescribeInBases(*read, m_Lines.BasesHolding(commit.Id)) : InBases{.Holding = {}, .Pending = true};
+
+		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
+		{
+			content.Refs = refs->second;
+		}
+
+		if (IsMerge(commit))
+		{
+			m_Model.RequestBrought(commit.Id, commit.Parents[0], commit.Parents[1]);
+
+			BroughtDetails brought;
+			brought.Page = m_Model.GetBrought(commit.Id);
+
+			if (const std::optional<Core::Error> failure = m_Model.GetBroughtFailure(commit.Id))
+			{
+				brought.Failure = failure->Message;
+			}
+
+			content.Brought = std::move(brought);
+		}
+
+		const CommitDetailsOutcome outcome =
+			Graphite::RenderCommitDetails(commit, stats, diffFailed, ReaderTimeZone(), palette, content);
+
+		if (outcome.Closed)
 		{
 			m_Commits.ClearRowSelection();
+		}
+		else if (outcome.ChosenBrought.has_value())
+		{
+			// The merge's brought commits are findable for the details only while it is open in the history.
+			if (BroughtMarks().BroughtOf)
+			{
+				m_Commits.SetExpanded(commit.Id, true);
+			}
+
+			m_Commits.SelectCommit(*outcome.ChosenBrought);
 		}
 	}
 

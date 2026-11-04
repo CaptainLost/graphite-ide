@@ -1,12 +1,15 @@
 #include <doctest/doctest.h>
 
 #include "Git/History/CommitDetails.h"
+#include "Git/Lines/LineReadFixtures.h"
 
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Signature.h"
 
 #include <chrono>
+#include <optional>
+#include <vector>
 
 namespace {
 	std::chrono::sys_seconds At(long long seconds)
@@ -180,4 +183,57 @@ TEST_CASE("The change count says it is counting while the diff is read, and that
 
 	CHECK(Graphite::UncountedChangesText(kDiffOnItsWay) == "counting changes\xE2\x80\xA6");
 	CHECK(Graphite::UncountedChangesText(kDiffFailed) == "couldn't count changes");
+}
+namespace {
+
+	Graphite::LineRead TwoBasesRead()
+	{
+		Graphite::Fixtures::LineReadBuilder builder;
+		builder.AddRemote("origin");
+
+		const std::size_t develop = builder.AddLocal("develop");
+		const std::size_t release = builder.AddRemoteBranch("origin", "release");
+		const std::size_t main = builder.AddLocal("main");
+		builder.MakeBase(develop);
+		builder.MakeBase(release);
+		builder.MakeBase(main);
+		return builder.Build();
+	}
+}
+
+TEST_CASE("Git window: details name the bases that hold the commit")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	const Graphite::InBases bases = Graphite::DescribeInBases(read, std::vector<bool>{true, false, true});
+
+	CHECK_FALSE(bases.Pending);
+	REQUIRE(bases.Holding.size() == 2);
+	CHECK(bases.Holding[0] == "develop");
+	CHECK(bases.Holding[1] == "main");
+
+	const Graphite::InBases withRemote = Graphite::DescribeInBases(read, std::vector<bool>{false, true, false});
+
+	REQUIRE(withRemote.Holding.size() == 1);
+	CHECK(withRemote.Holding[0] == "origin/release");
+}
+
+TEST_CASE("Git window: details say in no base yet")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	const Graphite::InBases bases = Graphite::DescribeInBases(read, std::vector<bool>{false, false, false});
+
+	CHECK_FALSE(bases.Pending);
+	CHECK(bases.Holding.empty());
+}
+
+TEST_CASE("Git window: the in bases line waits with an ellipsis")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	const Graphite::InBases bases = Graphite::DescribeInBases(read, std::nullopt);
+
+	CHECK(bases.Pending);
+	CHECK(bases.Holding.empty());
 }

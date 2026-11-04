@@ -228,6 +228,7 @@ namespace Graphite {
 		void RenderRefMenuItems(const Core::Branch& branch);
 
 		void RenderReviewItem(const Core::Branch& branch);
+		void RenderLineItems(const Core::Branch& branch);
 		void DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items);
 
 		// Fills a menu already open.
