@@ -339,3 +339,35 @@ TEST_CASE("Git window: a branch the read lacks has no picker")
 
 	CHECK(Build(scene, "refs/heads/gone").Title.empty());
 }
+
+TEST_CASE("Git window: the picker offers a quiet base only when the branch is compared with it")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+
+	Scene scene;
+	scene.Develop = builder.AddLocal("develop");
+	builder.MakeBase(scene.Develop);
+	scene.Release = builder.AddRemoteBranch("origin", "release/0.9");
+	builder.MakeBase(scene.Release, false);
+	scene.Feature = builder.AddLocal("feature/x");
+	builder.Compare(scene.Feature, scene.Develop);
+	scene.Read = builder.Build();
+	scene.FeatureLine().AutomaticComparedWith = scene.Develop;
+
+	const VsPicker usual = Build(scene, "refs/heads/feature/x");
+
+	CHECK(OptionOf(usual, VsOption::Kind::Base, "develop") != nullptr);
+	CHECK(OptionOf(usual, VsOption::Kind::Base, "origin/release/0.9") == nullptr);
+	CHECK(usual.QuietBases == 1);
+
+	scene.FeatureLine().AutomaticComparedWith = scene.Release;
+	scene.FeatureLine().ComparedWith = scene.Release;
+
+	const VsPicker onQuiet = Build(scene, "refs/heads/feature/x");
+	const VsOption* const quiet = OptionOf(onQuiet, VsOption::Kind::Base, "origin/release/0.9");
+
+	REQUIRE(quiet != nullptr);
+	CHECK(quiet->Automatic);
+	CHECK(quiet->Chosen);
+}

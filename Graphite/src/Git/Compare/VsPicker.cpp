@@ -131,9 +131,13 @@ namespace Graphite {
 			refs.Add(VsOption::Kind::BuiltOn, *line->AutomaticComparedWith, "the branch it is built on");
 		}
 
+		// A quiet base is offered only when the rule or the user compares the branch with it.
 		for (const Core::LineBase& base : read.Model.Bases)
 		{
-			if (base.Ref != *self && !refs.Includes(base.Ref))
+			const bool comparedWithIt =
+				line != nullptr && (line->AutomaticComparedWith == base.Ref || line->ComparedWith == base.Ref);
+
+			if (base.Ref != *self && !refs.Includes(base.Ref) && (base.Active || comparedWithIt))
 			{
 				refs.Add(VsOption::Kind::Base, base.Ref);
 			}
