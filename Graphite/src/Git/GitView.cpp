@@ -463,6 +463,8 @@ namespace Graphite {
 		m_LastSeenBranches.reset();
 		m_PendingRename.reset();
 		m_BaseSeen.reset();
+		m_WindowBarSource.reset();
+		m_MainLineDismissed = false;
 
 		// WARNING: Subscribe runs before GraphiteLayer subscribes its own handlers, so a history the opening folder
 		// restores from its handler of the same event is asked for after this has let go of the last one.
@@ -520,7 +522,7 @@ namespace Graphite {
 
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
-		RenderFolderHeader();
+		RenderWindowBar();
 
 		// WARNING: Not the "gitWindow" of the navigator this replaced, so the sidebar opens at its own width rather than
 		// at the width ImGui saved for the navigator's column.

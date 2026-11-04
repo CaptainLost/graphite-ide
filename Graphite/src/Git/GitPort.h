@@ -8,6 +8,7 @@
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
+#include "Core/Git/Remote.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
@@ -48,6 +49,7 @@ namespace Graphite {
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
 		virtual Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) = 0;
 		virtual Core::Result<std::optional<std::string>> ReadUserEmail() = 0;
+		virtual Core::Result<std::vector<Core::Remote>> QueryRemotes() = 0;
 		virtual Core::Result<Core::HeadState> QueryHead() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 

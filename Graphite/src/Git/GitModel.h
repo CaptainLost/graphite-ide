@@ -173,6 +173,10 @@ namespace Graphite {
 		// when git has none.
 		const std::optional<std::string>& GetUserEmail() const;
 
+		// Read beside every branch listing, for the window bar. Null while unread and after a failed read.
+		Core::Ref<const std::vector<Core::Remote>> GetRemotes() const { return m_Remotes.Get(); }
+		const std::optional<Core::Error>& GetRemotesError() const { return m_Remotes.GetError(); }
+
 		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
 		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
 		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
@@ -396,6 +400,7 @@ namespace Graphite {
 		void RequestBranchAuthorsWhenTipsMoved();
 
 		void RequestUserEmail();
+		void RequestRemotes();
 
 		bool AnswersWantedWorkingTreeDiff() const
 		{
@@ -577,6 +582,7 @@ namespace Graphite {
 		GenerationSlot<std::vector<Core::Branch>> m_Branches;
 		GenerationSlot<BranchAuthors> m_BranchAuthors;
 		GenerationSlot<std::optional<std::string>> m_UserEmail;
+		GenerationSlot<std::vector<Core::Remote>> m_Remotes;
 		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
 		std::optional<std::vector<Core::Oid>> m_AuthorsHidden;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;

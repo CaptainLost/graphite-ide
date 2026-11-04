@@ -31,6 +31,7 @@ public:
 	Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
 	Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest&) override { return std::vector<Core::TipAuthors>{}; }
 	Core::Result<std::optional<std::string>> ReadUserEmail() override { return std::optional<std::string>{}; }
+	Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return std::vector<Core::Remote>{}; }
 	Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
 	Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
 

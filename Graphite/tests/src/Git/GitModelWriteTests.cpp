@@ -39,6 +39,7 @@ namespace {
 		}
 
 		Core::Result<std::optional<std::string>> ReadUserEmail() override { return std::optional<std::string>{}; }
+		Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return std::vector<Core::Remote>{}; }
 		Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
 
 		Core::Result<void> Init() override { return Record("init", std::vector<std::filesystem::path>{}); }

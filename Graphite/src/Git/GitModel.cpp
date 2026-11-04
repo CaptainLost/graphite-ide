@@ -92,6 +92,7 @@ namespace Graphite {
 		m_LastAuthorsRequest.reset();
 		m_AuthorsHidden.reset();
 		m_UserEmail.Clear();
+		m_Remotes.Clear();
 		m_Stashes.Clear();
 		m_Head.Clear();
 		m_Log.Clear();
@@ -244,6 +245,7 @@ namespace Graphite {
 	void GitModel::RequestBranches()
 	{
 		RequestUserEmail();
+		RequestRemotes();
 
 		const std::uint64_t generation = m_Branches.Begin();
 
@@ -276,6 +278,19 @@ namespace Graphite {
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
 				m_UserEmail.Land(generation, std::move(result));
+			});
+		});
+	}
+
+	void GitModel::RequestRemotes()
+	{
+		const std::uint64_t generation = m_Remotes.Begin();
+
+		m_Submit([this, generation]() {
+			Core::Result<std::vector<Core::Remote>> result = m_Port.QueryRemotes();
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				m_Remotes.Land(generation, std::move(result));
 			});
 		});
 	}

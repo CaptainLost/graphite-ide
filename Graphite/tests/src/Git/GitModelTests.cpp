@@ -114,6 +114,7 @@ namespace {
 		}
 
 		Core::Result<std::optional<std::string>> ReadUserEmail() override { return UserEmail; }
+		Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return Remotes; }
 
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
 		{
@@ -350,6 +351,7 @@ namespace {
 		std::vector<Core::Branch> Branches;
 		std::vector<Core::TipAuthors> OwnAuthors;
 		std::optional<std::string> UserEmail;
+		std::vector<Core::Remote> Remotes;
 		bool FailOwnAuthors = false;
 		int OwnAuthorsCalls = 0;
 		std::optional<Core::OwnAuthorsRequest> LastOwnAuthorsRequest;
@@ -2646,6 +2648,27 @@ TEST_CASE("Git window: the authors wait for the hidden tips and are asked again 
 
 	CHECK(port.OwnAuthorsCalls == 2);
 	CHECK(port.LastOwnAuthorsRequest->Hidden == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte)});
+}
+
+TEST_CASE("Git window: the remotes are read with the branches and forgotten with the folder")
+{
+	FakePort port;
+	port.Remotes = {Core::Remote{"origin", "https://example.com/a.git"}};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	CHECK(model.GetRemotes() == nullptr);
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetRemotes() != nullptr);
+	REQUIRE(model.GetRemotes()->size() == 1);
+	CHECK(model.GetRemotes()->front().Name == "origin");
+
+	model.Clear();
+
+	CHECK(model.GetRemotes() == nullptr);
 }
 
 TEST_CASE("Git window: the user's e-mail is read with the branches")

@@ -1,0 +1,71 @@
+#pragma once
+
+#include "Core/Git/Head.h"
+#include "Core/Git/Ref.h"
+#include "Core/Git/Remote.h"
+#include "Theme/ColorScheme.h"
+
+#include <imgui.h>
+
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace Graphite {
+
+	struct WindowBarInput
+	{
+		const std::filesystem::path& WorkingDirectory;
+		const Core::HeadState* Head;
+		const std::vector<Core::Branch>* Branches;
+		const std::vector<Core::Remote>* Remotes;
+		bool CheckingOut;
+	};
+
+	struct WindowBarText
+	{
+		std::string Repository;
+		std::string Remotes; // "…" while they are unread, so the place is held
+		std::string RemotesTooltip;
+		std::string Head; // empty while HEAD is unread or a checkout is under way
+		std::string HeadState; // "2 to push", "3 to pull", both joined; drawn in the match colour
+		std::string HeadTooltip;
+		bool Busy = false; // a checkout is under way: the chip shows the loader, saying what Head holds
+	};
+
+	WindowBarText DescribeWindowBar(const WindowBarInput& input);
+
+	// Every colour comes from the active scheme.
+	struct WindowBarColours
+	{
+		ImU32 Dim = 0;
+		ImU32 Match = 0;
+		ImU32 Rule = 0;
+		ImU32 ChipFill = 0;
+		ImU32 ChipHoveredFill = 0;
+		ImU32 Accent = 0;
+		ImU32 OnAccent = 0;
+		ImU32 AskFill = 0;
+		ImU32 AskQuestion = 0;
+	};
+
+	WindowBarColours ReadWindowBarColours(const ResolvedScheme& scheme);
+
+	// A length of the mockup, in px at its 13 px font, scaled to the font in use.
+	float WindowBarEm(float mockupPixels);
+
+	struct WindowBarDrawing
+	{
+		const WindowBarText& Text;
+		const std::filesystem::path& WorkingDirectory;
+
+		// Told in place of the chip when HEAD cannot be read; empty otherwise.
+		std::string_view HeadFailure;
+
+		const WindowBarColours& Colours;
+	};
+
+	// One bar high across the available width, ending on an item. True when the HEAD chip was clicked.
+	bool DrawWindowBar(const WindowBarDrawing& drawing);
+}

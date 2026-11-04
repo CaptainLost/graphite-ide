@@ -243,6 +243,18 @@ namespace Graphite {
 		return repository->ReadUserEmail();
 	}
 
+	Core::Result<std::vector<Core::Remote>> RepositoryGitPort::QueryRemotes()
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return opened.GetValue()->QueryRemotes();
+	}
+
 	Core::Result<Core::LogPage> RepositoryGitPort::QueryLog(const Core::LogRequest& request)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();

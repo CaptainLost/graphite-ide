@@ -34,6 +34,7 @@ namespace Graphite {
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override;
 		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) override;
 		Core::Result<std::optional<std::string>> ReadUserEmail() override;
+		Core::Result<std::vector<Core::Remote>> QueryRemotes() override;
 		Core::Result<Core::HeadState> QueryHead() override;
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override;
 		Core::Result<CommitCount> CountCommits(const std::optional<std::string>& ref,

@@ -14,8 +14,9 @@
 #include "Git/Branches/BranchLookup.h"
 #include "Git/GitStatusText.h"
 #include "Git/History/CommitLabels.h"
-#include "Git/Window/ChipRow.h"
+#include "Git/Window/MainLineQuestion.h"
 #include "Git/Window/GitWindowRestore.h"
+#include "Git/Window/WindowBar.h"
 #include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/FittedText.h"
@@ -36,8 +37,6 @@ namespace Graphite {
 		constexpr float kChangesListWidthInFontSizes = 22.0f;
 		constexpr int kChangesColumnCount = 2;
 
-		// The header's path is in the code face, smaller than the folder's name beside it.
-		constexpr float kHeaderPathScale = 0.8f;
 		constexpr float kHistoryTitleScale = 0.9f;
 		constexpr float kKeepFontSize = 0.0f;
 
@@ -50,13 +49,6 @@ namespace Graphite {
 		std::chrono::sys_seconds NowInSeconds()
 		{
 			return std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-		}
-
-		std::string FolderName(const std::filesystem::path& folder)
-		{
-			// libgit2 hands the working directory back with a trailing separator, whose filename is empty.
-			const std::filesystem::path name = folder.has_filename() ? folder.filename() : folder.parent_path().filename();
-			return Core::ToUtf8(name.empty() ? folder : name);
 		}
 
 		void EmphasisedLine(const std::string& text)
@@ -149,103 +141,66 @@ namespace Graphite {
 		SelectRef(ref);
 	}
 
-	void GitView::RenderFolderHeader()
+	void GitView::RenderWindowBar()
 	{
-		const float room = ImGui::GetContentRegionAvail().x;
-		const float spacing = ImGui::GetStyle().ItemSpacing.x;
-
-		// The folder's name in bold and its path after it, on one line.
-		if (const std::filesystem::path& folder = m_Model.GetWorkingDirectory(); !folder.empty())
-		{
-			const std::filesystem::path shown = Core::NormalizeDirectory(folder);
-			const std::string path = Core::ToUtf8(shown);
-			const float lineStart = ImGui::GetCursorScreenPos().x;
-
-			ImGui::BeginGroup();
-			ImGui::TextUnformatted(ICON_LC_FOLDER);
-			ImGui::SameLine();
-
-			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
-			EmphasisedLine(FitToWidth(FolderName(shown), room - (ImGui::GetCursorScreenPos().x - lineStart)));
-			ImGui::PopFont();
-
-			const float pathRoom = room - (ImGui::GetItemRectMax().x + spacing - lineStart);
-
-			if (pathRoom > 0.0f)
-			{
-				ImGui::SameLine();
-				Core::PushCodeFont(ImGui::GetFontSize() * kHeaderPathScale);
-				ImGui::TextDisabled("%s", FitToWidth(path, pathRoom).c_str());
-				ImGui::PopFont();
-			}
-
-			ImGui::EndGroup();
-
-			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
-			{
-				ImGui::SetTooltip("%s", path.c_str());
-			}
-		}
-
 		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		const Core::Ref<const std::vector<Core::Remote>> remotes = m_Model.GetRemotes();
+		const std::optional<std::string> checkingOut = CurrentWait().CheckingOut;
+		const std::filesystem::path& folder = m_Model.GetWorkingDirectory();
 
-		const std::optional<GitStatusSegment> segment = GitStatusText(GitStatusInputs{
-			.FolderOpen = true,
-			.Head = head.get(),
-			.Branches = branches.get(),
-			.Status = status.get(),
-			.CheckingOut = CurrentWait().CheckingOut});
+		// WARNING: Rebuilt only when what it describes changed: the checked-out branch is looked up in every branch.
+		const bool remotesFailed = m_Model.GetRemotesError().has_value();
+		const WindowBarSource source{head, branches, remotes, remotesFailed, checkingOut, folder};
 
-		if (segment.has_value() && segment->BranchBusy)
+		if (m_WindowBarSource != source)
 		{
-			// A checkout under way is named here in place of HEAD's branch, with the loader beside it.
-			const std::string text = FitToWidth(segment->Branch, room - Core::LoadingLineWidth(""));
+			static const std::vector<Core::Remote> kNoRemotes;
+			const std::vector<Core::Remote>* shownRemotes = remotes ? remotes.get() : (remotesFailed ? &kNoRemotes : nullptr);
 
-			ImGui::PushID("##checkingOut");
-			Core::LoadingLine(text.c_str(), Core::WhileLoaderWaits::ShowText);
-			ImGui::PopID();
-		}
-		else if (segment.has_value() && !segment->Branch.empty())
-		{
-			// HEAD's branch, then its distance to the upstream in a chip with the status bar's marks.
-			const bool inSync = segment->Distance == ICON_LC_CHECK;
-			const Chip distance{inSync ? std::string(ICON_LC_CHECK " in sync") : segment->Distance,
-								inSync ? ChipTone::Good : ChipTone::Plain};
-			const float chipRoom = segment->Distance.empty() ? 0.0f : ChipWidthOf(distance.Text) + spacing;
+			m_WindowBarText = DescribeWindowBar(WindowBarInput{folder, head.get(), branches.get(), shownRemotes, checkingOut.has_value()});
 
-			ImGui::BeginGroup();
-			ImGui::TextUnformatted(FitToWidth(segment->Branch, room - chipRoom).c_str());
-
-			if (!segment->Distance.empty())
+			if (checkingOut.has_value())
 			{
-				ImGui::SameLine();
-				DrawChipRow({distance}, ReadChipColours(m_Scheme.Get()));
+				m_WindowBarText.Head = CheckingOutText(*checkingOut);
 			}
 
-			ImGui::EndGroup();
-
-			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
-			{
-				const std::string tooltip = segment->DistanceTooltip.empty()
-												? segment->BranchTooltip
-												: segment->BranchTooltip + "\n" + segment->DistanceTooltip;
-				ImGui::SetTooltip("%s", tooltip.c_str());
-			}
-		}
-		else if (const std::optional<Core::Error>& headError = m_Model.GetHeadError(); headError.has_value())
-		{
-			ImGui::TextDisabled("%s", FitToWidth(headError->Message, room).c_str());
-		}
-		else
-		{
-			ImGui::PushID("##headLoading");
-			Core::LoadingLine("Reading HEAD");
-			ImGui::PopID();
+			m_WindowBarSource = source;
 		}
 
-		ImGui::Separator();
+		const std::optional<Core::Error>& headError = m_Model.GetHeadError();
+		const bool headFailed = !head && headError.has_value();
+		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
+
+		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
+										   .WorkingDirectory = folder,
+										   .HeadFailure = headFailed ? std::string_view{headError->Message} : std::string_view{},
+										   .Colours = colours}))
+		{
+			SelectRef(std::nullopt);
+		}
+
+		const Core::Ref<const LineRead> read = m_Lines.GetRead();
+		const std::optional<MainLineAsk> ask = MainLineToAsk(read.get(), m_MainLineDismissed);
+
+		if (!ask.has_value())
+		{
+			return;
+		}
+
+		switch (DrawMainLineQuestion(*ask, colours))
+		{
+		case MainLineAnswer::UseGuess:
+			m_Lines.Change(LineAnswerChange{.What = LineAnswerChange::Kind::UseAsMainLine, .Ref = ask->GuessRef});
+			break;
+
+		case MainLineAnswer::NotNow:
+			m_MainLineDismissed = true;
+			break;
+
+		case MainLineAnswer::None:
+			break;
+		}
 	}
 
 	void GitView::RenderSidebar()

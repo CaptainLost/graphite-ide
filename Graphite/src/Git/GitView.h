@@ -30,6 +30,7 @@
 #include "Git/Sidebar/SidebarRows.h"
 #include "Git/Sidebar/SidebarText.h"
 #include "Git/Sidebar/SidebarView.h"
+#include "Git/Window/WindowBar.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
 
@@ -172,8 +173,8 @@ namespace Graphite {
 
 		void ApplyPendingRestore();
 
-		// The folder's name and path, then HEAD's branch with its distance to its upstream.
-		void RenderFolderHeader();
+		// The repository, its remotes and the checked-out branch, and the question for the main line when it is asked.
+		void RenderWindowBar();
 
 		void RenderSidebar();
 		void RebuildSidebarWhenOutOfDate();
@@ -313,6 +314,24 @@ namespace Graphite {
 
 		// A restored history waits here for the branches it names.
 		std::optional<GitWindowState> m_PendingRestore;
+
+		struct WindowBarSource
+		{
+			Core::Ref<const Core::HeadState> Head;
+			Core::Ref<const std::vector<Core::Branch>> Branches;
+			Core::Ref<const std::vector<Core::Remote>> Remotes;
+			bool RemotesFailed = false;
+			std::optional<std::string> CheckingOut;
+			std::filesystem::path Folder;
+
+			friend bool operator==(const WindowBarSource&, const WindowBarSource&) = default;
+		};
+
+		std::optional<WindowBarSource> m_WindowBarSource;
+		WindowBarText m_WindowBarText;
+
+		// "Not now" on the main-line question: until the folder changes.
+		bool m_MainLineDismissed = false;
 
 		SidebarView m_Sidebar;
 
