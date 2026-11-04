@@ -25,6 +25,10 @@ namespace Graphite::Fixtures {
 		Core::BranchState State = Core::BranchState::NotMerged;
 		std::string AuthorName = "Ann Author";
 		std::string AuthorEmail = "ann@example.com";
+		std::size_t Ahead = 0;
+		std::size_t Behind = 0;
+		bool DistanceKnown = false;
+		std::optional<std::string> MissingUpstream;
 	};
 
 	// Builds a LineRead by hand. Add refs in the order they should have in LineRead::Refs; the index each Add returns
@@ -127,6 +131,10 @@ namespace Graphite::Fixtures {
 			entry.Branch.FullName = fullName;
 			entry.Branch.Kind = kind;
 			entry.Branch.IsHead = spec.Head;
+			entry.Branch.Ahead = spec.Ahead;
+			entry.Branch.Behind = spec.Behind;
+			entry.Branch.DistanceKnown = spec.DistanceKnown;
+			entry.Branch.MissingUpstream = spec.MissingUpstream;
 
 			if (spec.AgeDays.has_value())
 			{
