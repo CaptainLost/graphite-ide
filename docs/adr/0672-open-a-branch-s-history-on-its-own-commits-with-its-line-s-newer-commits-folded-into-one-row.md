@@ -9,12 +9,13 @@ A branch's history used to be the branch's whole walk with a separator above the
 
 ## Decision
 
-- **Rows.** HEAD's history and the checked-out branch's start with a Local changes row: "Local changes" and "2 staged · 3 not staged" ("nothing to commit"; an ellipsis while the status is unread). Choosing it shows the Changes view, its file list beside the diff, in the preview pane; choosing a commit leaves it.
-- **Folded, the default for a branch that is not merged.** The log is the branch alone. With it the model asks the branch's own commits (`Ref` = the branch, `Exclude` = its line's tip, first parents as the switch says), and one fold row stands before the first page commit that is not the branch's own: "80 newer commits on develop since this branch forked · Show them". The count is the line read's behind distance, `…` until it is measured; a line known to have nothing newer gives no fold row. Rows under the fold row are drawn as usual.
+- **Rows.** HEAD's history and the checked-out branch's, of the whole tree, start with a Local changes row: "Local changes" and "2 staged · 3 not staged" ("nothing to commit"; an ellipsis while the status is unread). A file's history has no such row. Choosing it shows the Changes view, its file list beside the diff, in the preview pane; choosing a commit leaves it.
+- **Folded, the default for a branch that is not merged.** The log is the branch alone. With it the model asks the branch's own commits (`Ref` = the branch, `Exclude` = its line's tip, first parents as the switch says), and one fold row stands before the first page commit that is not the branch's own: "80 newer commits on develop since this branch forked · Show them". The count is the line read's behind distance; a line with nothing newer gives no fold row. The first time a history's rows are shown they wait for that count, so the rows, the fold row and its count arrive together and the row never goes again because its count landed; `…` is left only as a fallback, and a count asked again later leaves the drawn row as it was until it lands. The count has a place as wide as five digits (or the count, when wider), so "Show them" does not move. Rows under the fold row are drawn as usual.
 - **Shown.** "Show them" walks the branch and its line's tip together (`AlsoFrom`) and asks the line's newer commits (`Ref` = the line, `Exclude` = the branch's tip), which are drawn dimmed; the status line adds "develop's newer commits shown, dimmed · Fold them". The choice is kept per branch, by full name, until the folder changes.
+- **Words.** A log narrowed by words has no fold row, so the branch's own commits are not asked for it; the line's newer commits still are, so they stay dimmed and the status line still offers "Fold them".
 - **Combined.** A branch merged by history and one with no commits of its own are shown as Shown, without the offer to fold. A base, an old copy and a branch compared with nothing, with no common history, cut off or with its tip missing show the reference alone.
 - **The marks land with their page.** The own or newer commits are one `MarkedCommitsRequest` asked with the log and landed in the same update; the fold row and the dimming are drawn from what landed, never from the line as it is now, and a read that moves the line asks both again.
-- **The wait.** While no line read holds the shown reference, a branch's or HEAD's log is not asked at all: the list is the Local changes row (when it has one) over one waiting row, "Reading the branches' lines…". Once the read is in the log is asked, and the rows, the fold row and the header's banner appear in the update its page lands. A stash, a file's history and a history whose read failed do not wait.
+- **The wait.** While no line read holds the shown reference, a branch's or HEAD's log is not asked at all: the list is the Local changes row (when it has one) over one waiting row, "Reading the branches' lines…", drawn as a row of the list. Once the read is in the log is asked, and the rows, the fold row and the header's banner appear in the update its page (and, for a folded line, the count) is in. A stash, a file's history and a history whose read failed do not wait.
 - **Opening.** Opening a reference selects Local changes for the checked-out branch, else its first own commit (or its first that is not one of the line's newer ones), else its first row, and scrolls there once; pages that land later never scroll.
 
 ## Rationale
@@ -32,12 +33,12 @@ Folding the line's newer commits keeps a branch's own work on top however far it
 
 - On a first opening without the line read, a branch's history shows nothing but its waiting row until the read and then its log are in.
 - A history that shows its line's newer commits counts no total: the commit count is of the branch alone.
-- The fold row can still go when its count lands as zero after the page; the count is asked with the log so that it is usually in first.
+- A folded history's first rows wait for the count as well as the page; the count is asked with the log, and is an in-memory walk, so the wait is short.
 - The Local changes row of HEAD's history stands above a banner that arrives with the rows, so it moves down once when the banner comes.
 
 ### Neutral
 
-- A history narrowed by words asks no marks, so it has no fold row and nothing dimmed.
+- A folded history narrowed by words asks no marks and has no fold row.
 
 ## Alternatives Considered
 

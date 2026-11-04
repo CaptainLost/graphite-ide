@@ -530,7 +530,11 @@ namespace Graphite {
 			m_LocalChangesSelected = false;
 		}
 
-		if (page.Commits.empty() && !marks.LocalChanges.has_value())
+		// A wait is one row of the list; only a list with nothing in it and nothing on its way gives way to the words.
+		const bool hasNothingToList =
+			page.Commits.empty() && !marks.LocalChanges.has_value() && !marks.Waiting.has_value();
+
+		if (hasNothingToList)
 		{
 			m_ScrollTarget.reset();
 			m_ScrollToTop = false;
@@ -538,15 +542,7 @@ namespace Graphite {
 			constexpr float kSmallestRegion = 1.0f;
 			const float height = std::max(ImGui::GetContentRegionAvail().y - m_RoomBelow, kSmallestRegion);
 
-			if (marks.Waiting.has_value())
-			{
-				Core::LoadingState(marks.Waiting->c_str());
-			}
-			else
-			{
-				Core::EmptyState(m_EmptyText, nullptr, ImVec2(0.0f, height));
-			}
-
+			Core::EmptyState(m_EmptyText, nullptr, ImVec2(0.0f, height));
 			return;
 		}
 
@@ -554,7 +550,8 @@ namespace Graphite {
 
 		const bool hasFold = marks.Fold.has_value() && marks.Fold->BeforeCommit < page.Commits.size();
 		const ExtraRows extra{.LocalChanges = marks.LocalChanges.has_value(),
-							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt};
+							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt,
+							  .Waiting = marks.Waiting.has_value()};
 
 		const CommitRows rows = BuildCommitRows(
 			page.Commits.size(),
@@ -883,12 +880,20 @@ namespace Graphite {
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
+		const float textLeft = ImGui::GetCursorScreenPos().x;
+
 		// WARNING: The italic face is not loaded where no renderer is, and a null face keeps the current one.
 		ImGui::PushFont(Core::ImGuiRenderer::GetItalicFont(), kKeepFontSize);
+		const float textRoom = Core::TextWidth(fold.TextRoom + kMiddleDot);
 		DrawFittedCell(fold.Text + kMiddleDot, dimmedInk, kNoHighlight);
 		ImGui::PopFont();
 
+		// The action keeps to the room the count may come to take, so it stays put when the count lands or changes.
 		ImGui::SameLine(kNoOffset, kNoSpacing);
+		const float roomLeft = std::max(0.0f, textLeft + textRoom - ImGui::GetCursorScreenPos().x);
+		ImGui::Dummy(ImVec2(std::min(roomLeft, ImGui::GetContentRegionAvail().x), ImGui::GetTextLineHeight()));
+		ImGui::SameLine(kNoOffset, kNoSpacing);
+
 		const float actionLeft = ImGui::GetCursorScreenPos().x;
 		DrawFittedCell(fold.Action, actionInk, kNoHighlight);
 

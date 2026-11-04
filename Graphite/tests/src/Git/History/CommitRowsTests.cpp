@@ -188,6 +188,16 @@ TEST_CASE("Git window: with local changes and no commits one note row stands for
 	CHECK(rows.RowOfCommit.empty());
 }
 
+TEST_CASE("Git window: a waiting history without local changes is one note row")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(0, FileRowCountsFrom({}), ExtraRows{.Waiting = true});
+
+	REQUIRE(rows.Rows.size() == 1);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::Note);
+
+	CHECK(Graphite::BuildCommitRows(0, FileRowCountsFrom({})).Rows.empty());
+}
+
 TEST_CASE("Git window: local changes are described in words")
 {
 	CHECK(Graphite::DescribeLocalChanges(nullptr) == "\xE2\x80\xA6");

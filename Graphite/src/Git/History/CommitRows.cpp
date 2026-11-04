@@ -35,11 +35,11 @@ namespace Graphite {
 		if (extra.LocalChanges)
 		{
 			rows.Rows.push_back(RowOfKind(CommitRowKind::LocalChanges));
+		}
 
-			if (commitCount == 0)
-			{
-				rows.Rows.push_back(RowOfKind(CommitRowKind::Note));
-			}
+		if (commitCount == 0 && (extra.LocalChanges || extra.Waiting))
+		{
+			rows.Rows.push_back(RowOfKind(CommitRowKind::Note));
 		}
 
 		for (std::size_t commit = 0; commit < commitCount; ++commit)

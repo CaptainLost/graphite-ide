@@ -53,8 +53,9 @@ namespace Graphite {
 	void WidenToLine(Core::LogRequest& log, const HistoryLine& line);
 
 	// What is asked together with `log` so the history can tell its rows apart: the branch's own commits while the line
-	// is folded, the line's newer commits while they are shown; nothing for a reference alone. It follows first parents
-	// as the log does, and looks at least as far.
+	// is folded, the line's newer commits while they are shown, whatever words narrow the log; nothing for a reference
+	// alone, nor own commits for a log narrowed by words. It follows first parents as the log does, and looks at least
+	// as far.
 	std::optional<Core::LogRequest> MarkedQueryFor(const HistoryLine& line, const Core::LogRequest& log);
 
 	struct FoldRow
@@ -63,8 +64,18 @@ namespace Graphite {
 		std::size_t BeforeCommit = 0;
 
 		std::string Text;
+
+		// The text with its count as wide as the count may come to be, never narrower than five digits: the action is
+		// drawn after this much room, so it does not move when the count lands or changes.
+		std::string TextRoom;
+
 		std::string Action;
 	};
+
+	// WARNING: A folded line's fold row is drawn only with its count. Drawn with an ellipsis, it would go again when
+	// the count lands as nothing newer and move every row under it, so the rows wait for the count with it. `behind`
+	// is empty while it is measured; `log` is the history's log, whose words decide whether own commits are asked.
+	bool RowsWaitForFoldCount(const HistoryLine& line, const Core::LogRequest& log, std::optional<std::size_t> behind);
 
 	// WARNING: `own` must be the branch's log without what its line holds, asked with the page. An own list cut short
 	// and a page that ends before the first commit that is not the branch's own give no fold row: it would stand in

@@ -2,6 +2,7 @@
 
 #include "Git/Compare/VsLabel.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Count.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@ namespace Graphite {
 
 		constexpr const char* kPending = "\xE2\x80\xA6";
 		constexpr const char* kShowThem = "Show them";
+		constexpr const char* kWidestUsualCount = "99,999";
 
 		std::optional<LineFold> FoldOfState(Core::BranchState state, bool newerShown)
 		{
@@ -41,12 +43,18 @@ namespace Graphite {
 			return fold == LineFold::Shown || fold == LineFold::Combined;
 		}
 
-		std::string NewerCommitsText(std::optional<std::size_t> behind, const std::string& lineName)
+		std::string NewerCommitsText(const std::string& count, bool single, const std::string& lineName)
 		{
-			const std::string count = behind.has_value() ? Core::FormatCount(*behind) : std::string{kPending};
-			const char* const noun = behind == std::optional<std::size_t>{1} ? " newer commit on " : " newer commits on ";
+			return count + (single ? " newer commit on " : " newer commits on ") + lineName + " since this branch forked";
+		}
 
-			return count + noun + lineName + " since this branch forked";
+		// As wide as the landed count, but never narrower than five digits.
+		std::string CountRoom(std::optional<std::size_t> behind)
+		{
+			const std::string usual = kWidestUsualCount;
+			const std::string landed = behind.has_value() ? Core::FormatCount(*behind) : std::string{};
+
+			return landed.size() > usual.size() ? landed : usual;
 		}
 	}
 
@@ -97,6 +105,15 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
+		// A page narrowed by words keeps only some commits, so there is no place in it for a fold row and the branch's
+		// own commits are not asked. The line's newer ones are asked whatever the words, to dim them.
+		const bool narrowedByWords = !Core::Trimmed(log.Filter.Text).empty();
+
+		if (line.Fold == LineFold::Folded && narrowedByWords)
+		{
+			return std::nullopt;
+		}
+
 		Core::LogRequest marked;
 		marked.FirstParentOnly = log.FirstParentOnly;
 		marked.MaxCount = std::max(kMostMarkedCommitsLooked, log.MaxCount);
@@ -114,6 +131,13 @@ namespace Graphite {
 		}
 
 		return marked;
+	}
+
+	bool RowsWaitForFoldCount(const HistoryLine& line, const Core::LogRequest& log, std::optional<std::size_t> behind)
+	{
+		const bool asksOwnCommits = line.Fold == LineFold::Folded && MarkedQueryFor(line, log).has_value();
+
+		return asksOwnCommits && !behind.has_value();
 	}
 
 	std::optional<FoldRow> FindFoldRow(const Core::LogPage& page, const Core::LogPage& own, const std::string& lineName,
@@ -141,7 +165,13 @@ namespace Graphite {
 				continue;
 			}
 
-			return FoldRow{.BeforeCommit = commitIndex, .Text = NewerCommitsText(behind, lineName), .Action = kShowThem};
+			const std::string count = behind.has_value() ? Core::FormatCount(*behind) : std::string{kPending};
+			const bool single = behind == std::optional<std::size_t>{1};
+
+			return FoldRow{.BeforeCommit = commitIndex,
+						   .Text = NewerCommitsText(count, single, lineName),
+						   .TextRoom = NewerCommitsText(CountRoom(behind), false, lineName),
+						   .Action = kShowThem};
 		}
 
 		return std::nullopt;

@@ -315,15 +315,28 @@ namespace Graphite {
 		// for a stash, a detached HEAD and while no read is held. The filters are not looked at.
 		HistoryLine ShownRefLine() const;
 
+		// The line as the history draws it: none for a file's history, which follows the file alone.
+		HistoryLine LineToShow() const;
+
+		// The path box names a file, so the history is that file's.
+		bool IsFileHistory() const;
+
 		// A branch's or HEAD's history waits for the line read that holds it; a stash and a file's history do not, and
 		// neither does a history whose read failed.
 		bool WaitsForLines() const;
 
-		// HEAD's or the checked-out branch's history, whose first row is Local changes.
+		// HEAD's or the checked-out branch's history of the whole tree, whose first row is Local changes.
 		bool ShowsLocalChanges() const;
 
-		// The list shows the page's rows rather than a wait; the header's banner comes with them.
-		bool ShowsCommitRows() const;
+		// What the Local changes row says, for a history that has the row.
+		std::optional<std::string> LocalChangesMark() const;
+
+		// The page on screen is the history of the reference or stash selected now.
+		bool PageAnswersSelection(const Core::LogRequest& shown) const;
+
+		// The list shows the page's rows rather than a wait; the header's banner comes with them. A folded line's
+		// rows wait for the fold row's count the first time the history shows them (asked of the lines model here).
+		bool ShowsCommitRows();
 
 		HistoryMarks HistoryMarksFor(const Core::Ref<const Core::LogPage>& page);
 
@@ -346,6 +359,17 @@ namespace Graphite {
 
 		// A reference just opened: its first page selects the row it starts on.
 		bool m_OpeningRef = false;
+
+		struct SelectedHistory
+		{
+			std::optional<std::string> Ref;
+			std::optional<Core::Oid> Stash;
+
+			friend bool operator==(const SelectedHistory&, const SelectedHistory&) = default;
+		};
+
+		// The history whose rows are on screen: they stay, whatever count is asked again for them later.
+		std::optional<SelectedHistory> m_RowsShownFor;
 
 		// The branches whose line's newer commits the reader asked to see, by full name, until the folder changes.
 		std::set<std::string> m_NewerShown;

@@ -17,7 +17,7 @@ namespace Graphite {
 		LocalChanges,
 		Fold,
 
-		// Stands for the commits while there are none to draw under the Local changes row: the wait for them, or the
+		// Stands for the commits while there are none to draw: the wait for them, or, under the Local changes row, the
 		// word that there are none.
 		Note
 	};
@@ -40,6 +40,7 @@ namespace Graphite {
 	{
 		bool LocalChanges = false;                   // first, above every commit
 		std::optional<std::size_t> FoldBeforeCommit; // just above that commit
+		bool Waiting = false;                        // the commits are on their way
 	};
 
 	std::size_t FileRowsOfExpanded(std::size_t fileCount);

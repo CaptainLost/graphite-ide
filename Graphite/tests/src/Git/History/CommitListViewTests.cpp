@@ -452,13 +452,21 @@ TEST_CASE("Git window: while the history waits the local changes row stands abov
 	CHECK(waiting.View.IsLocalChangesSelected());
 }
 
-TEST_CASE("Git window: while a history without local changes waits there is no list yet")
+TEST_CASE("Git window: while a history without local changes waits it is one waiting row of the list")
 {
 	MarkedHistory waiting("WaitingAlone", 0);
 	waiting.Marks.Waiting = "Reading the branches' lines\xE2\x80\xA6";
 
 	waiting.Settle();
-	CHECK(waiting.Table() == nullptr);
+	CHECK(waiting.Table() != nullptr);
+}
+
+TEST_CASE("Git window: a history with no commits and nothing on its way says so in place of the list")
+{
+	MarkedHistory empty("NothingToList", 0);
+
+	empty.Settle();
+	CHECK(empty.Table() == nullptr);
 }
 
 TEST_CASE("Git window: the local changes selection goes with its row")
