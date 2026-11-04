@@ -73,5 +73,7 @@ namespace Core {
 		// Empty when the tip commit cannot be read: past a shallow clone's boundary, or a missing
 		// object.
 		std::optional<CommitSummary> TipCommit;
+
+		friend bool operator==(const Branch&, const Branch&) = default;
 	};
 }

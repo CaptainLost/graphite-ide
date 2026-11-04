@@ -243,11 +243,19 @@ namespace Graphite {
 	{
 		const std::uint64_t generation = m_Branches.Begin();
 
-		m_Submit([this, generation]() {
+		// WARNING: A listing equal to the snapshot held keeps that snapshot's pointer. Every reader follows the snapshot by
+		// pointer, and a refresh comes with every save, so a new pointer for the same branches would have the line model,
+		// the reviews and the lists all work out again what they show. Compared on the worker, so a listing of thousands
+		// of branches is never walked on the UI thread.
+		m_Submit([this, generation, held = m_Branches.Get()]() {
 			Core::Result<std::vector<Core::Branch>> result = m_Port.QueryBranches();
+			const bool sameAsHeld = held != nullptr && result.HasValue() && result.GetValue() == *held;
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
-				if (m_Branches.Land(generation, std::move(result)) == SlotLanding::Applied)
+			Deliver([this, generation, held, sameAsHeld, result = std::move(result)]() mutable {
+				const bool stillHeld = sameAsHeld && m_Branches.Get() == held;
+				const SlotLanding landing = stillHeld ? m_Branches.LandSameAsHeld(generation) : m_Branches.Land(generation, std::move(result));
+
+				if (landing == SlotLanding::Applied)
 				{
 					RequestBranchAuthorsWhenTipsMoved();
 				}

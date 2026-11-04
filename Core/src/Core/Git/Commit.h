@@ -25,6 +25,8 @@ namespace Core {
 		// that follows it, so a one-line message has an empty Body.
 		std::string Summary;
 		std::string Body;
+
+		friend bool operator==(const CommitSummary&, const CommitSummary&) = default;
 	};
 
 	struct LogPage

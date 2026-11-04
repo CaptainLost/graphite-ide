@@ -2626,6 +2626,63 @@ TEST_CASE("A moved tip asks the authors again")
 	CHECK(port.OwnAuthorsCalls == 2);
 }
 
+TEST_CASE("Git window: a listing of the same branches keeps the snapshot it holds")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	const Core::Ref<const std::vector<Core::Branch>> first = model.GetBranches();
+	REQUIRE(first != nullptr);
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.BranchCalls == 2);
+	CHECK(model.GetBranches() == first);
+	CHECK_FALSE(model.GetBranchesError().has_value());
+}
+
+TEST_CASE("Git window: a listing whose branches changed lands a new snapshot")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	const Core::Ref<const std::vector<Core::Branch>> first = model.GetBranches();
+	REQUIRE(first != nullptr);
+
+	SUBCASE("a tip moved")
+	{
+		port.Branches = TrunkAndFeature(kMovedFeatureTipByte);
+	}
+
+	SUBCASE("another branch was checked out")
+	{
+		port.Branches[0].IsHead = false;
+		port.Branches[2].IsHead = true;
+	}
+
+	SUBCASE("the distance to an upstream changed")
+	{
+		port.Branches[0].DistanceKnown = true;
+		port.Branches[0].Ahead = 1;
+	}
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetBranches() != nullptr);
+	CHECK(model.GetBranches() != first);
+	CHECK(*model.GetBranches() == port.Branches);
+}
+
 TEST_CASE("Without a trunk the authors are answered without the own-commit query")
 {
 	FakePort port;
