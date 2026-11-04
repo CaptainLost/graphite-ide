@@ -2,6 +2,7 @@
 
 #include "Core/Git/Lines/LineModel.h"
 
+#include "Core/Git/Lines/LineQuestions.h"
 #include "Core/Git/Lines/LineSplit.h"
 #include "Core/Git/Lines/LineThresholds.h"
 
@@ -1191,77 +1192,6 @@ namespace Core {
 
 			ClearMarks(scratch);
 			return unreached;
-		}
-
-		enum class Visit : std::uint8_t
-		{
-			NotSeen,
-			Open,
-			Done
-		};
-
-		void PushUnseenParents(const AncestryGraph& graph, const std::vector<Visit>& visits, Index commit, std::vector<Index>& pending)
-		{
-			for (const Index parent : graph.ParentsOf(commit))
-			{
-				if (visits[parent] == Visit::NotSeen)
-				{
-					pending.push_back(parent);
-				}
-			}
-		}
-
-		std::uint32_t HighestGenerationOfParents(const AncestryGraph& graph, const std::vector<std::uint32_t>& generations, Index commit)
-		{
-			std::uint32_t highest = 0;
-
-			for (const Index parent : graph.ParentsOf(commit))
-			{
-				highest = std::max(highest, generations[parent]);
-			}
-
-			return highest;
-		}
-
-		// One more than the highest of its parents', so every descendant of a commit has a higher generation, whatever
-		// the clocks said. Depth first on an explicit stack: a first-parent chain can be hundreds of thousands long.
-		std::vector<std::uint32_t> GenerationsOf(const AncestryGraph& graph)
-		{
-			std::vector<std::uint32_t> generations(graph.Size(), 0);
-			std::vector<Visit> visits(graph.Size(), Visit::NotSeen);
-			std::vector<Index> pending;
-
-			for (Index start = 0; start < graph.Size(); ++start)
-			{
-				if (visits[start] == Visit::Done)
-				{
-					continue;
-				}
-
-				pending.push_back(start);
-
-				while (!pending.empty())
-				{
-					const Index commit = pending.back();
-
-					if (visits[commit] == Visit::NotSeen)
-					{
-						visits[commit] = Visit::Open;
-						PushUnseenParents(graph, visits, commit, pending);
-						continue;
-					}
-
-					pending.pop_back();
-
-					if (visits[commit] == Visit::Open)
-					{
-						generations[commit] = HighestGenerationOfParents(graph, generations, commit) + 1;
-						visits[commit] = Visit::Done;
-					}
-				}
-			}
-
-			return generations;
 		}
 
 		struct QueuedCommit
