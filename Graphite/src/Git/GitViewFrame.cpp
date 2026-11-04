@@ -42,6 +42,7 @@ namespace Graphite {
 
 		constexpr float kHistoryTitleScale = 0.9f;
 		constexpr float kKeepFontSize = 0.0f;
+		constexpr float kVsPickerGap = 4.0f; // mockup px between the vs button and its popup
 
 		const std::vector<Core::Branch>& BranchesOrNone(const Core::Ref<const std::vector<Core::Branch>>& branches)
 		{
@@ -412,7 +413,7 @@ namespace Graphite {
 			++m_SidebarChoicesVersion;
 			return;
 		case SidebarLink::WhyBases:
-			// Answered by the explanation of the vs picker, which this window does not have yet.
+			OpenVsPicker(ImGui::GetMousePos());
 			return;
 		}
 	}
@@ -700,9 +701,14 @@ namespace Graphite {
 
 			ImGui::SameLine();
 
-			if (DrawVsButton(label, rowWidth * kVsShare) && OnVsClicked)
+			if (DrawVsButton(label, rowWidth * kVsShare))
 			{
-				OnVsClicked();
+				OpenVsPicker(ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y + WindowBarEm(kVsPickerGap)));
+
+				if (OnVsClicked)
+				{
+					OnVsClicked();
+				}
 			}
 		}
 
@@ -721,6 +727,55 @@ namespace Graphite {
 		if (banner.has_value())
 		{
 			DrawHistoryBanner(*banner);
+		}
+
+		DrawVsPicker();
+	}
+
+	void GitView::OpenVsPicker(ImVec2 below)
+	{
+		const std::string shown = ShownRefName();
+
+		if (!shown.empty())
+		{
+			m_VsPicker.Open(shown, below);
+		}
+	}
+
+	void GitView::DrawVsPicker()
+	{
+		if (!m_VsPicker.IsOpen())
+		{
+			return;
+		}
+
+		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
+		const BranchLines* const lines = CurrentLines();
+
+		// Without a read there is nothing to choose from.
+		if (read == nullptr || lines == nullptr)
+		{
+			m_VsPicker.Close();
+			return;
+		}
+
+		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
+		const ImGuiViewport* const viewport = ImGui::GetMainViewport();
+		const std::function<std::optional<Core::LineDistance>(const Core::Oid&, const Core::Oid&)> distance =
+			[this](const Core::Oid& from, const Core::Oid& to) { return m_Lines.DistanceOf(from, to); };
+
+		const std::optional<LineAnswerChange> change =
+			m_VsPicker.Draw(VsPickerView::Drawing{.Read = *read,
+												  .Lines = *lines,
+												  .Now = NowInSeconds(),
+												  .DistanceBetween = distance,
+												  .Colours = colours,
+												  .RegionMin = viewport->WorkPos,
+												  .RegionMax = ImVec2(viewport->WorkPos.x + viewport->WorkSize.x, viewport->WorkPos.y + viewport->WorkSize.y)});
+
+		if (change.has_value())
+		{
+			m_Lines.Change(*change);
 		}
 	}
 }

@@ -9,6 +9,7 @@
 #include "Git/Branches/BranchDeletion.h"
 #include "Git/Changes/ChangesView.h"
 #include "Git/Compare/VsLabel.h"
+#include "Git/Compare/VsPickerView.h"
 #include "Git/Diff/DiffBody.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
@@ -290,6 +291,12 @@ namespace Graphite {
 		// The vs button, drawn on the header row within `maxWidth`; true when it was clicked.
 		bool DrawVsButton(const VsLabel& label, float maxWidth);
 
+		// Opens the vs picker for the shown reference, its popup's corner at `below`; nothing when no reference is shown.
+		void OpenVsPicker(ImVec2 below);
+
+		// Draws the picker when it is open and sends the change the user chose.
+		void DrawVsPicker();
+
 		// The sentence above the list, across the width.
 		void DrawHistoryBanner(const std::string& text);
 
@@ -462,6 +469,9 @@ namespace Graphite {
 		std::optional<SidebarInputs> m_SidebarBuiltFrom;
 		std::vector<SidebarRow> m_SidebarRows;
 		std::optional<BranchLines> m_SidebarLines;
+
+		// What the shown reference is compared with: opened by the header's vs button and the sidebar's bases link.
+		VsPickerView m_VsPicker;
 		std::string m_MostCommonLine;
 		std::optional<std::size_t> m_HeadRef; // the checked-out branch's ref: its row stands for HEAD's history
 
