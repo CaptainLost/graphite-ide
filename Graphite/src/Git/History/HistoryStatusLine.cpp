@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextButton.h"
+#include "UI/FittedText.h"
 
 #include <imgui.h>
 
@@ -95,24 +96,64 @@ namespace Graphite {
 		const FooterFont font;
 
 		const bool busy = !status.Busy.empty();
-		const bool saysText = !status.Text.empty();
+
+		const bool searching = status.Actions == HistoryActions::Search;
+		const char* more = searching ? kSearchFurther : kLoadMore;
+		const char* all = searching ? kSearchAll : kLoadAll;
+		const bool offersActions = !busy && status.Actions != HistoryActions::None;
+		const float buttonsWidth = SmallButtonWidth(more) + ImGui::GetStyle().ItemSpacing.x + SmallButtonWidth(all);
+		const float rightEdge = frame.Start.x + frame.Width - MockupPixels(kFooterSidePaddingPixels);
+
+		// WARNING: On a line too short for everything, the explanation gives way first, cut with an ellipsis, then the
+		// fold offer's words, so the count, Fold them and the loader or the buttons stay in view on a narrow history.
+		float kept = 0.0f;
+
+		if (!foldFooter.empty())
+		{
+			kept += SmallButtonWidth(kFoldThem);
+		}
+
+		if (!status.Count.empty())
+		{
+			kept += ImGui::CalcTextSize((std::string{kBetween} + status.Count).c_str()).x;
+		}
+
+		if (busy)
+		{
+			kept += ImGui::GetStyle().ItemSpacing.x + Core::LoadingLineWidth(status.Busy.c_str());
+		}
+		else if (offersActions)
+		{
+			kept += ImGui::GetStyle().ItemSpacing.x + buttonsWidth;
+		}
+
+		const float room = std::max(0.0f, rightEdge - ImGui::GetCursorPosX() - kept);
+		const std::string foldWhole = std::string{kBetween} + std::string{foldFooter};
+		const float foldWidth = foldFooter.empty() ? 0.0f : ImGui::CalcTextSize(foldWhole.c_str()).x;
+
+		const std::string text = FitToWidth(status.Text, std::max(0.0f, room - foldWidth));
+		const bool saysText = !text.empty();
+		const bool followsText = saysText || !foldFooter.empty();
+
+		const std::string foldText = foldFooter.empty() ? std::string{}
+								   : saysText			? foldWhole
+														: FitToWidth(foldFooter, room);
+		const std::string countText = (followsText ? std::string{kBetween} : std::string{}) + status.Count;
 
 		// A busy line without text holds the loader alone.
 		if (saysText || !busy)
 		{
-			ImGui::TextDisabled("%s", status.Text.c_str());
+			ImGui::TextDisabled("%s", text.c_str());
 		}
 
 		if (!foldFooter.empty())
 		{
-			const std::string footer = (saysText ? std::string{kBetween} : std::string{}) + std::string{foldFooter};
-
 			if (saysText || !busy)
 			{
 				ImGui::SameLine(kNoOffset, kNoSpacing);
 			}
 
-			ImGui::TextDisabled("%s", footer.c_str());
+			ImGui::TextDisabled("%s", foldText.c_str());
 			ImGui::SameLine(kNoOffset, kNoSpacing);
 
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_CheckMark));
@@ -128,14 +169,12 @@ namespace Graphite {
 		// WARNING: Last of the text, so the total that lands later moves nothing before it.
 		if (!status.Count.empty())
 		{
-			const bool followsText = saysText || !foldFooter.empty();
-
 			if (saysText || !busy || !foldFooter.empty())
 			{
 				ImGui::SameLine(kNoOffset, kNoSpacing);
 			}
 
-			ImGui::TextDisabled("%s", ((followsText ? std::string{kBetween} : std::string{}) + status.Count).c_str());
+			ImGui::TextDisabled("%s", countText.c_str());
 		}
 
 		const bool drewSomething = saysText || !busy || !foldFooter.empty() || !status.Count.empty();
@@ -152,22 +191,15 @@ namespace Graphite {
 			return clicked;
 		}
 
-		if (status.Actions == HistoryActions::None)
+		if (!offersActions)
 		{
 			return clicked;
 		}
-
-		const bool searching = status.Actions == HistoryActions::Search;
-		const char* more = searching ? kSearchFurther : kLoadMore;
-		const char* all = searching ? kSearchAll : kLoadAll;
-
-		const float buttonsWidth = SmallButtonWidth(more) + ImGui::GetStyle().ItemSpacing.x + SmallButtonWidth(all);
 
 		// WARNING: The buttons keep to the right edge but never cover the text: in a column too narrow
 		// for both they follow it on the same line instead.
 		ImGui::SameLine();
 		const float textEnd = ImGui::GetCursorPosX();
-		const float rightEdge = frame.Start.x + frame.Width - MockupPixels(kFooterSidePaddingPixels);
 		ImGui::SetCursorPosX(std::max(textEnd, rightEdge - buttonsWidth));
 
 		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_CheckMark));
