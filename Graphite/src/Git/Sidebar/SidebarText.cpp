@@ -194,6 +194,12 @@ namespace Graphite {
 			return line.Kind == Core::ComparedKind::Branch ? "Built on " + name + ": " + ahead : ahead;
 		}
 
+		// An old copy is compared with nothing but the user's pick, so what the rule compared it with is not said of it.
+		bool DescribesLine(std::string_view fullName, const SidebarTextInput& input)
+		{
+			return input.Lines.OldCopyNamed(fullName) == nullptr || input.Lines.PickedLineOf(fullName).has_value();
+		}
+
 		// What a base's or an old copy's row says of the line the user picked for it.
 		std::string PickedLineWords(const LineRead& read, std::size_t picked)
 		{
@@ -214,7 +220,7 @@ namespace Graphite {
 			{
 				meta.push_back({.Text = PickedLineWords(read, *picked), .Tone = SidebarTone::Unusual});
 			}
-			else if (line != nullptr)
+			else if (line != nullptr && copy == nullptr)
 			{
 				if (line->State == Core::BranchState::NoOwnCommits)
 				{
@@ -224,7 +230,7 @@ namespace Graphite {
 				{
 					meta.push_back({.Text = "merged", .Tone = SidebarTone::Merged});
 				}
-				else if (line->ComparedWith.has_value() && copy == nullptr)
+				else if (line->ComparedWith.has_value())
 				{
 					const Core::LineRef& compared = read.Refs[*line->ComparedWith];
 
@@ -387,7 +393,11 @@ namespace Graphite {
 			text.Meta.push_back({.Text = AgeWords(branch, input.Now), .Tone = SidebarTone::Dim});
 		}
 
-		const Core::BranchLine* line = isBase ? nullptr : input.Lines.LineOf(ref.FullName);
+		// A local branch with no commits of its own, one row with an old copy, stands for that copy as the history's header
+		// names it: its row says what the copy's would, the user's pick for it included.
+		const std::string_view described = isBase ? std::string_view{ref.FullName} : input.Lines.ShownAs(ref.FullName);
+		const std::size_t describedIndex = input.Lines.IndexOf(described).value_or(index);
+		const Core::BranchLine* line = isBase ? nullptr : input.Lines.LineOf(described);
 		const Core::LineBase* base = isBase ? input.Lines.BaseNamed(ref.FullName) : nullptr;
 
 		if (base != nullptr && base->Reason == Core::BaseReason::MainLineGuess)
@@ -406,7 +416,7 @@ namespace Graphite {
 
 		if (!isBase)
 		{
-			AddUnusualSpans(text.Meta, line, index, input);
+			AddUnusualSpans(text.Meta, line, describedIndex, input);
 		}
 
 		std::string& tip = text.Tooltip;
@@ -421,7 +431,7 @@ namespace Graphite {
 		{
 			tip += "\nBase: " + BaseReasonText(*base, read);
 		}
-		else if (line != nullptr)
+		else if (line != nullptr && DescribesLine(described, input))
 		{
 			const std::string sentence = ComparisonSentence(*line, read);
 
@@ -431,7 +441,7 @@ namespace Graphite {
 			}
 		}
 
-		const Core::OldCopy* copy = isBase ? nullptr : input.Lines.OldCopyNamed(ref.FullName);
+		const Core::OldCopy* copy = isBase ? nullptr : input.Lines.OldCopyNamed(described);
 
 		if (copy != nullptr)
 		{

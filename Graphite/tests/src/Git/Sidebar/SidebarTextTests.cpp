@@ -361,6 +361,37 @@ TEST_CASE("Git window: an old copy names only the line the user picked even the 
 	CHECK(SpanWith(Describe(read, BranchRow(copy, SidebarSection::Remote)), "vs main") != nullptr);
 }
 
+TEST_CASE("Git window: the local copy of an old copy reads as the old copy and names the line the user picked for it")
+{
+	// A fork's origin/develop is an old copy of upstream/develop; the local develop has no commits of its own and is one
+	// row with it, so the history's header names the old copy for it.
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("upstream");
+	const std::size_t current = builder.AddRemoteBranch("upstream", "develop");
+	const std::size_t master = builder.AddRemoteBranch("upstream", "master");
+	builder.MakeBase(current);
+	builder.MakeBase(master);
+	const std::size_t old = builder.AddRemoteBranch("origin", "develop", BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	const std::size_t local = builder.AddLocal("develop", BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(local, old);
+	builder.Compare(old, current);
+	builder.Compare(local, current);
+	LineRead read = builder.Build();
+	read.Model.OldCopies.push_back(Core::OldCopy{.Ref = old, .Of = current});
+
+	SidebarRowText text = Describe(read, BranchRow(local));
+	CHECK(SpanWith(text, "default here, an old copy of develop") != nullptr);
+	CHECK(SpanWith(text, "no own commits yet") == nullptr);
+	CHECK(text.Tooltip.find("No commits of its own yet") == std::string::npos);
+
+	Core::BranchLine& oldLine = LineOfRef(read, old);
+	oldLine.ByAnswer = true;
+	oldLine.ComparedWith = master;
+	text = Describe(read, BranchRow(local));
+	CHECK(SpanWith(text, "vs master") != nullptr);
+}
+
 TEST_CASE("Git window: history cut off and no common history are said in words")
 {
 	LineReadBuilder builder;
