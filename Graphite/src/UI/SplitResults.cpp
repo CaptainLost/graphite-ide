@@ -16,8 +16,11 @@ namespace Graphite {
 	{
 		constexpr bool kNotEngaged = false;
 
-		const float cornerX = ImGui::GetWindowWidth() - Core::IconButtonSize(fit) - ImGui::GetStyle().WindowPadding.x;
-		const float x = std::max(cornerX, ImGui::GetCursorPosX());
+		// WARNING: Measured from the content region, which ends before a vertical scrollbar. The window's own width would
+		// put the button under the scrollbar of a pane taller than its room, and the pane would scroll sideways by that much.
+		const float lineStart = ImGui::GetCursorPosX();
+		const float cornerX = lineStart + ImGui::GetContentRegionAvail().x - Core::IconButtonSize(fit);
+		const float x = std::max(cornerX, lineStart);
 
 		ImGui::SameLine(x);
 
