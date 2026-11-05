@@ -102,6 +102,9 @@ TEST_CASE("Git window: the head chip says what is to push and pull in words")
 	branches = {Tracking(HeadBranch("main"), "origin/main", 2, 3)};
 	CHECK(Describe(&head, &branches, &remotes).HeadState == "2 to push \xC2\xB7 3 to pull");
 
+	branches = {Tracking(HeadBranch("main"), "origin/main", 1'234, 56'789)};
+	CHECK(Describe(&head, &branches, &remotes).HeadState == "1,234 to push \xC2\xB7 56,789 to pull");
+
 	branches = {Tracking(HeadBranch("main"), "origin/main", 0, 0)};
 	CHECK(Describe(&head, &branches, &remotes).HeadState.empty());
 

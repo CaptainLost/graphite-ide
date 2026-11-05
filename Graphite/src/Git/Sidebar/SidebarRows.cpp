@@ -4,6 +4,7 @@
 #include "Git/Lines/BranchLines.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Count.h"
 
 #include <algorithm>
 #include <array>
@@ -396,13 +397,13 @@ namespace Graphite {
 				if (alsoLocal > 0)
 				{
 					AddLink(SidebarSection::Remote, SidebarLink::ToYours,
-							std::to_string(alsoLocal) + " more you have locally \xC2\xB7 in Yours", remote);
+							Core::FormatCount(alsoLocal) + " more you have locally \xC2\xB7 in Yours", remote);
 				}
 
 				if (hiddenMerged > 0)
 				{
 					AddLink(SidebarSection::Remote, SidebarLink::ShowMerged,
-							std::to_string(hiddenMerged) + " merged hidden \xC2\xB7 Show", remote);
+							Core::FormatCount(hiddenMerged) + " merged hidden \xC2\xB7 Show", remote);
 				}
 
 				if (showingMerged && !m_Searching)

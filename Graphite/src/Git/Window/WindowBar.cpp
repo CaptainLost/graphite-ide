@@ -1,5 +1,6 @@
 #include "Git/Window/WindowBar.h"
 
+#include "Core/Base/Count.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -76,12 +77,12 @@ namespace Graphite {
 
 			if (branch.Ahead > 0)
 			{
-				words = std::to_string(branch.Ahead) + " to push";
+				words = Core::FormatCount(branch.Ahead) + " to push";
 			}
 
 			if (branch.Behind > 0)
 			{
-				words += (words.empty() ? "" : kSeparator) + std::to_string(branch.Behind) + " to pull";
+				words += (words.empty() ? "" : kSeparator) + Core::FormatCount(branch.Behind) + " to pull";
 			}
 
 			return words;

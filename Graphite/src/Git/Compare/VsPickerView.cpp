@@ -1,6 +1,7 @@
 #include "Git/Compare/VsPickerView.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Count.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -370,7 +371,7 @@ namespace Graphite {
 
 			if (picker.QuietBases > 0)
 			{
-				const VsBaseLine quiet{.Name = std::to_string(picker.QuietBases) + " more",
+				const VsBaseLine quiet{.Name = Core::FormatCount(picker.QuietBases) + " more",
 									   .Reason = "bases once, quiet for 90 days; folded in the list",
 									   .OldCopy = true};
 				DrawBaseLine(quiet, width, colours);

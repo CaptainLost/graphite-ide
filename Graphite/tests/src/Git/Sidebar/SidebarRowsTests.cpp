@@ -5,6 +5,7 @@
 
 #include "Git/Lines/LineReadFixtures.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <map>
@@ -247,6 +248,31 @@ TEST_CASE("Git window: more than fifteen remote branches are grouped by activity
 	CHECK(reopened[2] == "> Active this week 3 closed");
 	CHECK(reopened[5] == "  origin/old0");
 	CHECK(reopened[reopened.size() - 3] == "  origin/unread");
+}
+
+TEST_CASE("Git window: the remote section's links count with a thousands comma")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemoteBranch("origin", "live", {.AgeDays = 2});
+
+	for (int index = 0; index < 1'200; ++index)
+	{
+		builder.AddRemoteBranch("origin", "merged" + std::to_string(index), {.State = Core::BranchState::MergedByHistory});
+	}
+
+	for (int index = 0; index < 1'050; ++index)
+	{
+		const std::size_t local = builder.AddLocal("mine" + std::to_string(index));
+		const std::size_t remote = builder.AddRemoteBranch("origin", "mine" + std::to_string(index));
+		builder.SameRow(local, remote);
+	}
+
+	const LineRead read = builder.Build();
+	const Lines described = Describe(read, RowsOf(read));
+
+	CHECK(std::ranges::find(described, "~ 1,050 more you have locally \xC2\xB7 in Yours") != described.end());
+	CHECK(std::ranges::find(described, "~ 1,200 merged hidden \xC2\xB7 Show") != described.end());
 }
 
 TEST_CASE("Git window: fifteen remote branches stay flat")
