@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/Lines/LineReadFixtures.h"
-#include "Review/ReviewProgress.h"
+#include "Review/ReviewBase.h"
 
 #include <optional>
 #include <string>
@@ -63,7 +63,7 @@ TEST_CASE("Git window: a branch without a session is reviewed against its line a
 		  "refs/remotes/origin/main");
 }
 
-TEST_CASE("Git window: a branch compared with nothing has no review base and the message says what to do")
+TEST_CASE("Git window: a branch compared with nothing has no review base")
 {
 	const Repository repository;
 	const ReviewSessions sessions;
@@ -71,9 +71,6 @@ TEST_CASE("Git window: a branch compared with nothing has no review base and the
 	CHECK_FALSE(Graphite::ReviewBaseOf(kNext, repository.Branches(), sessions, repository.LinesPtr()).has_value());
 	CHECK_FALSE(Graphite::ReviewBaseOf("refs/heads/not-read-yet", repository.Branches(), sessions, repository.LinesPtr())
 					.has_value());
-	CHECK(Graphite::NoReviewBaseMessage(kNext, repository.Branches(), repository.LinesPtr()) ==
-		  "next is compared with nothing, so there is nothing to review it against. "
-		  "Pick a line with Compare with\xE2\x80\xA6 or use Review against.");
 }
 
 TEST_CASE("Git window: without a line read a branch has no review base unless it has a session")

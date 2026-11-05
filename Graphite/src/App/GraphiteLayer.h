@@ -41,7 +41,7 @@
 #include "Persistence/StateKeeper.h"
 #include "Review/ReviewMenu.h"
 #include "Review/ReviewModel.h"
-#include "Review/ReviewProgress.h"
+#include "Review/ReviewBase.h"
 #include "Review/ReviewStore.h"
 #include "Review/ReviewWindows.h"
 #include "Review/WorktreeWatch.h"

@@ -797,11 +797,6 @@ namespace Graphite {
 			if (DrawVsButton(label, vsWidth))
 			{
 				OpenVsPicker(ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y + WindowBarEm(kVsPickerGap)));
-
-				if (OnVsClicked)
-				{
-					OnVsClicked();
-				}
 			}
 		}
 

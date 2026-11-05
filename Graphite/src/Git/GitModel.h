@@ -143,10 +143,6 @@ namespace Graphite {
 
 		Core::Ref<const Core::LogPage> GetBrought(const Core::Oid& merge) const { return m_Brought.Get(merge); }
 
-		bool IsBroughtLoading(const Core::Oid& merge) const { return m_Brought.IsLoading(merge); }
-
-		bool IsBroughtFailed(const Core::Oid& merge) const { return m_Brought.IsFailed(merge); }
-
 		std::optional<Core::Error> GetBroughtFailure(const Core::Oid& merge) const { return m_Brought.FailureOf(merge); }
 
 		// A failed read is asked again by the next RequestBrought.

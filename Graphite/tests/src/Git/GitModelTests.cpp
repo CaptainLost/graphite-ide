@@ -3250,7 +3250,6 @@ TEST_CASE("Git window: opening a merge in merges mode asks what it brought")
 	model.RequestBrought(merge, firstParent, secondParent);
 
 	CHECK(model.GetBrought(merge) == nullptr);
-	CHECK(model.IsBroughtLoading(merge));
 
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
@@ -3262,7 +3261,6 @@ TEST_CASE("Git window: opening a merge in merges mode asks what it brought")
 
 	REQUIRE(model.GetBrought(merge) != nullptr);
 	CHECK(model.GetBrought(merge)->Commits.size() == 2);
-	CHECK_FALSE(model.IsBroughtLoading(merge));
 
 	// A page held is not asked again.
 	const int callsBefore = port.LogCalls;
@@ -3360,7 +3358,6 @@ TEST_CASE("Git window: a failed read of what a merge brought keeps its message u
 	model.RequestBrought(merge, OidWithFirstByte(11), OidWithFirstByte(12));
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	REQUIRE(model.IsBroughtFailed(merge));
 	REQUIRE(model.GetBroughtFailure(merge).has_value());
 	CHECK_FALSE(model.GetBroughtFailure(merge)->Message.empty());
 
@@ -3372,7 +3369,7 @@ TEST_CASE("Git window: a failed read of what a merge brought keeps its message u
 
 	port.FailLog = false;
 	model.ForgetFailedBrought(merge);
-	CHECK_FALSE(model.IsBroughtFailed(merge));
+	CHECK_FALSE(model.GetBroughtFailure(merge).has_value());
 
 	model.RequestBrought(merge, OidWithFirstByte(11), OidWithFirstByte(12));
 	model.OnUpdate(Core::Timestep{kFrameSeconds});

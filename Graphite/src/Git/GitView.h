@@ -99,9 +99,6 @@ namespace Graphite {
 
 		std::function<void(const std::string& from, const std::string& to)> OnBranchRenamed;
 
-		// The vs button of the history header was clicked.
-		std::function<void()> OnVsClicked;
-
 		GitWindowState CaptureWindowState() const;
 
 		// Applied through RefToRestore once the branches are known.

@@ -17,8 +17,4 @@ namespace Graphite {
 	// with neither, and when the offer is the branch itself.
 	std::optional<std::string> ReviewBaseOf(const std::string& branch, const std::vector<Core::Branch>& branches,
 											const ReviewSessions& sessions, const BranchLines* lines);
-
-	// Why ReviewBaseOf has no base for a branch: it is compared with nothing, or it is a base with no upstream.
-	std::string NoReviewBaseMessage(const std::string& branch, const std::vector<Core::Branch>& branches,
-									const BranchLines* lines);
 }
