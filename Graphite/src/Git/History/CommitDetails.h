@@ -52,6 +52,13 @@ namespace Graphite {
 	// a base's history is in the graph; waiting while a newer read may hold it.
 	InBases InBasesOutsideRead(bool reading);
 
+	// How many of the "In bases" chips go on the line, which never wraps: as many, in order, as fit in `room` with `gap`
+	// between them and, when some are left over, the words for the rest after them, at most `moreWidth` wide.
+	std::size_t InBasesChipsThatFit(const std::vector<float>& chipWidths, float gap, float room, float moreWidth);
+
+	// What follows the chips shown: "and 29 more", "30 bases" when none is shown, empty when all are.
+	std::string InBasesMoreText(std::size_t shown, std::size_t total);
+
 	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked.
 	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding);
 }

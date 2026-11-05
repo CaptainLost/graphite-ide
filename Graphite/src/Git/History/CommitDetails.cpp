@@ -2,6 +2,7 @@
 
 #include "Git/Compare/VsLabel.h"
 
+#include "Core/Base/Count.h"
 #include "Core/Time/TimeZone.h"
 
 #include <algorithm>
@@ -74,6 +75,43 @@ namespace Graphite {
 		}
 
 		return bases;
+	}
+
+	std::size_t InBasesChipsThatFit(const std::vector<float>& chipWidths, float gap, float room, float moreWidth)
+	{
+		std::size_t fitting = 0;
+		float used = 0.0f;
+
+		for (std::size_t chip = 0; chip < chipWidths.size(); ++chip)
+		{
+			used += (chip == 0 ? 0.0f : gap) + chipWidths[chip];
+
+			// The last chip needs no words after it, so it can fit where the one before it with the words did not.
+			const bool isLast = chip + 1 == chipWidths.size();
+			const float needed = isLast ? used : used + gap + moreWidth;
+
+			if (needed <= room)
+			{
+				fitting = chip + 1;
+			}
+		}
+
+		return fitting;
+	}
+
+	std::string InBasesMoreText(std::size_t shown, std::size_t total)
+	{
+		if (shown >= total)
+		{
+			return {};
+		}
+
+		if (shown == 0)
+		{
+			return Core::FormatCount(total) + (total == 1 ? " base" : " bases");
+		}
+
+		return "and " + Core::FormatCount(total - shown) + " more";
 	}
 
 	InBases InBasesOutsideRead(bool reading)

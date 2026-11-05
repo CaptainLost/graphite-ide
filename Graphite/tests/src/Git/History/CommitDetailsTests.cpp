@@ -266,6 +266,27 @@ TEST_CASE("Git window: the in bases line is unknown when the branches could not 
 	CHECK(Graphite::InBasesWithoutRead(true, std::nullopt, failure).Pending);
 }
 
+TEST_CASE("Git window: the in bases chips go on one line with the words for the rest after them")
+{
+	const std::vector<float> widths{40.0f, 40.0f, 40.0f};
+
+	CHECK(Graphite::InBasesChipsThatFit(widths, 4.0f, 128.0f, 30.0f) == 3);
+	CHECK(Graphite::InBasesChipsThatFit(widths, 4.0f, 127.0f, 30.0f) == 2);
+	CHECK(Graphite::InBasesChipsThatFit(widths, 4.0f, 118.0f, 30.0f) == 2);
+	CHECK(Graphite::InBasesChipsThatFit(widths, 4.0f, 117.0f, 30.0f) == 1);
+	CHECK(Graphite::InBasesChipsThatFit(widths, 4.0f, 73.0f, 30.0f) == 0);
+	CHECK(Graphite::InBasesChipsThatFit({}, 4.0f, 10.0f, 30.0f) == 0);
+
+	// A narrow last chip fits where the words after the one before it would not.
+	CHECK(Graphite::InBasesChipsThatFit({40.0f, 40.0f, 10.0f}, 4.0f, 100.0f, 30.0f) == 3);
+
+	CHECK(Graphite::InBasesMoreText(1, 30) == "and 29 more");
+	CHECK(Graphite::InBasesMoreText(0, 30) == "30 bases");
+	CHECK(Graphite::InBasesMoreText(0, 1) == "1 base");
+	CHECK(Graphite::InBasesMoreText(2, 1'202) == "and 1,200 more");
+	CHECK(Graphite::InBasesMoreText(3, 3).empty());
+}
+
 TEST_CASE("Git window: a commit the read's graph lacks is in no base once no read is coming")
 {
 	const Graphite::InBases settled = Graphite::InBasesOutsideRead(false);

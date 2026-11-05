@@ -1,5 +1,6 @@
 #include "Git/History/CommitDetailsView.h"
 
+#include "Core/Base/Count.h"
 #include "Core/Base/Strings.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
@@ -17,6 +18,7 @@
 #include <chrono>
 #include <format>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -87,10 +89,15 @@ namespace Graphite {
 			bool m_First = true;
 		};
 
+		float ChipWidth(const std::string& text)
+		{
+			return ImGui::CalcTextSize(text.c_str()).x + ImGui::GetStyle().ItemInnerSpacing.x * 2.0f;
+		}
+
 		void DrawChip(ChipFlow& flow, const std::string& text, ImU32 ink)
 		{
 			const float padding = ImGui::GetStyle().ItemInnerSpacing.x;
-			const ImVec2 size(ImGui::CalcTextSize(text.c_str()).x + padding * 2.0f, ImGui::GetTextLineHeight());
+			const ImVec2 size(ChipWidth(text), ImGui::GetTextLineHeight());
 
 			flow.Place(size.x);
 
@@ -136,11 +143,46 @@ namespace Graphite {
 				return;
 			}
 
-			ChipFlow flow;
+			// WARNING: One line, never wrapped: chips that wrapped grew the pane when the answer landed and pushed the
+			// parents, stats and message down. Those that do not fit are counted after the rest, and named in the tooltip.
+			std::vector<std::string> chips;
+			std::vector<float> widths;
 
 			for (const std::string& base : bases.Holding)
 			{
-				DrawChip(flow, std::string(ICON_LC_CHECK " ") + base, palette.GutterAdded);
+				chips.push_back(std::string(ICON_LC_CHECK " ") + base);
+				widths.push_back(ChipWidth(chips.back()));
+			}
+
+			const float gap = WindowBarEm(kChipGapPixels);
+			const std::string widestMore = "and " + Core::FormatCount(chips.size()) + " more";
+			const std::size_t shown = InBasesChipsThatFit(widths, gap, ImGui::GetContentRegionAvail().x,
+														  ImGui::CalcTextSize(widestMore.c_str()).x);
+			const std::string more = InBasesMoreText(shown, chips.size());
+
+			ImGui::BeginGroup();
+			ChipFlow flow;
+
+			for (std::size_t chip = 0; chip < shown; ++chip)
+			{
+				DrawChip(flow, chips[chip], palette.GutterAdded);
+			}
+
+			if (!more.empty())
+			{
+				if (shown > 0)
+				{
+					ImGui::SameLine(0.0f, gap);
+				}
+
+				ImGui::TextDisabled("%s", more.c_str());
+			}
+
+			ImGui::EndGroup();
+
+			if (!more.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				ImGui::SetTooltip("%s", Core::JoinedWith(bases.Holding, "\n").c_str());
 			}
 		}
 
