@@ -660,15 +660,21 @@ namespace Graphite {
 		VsLabel label;
 		std::optional<std::string> banner;
 
-		if (read != nullptr && lines != nullptr && !shownRef.empty())
+		// The label and the banner come in the update that shows the rows under them, which waits for the distance they
+		// count, so the three arrive together and the label at its final width.
+		if (read != nullptr && lines != nullptr && !shownRef.empty() && ShowsCommitRows())
 		{
 			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef)};
-			label = DescribeVs(input);
+			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input)};
+			const bool measuring = MeasuresShownDistance(*read, shownRef);
+			const HeaderWords& words = HeaderWordsToDraw(fresh, measuring, shownRef, m_DrawnHeaderWords);
 
-			// The banner comes in the update that shows the rows under it, so the two arrive together.
-			if (ShowsCommitRows())
+			label = words.Label;
+			banner = words.Banner;
+
+			if (!measuring)
 			{
-				banner = HistoryBannerFor(input);
+				m_DrawnHeaderWords = DrawnHeaderWords{.ShownRef = shownRef, .Words = fresh};
 			}
 		}
 

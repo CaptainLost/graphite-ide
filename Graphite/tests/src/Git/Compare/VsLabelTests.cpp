@@ -1,8 +1,10 @@
 #include <doctest/doctest.h>
 
+#include "Git/Compare/HistoryBanner.h"
 #include "Git/Compare/VsLabel.h"
 #include "Git/Lines/LineReadFixtures.h"
 
+#include <optional>
 #include <string>
 
 using Graphite::BranchLines;
@@ -228,30 +230,24 @@ TEST_CASE("Git window: the operation in progress is said in words")
 	CHECK(Graphite::HeadOperationText(Core::RepositoryOperation::ApplyMailbox) == "applying patches");
 }
 
-TEST_CASE("Git window: the room for the counts is the same before and after the distance lands")
+TEST_CASE("Git window: the header keeps the words it drew for a reference while their distance is measured again")
 {
-	Scene scene = MakeScene();
+	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 80 behind", .Mark = std::nullopt},
+									  .Banner = std::nullopt};
+	const Graphite::HeaderWords pending{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, \xE2\x80\xA6 behind", .Mark = std::nullopt},
+										.Banner = std::nullopt};
+	const Graphite::HeaderWords landed{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 81 behind", .Mark = std::nullopt},
+									   .Banner = std::nullopt};
+	const std::optional<Graphite::DrawnHeaderWords> held =
+		Graphite::DrawnHeaderWords{.ShownRef = "refs/heads/feature/x", .Words = drawn};
 
-	const VsLabel pending = Describe(scene, "refs/heads/feature/x");
-	const VsLabel landed = Describe(
-		scene, "refs/heads/feature/x", Core::LineDistance{.Ahead = 6, .Behind = 80, .ForkTime = std::nullopt, .ForkOnLine = true});
-	const VsLabel thousands = Describe(
-		scene, "refs/heads/feature/x", Core::LineDistance{.Ahead = 6, .Behind = 3'448, .ForkTime = std::nullopt, .ForkOnLine = true});
+	CHECK(Graphite::HeaderWordsToDraw(pending, true, "refs/heads/feature/x", held).Label.Counts == "6 ahead, 80 behind");
+	CHECK(Graphite::HeaderWordsToDraw(landed, false, "refs/heads/feature/x", held).Label.Counts == "6 ahead, 81 behind");
 
-	CHECK_FALSE(pending.CountsRoom.empty());
-	CHECK(pending.CountsRoom == landed.CountsRoom);
-	CHECK(pending.CountsRoom == thousands.CountsRoom);
-	CHECK(pending.CountsRoom == "6 ahead, 99,999 behind");
-}
-
-TEST_CASE("Git window: a behind count wider than the usual room widens the reserved room to fit")
-{
-	Scene scene = MakeScene();
-
-	const VsLabel huge = Describe(
-		scene, "refs/heads/feature/x", Core::LineDistance{.Ahead = 6, .Behind = 1'234'567, .ForkTime = std::nullopt, .ForkOnLine = true});
-
-	CHECK(huge.CountsRoom == "6 ahead, 1,234,567 behind");
+	// Another reference's words never stand in.
+	CHECK(Graphite::HeaderWordsToDraw(pending, true, "refs/heads/other", held).Label.Counts == "6 ahead, \xE2\x80\xA6 behind");
+	CHECK(Graphite::HeaderWordsToDraw(pending, true, "refs/heads/feature/x", std::nullopt).Label.Counts ==
+		  "6 ahead, \xE2\x80\xA6 behind");
 }
 
 namespace {

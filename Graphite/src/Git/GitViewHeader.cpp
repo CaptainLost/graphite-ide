@@ -157,24 +157,15 @@ namespace Graphite {
 			const float fixedWidth =
 				2.0f * Em(kVsSide) + Em(kVsGap) + caretWidth + (layout.Mark.empty() ? 0.0f : Em(kVsGap) + layout.MarkWidth);
 			float piecesWithoutLine = 0.0f;
-			float reservedForLaterCounts = 0.0f;
 
-			// The behind count lands later: its place is as wide as the landed text, so nothing on the row moves then.
-			if (!label.Counts.empty())
-			{
-				const auto restOf = [](const std::string& counts) {
-					return counts.substr(std::min(counts.find(", "), counts.size()));
-				};
-
-				reservedForLaterCounts = std::max(0.0f, TextWidth(restOf(label.CountsRoom)) - TextWidth(restOf(label.Counts)));
-			}
-
+			// WARNING: Drawn only once the distance it counts is known (the rows wait for it, and a distance measured again
+			// keeps the label drawn before), so its width is final and holds no room for a later count.
 			for (const VsPiece& piece : PiecesOf(label, colours, std::string{}))
 			{
 				piecesWithoutLine += WidthOf(piece);
 			}
 
-			const float lineRoom = std::max(0.0f, maxWidth - fixedWidth - piecesWithoutLine - reservedForLaterCounts);
+			const float lineRoom = std::max(0.0f, maxWidth - fixedWidth - piecesWithoutLine);
 
 			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 			const std::string line = FitToWidth(label.Line, lineRoom);
@@ -182,7 +173,7 @@ namespace Graphite {
 
 			layout.Pieces = PiecesOf(label, colours, line);
 
-			float piecesWidth = reservedForLaterCounts;
+			float piecesWidth = 0.0f;
 
 			for (const VsPiece& piece : layout.Pieces)
 			{
@@ -247,7 +238,7 @@ namespace Graphite {
 											   .ReadComing = m_Lines.IsReading() || m_Model.IsBranchListingComing()});
 	}
 
-	std::optional<Core::LineDistance> GitView::ShownDistance(const LineRead& read, std::string_view shownRef)
+	std::optional<GitView::DistanceTips> GitView::ShownDistanceTips(const LineRead& read, std::string_view shownRef) const
 	{
 		const BranchLines* const lines = CurrentLines();
 
@@ -263,12 +254,13 @@ namespace Graphite {
 		{
 			const std::optional<std::size_t> self = lines->IndexOf(shownRef);
 
-			return self.has_value() ? m_Lines.DistanceOf(read.Refs[*self].Tip, read.Refs[*picked].Tip) : std::nullopt;
+			return self.has_value() ? std::optional<DistanceTips>{DistanceTips{read.Refs[*self].Tip, read.Refs[*picked].Tip}}
+									: std::nullopt;
 		}
 
 		if (const Core::OldCopy* const copy = lines->OldCopyNamed(shown); copy != nullptr)
 		{
-			return m_Lines.DistanceOf(read.Refs[copy->Ref].Tip, read.Refs[copy->Of].Tip);
+			return DistanceTips{read.Refs[copy->Ref].Tip, read.Refs[copy->Of].Tip};
 		}
 
 		const Core::BranchLine* const line = lines->LineOf(shownRef);
@@ -279,7 +271,27 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return m_Lines.DistanceOf(read.Refs[line->Ref].Tip, read.Refs[*line->ComparedWith].Tip);
+		return DistanceTips{read.Refs[line->Ref].Tip, read.Refs[*line->ComparedWith].Tip};
+	}
+
+	std::optional<Core::LineDistance> GitView::ShownDistance(const LineRead& read, std::string_view shownRef)
+	{
+		const std::optional<DistanceTips> tips = ShownDistanceTips(read, shownRef);
+
+		return tips.has_value() ? m_Lines.DistanceOf(tips->From, tips->To) : std::nullopt;
+	}
+
+	bool GitView::MeasuresShownDistance(const LineRead& read, std::string_view shownRef)
+	{
+		const std::optional<DistanceTips> tips = ShownDistanceTips(read, shownRef);
+
+		// A tip the read's graph lacks is never measured, so nothing waits for it.
+		if (!tips.has_value() || !m_Lines.HoldsCommit(tips->From) || !m_Lines.HoldsCommit(tips->To))
+		{
+			return false;
+		}
+
+		return !m_Lines.DistanceOf(tips->From, tips->To).has_value();
 	}
 
 	float GitView::VsButtonWidth(const VsLabel& label) const

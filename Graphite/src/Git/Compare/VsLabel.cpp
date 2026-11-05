@@ -10,7 +10,6 @@ namespace Graphite {
 	namespace {
 
 		constexpr const char* kPending = "\xE2\x80\xA6";
-		constexpr const char* kWidestUsualBehind = "99,999";
 
 		VsLabel Plain(std::string lead)
 		{
@@ -80,7 +79,6 @@ namespace Graphite {
 			{
 				label.Lead = line.Kind == Core::ComparedKind::Branch ? "on top of" : "vs";
 				label.Counts = Core::FormatCount(line.Ahead) + " ahead, " + BehindText(input.Distance) + " behind";
-				label.CountsRoom = Core::FormatCount(line.Ahead) + " ahead, " + ReservedBehindText(input.Distance) + " behind";
 			}
 
 			return label;
@@ -97,7 +95,6 @@ namespace Graphite {
 			label.Lead = "vs";
 			label.Line = LineNameOf(input.Read, picked);
 			label.Counts = ahead + " ahead, " + BehindText(input.Distance) + " behind";
-			label.CountsRoom = ahead + " ahead, " + ReservedBehindText(input.Distance) + " behind";
 			label.Mark = "your pick";
 
 			return label;
@@ -114,14 +111,6 @@ namespace Graphite {
 	std::string BehindText(const std::optional<Core::LineDistance>& distance)
 	{
 		return distance.has_value() ? Core::FormatCount(distance->Behind) : std::string{kPending};
-	}
-
-	std::string ReservedBehindText(const std::optional<Core::LineDistance>& distance)
-	{
-		const std::string usual = kWidestUsualBehind;
-		const std::string landed = distance.has_value() ? Core::FormatCount(distance->Behind) : std::string{};
-
-		return landed.size() > usual.size() ? landed : usual;
 	}
 
 	VsLabel DescribeVs(const VsInput& input)

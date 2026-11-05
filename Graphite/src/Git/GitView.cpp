@@ -498,6 +498,7 @@ namespace Graphite {
 		m_SidebarBuiltFrom.reset();
 		m_SidebarRows.clear();
 		m_SearchedAuthors = SearchedAuthors{};
+		m_DrawnHeaderWords.reset();
 		m_MostCommonLine.clear();
 		m_HeadRef.reset();
 		m_OpenByUser.clear();
@@ -1018,6 +1019,15 @@ namespace Graphite {
 		// branch's marks: HEAD's is asked again by every refresh, after a checkout too, with the marks of the branch it
 		// was before.
 		if (m_LineAsked != ShownRefLine() || !m_Model.IsLogAnswered(m_LineAskedGeneration))
+		{
+			return false;
+		}
+
+		// The header's vs label and banner come with the rows and count a distance, so the rows wait for it too: the
+		// label then appears once, at its final width.
+		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
+
+		if (const std::string shownRef = ShownRefName(); read != nullptr && !shownRef.empty() && MeasuresShownDistance(*read, shownRef))
 		{
 			return false;
 		}

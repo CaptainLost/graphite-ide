@@ -49,6 +49,14 @@ namespace Graphite {
 		}
 	}
 
+	const HeaderWords& HeaderWordsToDraw(const HeaderWords& fresh, bool measuring, std::string_view shownRef,
+										 const std::optional<DrawnHeaderWords>& drawn)
+	{
+		const bool keepsDrawn = measuring && drawn.has_value() && drawn->ShownRef == shownRef;
+
+		return keepsDrawn ? drawn->Words : fresh;
+	}
+
 	std::optional<std::string> HistoryBannerFor(const VsInput& input)
 	{
 		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);

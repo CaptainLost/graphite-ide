@@ -8,6 +8,7 @@
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/Branches/BranchDeletion.h"
 #include "Git/Changes/ChangesView.h"
+#include "Git/Compare/HistoryBanner.h"
 #include "Git/Compare/VsLabel.h"
 #include "Git/Compare/VsPickerView.h"
 #include "Git/Diff/DiffBody.h"
@@ -229,9 +230,22 @@ namespace Graphite {
 		// How HEAD's history stands against the read the sidebar's lines view.
 		HeadInRead HeadPlacement() const;
 
+		struct DistanceTips
+		{
+			Core::Oid From;
+			Core::Oid To;
+		};
+
+		// The two tips whose distance the header counts for the shown reference: the branch's and its line's, an old
+		// copy's and its base's, or a picked line's; none when the header counts nothing.
+		std::optional<DistanceTips> ShownDistanceTips(const LineRead& read, std::string_view shownRef) const;
+
 		// What the shown reference is compared with and how far from it; asked of the lines model on every frame the
 		// header is drawn, which answers from its cache after the first.
 		std::optional<Core::LineDistance> ShownDistance(const LineRead& read, std::string_view shownRef);
+
+		// The header counts a distance that is still being measured.
+		bool MeasuresShownDistance(const LineRead& read, std::string_view shownRef);
 
 		void FollowSelectedRef();
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
@@ -506,6 +520,9 @@ namespace Graphite {
 		std::vector<SidebarRow> m_SidebarRows;
 		SearchedAuthors m_SearchedAuthors;
 		std::optional<BranchLines> m_SidebarLines;
+
+		// The header's vs label and banner as last drawn with their distance known, kept while it is measured again.
+		std::optional<DrawnHeaderWords> m_DrawnHeaderWords;
 
 		// What the shown reference is compared with: opened by the header's vs button and the sidebar's bases link.
 		VsPickerView m_VsPicker;
