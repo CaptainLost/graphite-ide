@@ -126,7 +126,8 @@ namespace Graphite {
 
 		// WARNING: Bumped by Clear, which the folder events run before the port is pointed at the next folder, and read by
 		// every job as it starts: a read or change asked for the folder before must not write the next folder's line store.
-		// Only a job stalled between that check and the port opening its repository, while the folder changes, slips past.
+		// A job stalled between that check and the port opening its repository, while the folder changes, is stopped by the
+		// port instead: a read by the repository it was asked for, a change by the store of the read it was asked on.
 		std::atomic<std::uint64_t> m_Folder{0};
 	};
 }

@@ -209,13 +209,17 @@ namespace Graphite {
 		const std::uint64_t generation = m_Read.Begin();
 		const std::uint64_t folder = m_Folder.load();
 
-		m_Submit([this, generation, folder, input = std::move(input)]() {
+		// The snapshot's repository: a folder switch clears this model, dropping its snapshot, before the port is pointed
+		// at the next folder, so the port opens the repository of the snapshot followed now.
+		const std::uint64_t repository = m_Port.RepositoryNow();
+
+		m_Submit([this, generation, folder, repository, input = std::move(input)]() {
 			if (!IsSameFolder(folder))
 			{
 				return;
 			}
 
-			Core::Result<LineRead> result = m_Port.ReadLines(input);
+			Core::Result<LineRead> result = m_Port.ReadLines(repository, input);
 
 			Deliver([this, generation, result = std::move(result)]() mutable { Land(generation, std::move(result)); });
 		});

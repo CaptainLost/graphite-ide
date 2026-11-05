@@ -2,12 +2,14 @@
 
 #include "Git/RepositoryGitPort.h"
 
+#include "DeferredJobs.h"
 #include "FileFixtures.h"
 #include "GitFixture.h"
 #include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Git/Lines/LineStore.h"
+#include "Git/Lines/LinesModel.h"
 #include "Review/ReviewRepository.h"
 
 #include <git2.h>
@@ -17,10 +19,12 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <process.h>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -921,7 +925,8 @@ TEST_CASE("Git window: the git port reads lines into the store root it was given
 	REQUIRE(branches.HasValue());
 	const Core::Ref<const std::vector<Core::Branch>> snapshot = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue());
 
-	const Core::Result<Graphite::LineRead> read = port.ReadLines(Graphite::LineReadInput{.Branches = snapshot, .Now = kNow});
+	const Core::Result<Graphite::LineRead> read =
+		port.ReadLines(port.RepositoryNow(), Graphite::LineReadInput{.Branches = snapshot, .Now = kNow});
 	INFO((read.HasValue() ? std::string{} : read.GetError().Message));
 	REQUIRE(read.HasValue());
 	CHECK(read.GetValue().Branches == snapshot);
@@ -941,6 +946,116 @@ TEST_CASE("Git window: the git port reads lines into the store root it was given
 
 	port.SetRoot({});
 	port.LetGoOfHandlesNoLongerCurrent();
+}
+
+namespace {
+
+	// Forwards to the git port, running BeforeRead first: a folder switch there lands after a read's job has started and
+	// before the port opens the repository and its line store.
+	class FolderSwitchingLinesPort final : public Graphite::LinesPort
+	{
+	public:
+		explicit FolderSwitchingLinesPort(Graphite::RepositoryGitPort& port) : m_Port(port) {}
+
+		std::uint64_t RepositoryNow() override
+		{
+			return m_Port.RepositoryNow();
+		}
+
+		Core::Result<Graphite::LineRead> ReadLines(std::uint64_t repository, const Graphite::LineReadInput& input) override
+		{
+			const std::function<void()> beforeRead = std::exchange(BeforeRead, nullptr);
+
+			if (beforeRead)
+			{
+				beforeRead();
+			}
+
+			return m_Port.ReadLines(repository, input);
+		}
+
+		Core::Result<Graphite::LineRead> RecomputeLines(const Graphite::LineRead& last, const Graphite::LineAnswerChange& change,
+														std::int64_t now) override
+		{
+			return m_Port.RecomputeLines(last, change, now);
+		}
+
+		std::function<void()> BeforeRead;
+
+	private:
+		Graphite::RepositoryGitPort& m_Port;
+	};
+
+	Core::Ref<const std::vector<Core::Branch>> BranchSnapshotOf(Graphite::RepositoryGitPort& port)
+	{
+		Core::Result<std::vector<Core::Branch>> branches = port.QueryBranches();
+		REQUIRE(branches.HasValue());
+		return Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue());
+	}
+
+	void RunUntilSettled(DeferredJobs& jobs, Graphite::LinesModel& model)
+	{
+		while (jobs.Count() > 0)
+		{
+			jobs.RunAll();
+			model.OnUpdate();
+		}
+	}
+
+	std::int64_t LinesClock()
+	{
+		constexpr std::int64_t kNow = 1800000000;
+		return kNow;
+	}
+}
+
+TEST_CASE("Git window: a read whose folder switched before the port opened it leaves the other repository's answers alone")
+{
+	GitFixture shown;
+	shown.Write("a.txt", "1");
+	const std::string master = shown.Commit("one");
+	shown.PushTo("master", master);
+	shown.SetRemoteHead("master");
+	shown.Branch("feature");
+
+	GitFixture other;
+	other.Write("b.txt", "1");
+	other.Commit("one");
+	other.Branch("only-here");
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort gitPort{shown.GetPath(), storeRoot.GetPath()};
+
+	// The other repository's answers name a branch the shown one lacks, which a read of the shown one's refs would drop.
+	const Graphite::LineStorePaths otherStore =
+		Graphite::LineStoreFor(OpenRepositoryAt(other.GetPath()).CommonDirectory(), storeRoot.GetPath());
+	Core::LineAnswers otherAnswers;
+	otherAnswers.Comparisons["refs/heads/only-here"] = std::nullopt;
+	REQUIRE(Graphite::SaveLineAnswers(otherStore.Answers, otherAnswers).HasValue());
+
+	FolderSwitchingLinesPort port{gitPort};
+	DeferredJobs jobs;
+	Graphite::LinesModel model{port, jobs.Submitter(), &LinesClock};
+
+	model.Follow(BranchSnapshotOf(gitPort), 1);
+	RunUntilSettled(jobs, model);
+	REQUIRE(model.GetRead() != nullptr);
+
+	// Listed again, every tip is in the read's graph, so no walk of the other repository would fail the read.
+	model.Follow(BranchSnapshotOf(gitPort), 2);
+	REQUIRE(jobs.Count() == 1);
+
+	port.BeforeRead = [&model, &gitPort, &other]() {
+		model.Clear();
+		gitPort.SetRoot(other.GetPath());
+	};
+	RunUntilSettled(jobs, model);
+
+	CHECK(Graphite::LoadLineAnswers(otherStore.Answers) == otherAnswers);
+	CHECK(model.GetRead() == nullptr);
+
+	gitPort.SetRoot({});
+	gitPort.LetGoOfHandlesNoLongerCurrent();
 }
 
 TEST_CASE("Counting a worktree's uncommitted files reads that folder alone")

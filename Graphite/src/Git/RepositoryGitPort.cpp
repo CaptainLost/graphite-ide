@@ -80,6 +80,29 @@ namespace Graphite {
 			generation = m_Generation;
 		}
 
+		return OpenForThisThread(root, generation);
+	}
+
+	Core::Result<Core::Repository*> RepositoryGitPort::RepositoryForThisThreadOf(std::uint64_t generation)
+	{
+		std::string root;
+
+		{
+			const std::lock_guard<std::mutex> lock{m_RootMutex};
+
+			if (m_Generation != generation)
+			{
+				return Core::Error{Core::ErrorCode::Cancelled, "The folder changed, so the lines were not read."};
+			}
+
+			root = m_Root;
+		}
+
+		return OpenForThisThread(root, generation);
+	}
+
+	Core::Result<Core::Repository*> RepositoryGitPort::OpenForThisThread(const std::string& root, std::uint64_t generation)
+	{
 		HandleMap& handlesByRoot = HandlesForThisThread();
 
 		DropHandlesOfOtherRoots(handlesByRoot, root);
@@ -1286,18 +1309,26 @@ namespace Graphite {
 		return answer;
 	}
 
-	Core::Result<LineRead> RepositoryGitPort::ReadLines(const LineReadInput& input)
+	std::uint64_t RepositoryGitPort::RepositoryNow()
 	{
-		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+		const std::lock_guard<std::mutex> lock{m_RootMutex};
+		return m_Generation;
+	}
+
+	Core::Result<LineRead> RepositoryGitPort::ReadLines(std::uint64_t repository, const LineReadInput& input)
+	{
+		// The handle is of the root that generation named, so the store resolved from it is the snapshot's repository's
+		// even when the folder changes while the read runs.
+		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository);
 
 		if (!opened.HasValue())
 		{
 			return opened.GetError();
 		}
 
-		const Core::Repository* repository = opened.GetValue();
+		const Core::Repository& snapshotRepository = *opened.GetValue();
 
-		return Graphite::ReadLines(*repository, LineStoreFor(repository->CommonDirectory(), m_LineStoreRoot), input);
+		return Graphite::ReadLines(snapshotRepository, LineStoreFor(snapshotRepository.CommonDirectory(), m_LineStoreRoot), input);
 	}
 
 	Core::Result<LineRead> RepositoryGitPort::RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now)

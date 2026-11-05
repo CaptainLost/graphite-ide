@@ -58,9 +58,15 @@ namespace {
 	class FakeLinesPort final : public LinesPort
 	{
 	public:
-		Core::Result<LineRead> ReadLines(const LineReadInput& input) override
+		std::uint64_t RepositoryNow() override
+		{
+			return Repository;
+		}
+
+		Core::Result<LineRead> ReadLines(std::uint64_t repository, const LineReadInput& input) override
 		{
 			Asked.push_back("read");
+			ReadRepositories.push_back(repository);
 			ReadInputs.push_back(input);
 
 			if (FailReads)
@@ -97,8 +103,10 @@ namespace {
 		Core::Ref<const std::vector<std::uint32_t>> Generations = Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*Graph));
 		bool FailReads = false;
 		bool FailChanges = false;
+		std::uint64_t Repository = 1;
 
 		std::vector<std::string> Asked;
+		std::vector<std::uint64_t> ReadRepositories;
 		std::vector<LineReadInput> ReadInputs;
 		std::vector<Core::LineAnswers> ChangedOn;
 		std::vector<Snapshot> ChangedBranches;
@@ -222,6 +230,20 @@ TEST_CASE("Git window: a change asked during a read runs after it on the newest 
 	CHECK(port.ReadInputs[1].Branches == second);
 	REQUIRE(model.GetRead() != nullptr);
 	CHECK(model.GetRead()->Branches == second);
+}
+
+TEST_CASE("Git window: a read is run on the repository the port opened when it was asked")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	port.Repository = 7;
+	model.Follow(NewSnapshot());
+	port.Repository = 8;
+	RunUntilSettled(jobs, model);
+
+	CHECK(port.ReadRepositories == std::vector<std::uint64_t>{7});
 }
 
 TEST_CASE("Git window: a failed read keeps the previous read")

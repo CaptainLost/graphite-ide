@@ -91,7 +91,8 @@ namespace Graphite {
 		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override;
 		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override;
 
-		Core::Result<LineRead> ReadLines(const LineReadInput& input) override;
+		std::uint64_t RepositoryNow() override;
+		Core::Result<LineRead> ReadLines(std::uint64_t repository, const LineReadInput& input) override;
 		Core::Result<LineRead> RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now) override;
 
 		void SetRoot(std::filesystem::path root);
@@ -106,6 +107,11 @@ namespace Graphite {
 
 	private:
 		Core::Result<Core::Repository*> RepositoryForThisThread();
+
+		// The repository of that generation of the root, or an error once the port has been pointed at a folder since.
+		Core::Result<Core::Repository*> RepositoryForThisThreadOf(std::uint64_t generation);
+
+		Core::Result<Core::Repository*> OpenForThisThread(const std::string& root, std::uint64_t generation);
 
 		// WARNING: m_Root and m_Generation are read on worker threads and written on the UI thread,
 		// both under m_RootMutex.
