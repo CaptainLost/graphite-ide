@@ -41,6 +41,9 @@ namespace Graphite {
 		// The time the model was computed at, in seconds since the epoch: what is active, and how old a branch is in the
 		// sidebar's groups, is told against it, so the groups move only with a new read.
 		std::int64_t Now = 0;
+
+		// The line store of the repository read: a change is saved only in it.
+		LineStorePaths Store;
 	};
 
 	struct LineReadInput

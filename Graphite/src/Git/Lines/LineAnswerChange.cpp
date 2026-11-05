@@ -77,6 +77,13 @@ namespace Graphite {
 
 	Core::Result<LineRead> RecomputeLines(const LineRead& last, const LineStorePaths& store, const LineAnswerChange& change, std::int64_t now)
 	{
+		// WARNING: The store is resolved from the folder open when the change runs. After a folder switch it is another
+		// repository's, whose answers this read's names must never be written into.
+		if (last.Store.Answers != store.Answers)
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument, "The folder changed, so the change was not saved."};
+		}
+
 		std::optional<Core::LineAnswers> answers = LoadLineAnswersToUpdate(store.Answers);
 
 		if (!answers.has_value())
@@ -100,6 +107,7 @@ namespace Graphite {
 		read.Generations = last.Generations;
 		read.Model = Core::ComputeLines(Core::LineModelInput{*read.Graph, read.Refs, *answers, now});
 		read.Now = now;
+		read.Store = store;
 		read.Answers = std::move(*answers);
 		return read;
 	}

@@ -195,6 +195,29 @@ TEST_CASE("Git window: a recompute saves the change and recomputes on the last g
 	CHECK(LoadLineAnswers(paths.Answers) == expected);
 }
 
+TEST_CASE("Git window: a change made on another repository's read is not saved in this one's store")
+{
+	GitFixture fixture;
+	BuildMasterAndFeature(fixture);
+	TempDirectory store;
+	TempDirectory otherStore;
+	const LineStorePaths paths = StoreIn(fixture, store);
+	const LineStorePaths otherPaths{.Answers = otherStore.GetPath() / "answers.json", .Graph = otherStore.GetPath() / "graph.bin"};
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Core::Result<LineRead> read = ReadLines(repository, paths, kNow);
+	REQUIRE(read.HasValue());
+	CHECK(read.GetValue().Store.Answers == paths.Answers);
+
+	// The folder changed between the read and the change: the store now resolved is the other repository's.
+	const Core::Result<LineRead> recomputed =
+		RecomputeLines(read.GetValue(), otherPaths, ChangeOf(LineAnswerChange::Kind::UseAsBase, "refs/heads/feature"), kNow);
+
+	REQUIRE_FALSE(recomputed.HasValue());
+	CHECK(recomputed.GetError().Message == "The folder changed, so the change was not saved.");
+	CHECK_FALSE(std::filesystem::exists(otherPaths.Answers));
+}
+
 TEST_CASE("Git window: a recompute refuses a file it cannot read")
 {
 	GitFixture fixture;
