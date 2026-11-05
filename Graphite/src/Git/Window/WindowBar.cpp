@@ -98,7 +98,10 @@ namespace Graphite {
 			{
 				text.Head = head.BranchName;
 
-				const Core::Branch* branch = input.Branches != nullptr ? CheckedOutBranch(*input.Branches) : nullptr;
+				// WARNING: Looked up by HEAD's name, not as the listing's checked-out branch: after a checkout HEAD is read at once
+				// while the branches wait for the refresh, and the listing's checked-out branch is the one checked out before.
+				const Core::Branch* branch =
+					input.Branches != nullptr ? BranchWithFullName(*input.Branches, Core::LocalBranchReference(head.BranchName)) : nullptr;
 
 				if (branch != nullptr && branch->Upstream.has_value())
 				{

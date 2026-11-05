@@ -114,6 +114,28 @@ TEST_CASE("Git window: the head chip says what is to push and pull in words")
 	CHECK(text.HeadTooltip == "main has no upstream branch");
 }
 
+TEST_CASE("Git window: the head chip counts the branch HEAD names and not the one the listing has checked out")
+{
+	// Just after a checkout: HEAD is read at once, the branches are still the listing made before it.
+	const Core::HeadState head = OnBranch("fresh-start");
+	const std::vector<Core::Remote> remotes;
+
+	Core::Branch freshStart;
+	freshStart.Name = "fresh-start";
+	freshStart.FullName = "refs/heads/fresh-start";
+
+	std::vector<Core::Branch> branches = {Tracking(HeadBranch("develop"), "origin/develop", 1, 0), freshStart};
+	Graphite::WindowBarText text = Describe(&head, &branches, &remotes);
+	CHECK(text.Head == "fresh-start");
+	CHECK(text.HeadState.empty());
+	CHECK(text.HeadTooltip == "fresh-start has no upstream branch");
+
+	branches = {Tracking(HeadBranch("develop"), "origin/develop", 1, 0), Tracking(freshStart, "origin/fresh-start", 0, 2)};
+	text = Describe(&head, &branches, &remotes);
+	CHECK(text.HeadState == "2 to pull");
+	CHECK(text.HeadTooltip == "fresh-start tracks origin/fresh-start");
+}
+
 TEST_CASE("Git window: a detached head is named by its commit")
 {
 	Core::HeadState head;
