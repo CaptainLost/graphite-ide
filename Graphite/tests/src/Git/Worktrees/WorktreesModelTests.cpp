@@ -266,3 +266,25 @@ TEST_CASE("Git window: a count of a worktree that left the list is not kept")
 
 	CHECK_FALSE(model.IsDirty(kSide).has_value());
 }
+
+TEST_CASE("Git window: the open folder's own branch has no other worktree, the main worktree's has one from a linked folder")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("main", kOpen), WorktreeOn("side", kSide)};
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(model.OtherWorktreeOf("refs/heads/main").has_value());
+	CHECK(model.OtherWorktreeOf("refs/heads/side") == kSide);
+
+	model.Follow(NewSnapshot(), kSide);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.OtherWorktreeOf("refs/heads/main") == kOpen);
+	CHECK_FALSE(model.OtherWorktreeOf("refs/heads/side").has_value());
+}

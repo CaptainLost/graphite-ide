@@ -203,6 +203,18 @@ namespace Graphite {
 		return found->second;
 	}
 
+	std::optional<std::filesystem::path> WorktreesModel::OtherWorktreeOf(std::string_view branchFullName) const
+	{
+		std::optional<std::filesystem::path> worktree = WorktreeOf(branchFullName);
+
+		if (worktree.has_value() && IsOpenFolder(*worktree))
+		{
+			return std::nullopt;
+		}
+
+		return worktree;
+	}
+
 	std::optional<bool> WorktreesModel::IsDirty(const std::filesystem::path& worktree) const
 	{
 		const auto found = m_Dirty.find(Core::PathKey(worktree));

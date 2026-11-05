@@ -194,7 +194,6 @@ namespace Graphite {
 		const Core::StashEntry* SidebarStashOf(const SidebarRow& row) const;
 
 		SidebarRowText SidebarTextOf(const SidebarRow& row) const;
-		std::optional<bool> IsWorktreeDirty(const std::filesystem::path& worktree) const;
 		SidebarSelection SidebarSelectionNow() const;
 		void AnswerSidebarClick(const SidebarRow& row);
 		void AnswerSidebarLink(SidebarLink link, const std::string& remote);

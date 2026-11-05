@@ -329,28 +329,10 @@ namespace Graphite {
 							   .UserEmail = m_Model.GetUserEmail(),
 							   .MostCommonLine = m_MostCommonLine,
 							   .Now = NowInSeconds()};
-		input.WorktreeOf = [this](std::string_view fullName) { return m_Worktrees.WorktreeOf(fullName); };
-		input.IsDirty = [this](const std::filesystem::path& worktree) { return IsWorktreeDirty(worktree); };
+		input.WorktreeOf = [this](std::string_view fullName) { return m_Worktrees.OtherWorktreeOf(fullName); };
+		input.IsDirty = [this](const std::filesystem::path& worktree) { return m_Worktrees.IsDirty(worktree); };
 
 		return DescribeSidebarRow(row, input);
-	}
-
-	// The open folder's own worktree is the Git model's status; every other is counted by the worktrees model.
-	std::optional<bool> GitView::IsWorktreeDirty(const std::filesystem::path& worktree) const
-	{
-		if (Core::SamePath(worktree, m_Model.GetWorkingDirectory()))
-		{
-			const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
-
-			if (status == nullptr)
-			{
-				return std::nullopt;
-			}
-
-			return !status->Entries.empty();
-		}
-
-		return m_Worktrees.IsDirty(worktree);
 	}
 
 	SidebarSelection GitView::SidebarSelectionNow() const

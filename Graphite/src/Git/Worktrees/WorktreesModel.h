@@ -37,8 +37,7 @@ namespace Graphite {
 
 		void OnUpdate(Core::Timestep timestep); // drains landed results and asks the counts that are due
 
-		// Asks a read when the snapshot differs from the last asked. The open folder's own worktree is never counted: the
-		// status of the Git model says whether it has changes.
+		// Asks a read when the snapshot differs from the last asked. The open folder's own worktree is never counted.
 		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, const std::filesystem::path& openFolder);
 
 		void SetOnScreen(bool onScreen);
@@ -49,6 +48,10 @@ namespace Graphite {
 
 		// The folder of the worktree that has that local branch checked out; empty for none, and for a worktree whose folder is missing.
 		std::optional<std::filesystem::path> WorktreeOf(std::string_view branchFullName) const;
+
+		// The same, but empty for the branch checked out in the open folder itself: it has the HEAD dot and its changes are
+		// the Local changes row, so it is marked as no worktree.
+		std::optional<std::filesystem::path> OtherWorktreeOf(std::string_view branchFullName) const;
 
 		// Empty while unknown, and for the open folder's own worktree.
 		std::optional<bool> IsDirty(const std::filesystem::path& worktree) const;
