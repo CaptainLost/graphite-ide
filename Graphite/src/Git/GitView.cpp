@@ -937,22 +937,13 @@ namespace Graphite {
 
 		const BranchLines* const lines = CurrentLines();
 
-		if (lines == nullptr)
-		{
-			// Neither a first read that failed nor one waiting for branches that could not be listed is coming.
-			const bool readFailed = m_Lines.GetError().has_value() && !m_Lines.IsReading();
-			const bool branchesFailed = !m_Model.GetBranches() && m_Model.GetBranchesError().has_value();
-
-			return !readFailed && !branchesFailed;
-		}
-
-		// A reference the read does not hold yet, one just made or renamed, is waited for while a read is on its way.
-		const bool readLacksSelected = m_SelectedRef.has_value() && !lines->IndexOf(*m_SelectedRef).has_value();
-
-		// HEAD's history waits for the read that names HEAD's branch checked out, as after a checkout.
-		const bool headWaits = !m_SelectedRef.has_value() && HeadPlacement() == HeadInRead::WaitsForRead;
-
-		return headWaits || (readLacksSelected && m_Lines.IsReading());
+		return HistoryWaitsForLines(HistoryWaitInput{
+			.HasRead = lines != nullptr,
+			.Reading = m_Lines.IsReading(),
+			.ReadFailed = m_Lines.GetError().has_value(),
+			.BranchesFailed = !m_Model.GetBranches() && m_Model.GetBranchesError().has_value(),
+			.ReadLacksShown = lines != nullptr && m_SelectedRef.has_value() && !lines->IndexOf(*m_SelectedRef).has_value(),
+			.Head = m_SelectedRef.has_value() ? HeadInRead::Agrees : HeadPlacement()});
 	}
 
 	bool GitView::ShowsLocalChanges() const
@@ -1676,7 +1667,7 @@ namespace Graphite {
 		}
 		else if (!m_Lines.HoldsCommit(commit.Id))
 		{
-			content.Bases = InBasesOutsideRead(m_Lines.IsReading());
+			content.Bases = InBasesOutsideRead(m_Lines.IsReading(), m_Lines.GetError());
 		}
 		else
 		{

@@ -998,7 +998,7 @@ namespace {
 		while (jobs.Count() > 0)
 		{
 			jobs.RunAll();
-			model.OnUpdate();
+			model.OnUpdate(Core::Timestep{});
 		}
 	}
 

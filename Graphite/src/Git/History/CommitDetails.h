@@ -46,13 +46,13 @@ namespace Graphite {
 	};
 
 	// The line for a moment with no read: waiting while one is coming, unknown once it has failed or once the branches
-	// it would be made of could not be listed.
+	// it would be made of could not be listed. A failure stays said while a read is asked again after it.
 	InBases InBasesWithoutRead(bool reading, const std::optional<Core::Error>& linesError,
 							   const std::optional<Core::Error>& branchesError);
 
 	// The line for a commit the read's graph does not hold, as a detached HEAD's own commit or a stash: in no base, since
-	// a base's history is in the graph; waiting while a newer read may hold it.
-	InBases InBasesOutsideRead(bool reading);
+	// a base's history is in the graph; waiting while a newer read may hold it, but not for one asked again after a failure.
+	InBases InBasesOutsideRead(bool reading, const std::optional<Core::Error>& linesError);
 
 	// How many of the "In bases" chips go on the line, which never wraps: as many, in order, as fit in `room` with `gap`
 	// between them and, when some are left over, the words for the rest after them, at most `moreWidth` wide.

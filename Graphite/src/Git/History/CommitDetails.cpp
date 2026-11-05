@@ -62,13 +62,13 @@ namespace Graphite {
 	{
 		InBases bases;
 
-		if (reading)
-		{
-			bases.Pending = true;
-		}
-		else if (linesError.has_value())
+		if (linesError.has_value())
 		{
 			bases.Unknown = linesError->Message;
+		}
+		else if (reading)
+		{
+			bases.Pending = true;
 		}
 		else if (branchesError.has_value())
 		{
@@ -119,10 +119,10 @@ namespace Graphite {
 		return "and " + Core::FormatCount(total - shown) + " more";
 	}
 
-	InBases InBasesOutsideRead(bool reading)
+	InBases InBasesOutsideRead(bool reading, const std::optional<Core::Error>& linesError)
 	{
 		InBases bases;
-		bases.Pending = reading;
+		bases.Pending = reading && !linesError.has_value();
 
 		return bases;
 	}

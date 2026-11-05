@@ -501,7 +501,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		if (input.LinesError.has_value() && !input.Reading)
+		if (input.LinesError.has_value())
 		{
 			return SidebarWaitingRow{.Text = "Cannot read the branches' lines: " + input.LinesError->Message, .Failed = true};
 		}

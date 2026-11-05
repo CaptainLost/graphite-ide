@@ -249,9 +249,20 @@ TEST_CASE("Git window: the in bases line is unknown once the line read failed an
 	REQUIRE(failed.Unknown.has_value());
 	CHECK(*failed.Unknown == "graph.bin is unreadable");
 
-	CHECK(Graphite::InBasesWithoutRead(true, failure, std::nullopt).Pending);
+	CHECK(Graphite::InBasesWithoutRead(true, std::nullopt, std::nullopt).Pending);
 	CHECK(Graphite::InBasesWithoutRead(false, std::nullopt, std::nullopt).Pending);
 	CHECK_FALSE(Graphite::InBasesWithoutRead(false, std::nullopt, std::nullopt).Unknown.has_value());
+}
+
+TEST_CASE("Git window: a retry after a failed read keeps the in bases line unknown")
+{
+	const Core::Error failure{Core::ErrorCode::IoFailure, "graph.bin is unreadable"};
+
+	const Graphite::InBases retrying = Graphite::InBasesWithoutRead(true, failure, std::nullopt);
+
+	CHECK_FALSE(retrying.Pending);
+	REQUIRE(retrying.Unknown.has_value());
+	CHECK(*retrying.Unknown == "graph.bin is unreadable");
 }
 
 TEST_CASE("Git window: the in bases line is unknown when the branches could not be listed")
@@ -290,11 +301,23 @@ TEST_CASE("Git window: the in bases chips go on one line with the words for the 
 
 TEST_CASE("Git window: a commit the read's graph lacks is in no base once no read is coming")
 {
-	const Graphite::InBases settled = Graphite::InBasesOutsideRead(false);
+	const Graphite::InBases settled = Graphite::InBasesOutsideRead(false, std::nullopt);
 
 	CHECK_FALSE(settled.Pending);
 	CHECK_FALSE(settled.Unknown.has_value());
 	CHECK(settled.Holding.empty());
 
-	CHECK(Graphite::InBasesOutsideRead(true).Pending);
+	CHECK(Graphite::InBasesOutsideRead(true, std::nullopt).Pending);
+}
+
+TEST_CASE("Git window: a retry after a failed read keeps a commit the read's graph lacks in no base")
+{
+	const Core::Error failure{Core::ErrorCode::IoFailure, "graph.bin is unreadable"};
+
+	const Graphite::InBases retrying = Graphite::InBasesOutsideRead(true, failure);
+
+	CHECK_FALSE(retrying.Pending);
+	CHECK_FALSE(retrying.Unknown.has_value());
+	CHECK(retrying.Holding.empty());
+	CHECK_FALSE(Graphite::InBasesOutsideRead(false, failure).Pending);
 }

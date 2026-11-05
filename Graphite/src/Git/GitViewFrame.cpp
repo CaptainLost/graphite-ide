@@ -251,7 +251,6 @@ namespace Graphite {
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 		const std::optional<SidebarWaitingRow> waiting = DescribeSidebarWait(SidebarWaitInput{
 			.HasRead = m_SidebarBuiltFrom->Read != nullptr,
-			.Reading = m_Lines.IsReading(),
 			.LinesError = m_Lines.GetError(),
 			.Branches = branches.get(),
 			.BranchesError = m_Model.GetBranchesError()});

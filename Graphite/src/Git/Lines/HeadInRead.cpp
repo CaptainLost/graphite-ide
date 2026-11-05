@@ -23,6 +23,21 @@ namespace Graphite {
 			return HeadInRead::Agrees;
 		}
 
-		return input.ReadComing ? HeadInRead::WaitsForRead : HeadInRead::Differs;
+		return input.ReadComing && !input.ReadFailed ? HeadInRead::WaitsForRead : HeadInRead::Differs;
+	}
+
+	bool HistoryWaitsForLines(const HistoryWaitInput& input)
+	{
+		if (input.ReadFailed)
+		{
+			return false;
+		}
+
+		if (!input.HasRead)
+		{
+			return !input.BranchesFailed;
+		}
+
+		return input.Head == HeadInRead::WaitsForRead || (input.ReadLacksShown && input.Reading);
 	}
 }

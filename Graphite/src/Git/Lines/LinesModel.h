@@ -7,10 +7,12 @@
 #include "Git/Lines/LineAnswerChange.h"
 #include "Git/Lines/LineReader.h"
 #include "Git/Lines/LinesPort.h"
+#include "Git/Lines/ReadRetry.h"
 #include "Git/LruResultCache.h"
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
+#include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Lines/LineQuestions.h"
 #include "Core/Git/Oid.h"
@@ -35,10 +37,11 @@ namespace Graphite {
 	public:
 		LinesModel(LinesPort& port, Core::JobSubmitter submit, std::function<std::int64_t()> now);
 
-		void OnUpdate(); // drains landed results
+		void OnUpdate(Core::Timestep timestep); // drains landed results and asks a failed read again once its back-off ends
 
-		// Asks a read when the snapshot differs from the last asked, or when the last read or change failed and the branches
-		// were listed again since, as a refresh lists them even when nothing changed. `listing` counts the listings.
+		// Asks a read at once when the snapshot differs from the last asked. When the last read or change failed and the
+		// branches were listed again since, as a refresh lists them even when nothing changed, asks it again once the
+		// back-off after the failures in a row ends. `listing` counts the listings.
 		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing = 0);
 
 		void Change(LineAnswerChange change);
@@ -92,6 +95,9 @@ namespace Graphite {
 
 		void Deliver(DeliveryInbox::Delivery delivery);
 
+		void AskRead(const Core::Ref<const std::vector<Core::Branch>>& branches);
+		void RetryWhenDue();
+
 		// Starts what waits, when nothing runs: the oldest change first, then the newest snapshot.
 		void RunNextWaiting();
 		void StartRead(const Core::Ref<const LineRead>& last);
@@ -115,6 +121,11 @@ namespace Graphite {
 		Core::Ref<const std::vector<Core::Branch>> m_LastAsked;
 		std::uint64_t m_LastListing = 0;
 		Core::Ref<const std::vector<Core::Branch>> m_WaitingBranches;
+
+		// Reset by a new snapshot, a line change, a read or change that succeeds, and a folder switch.
+		ReadRetry m_Retry;
+		bool m_RetryWanted = false; // listed again after a failure, so the read is asked again once the back-off ends
+		double m_Clock = 0.0;       // seconds of OnUpdate time
 
 		// The generation of the last change run, so its failure is told from a read's.
 		std::uint64_t m_ChangeGeneration = 0;

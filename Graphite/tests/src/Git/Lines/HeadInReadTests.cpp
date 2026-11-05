@@ -9,6 +9,8 @@
 
 using Graphite::HeadInRead;
 using Graphite::HeadInReadInput;
+using Graphite::HistoryWaitInput;
+using Graphite::HistoryWaitsForLines;
 using Graphite::PlaceHeadInRead;
 
 namespace {
@@ -86,4 +88,41 @@ TEST_CASE("Git window: with HEAD unread the read's checked-out branch stands")
 {
 	CHECK(PlaceHeadInRead(HeadInReadInput{.Head = nullptr, .ReadCheckedOut = "refs/heads/main", .ReadComing = kReadComing}) ==
 		  HeadInRead::Agrees);
+}
+
+TEST_CASE("Git window: HEAD's history stays shown while a retry after a failure runs")
+{
+	const Core::HeadState head = OnBranch("feature");
+
+	// The read that failed and the refresh listing the branches for its retry are both on their way.
+	CHECK(PlaceHeadInRead(HeadInReadInput{.Head = &head,
+										  .ReadCheckedOut = "refs/heads/main",
+										  .ReadComing = kReadComing,
+										  .ReadFailed = true}) == HeadInRead::Differs);
+}
+
+TEST_CASE("Git window: a history waits for a first read that is coming and not for one that cannot come")
+{
+	CHECK(HistoryWaitsForLines(HistoryWaitInput{.HasRead = false, .Reading = true}));
+	CHECK(HistoryWaitsForLines(HistoryWaitInput{.HasRead = false, .Reading = false}));
+	CHECK_FALSE(HistoryWaitsForLines(HistoryWaitInput{.HasRead = false, .BranchesFailed = true}));
+}
+
+TEST_CASE("Git window: a history waits for a read that may hold its reference and for HEAD's read after a checkout")
+{
+	CHECK(HistoryWaitsForLines(HistoryWaitInput{.HasRead = true, .Reading = true, .ReadLacksShown = true}));
+	CHECK_FALSE(HistoryWaitsForLines(HistoryWaitInput{.HasRead = true, .Reading = false, .ReadLacksShown = true}));
+	CHECK_FALSE(HistoryWaitsForLines(HistoryWaitInput{.HasRead = true, .Reading = true, .ReadLacksShown = false}));
+	CHECK(HistoryWaitsForLines(HistoryWaitInput{.HasRead = true, .Head = HeadInRead::WaitsForRead}));
+	CHECK_FALSE(HistoryWaitsForLines(HistoryWaitInput{.HasRead = true, .Head = HeadInRead::Differs}));
+}
+
+TEST_CASE("Git window: a retry after a failed read keeps the history from waiting")
+{
+	// No read in hand: the first read failed and is asked again.
+	CHECK_FALSE(HistoryWaitsForLines(HistoryWaitInput{.HasRead = false, .Reading = true, .ReadFailed = true}));
+
+	// A read in hand that lacks the reference shown, and a later read that failed and is asked again.
+	CHECK_FALSE(HistoryWaitsForLines(
+		HistoryWaitInput{.HasRead = true, .Reading = true, .ReadFailed = true, .ReadLacksShown = true}));
 }

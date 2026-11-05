@@ -230,7 +230,8 @@ namespace Graphite {
 
 		return PlaceHeadInRead(HeadInReadInput{.Head = head.get(),
 											   .ReadCheckedOut = checkedOut,
-											   .ReadComing = m_Lines.IsReading() || m_Model.IsBranchListingComing()});
+											   .ReadComing = m_Lines.IsReading() || m_Model.IsBranchListingComing(),
+											   .ReadFailed = m_Lines.GetError().has_value()});
 	}
 
 	std::optional<GitView::DistanceTips> GitView::ShownDistanceTips(const LineRead& read, std::string_view shownRef) const

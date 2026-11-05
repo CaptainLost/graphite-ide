@@ -117,19 +117,35 @@ namespace {
 		return kNow;
 	}
 
+	// Past the second a failed read waits before it is asked again.
+	constexpr float kAfterFirstRetry = 1.1f;
+
 	// Runs every job and lands every result, as frames do while workers finish, until nothing more is asked.
 	void RunUntilSettled(DeferredJobs& jobs, LinesModel& model)
 	{
 		while (jobs.Count() > 0)
 		{
 			jobs.RunAll();
-			model.OnUpdate();
+			model.OnUpdate(Core::Timestep{});
 		}
 	}
 
 	LineAnswerChange UseAsBase(std::string ref)
 	{
 		return LineAnswerChange{.What = LineAnswerChange::Kind::UseAsBase, .Ref = std::move(ref)};
+	}
+
+	// Reads a new snapshot with a port whose reads fail, then lists it again twice, each time once the back-off ends.
+	void FailThreeTimesInARow(DeferredJobs& jobs, LinesModel& model, const Snapshot& snapshot)
+	{
+		model.Follow(snapshot, 1);
+		RunUntilSettled(jobs, model);
+		model.Follow(snapshot, 2);
+		model.OnUpdate(Core::Timestep{1.0f});
+		RunUntilSettled(jobs, model);
+		model.Follow(snapshot, 3);
+		model.OnUpdate(Core::Timestep{2.0f});
+		RunUntilSettled(jobs, model);
 	}
 }
 
@@ -187,7 +203,7 @@ TEST_CASE("Git window: only the newest snapshot waits behind a running read")
 	CHECK(jobs.Count() == 1);
 
 	jobs.RunAll();
-	model.OnUpdate();
+	model.OnUpdate(Core::Timestep{});
 	REQUIRE(model.GetRead() != nullptr);
 	CHECK(model.GetRead()->Branches == running);
 	CHECK(model.IsReading());
@@ -289,8 +305,9 @@ TEST_CASE("Git window: a failed read is asked again when the branches are listed
 	RunUntilSettled(jobs, model);
 	REQUIRE(model.GetError().has_value());
 
-	// Every frame follows the snapshot; only a new listing asks again.
+	// Every frame follows the snapshot; only a new listing asks again, once a second has passed since the failure.
 	model.Follow(snapshot, 1);
+	model.OnUpdate(Core::Timestep{kAfterFirstRetry});
 	CHECK(jobs.Count() == 0);
 
 	port.FailReads = false;
@@ -305,6 +322,90 @@ TEST_CASE("Git window: a failed read is asked again when the branches are listed
 	model.Follow(snapshot, 3);
 	CHECK(jobs.Count() == 0);
 	CHECK(port.ReadInputs.size() == 2);
+}
+
+TEST_CASE("Git window: a failed read listed again is asked again only once its back-off ends")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	port.FailReads = true;
+	const Snapshot snapshot = NewSnapshot();
+	model.Follow(snapshot, 1);
+	RunUntilSettled(jobs, model);
+	REQUIRE(port.ReadInputs.size() == 1);
+
+	// Listed again half a second after the failure: the read is asked again a second after it, with no listing then.
+	model.OnUpdate(Core::Timestep{0.5f});
+	model.Follow(snapshot, 2);
+	CHECK(jobs.Count() == 0);
+	model.OnUpdate(Core::Timestep{0.4f});
+	CHECK(jobs.Count() == 0);
+	model.OnUpdate(Core::Timestep{0.2f});
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
+	REQUIRE(port.ReadInputs.size() == 2);
+
+	// The second failure in a row is asked again two seconds after it.
+	model.Follow(snapshot, 3);
+	model.OnUpdate(Core::Timestep{1.9f});
+	CHECK(jobs.Count() == 0);
+	model.OnUpdate(Core::Timestep{0.2f});
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
+
+	// Without a listing since the failure nothing is asked, however long it waits.
+	model.OnUpdate(Core::Timestep{100.0f});
+	CHECK(jobs.Count() == 0);
+	CHECK(port.ReadInputs.size() == 3);
+}
+
+TEST_CASE("Git window: a new snapshot a folder switch or a line change resets the back-off of a failed read")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	model.Follow(NewSnapshot(), 0);
+	RunUntilSettled(jobs, model);
+	REQUIRE(model.GetRead() != nullptr);
+
+	port.FailReads = true;
+	const Snapshot failing = NewSnapshot();
+	FailThreeTimesInARow(jobs, model, failing);
+	REQUIRE(port.ReadInputs.size() == 4);
+
+	// A snapshot that differs is read at once.
+	const Snapshot changed = NewSnapshot();
+	model.Follow(changed, 4);
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
+
+	// And the back-off starts again from a second.
+	model.Follow(changed, 5);
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
+
+	// A line change starts it again from a second, even when the change fails too.
+	port.FailChanges = true;
+	model.Change(UseAsBase("refs/heads/staging"));
+	RunUntilSettled(jobs, model);
+	model.Follow(changed, 6);
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
+
+	// A folder switch forgets the failures with everything else.
+	model.Clear();
+	model.Follow(failing, 7);
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
+	model.Follow(failing, 8);
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(jobs.Count() == 1);
+	RunUntilSettled(jobs, model);
 }
 
 TEST_CASE("Git window: a failed change is handed over once to be said and the read stays")
@@ -347,7 +448,7 @@ TEST_CASE("Git window: a read landing after clear is dropped")
 		model.Follow(NewSnapshot());
 		jobs.RunAll();
 		model.Clear();
-		model.OnUpdate();
+		model.OnUpdate(Core::Timestep{});
 
 		CHECK(model.GetRead() == nullptr);
 		CHECK_FALSE(model.IsReading());
@@ -358,7 +459,7 @@ TEST_CASE("Git window: a read landing after clear is dropped")
 		model.Follow(NewSnapshot());
 		model.Clear();
 		jobs.RunAll();
-		model.OnUpdate();
+		model.OnUpdate(Core::Timestep{});
 
 		CHECK(port.ReadInputs.empty());
 		CHECK(model.GetRead() == nullptr);
@@ -374,7 +475,7 @@ TEST_CASE("Git window: a read landing after clear is dropped")
 		model.Change(UseAsBase("refs/heads/staging"));
 		jobs.RunAll();
 		events.Publish(WorkspaceClosedEvent{});
-		model.OnUpdate();
+		model.OnUpdate(Core::Timestep{});
 		CHECK(model.GetRead() == nullptr);
 
 		// The next folder's read starts at once, not behind the change that was dropped.
@@ -397,7 +498,7 @@ TEST_CASE("Git window: a read landing after clear is dropped")
 		CHECK_FALSE(model.DistanceOf(kFeatureTip, kMainTip).has_value());
 		jobs.RunAll();
 		events.Publish(WorkspaceOpenedEvent{.Root = "C:/other"});
-		model.OnUpdate();
+		model.OnUpdate(Core::Timestep{});
 
 		model.Follow(NewSnapshot());
 		RunUntilSettled(jobs, model);
@@ -427,7 +528,7 @@ TEST_CASE("Git window: a distance is asked once and cached")
 	CHECK(jobs.Count() == 1);
 
 	jobs.RunAll();
-	model.OnUpdate();
+	model.OnUpdate(Core::Timestep{});
 
 	const std::optional<Core::LineDistance> distance = model.DistanceOf(kFeatureTip, kMainTip);
 	REQUIRE(distance.has_value());
@@ -484,7 +585,7 @@ TEST_CASE("Git window: which bases hold a commit is asked once and cached")
 	CHECK(jobs.Count() == 2);
 
 	jobs.RunAll();
-	model.OnUpdate();
+	model.OnUpdate(Core::Timestep{});
 
 	CHECK(model.BasesHolding(kFork) == std::optional<std::vector<bool>>{std::vector<bool>{true}});
 	CHECK(model.BasesHolding(kFeatureTip) == std::optional<std::vector<bool>>{std::vector<bool>{false}});

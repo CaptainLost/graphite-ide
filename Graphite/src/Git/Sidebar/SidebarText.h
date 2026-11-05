@@ -92,13 +92,13 @@ namespace Graphite {
 	struct SidebarWaitInput
 	{
 		bool HasRead = false;
-		bool Reading = false; // a read of the lines is under way
-		const std::optional<Core::Error>& LinesError;
+		const std::optional<Core::Error>& LinesError; // held until a read succeeds, also while one is asked again
 		const std::vector<Core::Branch>* Branches; // null while unread
 		const std::optional<Core::Error>& BranchesError;
 	};
 
-	// Empty once a read of the lines is in hand: a later failure leaves its rows on screen.
+	// Empty once a read of the lines is in hand: a later failure leaves its rows on screen. Without one, a failure is said
+	// until a read succeeds: a read asked again after it is background work that changes nothing on screen until it lands.
 	std::optional<SidebarWaitingRow> DescribeSidebarWait(const SidebarWaitInput& input);
 
 	// A section header's count: "…" holds its place while the list is unread, then the number, "n of total" while searching.

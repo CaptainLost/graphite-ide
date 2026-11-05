@@ -99,9 +99,11 @@ namespace Graphite {
 		return folder == m_Folder.load();
 	}
 
-	void LinesModel::OnUpdate()
+	void LinesModel::OnUpdate(Core::Timestep timestep)
 	{
+		m_Clock += timestep.GetSeconds();
 		m_Inbox.Drain();
+		RetryWhenDue();
 	}
 
 	void LinesModel::SubscribeTo(Core::EventBus& events)
@@ -119,6 +121,8 @@ namespace Graphite {
 		m_ChangeFailure.reset();
 		m_LastAsked.reset();
 		m_WaitingBranches.reset();
+		m_Retry = ReadRetry{};
+		m_RetryWanted = false;
 		m_WaitingChanges.clear();
 		m_Distances.Clear();
 		m_Holdings.Clear();
@@ -154,22 +158,46 @@ namespace Graphite {
 			return;
 		}
 
-		// A failed read is asked again with the next listing, so a quiet repository whose listing stays the same is not left
-		// a read behind for good.
-		const bool retriesFailure = listedAgain && m_Read.GetError().has_value() && !m_Read.IsInFlight();
-
-		if (branches == m_LastAsked && !retriesFailure)
+		// A new snapshot is the repository changing, so it is read at once, whatever failed before.
+		if (branches != m_LastAsked)
 		{
+			m_Retry = ReadRetry{};
+			m_RetryWanted = false;
+			AskRead(branches);
 			return;
 		}
 
+		// A failed read is asked again after a later listing, so a quiet repository whose listing stays the same is not left
+		// a read behind for good, but backed off, so one that keeps failing is not read again on every refresh.
+		if (listedAgain && m_Read.GetError().has_value() && !m_Read.IsInFlight())
+		{
+			m_RetryWanted = true;
+		}
+
+		RetryWhenDue();
+	}
+
+	void LinesModel::AskRead(const Core::Ref<const std::vector<Core::Branch>>& branches)
+	{
 		m_LastAsked = branches;
 		m_WaitingBranches = branches;
 		RunNextWaiting();
 	}
 
+	void LinesModel::RetryWhenDue()
+	{
+		if (!m_RetryWanted || m_Read.IsInFlight() || !IsRetryDue(m_Retry, m_Clock))
+		{
+			return;
+		}
+
+		m_RetryWanted = false;
+		AskRead(m_LastAsked);
+	}
+
 	void LinesModel::Change(LineAnswerChange change)
 	{
+		m_Retry = ReadRetry{};
 		m_WaitingChanges.push_back(std::move(change));
 		RunNextWaiting();
 	}
@@ -254,6 +282,16 @@ namespace Graphite {
 		if (landing == SlotLanding::Stale)
 		{
 			return;
+		}
+
+		if (landing == SlotLanding::Failed)
+		{
+			m_Retry = AfterFailedRead(m_Retry, m_Clock);
+		}
+		else
+		{
+			m_Retry = ReadRetry{};
+			m_RetryWanted = false;
 		}
 
 		if (landing == SlotLanding::Failed && generation == m_ChangeGeneration)
