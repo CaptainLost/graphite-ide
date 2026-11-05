@@ -338,9 +338,6 @@ namespace Graphite {
 		// Draws the picker when it is open and sends the change the user chose.
 		void DrawVsPicker();
 
-		// The sentence above the list, across the width.
-		void DrawHistoryBanner(const std::string& text);
-
 		// The width the Merges / All commits switch takes.
 		float HistorySwitchWidth() const;
 
@@ -523,6 +520,9 @@ namespace Graphite {
 
 		// The header's vs label and banner as last drawn with their distance known, kept while it is measured again.
 		std::optional<DrawnHeaderWords> m_DrawnHeaderWords;
+
+		// The banner the header found this frame, which the list draws as a row.
+		std::optional<std::string> m_HistoryBanner;
 
 		// What the shown reference is compared with: opened by the header's vs button and the sidebar's bases link.
 		VsPickerView m_VsPicker;

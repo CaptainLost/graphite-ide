@@ -24,7 +24,10 @@ namespace Graphite {
 
 		// Stands for the commits while there are none to draw: the wait for them, or, under the Local changes row, the
 		// word that there are none.
-		Note
+		Note,
+
+		// The sentence about the shown reference, under the Local changes row, so that row never moves when it comes.
+		Banner
 	};
 
 	struct CommitRow
@@ -44,6 +47,7 @@ namespace Graphite {
 	struct ExtraRows
 	{
 		bool LocalChanges = false;                   // first, above every commit
+		bool Banner = false;                         // under the Local changes row, above every commit
 		std::optional<std::size_t> FoldBeforeCommit; // just above that commit
 		bool Waiting = false;                        // the commits are on their way
 

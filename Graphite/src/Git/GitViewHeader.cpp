@@ -45,11 +45,6 @@ namespace Graphite {
 		constexpr float kSegmentRounding = 5.0f;
 		constexpr float kSwitchText = 12.0f;
 
-		constexpr float kBannerSide = 10.0f;
-		constexpr float kBannerAbove = 6.0f;
-		constexpr float kBannerBelow = 6.0f;
-		constexpr float kBannerRounding = 6.0f;
-		constexpr float kBannerText = 12.5f;
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kMergesLabel = "Merges";
@@ -461,41 +456,5 @@ namespace Graphite {
 		ImGui::PopFont();
 
 		return changed;
-	}
-
-	void GitView::DrawHistoryBanner(const std::string& text)
-	{
-		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
-		const float unit = WindowBarEm(1.0f); // taken before a smaller font is pushed
-		const auto Em = [unit](float mockupPixels) { return mockupPixels * unit; };
-		const float side = Em(kBannerSide);
-		const float width = ImGui::GetContentRegionAvail().x - 2.0f * side;
-
-		if (width <= 0.0f)
-		{
-			return;
-		}
-
-		Core::PushInterfaceFont(ImGui::GetFontSize() * kBannerText / kMockupFont);
-
-		const float padding = Em(kBannerAbove);
-		const float wrapWidth = width - 2.0f * side;
-		const ImVec2 textSize = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrapWidth);
-
-		ImGui::Dummy(ImVec2(0.0f, Em(kBannerAbove) * kHalf));
-
-		const ImVec2 origin = ImGui::GetCursorScreenPos();
-		const ImVec2 corner(origin.x + side, origin.y);
-		const ImVec2 size(width, textSize.y + 2.0f * padding);
-
-		ImDrawList* const drawList = ImGui::GetWindowDrawList();
-		drawList->AddRectFilled(corner, ImVec2(corner.x + size.x, corner.y + size.y), colours.ChipFill, Em(kBannerRounding));
-		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(corner.x + side, corner.y + padding),
-						  ImGui::GetColorU32(ImGuiCol_Text), text.c_str(), nullptr, wrapWidth);
-
-		ImGui::PopFont();
-
-		ImGui::SetCursorScreenPos(origin);
-		ImGui::Dummy(ImVec2(size.x + 2.0f * side, size.y + Em(kBannerBelow)));
 	}
 }

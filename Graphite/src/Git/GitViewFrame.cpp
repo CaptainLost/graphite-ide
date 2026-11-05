@@ -816,10 +816,8 @@ namespace Graphite {
 			RequestLog(HistoryReach{});
 		}
 
-		if (banner.has_value())
-		{
-			DrawHistoryBanner(*banner);
-		}
+		// Drawn by the list, under the Local changes row, which is on screen before the banner can come.
+		m_HistoryBanner = banner;
 
 		DrawVsPicker();
 	}

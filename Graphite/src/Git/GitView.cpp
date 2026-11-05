@@ -1331,6 +1331,7 @@ namespace Graphite {
 			m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()};
 
 			HistoryMarks marks = HistoryMarksFor(page);
+			marks.Banner = m_HistoryBanner;
 			const HistoryMarks broughtMarks = BroughtMarks();
 			marks.BroughtOf = broughtMarks.BroughtOf;
 			marks.BroughtFailure = broughtMarks.BroughtFailure;

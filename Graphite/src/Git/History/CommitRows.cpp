@@ -58,6 +58,11 @@ namespace Graphite {
 			rows.Rows.push_back(RowOfKind(CommitRowKind::LocalChanges));
 		}
 
+		if (extra.Banner)
+		{
+			rows.Rows.push_back(RowOfKind(CommitRowKind::Banner));
+		}
+
 		if (commitCount == 0 && (extra.LocalChanges || extra.Waiting))
 		{
 			rows.Rows.push_back(RowOfKind(CommitRowKind::Note));

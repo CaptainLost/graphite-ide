@@ -178,6 +178,23 @@ TEST_CASE("Git window: the local changes row and a fold row together each take a
 	CHECK(rows.RowOfCommit[1] == 3);
 }
 
+TEST_CASE("Git window: the banner row stands under the local changes row and above the commits")
+{
+	const CommitRows rows =
+		Graphite::BuildCommitRows(2, FileRowCountsFrom({0, 0}), ExtraRows{.LocalChanges = true, .Banner = true});
+
+	REQUIRE(rows.Rows.size() == 4);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::LocalChanges);
+	CHECK(rows.Rows[1].Kind == CommitRowKind::Banner);
+	CHECK(rows.RowOfCommit[0] == 2);
+
+	const CommitRows withoutLocalChanges = Graphite::BuildCommitRows(1, FileRowCountsFrom({0}), ExtraRows{.Banner = true});
+
+	REQUIRE(withoutLocalChanges.Rows.size() == 2);
+	CHECK(withoutLocalChanges.Rows[0].Kind == CommitRowKind::Banner);
+	CHECK(withoutLocalChanges.RowOfCommit[0] == 1);
+}
+
 TEST_CASE("Git window: with local changes and no commits one note row stands for the commits")
 {
 	const CommitRows rows = Graphite::BuildCommitRows(0, FileRowCountsFrom({}), ExtraRows{.LocalChanges = true});

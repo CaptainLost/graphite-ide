@@ -625,6 +625,7 @@ namespace Graphite {
 
 		const bool hasFold = marks.Fold.has_value() && marks.Fold->BeforeCommit < page.Commits.size();
 		const ExtraRows extra{.LocalChanges = marks.LocalChanges.has_value(),
+							  .Banner = marks.Banner.has_value(),
 							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt,
 							  .Waiting = marks.Waiting.has_value()};
 
@@ -756,6 +757,9 @@ namespace Graphite {
 						break;
 					case CommitRowKind::Note:
 						RenderNoteRow(marks.Waiting);
+						break;
+					case CommitRowKind::Banner:
+						RenderBannerRow(*marks.Banner);
 						break;
 					case CommitRowKind::Commit:
 					{
@@ -1106,6 +1110,15 @@ namespace Graphite {
 			ImGui::GetWindowDrawList()->AddLine(ImVec2(actionLeft, underline), ImVec2(ImGui::GetItemRectMax().x, underline),
 												actionInk, kUnderlineThickness);
 		}
+	}
+
+	void CommitListView::RenderBannerRow(const std::string& banner)
+	{
+		// The row is tinted as the banner above the list was, and says the sentence in the message column.
+		ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_FrameBg));
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+		DrawFittedCell(banner, ImGui::GetColorU32(ImGuiCol_Text), kNoHighlight);
+		ImGui::SetItemTooltip("%s", banner.c_str());
 	}
 
 	void CommitListView::RenderNoteRow(const std::optional<std::string>& waiting)

@@ -71,6 +71,10 @@ namespace Graphite {
 		// The page is on its way: one waiting row saying this stands in place of the commits.
 		std::optional<std::string> Waiting;
 
+		// A sentence about the shown reference, one row under the Local changes row, cut to the row and whole in its
+		// tooltip. Empty for none.
+		std::optional<std::string> Banner;
+
 		// Set in the Merges history: an opened merge lists the commits it brought, which this answers (null while they
 		// are being read), instead of its files.
 		std::function<Core::Ref<const Core::LogPage>(const Core::Oid&)> BroughtOf;
@@ -181,6 +185,7 @@ namespace Graphite {
 		void RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre);
 
 		void RenderFoldRow(const FoldRow& fold);
+		void RenderBannerRow(const std::string& banner);
 
 		void RenderNoteRow(const std::optional<std::string>& waiting);
 
