@@ -116,16 +116,6 @@ namespace Graphite {
 												text.data() + text.size());
 		}
 
-		std::string CountText(const SidebarRow& row)
-		{
-			if (row.Total.has_value())
-			{
-				return Core::FormatCount(row.Count) + " of " + Core::FormatCount(*row.Total);
-			}
-
-			return Core::FormatCount(row.Count);
-		}
-
 		std::string Uppercase(std::string_view text)
 		{
 			std::string upper(text);
@@ -334,7 +324,7 @@ namespace Graphite {
 				DrawText(ImVec2(left, top), title, heading);
 				left += WidthOf(heading) + Em(kGap);
 
-				const std::string count = CountText(row);
+				const std::string count = SectionCountText(row);
 				DrawText(ImVec2(left, top), dim, count);
 				left += WidthOf(count) + Em(kGap);
 
@@ -368,7 +358,7 @@ namespace Graphite {
 
 			{
 				const TextAtSize small(Em(kCountText));
-				const std::string count = CountText(row);
+				const std::string count = SectionCountText(row);
 				const float countLeft = box.Right - WidthOf(count);
 				DrawText(ImVec2(countLeft, CentredTop(box)), dim, count);
 				labelRight = countLeft - Em(kGap);

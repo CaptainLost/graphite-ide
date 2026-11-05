@@ -481,6 +481,21 @@ namespace Graphite {
 		return SidebarWaitingRow{.Text = std::string("Reading branches") + kEllipsis};
 	}
 
+	std::string SectionCountText(const SidebarRow& row)
+	{
+		if (!row.Counted)
+		{
+			return kEllipsis;
+		}
+
+		if (row.Total.has_value())
+		{
+			return Core::FormatCount(row.Count) + " of " + Core::FormatCount(*row.Total);
+		}
+
+		return Core::FormatCount(row.Count);
+	}
+
 	SidebarRowText DescribeStashRow(const Core::StashEntry& stash, std::chrono::sys_seconds now,
 									const std::chrono::time_zone* zone)
 	{

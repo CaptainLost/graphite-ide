@@ -509,3 +509,23 @@ TEST_CASE("Git window: a row with a worktree carries its path")
 	CHECK(DescribeSidebarRow(BranchRow(inTree), input).Dirty == true);
 	CHECK_FALSE(DescribeSidebarRow(BranchRow(alone), input).Dirty.has_value());
 }
+
+TEST_CASE("Git window: a section's count shows an ellipsis while its list is unread and the number once read")
+{
+	SidebarRow stashes;
+	stashes.Kind = SidebarRowKind::Section;
+	stashes.Section = SidebarSection::Stashes;
+	stashes.Count = 0;
+	stashes.Counted = false;
+
+	CHECK(SectionCountText(stashes) == "\xE2\x80\xA6");
+
+	stashes.Counted = true;
+	CHECK(SectionCountText(stashes) == "0");
+
+	stashes.Count = 3448;
+	CHECK(SectionCountText(stashes) == "3,448");
+
+	stashes.Total = 5000;
+	CHECK(SectionCountText(stashes) == "3,448 of 5,000");
+}

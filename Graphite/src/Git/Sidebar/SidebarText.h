@@ -87,6 +87,9 @@ namespace Graphite {
 	// Empty once a read of the lines is in hand: a later failure leaves its rows on screen.
 	std::optional<SidebarWaitingRow> DescribeSidebarWait(const SidebarWaitInput& input);
 
+	// A section header's count: "…" holds its place while the list is unread, then the number, "n of total" while searching.
+	std::string SectionCountText(const SidebarRow& row);
+
 	// Line 1 the first line of the message, its age at the right, and the message with when it was made in the tooltip.
 	SidebarRowText DescribeStashRow(const Core::StashEntry& stash, std::chrono::sys_seconds now,
 									const std::chrono::time_zone* zone);
