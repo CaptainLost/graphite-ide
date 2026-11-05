@@ -10,11 +10,14 @@
 
 #include <imgui.h>
 
+#include <IconsLucide.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -46,6 +49,12 @@ namespace Graphite {
 		constexpr float kHeadingText = 11.0f;
 		constexpr float kChipText = 10.5f;
 		constexpr float kFootText = 11.5f;
+
+		constexpr float kFindIcon = 12.0f;
+		constexpr ImWchar kFirstPrintable = 32;
+
+		// The footer's phrases that name the menu's entries, drawn in the bold face.
+		constexpr const char* kFooterBold[] = {"Use as base", "Stop using as base"};
 
 		constexpr const char* kAutoChip = "auto";
 		constexpr const char* kGuessedChip = "guessed";
@@ -193,6 +202,112 @@ namespace Graphite {
 			return clicked;
 		}
 
+		// The mockup's "Another branch…" row: the search icon and the hint, dim, in an option row's height; true when clicked.
+		bool DrawFindRow(const std::string& hint, float width, const WindowBarColours& colours)
+		{
+			const float height = Em(kRowHeight);
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const bool clicked = ImGui::Selectable("##find", false, ImGuiSelectableFlags_None, ImVec2(width, height));
+
+			ImDrawList* const drawList = ImGui::GetWindowDrawList();
+			const float side = Em(kSide);
+			const float iconSize = Em(kFindIcon);
+			const float textTop = origin.y + (height - ImGui::GetTextLineHeight()) * kHalf;
+
+			drawList->AddText(ImGui::GetFont(), iconSize, ImVec2(origin.x + side, origin.y + (height - iconSize) * kHalf), colours.Dim,
+							  ICON_LC_SEARCH);
+			drawList->AddText(ImVec2(origin.x + side + iconSize + Em(kGap), textTop), colours.Dim,
+							  FitToWidth(hint, width - 2.0f * side - iconSize - Em(kGap)).c_str());
+
+			return clicked;
+		}
+
+		// The search field in the place and height of the find row.
+		void DrawFindField(std::string& search, float width, bool focus)
+		{
+			const float rowHeight = Em(kRowHeight);
+			const float frameHeight = ImGui::GetFrameHeight();
+			const float start = ImGui::GetCursorPosY();
+
+			ImGui::SetCursorPos(ImVec2(Em(kSide), start + std::max(0.0f, (rowHeight - frameHeight) * kHalf)));
+
+			if (focus)
+			{
+				ImGui::SetKeyboardFocusHere();
+			}
+
+			DrawFilterField("##search", search, FilterFieldLook{.Hint = "", .Width = width - 2.0f * Em(kSide)});
+
+			ImGui::SetCursorPosY(start);
+			ImGui::Dummy(ImVec2(width, std::max(rowHeight, frameHeight)));
+		}
+
+		struct FooterWord
+		{
+			std::string Text;
+			bool Bold = false;
+			bool SpaceBefore = false;
+		};
+
+		// The footer cut into words, each knowing whether it stands in a bold phrase and whether a space precedes it.
+		std::vector<FooterWord> FooterWordsOf(const std::string& footer)
+		{
+			struct Run
+			{
+				std::string Text;
+				bool Bold;
+			};
+
+			std::vector<Run> runs{Run{footer, false}};
+
+			for (const char* phrase : kFooterBold)
+			{
+				std::vector<Run> next;
+
+				for (Run& run : runs)
+				{
+					const std::size_t at = run.Bold ? std::string::npos : run.Text.find(phrase);
+
+					if (at == std::string::npos)
+					{
+						next.push_back(std::move(run));
+						continue;
+					}
+
+					next.push_back(Run{run.Text.substr(0, at), false});
+					next.push_back(Run{phrase, true});
+					next.push_back(Run{run.Text.substr(at + std::string(phrase).size()), false});
+				}
+
+				runs = std::move(next);
+			}
+
+			std::vector<FooterWord> words;
+			bool spaceBefore = false;
+
+			for (const Run& run : runs)
+			{
+				std::size_t at = 0;
+
+				while (at < run.Text.size())
+				{
+					if (run.Text[at] == ' ')
+					{
+						spaceBefore = true;
+						++at;
+						continue;
+					}
+
+					const std::size_t end = std::min(run.Text.find(' ', at), run.Text.size());
+					words.push_back(FooterWord{run.Text.substr(at, end - at), run.Bold, spaceBefore});
+					spaceBefore = false;
+					at = end;
+				}
+			}
+
+			return words;
+		}
+
 		void DrawTitle(const VsPicker& picker, float width, const WindowBarColours& colours)
 		{
 			const float left = Em(kSide);
@@ -218,9 +333,11 @@ namespace Graphite {
 			const float nameWidth = Em(kNameWidth);
 
 			ImGui::SetCursorPosX(left);
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 			ImGui::PushStyleColor(ImGuiCol_Text, base.OldCopy ? colours.Dim : ImGui::GetColorU32(ImGuiCol_Text));
 			ImGui::TextUnformatted(FitToWidth(base.Name, nameWidth).c_str());
 			ImGui::PopStyleColor();
+			ImGui::PopFont();
 
 			ImGui::SameLine(left + nameWidth + Em(kBaseLineGap));
 			ImGui::PushTextWrapPos(width - left);
@@ -261,11 +378,48 @@ namespace Graphite {
 
 			Core::PushInterfaceFont(ImGui::GetFontSize() * kFootText / kMockupFont);
 			ImGui::SetCursorPosX(Em(kSide));
-			ImGui::PushTextWrapPos(width - Em(kSide));
-			ImGui::PushStyleColor(ImGuiCol_Text, colours.Dim);
-			ImGui::TextWrapped("%s", picker.Footer.c_str());
-			ImGui::PopStyleColor();
-			ImGui::PopTextWrapPos();
+
+			// Wrapped word by word, as the entries named in bold change the face mid-line.
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const float right = origin.x + width - 2.0f * Em(kSide);
+			const float lineHeight = ImGui::GetTextLineHeight();
+			const float spaceWidth = Core::TextWidth(" ");
+			const float size = ImGui::GetFontSize();
+			ImDrawList* const drawList = ImGui::GetWindowDrawList();
+
+			float x = origin.x;
+			float y = origin.y;
+
+			for (const FooterWord& word : FooterWordsOf(picker.Footer))
+			{
+				if (word.Bold)
+				{
+					ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), size);
+				}
+
+				const float wordWidth = Core::TextWidth(word.Text);
+				const float gap = word.SpaceBefore && x > origin.x ? spaceWidth : 0.0f;
+
+				if (x > origin.x && x + gap + wordWidth > right)
+				{
+					x = origin.x;
+					y += lineHeight;
+				}
+				else
+				{
+					x += gap;
+				}
+
+				drawList->AddText(ImVec2(x, y), word.Bold ? ImGui::GetColorU32(ImGuiCol_Text) : colours.Dim, word.Text.c_str());
+				x += wordWidth;
+
+				if (word.Bold)
+				{
+					ImGui::PopFont();
+				}
+			}
+
+			ImGui::Dummy(ImVec2(width, y + lineHeight - origin.y));
 			ImGui::PopFont();
 		}
 	}
@@ -276,7 +430,51 @@ namespace Graphite {
 		m_PopupRequested = true;
 		m_Branch = std::move(branch);
 		m_Search.clear();
+		m_Searching = false;
+		m_FocusSearch = false;
+		m_SearchWasActive = false;
 		m_Below = below;
+	}
+
+	// A character typed while the picker is open starts the search; the field takes the character in this same frame.
+	void VsPickerView::DrawAnotherBranch(const VsOption& option, float width, const WindowBarColours& colours)
+	{
+		const ImGuiIO& io = ImGui::GetIO();
+		const bool typed = !io.KeyCtrl && !io.KeyAlt && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+						   std::any_of(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end(),
+									   [](ImWchar character) { return character >= kFirstPrintable; });
+
+		if (!m_Searching && typed)
+		{
+			m_Searching = true;
+			m_FocusSearch = true;
+			m_SearchWasActive = false;
+		}
+
+		if (!m_Searching)
+		{
+			if (DrawFindRow(option.Name + " " + option.Why, width, colours))
+			{
+				m_Searching = true;
+				m_FocusSearch = true;
+				m_SearchWasActive = false;
+			}
+
+			return;
+		}
+
+		DrawFindField(m_Search, width, m_FocusSearch);
+		m_FocusSearch = false;
+
+		// Esc or the clear button leaves the field empty and unfocused: the row comes back.
+		const bool active = ImGui::IsAnyItemActive();
+
+		if (m_SearchWasActive && !active && m_Search.empty())
+		{
+			m_Searching = false;
+		}
+
+		m_SearchWasActive = active;
 	}
 
 	std::optional<LineAnswerChange> VsPickerView::Draw(const Drawing& drawing)
@@ -353,10 +551,7 @@ namespace Graphite {
 
 			if (option.What == VsOption::Kind::AnotherBranch)
 			{
-				const std::string hint = option.Name + " " + option.Why;
-
-				ImGui::SetCursorPosX(Em(kSide));
-				DrawFilterField("##search", m_Search, FilterFieldLook{.Hint = hint.c_str(), .Width = width - 2.0f * Em(kSide)});
+				DrawAnotherBranch(option, width, drawing.Colours);
 			}
 			else if (DrawOptionRow(option, drawing.Read, width, drawing.Colours))
 			{

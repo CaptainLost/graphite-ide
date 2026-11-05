@@ -50,10 +50,17 @@ namespace Graphite {
 		static constexpr const char* kPopupId = "##vsPicker";
 
 	private:
+		void DrawAnotherBranch(const VsOption& option, float width, const WindowBarColours& colours);
+
 		bool m_Open = false;
 		bool m_PopupRequested = false;
 		std::string m_Branch;
 		std::string m_Search;
+
+		// The "Another branch…" row is the search field while this holds.
+		bool m_Searching = false;
+		bool m_FocusSearch = false;
+		bool m_SearchWasActive = false;
 		ImVec2 m_Below{};
 	};
 }
