@@ -43,7 +43,8 @@ namespace Graphite {
 		constexpr float kGap = 6.0f;
 		constexpr float kTwoLineGap = 8.0f;
 		constexpr float kLeadSlot = 14.0f;
-		constexpr float kRefLeadSlot = 10.0f;
+		constexpr float kRefLeadSlot = 10.0f; // the head dot is centred in this
+		constexpr float kRefTextLead = 14.0f; // the lead place a two-line row's text starts after: 8 + 14 + 8 from the row's edge
 		constexpr float kChevronSize = 12.0f;
 		constexpr float kIconSize = 13.0f;
 		constexpr float kSmallText = 11.5f;
@@ -528,7 +529,7 @@ namespace Graphite {
 						const SidebarColours& colours, const std::vector<std::string>& searchWords)
 		{
 			const float left = IndentedLeft(box, row);
-			const float textLeft = left + Em(kRefLeadSlot) + Em(kTwoLineGap);
+			const float textLeft = left + Em(kRefTextLead) + Em(kTwoLineGap);
 			float textRight = box.Right;
 
 			if (text.IsHead)
