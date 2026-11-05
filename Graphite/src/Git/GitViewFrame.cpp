@@ -185,11 +185,16 @@ namespace Graphite {
 		const bool showsHeadFailure = headFailed && m_WindowBarSettled.has_value();
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
 
+		// WARNING: The last failed read is said in the bar, whose height is fixed: drawn as a line after the window's table
+		// it stood below the window's room and made the whole window scroll.
+		const std::optional<Core::Error>& lastError = m_Model.GetLastError();
+
 		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
 										   .WorkingDirectory = folder,
 										   .HeadFailure = showsHeadFailure ? std::string_view{headError->Message} : std::string_view{},
 										   .Colours = colours,
-										   .Bleed = ImGui::GetStyle().WindowPadding}))
+										   .Bleed = ImGui::GetStyle().WindowPadding,
+										   .Problem = lastError.has_value() ? std::string_view{lastError->Message} : std::string_view{}}))
 		{
 			SelectRef(std::nullopt);
 		}

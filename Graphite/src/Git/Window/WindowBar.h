@@ -63,6 +63,7 @@ namespace Graphite {
 		ImU32 AskFill = 0;
 		ImU32 AskQuestion = 0;
 		ImU32 Automatic = 0; // the ink of the picker's "auto" chip, the green of a base that holds a commit
+		ImU32 Problem = 0;   // a failed read said at the bar's end
 	};
 
 	WindowBarColours ReadWindowBarColours(const ResolvedScheme& scheme);
@@ -83,6 +84,10 @@ namespace Graphite {
 		// How far the bar reaches past the cursor on the left, the right and the top, to meet the window's edges: the
 		// window's padding. The cursor lands where it would have without it, so what follows keeps its padding.
 		ImVec2 Bleed{};
+
+		// A read of the repository that failed, said at the bar's right end, cut to the room left and whole in its tooltip;
+		// empty otherwise. The bar's height holds it, so it never pushes the window's content down.
+		std::string_view Problem;
 	};
 
 	// One bar high across the available width, ending on an item. True when the HEAD chip was clicked.

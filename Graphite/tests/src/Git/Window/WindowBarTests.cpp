@@ -6,6 +6,7 @@
 #include "Theme/BuiltInSchemes.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <filesystem>
 #include <string>
@@ -183,6 +184,44 @@ TEST_CASE("Git window: the bar is drawn one bar high and ends on an item")
 
 	CHECK(height == doctest::Approx(Graphite::WindowBarEm(36.0f)));
 	CHECK(height > fontSize);
+}
+
+TEST_CASE("Git window: a failed read is said at the bar's end without widening the window")
+{
+	ImGuiFrames frames;
+	const Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+	const Graphite::WindowBarText text = Describe(&head, &branches, &remotes);
+	const std::string problem = "cannot diff: object not found - no match for id " + std::string(400, '0');
+
+	float height = 0.0f;
+	float reached = 0.0f;
+	float contentRight = 0.0f;
+
+	for (int frame = 0; frame < 2; ++frame)
+	{
+		frames.Next([&] {
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(900.0f, 200.0f));
+			ImGui::Begin("WindowBarProblemHarness", nullptr,
+						 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+
+			const float top = ImGui::GetCursorPosY();
+			contentRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+			const Graphite::WindowBarColours colours = Graphite::ReadWindowBarColours(scheme);
+			Graphite::DrawWindowBar(Graphite::WindowBarDrawing{
+				.Text = text, .WorkingDirectory = kFolder, .Colours = colours, .Problem = problem});
+			height = ImGui::GetCursorPosY() - top - ImGui::GetStyle().ItemSpacing.y;
+			reached = ImGui::GetCurrentWindow()->DC.CursorMaxPos.x;
+
+			ImGui::End();
+		});
+	}
+
+	CHECK(height == doctest::Approx(Graphite::WindowBarEm(36.0f)));
+	CHECK(reached <= contentRight + 0.5f);
 }
 
 TEST_CASE("Git window: the bar waits while HEAD is known and the remotes are not")

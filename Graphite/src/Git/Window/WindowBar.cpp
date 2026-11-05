@@ -290,6 +290,27 @@ namespace Graphite {
 			return width;
 		}
 
+		// A failed read, right-aligned between `left` and `right`, cut to fit, with the whole message in the tooltip.
+		void DrawProblem(const WindowBarDrawing& drawing, float left, float right, float centreY)
+		{
+			const float room = right - left;
+			const std::string shown = FitToWidth(drawing.Problem, room);
+
+			if (shown.empty())
+			{
+				return;
+			}
+
+			const float width = WidthOf(shown);
+			const ImVec2 at(right - width, centreY - ImGui::GetTextLineHeight() * kHalf);
+
+			ImGui::GetWindowDrawList()->AddText(at, drawing.Colours.Problem, shown.c_str());
+
+			ImGui::SetCursorScreenPos(at);
+			ImGui::Dummy(ImVec2(width, ImGui::GetTextLineHeight()));
+			ShowTooltipOfLastItem(std::string{drawing.Problem});
+		}
+
 		// The remotes in a step smaller text, centred on `centreY`; returns the width it took.
 		float DrawRemotes(const WindowBarDrawing& drawing, float left, float centreY, float room)
 		{
@@ -370,6 +391,7 @@ namespace Graphite {
 		colours.AskFill = Mixed(background, warning, kAskTint);
 		colours.AskQuestion = Mixed(warning, text, kLighterShare);
 		colours.Automatic = ReadGitPalette(scheme).GutterAdded;
+		colours.Problem = warning;
 
 		return colours;
 	}
@@ -399,6 +421,11 @@ namespace Graphite {
 		x += 1.0f + gap;
 
 		const bool clicked = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), right - x);
+
+		if (!drawing.Problem.empty())
+		{
+			DrawProblem(drawing, ImGui::GetItemRectMax().x + gap, right, centreY);
+		}
 
 		// The bar is one item high however many it drew, so the cursor lands below it, as far down as without the bleed.
 		// WARNING: The item keeps to the content region's width, so the bleed, which only the rule and the room for the

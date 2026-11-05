@@ -558,11 +558,6 @@ namespace Graphite {
 			ImGui::EndTable();
 		}
 
-		if (const std::optional<Core::Error>& error = m_Model.GetLastError(); error.has_value())
-		{
-			ImGui::TextUnformatted(error->Message.c_str());
-		}
-
 		RenderDetachDialog();
 		RenderCheckoutDialog();
 		RenderBranchNameDialog(m_NewBranchQuestion);
