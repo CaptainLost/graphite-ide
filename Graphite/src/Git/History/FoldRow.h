@@ -4,6 +4,7 @@
 #include "Git/Lines/LineReader.h"
 
 #include "Core/Git/Commit.h"
+#include "Core/Git/Lines/LineQuestions.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Requests.h"
 
@@ -66,6 +67,10 @@ namespace Graphite {
 		std::string Text;
 		std::string Action;
 	};
+
+	// How many rows Show them adds, the fold row's count: the line's newer commits on its first-parent chain in a history of
+	// first parents only (Merges), every newer commit in one with the full graph.
+	std::size_t NewerRowsOf(const Core::LineDistance& distance, bool firstParentsOnly);
 
 	// WARNING: A folded line's fold row is drawn only with its count. Drawn with an ellipsis, it would go again when
 	// the count lands as nothing newer and move every row under it, so the rows wait for the count with it. `behind`

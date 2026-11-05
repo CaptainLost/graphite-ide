@@ -77,6 +77,29 @@ TEST_CASE("Lines: distance across a merge counts the merged commits")
 	CHECK(sideways.ForkTime == GraphBuilder::Seconds(0));
 }
 
+TEST_CASE("Lines: behind along first parents counts only the commits on the line's own first-parent chain")
+{
+	// main: m1 - m2 - m4 (a merge of f2) - m5; the branch b forked at m1. Behind b, main has m2, f1, f2, m4 and m5, but
+	// only m2, m4 and m5 on its first-parent chain.
+	GraphBuilder builder;
+	builder.Commit("m1", {}, 0);
+	builder.Commit("b1", {"m1"}, 1);
+	builder.Commit("m2", {"m1"}, 2);
+	builder.Commit("f1", {"m2"}, 3);
+	builder.Commit("f2", {"f1"}, 4);
+	builder.Commit("m4", {"m2", "f2"}, 5);
+	builder.Commit("m5", {"m4"}, 6);
+
+	const Core::LineDistance distance = Distance(builder, "b1", "m5");
+	CHECK(distance.Behind == 5);
+	CHECK(distance.BehindOnFirstParents == 3);
+	CHECK(distance.Ahead == 1);
+
+	CHECK(Distance(builder, "m5", "b1").BehindOnFirstParents == 1);
+	CHECK(Distance(builder, "m5", "m4").BehindOnFirstParents == 0);
+	CHECK(Distance(builder, "m5", "m5").BehindOnFirstParents == 0);
+}
+
 TEST_CASE("Lines: unrelated histories have no fork")
 {
 	GraphBuilder builder;

@@ -1034,7 +1034,7 @@ namespace Graphite {
 
 			if (const std::optional<Core::LineDistance> distance = m_Lines.DistanceOf(line.BranchTip, line.LineTip))
 			{
-				behind = distance->Behind;
+				behind = NewerRowsOf(*distance, shown->FirstParentOnly);
 			}
 		}
 
@@ -1093,13 +1093,16 @@ namespace Graphite {
 			return marks;
 		}
 
+		// Counted as the page is walked: a Merges history shows the line's newer commits on its first parents only.
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+		const bool firstParentsOnly = shown.has_value() && shown->FirstParentOnly;
 		std::optional<std::size_t> behind;
 
 		if (line.Fold != LineFold::None)
 		{
 			if (const std::optional<Core::LineDistance> distance = m_Lines.DistanceOf(line.BranchTip, line.LineTip))
 			{
-				behind = distance->Behind;
+				behind = NewerRowsOf(*distance, firstParentsOnly);
 			}
 		}
 

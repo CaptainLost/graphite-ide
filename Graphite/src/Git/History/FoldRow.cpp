@@ -146,6 +146,11 @@ namespace Graphite {
 		return marked;
 	}
 
+	std::size_t NewerRowsOf(const Core::LineDistance& distance, bool firstParentsOnly)
+	{
+		return firstParentsOnly ? distance.BehindOnFirstParents : distance.Behind;
+	}
+
 	bool RowsWaitForFoldCount(const HistoryLine& line, const Core::LogRequest& log, std::optional<std::size_t> behind)
 	{
 		const bool asksOwnCommits = line.Fold == LineFold::Folded && MarkedQueryFor(line, log).has_value();

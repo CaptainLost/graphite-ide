@@ -107,6 +107,35 @@ namespace Core {
 			}
 		}
 
+		// After a finished distance walk the marks are final for every commit `to` reaches and `from` does not: each was
+		// taken from the queue, and its first parent reached. The count stops at the first commit `from` reaches too.
+		std::size_t CountOnlyToAlongFirstParents(const DistanceWalk& walk, Index to)
+		{
+			std::size_t count = 0;
+			Index commit = to;
+
+			while (true)
+			{
+				const std::unordered_map<Index, std::uint8_t>::const_iterator found = walk.Marks.find(commit);
+
+				if (found == walk.Marks.end() || found->second != kFromTo)
+				{
+					return count;
+				}
+
+				++count;
+
+				const std::span<const Index> parents = walk.Graph.ParentsOf(commit);
+
+				if (parents.empty())
+				{
+					return count;
+				}
+
+				commit = parents.front();
+			}
+		}
+
 		// A first-parent step lowers the generation, so the walk ends once it is no higher than the target: at most
 		// the generations between the two.
 		bool IsOnFirstParentChain(const AncestryGraph& graph, std::span<const std::uint32_t> generations, Index target, Index start)
@@ -207,6 +236,7 @@ namespace Core {
 
 		distance.ForkTime = walk.NewestSharedTime;
 		distance.ForkOnLine = walk.NewestShared != AncestryGraph::kNoCommit && IsOnFirstParentChain(graph, generations, walk.NewestShared, to);
+		distance.BehindOnFirstParents = CountOnlyToAlongFirstParents(walk, to);
 		return distance;
 	}
 

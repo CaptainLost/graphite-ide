@@ -17,6 +17,9 @@ namespace Core {
 		std::optional<std::int64_t> ForkTime; // committer time of the newest commit both reach; empty when none
 		bool ForkOnLine = false;              // that commit is on `to`'s first-parent chain
 
+		// Of Behind, those on `to`'s first-parent chain: the rows a first-parent history of `to` has that `from` lacks.
+		std::size_t BehindOnFirstParents = 0;
+
 		friend bool operator==(const LineDistance&, const LineDistance&) = default;
 	};
 

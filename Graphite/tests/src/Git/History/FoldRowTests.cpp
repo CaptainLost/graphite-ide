@@ -340,6 +340,14 @@ TEST_CASE("Git window: an opened history without marks or without such a commit 
 	CHECK_FALSE(Graphite::StartingCommit(PageOf({}), nullptr, nullptr).has_value());
 }
 
+TEST_CASE("Git window: the fold row counts the rows Show them adds: first parents in Merges and every commit in All commits")
+{
+	const Core::LineDistance distance{.Ahead = 2, .Behind = 53, .ForkTime = std::nullopt, .ForkOnLine = true, .BehindOnFirstParents = 3};
+
+	CHECK(Graphite::NewerRowsOf(distance, true) == 3);
+	CHECK(Graphite::NewerRowsOf(distance, false) == 53);
+}
+
 TEST_CASE("Git window: a base with a pick folds its history against the pick and shows it when asked")
 {
 	Scene scene = MakeScene();
