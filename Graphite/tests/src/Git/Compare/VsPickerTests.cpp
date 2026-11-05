@@ -340,6 +340,40 @@ TEST_CASE("Git window: a branch the read lacks has no picker")
 	CHECK(Build(scene, "refs/heads/gone").Title.empty());
 }
 
+TEST_CASE("Git window: a base and its local copy with no commits of its own are compared with nothing by the rule")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+
+	const std::size_t base = builder.AddRemoteBranch("origin", "develop");
+	builder.MakeBase(base);
+	const std::size_t other = builder.AddRemoteBranch("origin", "release");
+	builder.MakeBase(other);
+	const std::size_t copy = builder.AddLocal("develop", Graphite::Fixtures::BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(copy, base);
+	builder.Compare(copy, base);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.FeatureLine().Kind = Core::ComparedKind::Base;
+	scene.FeatureLine().AutomaticKind = Core::ComparedKind::Base;
+	scene.FeatureLine().AutomaticComparedWith = base;
+
+	for (const std::string ref : {"refs/remotes/origin/develop", "refs/heads/develop"})
+	{
+		const VsPicker picker = Build(scene, ref);
+		const VsOption* const nothing = OptionOf(picker, VsOption::Kind::Nothing);
+
+		REQUIRE(nothing != nullptr);
+		CHECK(nothing->Chosen);
+		CHECK(nothing->Automatic);
+		CHECK(OptionOf(picker, VsOption::Kind::Base, "origin/develop") == nullptr);
+		CHECK(OptionOf(picker, VsOption::Kind::Base, "origin/release") != nullptr);
+	}
+
+	CHECK(Build(scene, "refs/heads/develop").Title == "Compare develop with");
+}
+
 TEST_CASE("Git window: the picker offers a quiet base only when the branch is compared with it")
 {
 	LineReadBuilder builder;

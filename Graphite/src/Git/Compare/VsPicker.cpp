@@ -99,26 +99,31 @@ namespace Graphite {
 				   " behind it), so it is never a line of its own";
 		}
 
-		bool HasPlaceInRead(const VsPickerInput& input, const Core::BranchLine* line)
+		bool HasPlaceInRead(const VsPickerInput& input, const Core::BranchLine* line, std::string_view shown)
 		{
-			return line != nullptr || input.Lines.BaseNamed(input.Branch) != nullptr || input.Lines.OldCopyNamed(input.Branch) != nullptr;
+			return line != nullptr || input.Lines.BaseNamed(shown) != nullptr || input.Lines.OldCopyNamed(shown) != nullptr;
 		}
 	}
 
 	VsPicker BuildVsPicker(const VsPickerInput& input)
 	{
 		VsPicker picker;
-		const std::optional<std::size_t> self = input.Lines.IndexOf(input.Branch);
-		const Core::BranchLine* const line = input.Lines.LineOf(input.Branch);
 
-		if (!self.has_value() || !HasPlaceInRead(input, line))
+		// A base's local copy with no commits of its own is offered what its base is.
+		const std::string_view shown = input.Lines.ShownAs(input.Branch);
+		const std::optional<std::size_t> named = input.Lines.IndexOf(input.Branch);
+		const std::optional<std::size_t> self = input.Lines.IndexOf(shown);
+		const Core::BranchLine* const line = input.Lines.LineOf(shown);
+		const bool isBase = input.Lines.BaseNamed(shown) != nullptr;
+
+		if (!named.has_value() || !self.has_value() || !HasPlaceInRead(input, line, shown))
 		{
 			return picker;
 		}
 
 		const LineRead& read = input.Read;
 
-		picker.Subject = LineNameOf(read, *self);
+		picker.Subject = LineNameOf(read, *named);
 		picker.Title = "Compare " + picker.Subject + " with";
 		picker.Footer =
 			"A branch is compared with the line it forked from: the branch it is built on, a release line, or a base. Where lines part, "
@@ -176,8 +181,9 @@ namespace Graphite {
 		nothing.What = VsOption::Kind::Nothing;
 		nothing.Name = "Nothing";
 		nothing.Why = "the branch on its own";
-		nothing.Automatic = line != nullptr && !line->AutomaticComparedWith.has_value();
-		nothing.Chosen = line != nullptr && !line->ComparedWith.has_value();
+		// A base is shown on its own unless the user picks a line for it.
+		nothing.Automatic = isBase || (line != nullptr && !line->AutomaticComparedWith.has_value());
+		nothing.Chosen = isBase || (line != nullptr && !line->ComparedWith.has_value());
 		picker.Options.push_back(std::move(nothing));
 
 		for (const Core::LineBase& base : read.Model.Bases)
