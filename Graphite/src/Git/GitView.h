@@ -192,8 +192,10 @@ namespace Graphite {
 		void RenderSidebar();
 		void RebuildSidebarWhenOutOfDate();
 
-		// What a row stands for in the snapshots its rows were built from; null for another kind of row.
-		const Core::Branch* SidebarBranchOf(const SidebarRow& row) const;
+		// What a row stands for in the snapshots its rows were built from; null for another kind of row. A base row stands
+		// for its local copy too: the branch it opens and the branch its menu is for are given by RefOpenedBy and
+		// RefOfRowMenu.
+		const Core::Branch* SidebarBranchAt(std::optional<std::size_t> ref) const;
 		const Core::StashEntry* SidebarStashOf(const SidebarRow& row) const;
 
 		SidebarRowText SidebarTextOf(const SidebarRow& row) const;
@@ -228,11 +230,12 @@ namespace Graphite {
 		// Opens the menu on a right-click of the last item.
 		void RenderRefMenu(const Core::Branch& branch);
 
-		// Fills a menu already open.
-		void RenderRefMenuItems(const Core::Branch& branch);
+		// Fills a menu already open. The lines items are for `linesFor`, the full name of the branch itself or of the
+		// base whose row the branch is the local copy in.
+		void RenderRefMenuItems(const Core::Branch& branch, const std::string& linesFor);
 
 		void RenderReviewItem(const Core::Branch& branch);
-		void RenderLineItems(const Core::Branch& branch);
+		void RenderLineItems(const std::string& linesFor);
 		void RenderWorktreeItem(const Core::Branch& branch);
 		void DrawReviewMenuItems(const std::vector<ReviewMenuItem>& items);
 

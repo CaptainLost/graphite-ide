@@ -623,11 +623,11 @@ namespace Graphite {
 			return;
 		}
 
-		RenderRefMenuItems(branch);
+		RenderRefMenuItems(branch, branch.FullName);
 		ImGui::EndPopup();
 	}
 
-	void GitView::RenderRefMenuItems(const Core::Branch& branch)
+	void GitView::RenderRefMenuItems(const Core::Branch& branch, const std::string& linesFor)
 	{
 		const bool notSelected = false;
 		const char* const noShortcut = nullptr;
@@ -677,7 +677,7 @@ namespace Graphite {
 		ImGui::EndDisabled();
 		RenderWorktreeItem(branch);
 		RenderReviewItem(branch);
-		RenderLineItems(branch);
+		RenderLineItems(linesFor);
 
 		ImGui::Separator();
 
@@ -720,13 +720,13 @@ namespace Graphite {
 		}
 	}
 
-	void GitView::RenderLineItems(const Core::Branch& branch)
+	void GitView::RenderLineItems(const std::string& linesFor)
 	{
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
 		const BranchLines* const lines = CurrentLines();
 
 		// A base's local copy answers for the base its row shows.
-		const std::string shown = lines != nullptr ? std::string{lines->ShownAs(branch.FullName)} : branch.FullName;
+		const std::string shown = lines != nullptr ? std::string{lines->ShownAs(linesFor)} : linesFor;
 		const BranchMenu menu = MenuFor(read.get(), lines, shown);
 
 		if (!menu.CompareWith && !menu.UseAsBase && !menu.StopUsingAsBase && !menu.UseAsMainLine)
@@ -738,8 +738,8 @@ namespace Graphite {
 
 		if (menu.CompareWith && ImGui::MenuItem("Compare with…"))
 		{
-			SelectRef(branch.FullName);
-			m_VsPicker.Open(branch.FullName, ImGui::GetMousePos());
+			SelectRef(linesFor);
+			m_VsPicker.Open(linesFor, ImGui::GetMousePos());
 		}
 
 		if (menu.UseAsBase && ImGui::MenuItem("Use as base"))

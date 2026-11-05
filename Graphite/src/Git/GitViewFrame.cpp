@@ -295,16 +295,16 @@ namespace Graphite {
 		m_SidebarBuiltFrom = std::move(inputs);
 	}
 
-	const Core::Branch* GitView::SidebarBranchOf(const SidebarRow& row) const
+	const Core::Branch* GitView::SidebarBranchAt(std::optional<std::size_t> ref) const
 	{
 		const Core::Ref<const LineRead>& read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read : nullptr;
 
-		if (!read || !read->Branches || !row.Ref.has_value() || *row.Ref >= read->Branches->size())
+		if (!read || !read->Branches || !ref.has_value() || *ref >= read->Branches->size())
 		{
 			return nullptr;
 		}
 
-		return &(*read->Branches)[*row.Ref];
+		return &(*read->Branches)[*ref];
 	}
 
 	const Core::StashEntry* GitView::SidebarStashOf(const SidebarRow& row) const
@@ -380,7 +380,11 @@ namespace Graphite {
 		{
 		case SidebarRowKind::Branch:
 		case SidebarRowKind::Base:
-			if (const Core::Branch* branch = SidebarBranchOf(row))
+		{
+			const std::optional<std::size_t> opened =
+				m_SidebarLines.has_value() ? RefOpenedBy(row, *m_SidebarBuiltFrom->Read, *m_SidebarLines) : std::nullopt;
+
+			if (const Core::Branch* branch = SidebarBranchAt(opened))
 			{
 				// WARNING: The rows can be a read behind the branches, so a row clicked may name a branch already gone;
 				// its history is then HEAD's, as for a shown branch that goes.
@@ -390,6 +394,7 @@ namespace Graphite {
 				SelectRef(isStillThere ? std::optional<std::string>{branch->FullName} : std::nullopt);
 			}
 			return;
+		}
 		case SidebarRowKind::Stash:
 			if (const Core::StashEntry* stash = SidebarStashOf(row))
 			{
@@ -439,8 +444,11 @@ namespace Graphite {
 	void GitView::DrawSidebarRowMenu(const SidebarRow& row)
 	{
 		const bool isStash = row.Kind == SidebarRowKind::Stash;
-		const Core::Branch* branch = isStash ? nullptr : SidebarBranchOf(row);
+		const Core::Branch* branch = isStash ? nullptr : SidebarBranchAt(RefOfRowMenu(row));
 		const Core::StashEntry* stash = isStash ? SidebarStashOf(row) : nullptr;
+
+		// A base row's lines items are the base's, whichever branch its menu is for.
+		const Core::Branch* const linesBranch = row.Kind == SidebarRowKind::Base ? SidebarBranchAt(row.Ref) : branch;
 
 		std::string shownFor;
 
@@ -466,9 +474,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (branch != nullptr)
+		if (branch != nullptr && linesBranch != nullptr)
 		{
-			RenderRefMenuItems(*branch);
+			RenderRefMenuItems(*branch, linesBranch->FullName);
 		}
 		else if (stash != nullptr)
 		{

@@ -559,6 +559,44 @@ namespace Graphite {
 		return Builder{input}.Build();
 	}
 
+	std::optional<std::size_t> RefOpenedBy(const SidebarRow& row, const LineRead& read, const BranchLines& lines)
+	{
+		if (row.Kind != SidebarRowKind::Branch && row.Kind != SidebarRowKind::Base)
+		{
+			return std::nullopt;
+		}
+
+		if (row.Kind == SidebarRowKind::Base && row.LocalCopy.has_value())
+		{
+			const std::size_t copy = *row.LocalCopy;
+			const bool checkedOut = read.Branches && copy < read.Branches->size() && (*read.Branches)[copy].IsHead;
+			const Core::BranchLine* const line = lines.LineOf(read.Refs[copy].FullName);
+			const bool hasOwnCommits = line != nullptr && line->State == Core::BranchState::NotMerged;
+
+			if (checkedOut || hasOwnCommits)
+			{
+				return copy;
+			}
+		}
+
+		return row.Ref;
+	}
+
+	std::optional<std::size_t> RefOfRowMenu(const SidebarRow& row)
+	{
+		if (row.Kind != SidebarRowKind::Branch && row.Kind != SidebarRowKind::Base)
+		{
+			return std::nullopt;
+		}
+
+		if (row.Kind == SidebarRowKind::Base && row.LocalCopy.has_value())
+		{
+			return row.LocalCopy;
+		}
+
+		return row.Ref;
+	}
+
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser)
 	{

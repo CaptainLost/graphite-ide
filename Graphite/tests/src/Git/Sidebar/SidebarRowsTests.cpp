@@ -495,3 +495,116 @@ TEST_CASE("Git window: a failed stashes read leaves the count's place empty and 
 	CHECK(SectionCountText(rows[0]).empty());
 	CHECK(rows[1].Label == "cannot read stashes");
 }
+
+namespace {
+
+	// origin/main is a base and main its local copy, one row with it; the copy is built from `copy`.
+	struct BaseWithCopy
+	{
+		LineRead Read;
+		std::size_t Main = 0;
+		std::size_t OriginMain = 0;
+	};
+
+	BaseWithCopy MakeBaseWithCopy(const BranchSpec& copy)
+	{
+		LineReadBuilder builder;
+		builder.AddRemote("origin");
+
+		BaseWithCopy scene;
+		scene.Main = builder.AddLocal("main", copy);
+		scene.OriginMain = builder.AddRemoteBranch("origin", "main");
+		builder.MakeBase(scene.OriginMain);
+		builder.SameRow(scene.Main, scene.OriginMain);
+		builder.Compare(scene.Main, scene.OriginMain);
+		scene.Read = builder.Build();
+
+		return scene;
+	}
+
+	SidebarRow BaseRowOf(const BaseWithCopy& scene)
+	{
+		for (const SidebarRow& row : RowsOf(scene.Read))
+		{
+			if (row.Kind == SidebarRowKind::Base)
+			{
+				return row;
+			}
+		}
+
+		return {};
+	}
+}
+
+TEST_CASE("Git window: a base row opens its local copy while the copy is checked out")
+{
+	const BaseWithCopy scene = MakeBaseWithCopy({.Head = true, .State = Core::BranchState::NoOwnCommits});
+	const BranchLines lines(scene.Read);
+
+	CHECK(RefOpenedBy(BaseRowOf(scene), scene.Read, lines) == std::optional<std::size_t>{scene.Main});
+}
+
+TEST_CASE("Git window: a base row opens its local copy when the copy has commits of its own")
+{
+	const BaseWithCopy scene =
+		MakeBaseWithCopy({.State = Core::BranchState::NotMerged, .Ahead = 2, .DistanceKnown = true});
+	const BranchLines lines(scene.Read);
+
+	CHECK(RefOpenedBy(BaseRowOf(scene), scene.Read, lines) == std::optional<std::size_t>{scene.Main});
+}
+
+TEST_CASE("Git window: a base row opens the base when its local copy is behind with no commits of its own")
+{
+	const BaseWithCopy scene =
+		MakeBaseWithCopy({.State = Core::BranchState::NoOwnCommits, .Behind = 3, .DistanceKnown = true});
+	const BranchLines lines(scene.Read);
+
+	CHECK(RefOpenedBy(BaseRowOf(scene), scene.Read, lines) == std::optional<std::size_t>{scene.OriginMain});
+}
+
+TEST_CASE("Git window: a base row without a local copy opens the base")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	const std::size_t originMain = builder.AddRemoteBranch("origin", "main");
+	builder.MakeBase(originMain);
+	const LineRead read = builder.Build();
+	const BranchLines lines(read);
+
+	SidebarRow baseRow;
+
+	for (const SidebarRow& row : RowsOf(read))
+	{
+		if (row.Kind == SidebarRowKind::Base)
+		{
+			baseRow = row;
+		}
+	}
+
+	CHECK(RefOpenedBy(baseRow, read, lines) == std::optional<std::size_t>{originMain});
+	CHECK(RefOfRowMenu(baseRow) == std::optional<std::size_t>{originMain});
+}
+
+TEST_CASE("Git window: a base row's menu is its local copy's whatever the copy holds")
+{
+	const BaseWithCopy behind = MakeBaseWithCopy({.State = Core::BranchState::NoOwnCommits});
+	const BaseWithCopy ahead = MakeBaseWithCopy({.State = Core::BranchState::NotMerged, .Ahead = 2});
+
+	CHECK(RefOfRowMenu(BaseRowOf(behind)) == std::optional<std::size_t>{behind.Main});
+	CHECK(RefOfRowMenu(BaseRowOf(ahead)) == std::optional<std::size_t>{ahead.Main});
+}
+
+TEST_CASE("Git window: a branch row opens and gives the menu of its own ref, and a section row neither")
+{
+	LineReadBuilder builder;
+	const std::size_t feature = builder.AddLocal("feature");
+	const LineRead read = builder.Build();
+	const BranchLines lines(read);
+	const std::vector<SidebarRow> rows = RowsOf(read);
+
+	REQUIRE(rows.size() >= 2);
+	CHECK(RefOpenedBy(rows[1], read, lines) == std::optional<std::size_t>{feature});
+	CHECK(RefOfRowMenu(rows[1]) == std::optional<std::size_t>{feature});
+	CHECK_FALSE(RefOpenedBy(rows[0], read, lines).has_value());
+	CHECK_FALSE(RefOfRowMenu(rows[0]).has_value());
+}

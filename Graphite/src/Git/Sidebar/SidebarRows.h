@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Git/Branches/BranchAuthors.h"
+#include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LineReader.h"
 
 #include "Core/Base/Result.h"
@@ -89,6 +90,15 @@ namespace Graphite {
 
 	// The rows that need no line model, for while the lines are read: the Stashes section alone, as BuildSidebarRows
 	// lists it.
+	// The ref a branch or base row opens, into LineRead::Refs: a base's local copy while the copy is checked out or has
+	// commits of its own, so the history holds what it adds; else the row's own ref, so a base shows its newest commits.
+	// Empty for another kind of row.
+	std::optional<std::size_t> RefOpenedBy(const SidebarRow& row, const LineRead& read, const BranchLines& lines);
+
+	// The ref whose menu a branch or base row opens: a base's local copy whenever it has one, so Checkout, Rename and Delete
+	// act on the local branch. Empty for another kind of row.
+	std::optional<std::size_t> RefOfRowMenu(const SidebarRow& row);
+
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser);
 }
