@@ -161,16 +161,19 @@ namespace Graphite {
 		};
 
 		// WARNING: ImGui runs a scrolling table's rows right up to its scrollbar with no style setting to leave room, so the work area is shortened by hand, along with the clip rects ImGui itself trims for an outer border.
+		// The scrollbar's room is kept while it does not show as well: ImGui shows it a frame after the rows that need it,
+		// and the columns, laid out from the right, would move in that frame.
 		void KeepClearOfScrollbar(float gap)
 		{
 			ImGuiTable* table = ImGui::GetCurrentTable();
 
-			if (table == nullptr || !table->InnerWindow->ScrollbarY)
+			if (table == nullptr)
 			{
 				return;
 			}
 
-			const float right = std::max(table->WorkRect.Min.x, table->WorkRect.Max.x - gap);
+			const float scrollbarRoom = table->InnerWindow->ScrollbarY ? 0.0f : ImGui::GetStyle().ScrollbarSize;
+			const float right = std::max(table->WorkRect.Min.x, table->WorkRect.Max.x - gap - scrollbarRoom);
 
 			table->WorkRect.Max.x = right;
 			table->InnerClipRect.Max.x = std::min(table->InnerClipRect.Max.x, right);
