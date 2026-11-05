@@ -43,7 +43,7 @@ namespace Graphite {
 		constexpr float kGap = 6.0f;
 		constexpr float kTwoLineGap = 8.0f;
 		constexpr float kLeadSlot = 14.0f;
-		constexpr float kRefLeadSlot = 10.0f; // the head dot is centred in this
+		constexpr float kRefLeadSlot = 10.0f; // the head dot is centred in this, which ends a two-line gap before the text
 		constexpr float kRefTextLead = 14.0f; // the lead place a two-line row's text starts after: 8 + 14 + 8 from the row's edge
 		constexpr float kChevronSize = 12.0f;
 		constexpr float kIconSize = 13.0f;
@@ -532,9 +532,11 @@ namespace Graphite {
 			const float textLeft = left + Em(kRefTextLead) + Em(kTwoLineGap);
 			float textRight = box.Right;
 
+			// The dot stands in the mockup's lead place, which ends a gap before the text, so it keeps the mockup's distance
+			// from the name wherever the text starts.
 			if (text.IsHead)
 			{
-				const float slotMiddle = left + Em(kRefLeadSlot) * kHalf;
+				const float slotMiddle = textLeft - Em(kTwoLineGap) - Em(kRefLeadSlot) * kHalf;
 				DrawHeadDot(ImVec2(slotMiddle, box.Top + box.Height * kHalf), colours);
 			}
 
