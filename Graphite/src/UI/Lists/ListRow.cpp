@@ -197,9 +197,9 @@ namespace Graphite {
 
 	// WARNING: No width is given. ImGui then fills the row from the cursor to the work rect's edge, but lays out
 	// only the id's empty label; a width laid out would widen the list's content, and a list that scrolls sideways,
-	// whose work rect is as wide as its content, would only ever grow wider. The Selectable is a pitch high with no
-	// item spacing, so its box is the row's whole slot: the first row's highlight starts at the list's top, and the
-	// list's content reaches the last row's bottom. AllowOverlap is given to the item as well as to the Selectable,
+	// whose work rect is as wide as its content, would only ever grow wider. The Selectable is `height` high (a pitch for
+	// ListRowSelectable, two lines for a two-line row) with no item spacing, so its box is the row's whole slot: the first
+	// row's highlight starts at the list's top, and the list's content reaches the last row's bottom. AllowOverlap is given to the item as well as to the Selectable,
 	// so the hover asked of the row lets go while an item laid over it is under the pointer, as Selectable's own does.
 	bool ListRowSelectableOfHeight(const char* id, bool selected, float height, ImGuiSelectableFlags flags)
 	{
