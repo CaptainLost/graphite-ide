@@ -60,6 +60,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -293,7 +294,9 @@ namespace Graphite {
 		// The Merges history lists what an opened merge brought; empty marks in the other.
 		HistoryMarks BroughtMarks() const;
 
-		void AskBroughtByOpenMerges(const Core::LogPage& page, const HistoryMarks& brought);
+		// Asks what the page's open merges brought, keeps their pages however many there are, and forgets a failed read of
+		// a merge closed since the last frame.
+		void AskBroughtByOpenMerges(const Core::Ref<const Core::LogPage>& page, const HistoryMarks& brought);
 
 		// The commit in the page, or among the commits an opened merge of it brought.
 		std::optional<Core::CommitSummary> FindShownCommit(const Core::LogPage& page, const Core::Oid& id,
@@ -560,6 +563,14 @@ namespace Graphite {
 		std::uint64_t m_AskedLogGeneration = 0;
 
 		std::unordered_set<Core::Oid> m_PreviouslyWanted;
+
+		// The page's commits by id, built once per page, so the open merges are found in it without a pass over the page.
+		Core::Ref<const Core::LogPage> m_CommitIndexOf;
+		std::unordered_map<Core::Oid, std::size_t> m_CommitIndex;
+
+		// The merges open in the page last frame, whose brought commits the model keeps, and those asked with them.
+		std::unordered_set<Core::Oid> m_OpenMerges;
+		std::unordered_set<Core::Oid> m_MergesAsked;
 
 		// A commit asked for from outside the panel, waiting for a page that holds it.
 		std::optional<CommitReveal> m_PendingReveal;

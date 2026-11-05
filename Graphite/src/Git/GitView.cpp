@@ -503,6 +503,11 @@ namespace Graphite {
 		m_LastSeenPage.reset();
 		m_GraphOf.reset();
 		m_Graph = Core::CommitGraph{};
+		m_CommitIndexOf.reset();
+		m_CommitIndex.clear();
+		m_OpenMerges.clear();
+		m_MergesAsked.clear();
+		m_Model.KeepBroughtOf({});
 
 		m_HeldCheckout.Forget();
 		m_Deletion.Finish();
@@ -1309,7 +1314,7 @@ namespace Graphite {
 			const HistoryMarks broughtMarks = BroughtMarks();
 			marks.BroughtOf = broughtMarks.BroughtOf;
 			marks.BroughtFailure = broughtMarks.BroughtFailure;
-			AskBroughtByOpenMerges(*page, broughtMarks);
+			AskBroughtByOpenMerges(page, broughtMarks);
 
 			std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
 
@@ -1467,32 +1472,81 @@ namespace Graphite {
 		return marks;
 	}
 
-	void GitView::AskBroughtByOpenMerges(const Core::LogPage& page, const HistoryMarks& brought)
+	void GitView::AskBroughtByOpenMerges(const Core::Ref<const Core::LogPage>& page, const HistoryMarks& brought)
 	{
-		if (!brought.BroughtOf)
+		if (page != m_CommitIndexOf)
 		{
-			return;
+			m_CommitIndexOf = page;
+			m_CommitIndex.clear();
+			m_CommitIndex.reserve(page->Commits.size());
+
+			for (std::size_t commitIndex = 0; commitIndex < page->Commits.size(); ++commitIndex)
+			{
+				m_CommitIndex.emplace(page->Commits[commitIndex].Id, commitIndex);
+			}
 		}
 
-		// WARNING: Asked each frame: a page already held or on its way is not asked again, and one the cache let go of
-		// is read again.
-		for (const Core::CommitSummary& commit : page.Commits)
-		{
-			if (!IsMerge(commit))
-			{
-				continue;
-			}
+		// The open merges of this page, found among the commits opened rather than by a pass over the whole page.
+		std::unordered_set<Core::Oid> open;
 
-			// Closing a merge forgets a failed read, so opening it again asks again, as a diff does.
-			if (m_Commits.IsExpanded(commit.Id) || m_Commits.GetSelectedCommit() == commit.Id)
+		if (brought.BroughtOf)
+		{
+			for (const Core::Oid& expanded : m_Commits.GetExpanded())
 			{
-				m_Model.RequestBrought(commit.Id, commit.Parents[0], commit.Parents[1]);
-			}
-			else
-			{
-				m_Model.ForgetFailedBrought(commit.Id);
+				const std::unordered_map<Core::Oid, std::size_t>::const_iterator found = m_CommitIndex.find(expanded);
+
+				if (found == m_CommitIndex.end())
+				{
+					continue;
+				}
+
+				const auto& [id, commitIndex] = *found;
+
+				if (IsMerge(page->Commits[commitIndex]))
+				{
+					open.insert(id);
+				}
 			}
 		}
+
+		// The selected merge lists what it brought in its details, so it is asked too, but not kept.
+		std::unordered_set<Core::Oid> asked = open;
+
+		if (const std::optional<Core::Oid> selected = m_Commits.GetSelectedCommit(); selected.has_value() && brought.BroughtOf)
+		{
+			const std::unordered_map<Core::Oid, std::size_t>::const_iterator found = m_CommitIndex.find(*selected);
+
+			if (found != m_CommitIndex.end() && IsMerge(page->Commits[found->second]))
+			{
+				asked.insert(*selected);
+			}
+		}
+
+		// Closing or leaving a merge forgets a failed read, so opening it again asks again, as a diff does.
+		for (const Core::Oid& merge : m_MergesAsked)
+		{
+			if (!asked.contains(merge))
+			{
+				m_Model.ForgetFailedBrought(merge);
+			}
+		}
+
+		// WARNING: The open merges' pages are kept however many are open: let go of, one would be read again in the same
+		// frame and push out the next, and their rows would come and go by themselves.
+		if (open != m_OpenMerges)
+		{
+			m_OpenMerges = std::move(open);
+			m_Model.KeepBroughtOf(m_OpenMerges);
+		}
+
+		// Asked each frame: a page already held or on its way is not asked again.
+		for (const Core::Oid& merge : asked)
+		{
+			const Core::CommitSummary& commit = page->Commits[m_CommitIndex.at(merge)];
+			m_Model.RequestBrought(commit.Id, commit.Parents[0], commit.Parents[1]);
+		}
+
+		m_MergesAsked = std::move(asked);
 	}
 
 	std::optional<Core::CommitSummary> GitView::FindShownCommit(const Core::LogPage& page, const Core::Oid& id,

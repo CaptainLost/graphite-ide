@@ -12,6 +12,7 @@
 #include <optional>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace Graphite {
@@ -135,6 +136,10 @@ namespace Graphite {
 			return entry->Reason;
 		}
 
+		// The keys whose entries are never evicted, however many: the cache grows past its bound to hold them, and lets
+		// them go like any other once they are no longer kept.
+		void SetKept(std::unordered_set<Key, Hash> keys) { m_Kept = std::move(keys); }
+
 		void Clear() { m_Entries.clear(); }
 
 		std::size_t GetSize() const { return m_Entries.size(); }
@@ -208,7 +213,7 @@ namespace Graphite {
 
 				for (const auto& [key, entry] : m_Entries)
 				{
-					if (IsInFlight(entry))
+					if (IsInFlight(entry) || m_Kept.contains(key))
 					{
 						continue;
 					}
@@ -230,6 +235,7 @@ namespace Graphite {
 		}
 
 		std::size_t m_Capacity;
+		std::unordered_set<Key, Hash> m_Kept;
 
 		// WARNING: Get is const yet counts as a use, so the entries and the clock are mutable.
 		// An entry the reader looks at every frame must not be the one evicted.

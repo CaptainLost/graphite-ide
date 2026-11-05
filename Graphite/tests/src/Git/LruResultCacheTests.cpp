@@ -144,6 +144,37 @@ TEST_CASE("A full cache never evicts an entry that is in flight, grows past its 
 	CHECK(cache.GetSize() == 2);
 }
 
+TEST_CASE("A full cache never evicts a kept entry however many are kept and evicts it once it is no longer kept")
+{
+	Cache cache(2);
+	cache.SetKept({1, 2, 3});
+
+	Fill(cache, 1, "one");
+	Fill(cache, 2, "two");
+	Fill(cache, 3, "three");
+
+	CHECK(Holds(cache, 1));
+	CHECK(Holds(cache, 2));
+	CHECK(Holds(cache, 3));
+
+	// The one entry not kept goes first, so asking it again and again never pushes a kept one out.
+	Fill(cache, 4, "four");
+	Fill(cache, 5, "five");
+
+	CHECK(Holds(cache, 1));
+	CHECK(Holds(cache, 2));
+	CHECK(Holds(cache, 3));
+	CHECK_FALSE(Holds(cache, 4));
+	CHECK(Holds(cache, 5));
+
+	cache.SetKept({3});
+	Fill(cache, 6, "six");
+
+	CHECK(cache.GetSize() == 2);
+	CHECK(Holds(cache, 3));
+	CHECK(Holds(cache, 6));
+}
+
 TEST_CASE("Forgetting a failed entry lets it be asked for again, and leaves a held one alone")
 {
 	Cache cache(4);

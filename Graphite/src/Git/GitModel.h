@@ -25,6 +25,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -150,6 +151,10 @@ namespace Graphite {
 
 		// A failed read is asked again by the next RequestBrought.
 		void ForgetFailedBrought(const Core::Oid& merge) { m_Brought.ForgetFailed(merge); }
+
+		// The merges whose brought commits are never let go of, however many: the merges open in the history, whose rows
+		// would otherwise come and go as they are read again.
+		void KeepBroughtOf(std::unordered_set<Core::Oid> merges) { m_Brought.SetKept(std::move(merges)); }
 
 		// WARNING: `key` is the path that names the file, never `oldPath` or `newPath`: either
 		// may be empty to say a side is absent, so every file deleted in one commit would share

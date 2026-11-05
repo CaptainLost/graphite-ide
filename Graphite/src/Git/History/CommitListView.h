@@ -113,6 +113,10 @@ namespace Graphite {
 		void ClearRowSelection();
 
 		bool IsExpanded(const Core::Oid& commit) const;
+
+		// Every commit opened, in any history shown since the folder opened.
+		const std::unordered_set<Core::Oid>& GetExpanded() const { return m_Expanded; }
+
 		void ToggleExpanded(const Core::Oid& commit);
 		void SetExpanded(const Core::Oid& commit, bool expanded);
 

@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -3293,6 +3294,57 @@ TEST_CASE("Git window: brought pages are kept for the last sixteen merges")
 
 	model.Clear();
 	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge + kMergeCount - 1)) == nullptr);
+}
+
+TEST_CASE("Git window: the brought pages of the open merges are never let go of however many are open")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	constexpr std::uint8_t kFirstMerge = 20;
+	constexpr std::uint8_t kOpenCount = 20;
+
+	std::unordered_set<Core::Oid> open;
+
+	for (std::uint8_t offset = 0; offset < kOpenCount; ++offset)
+	{
+		open.insert(OidWithFirstByte(kFirstMerge + offset));
+	}
+
+	model.KeepBroughtOf(open);
+
+	for (std::uint8_t offset = 0; offset < kOpenCount; ++offset)
+	{
+		model.RequestBrought(OidWithFirstByte(kFirstMerge + offset), OidWithFirstByte(1), OidWithFirstByte(2));
+	}
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	// A merge selected but not open is asked too, with the cache past its bound.
+	model.RequestBrought(OidWithFirstByte(100), OidWithFirstByte(1), OidWithFirstByte(2));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	const int logCallsAfterReading = port.LogCalls;
+
+	// Every open merge is asked each frame, as the history does: none was let go of, so none is read again.
+	for (std::uint8_t offset = 0; offset < kOpenCount; ++offset)
+	{
+		CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge + offset)) != nullptr);
+		model.RequestBrought(OidWithFirstByte(kFirstMerge + offset), OidWithFirstByte(1), OidWithFirstByte(2));
+	}
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(port.LogCalls == logCallsAfterReading);
+
+	// Merges closed again are let go of like any other, the one touched longest ago first.
+	model.KeepBroughtOf({});
+	model.RequestBrought(OidWithFirstByte(101), OidWithFirstByte(1), OidWithFirstByte(2));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetBrought(OidWithFirstByte(kFirstMerge)) == nullptr);
+	CHECK(model.GetBrought(OidWithFirstByte(101)) != nullptr);
 }
 
 TEST_CASE("Git window: a failed read of what a merge brought keeps its message until the merge is closed")
