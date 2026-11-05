@@ -12,6 +12,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -127,6 +128,72 @@ namespace Graphite {
 			return pieces;
 		}
 
+		struct VsLayout
+		{
+			std::vector<VsPiece> Pieces;
+			std::string Mark;
+			float MarkWidth = 0.0f;
+			float Width = 0.0f;
+		};
+
+		// With the vs button's font pushed: its pieces, the line's name cut to what `maxWidth` leaves, and the width taken.
+		VsLayout LayOutVs(const VsLabel& label, const WindowBarColours& colours, float maxWidth, float unit)
+		{
+			const auto Em = [unit](float mockupPixels) { return mockupPixels * unit; };
+			const float caretWidth = TextWidth(ICON_LC_CHEVRON_DOWN);
+
+			VsLayout layout;
+
+			if (label.Mark.has_value())
+			{
+				layout.Mark = *label.Mark;
+
+				Core::PushInterfaceFont(ImGui::GetFontSize() * kMarkText / kMockupFont);
+				layout.MarkWidth = TextWidth(layout.Mark) + 2.0f * Em(kMarkSide);
+				ImGui::PopFont();
+			}
+
+			// What the line's name may take: the room less the lead, the counts, the chip and the caret.
+			const float fixedWidth =
+				2.0f * Em(kVsSide) + Em(kVsGap) + caretWidth + (layout.Mark.empty() ? 0.0f : Em(kVsGap) + layout.MarkWidth);
+			float piecesWithoutLine = 0.0f;
+			float reservedForLaterCounts = 0.0f;
+
+			// The behind count lands later: its place is as wide as the landed text, so nothing on the row moves then.
+			if (!label.Counts.empty())
+			{
+				const auto restOf = [](const std::string& counts) {
+					return counts.substr(std::min(counts.find(", "), counts.size()));
+				};
+
+				reservedForLaterCounts = std::max(0.0f, TextWidth(restOf(label.CountsRoom)) - TextWidth(restOf(label.Counts)));
+			}
+
+			for (const VsPiece& piece : PiecesOf(label, colours, std::string{}))
+			{
+				piecesWithoutLine += WidthOf(piece);
+			}
+
+			const float lineRoom = std::max(0.0f, maxWidth - fixedWidth - piecesWithoutLine - reservedForLaterCounts);
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+			const std::string line = FitToWidth(label.Line, lineRoom);
+			ImGui::PopFont();
+
+			layout.Pieces = PiecesOf(label, colours, line);
+
+			float piecesWidth = reservedForLaterCounts;
+
+			for (const VsPiece& piece : layout.Pieces)
+			{
+				piecesWidth += WidthOf(piece);
+			}
+
+			layout.Width = std::min(maxWidth, fixedWidth + piecesWidth);
+
+			return layout;
+		}
+
 		ImU32 Faded(ImU32 colour, bool enabled)
 		{
 			if (enabled)
@@ -186,6 +253,18 @@ namespace Graphite {
 		return m_Lines.DistanceOf(read.Refs[line->Ref].Tip, read.Refs[*line->ComparedWith].Tip);
 	}
 
+	float GitView::VsButtonWidth(const VsLabel& label) const
+	{
+		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
+		const float unit = WindowBarEm(1.0f); // taken before a smaller font is pushed
+
+		Core::PushInterfaceFont(ImGui::GetFontSize() * kVsText / kMockupFont);
+		const float width = LayOutVs(label, colours, FLT_MAX, unit).Width;
+		ImGui::PopFont();
+
+		return width;
+	}
+
 	bool GitView::DrawVsButton(const VsLabel& label, float maxWidth)
 	{
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
@@ -198,56 +277,11 @@ namespace Graphite {
 
 		Core::PushInterfaceFont(ImGui::GetFontSize() * kVsText / kMockupFont);
 
-		const float caretWidth = TextWidth(ICON_LC_CHEVRON_DOWN);
-
-		std::string mark;
-		float markWidth = 0.0f;
-
-		if (label.Mark.has_value())
-		{
-			mark = *label.Mark;
-
-			Core::PushInterfaceFont(ImGui::GetFontSize() * kMarkText / kMockupFont);
-			markWidth = TextWidth(mark) + 2.0f * markSide;
-			ImGui::PopFont();
-		}
-
-		// What the line's name may take: the room less the lead, the counts, the chip and the caret.
-		const float fixedWidth = 2.0f * side + gap + caretWidth + (mark.empty() ? 0.0f : gap + markWidth);
-		float piecesWithoutLine = 0.0f;
-		float reservedForLaterCounts = 0.0f;
-
-		// The behind count lands later: its place is as wide as the landed text, so nothing on the row moves then.
-		if (!label.Counts.empty())
-		{
-			const auto restOf = [](const std::string& counts) {
-				return counts.substr(std::min(counts.find(", "), counts.size()));
-			};
-
-			reservedForLaterCounts = std::max(0.0f, TextWidth(restOf(label.CountsRoom)) - TextWidth(restOf(label.Counts)));
-		}
-
-		for (const VsPiece& piece : PiecesOf(label, colours, std::string{}))
-		{
-			piecesWithoutLine += WidthOf(piece);
-		}
-
-		const float lineRoom = std::max(0.0f, maxWidth - fixedWidth - piecesWithoutLine - reservedForLaterCounts);
-
-		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
-		const std::string line = FitToWidth(label.Line, lineRoom);
-		ImGui::PopFont();
-
-		const std::vector<VsPiece> pieces = PiecesOf(label, colours, line);
-
-		float piecesWidth = reservedForLaterCounts;
-
-		for (const VsPiece& piece : pieces)
-		{
-			piecesWidth += WidthOf(piece);
-		}
-
-		const float width = std::min(maxWidth, fixedWidth + piecesWidth);
+		const VsLayout layout = LayOutVs(label, colours, maxWidth, unit);
+		const std::vector<VsPiece>& pieces = layout.Pieces;
+		const std::string& mark = layout.Mark;
+		const float markWidth = layout.MarkWidth;
+		const float width = layout.Width;
 
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		const bool clicked = ImGui::InvisibleButton("##vsButton", ImVec2(width, height));

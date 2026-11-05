@@ -43,6 +43,7 @@ namespace Graphite {
 	namespace {
 
 		constexpr float kPathBoxWidthInFontSizes = 14.0f;
+		constexpr float kFilterFieldPixels = 200.0f; // the mockup's width of the history's filter field
 		constexpr int kGitTableColumnCount = 2;
 		constexpr int kSidebarColumn = 0;
 		constexpr int kHistoryColumn = 1;
@@ -1176,14 +1177,16 @@ namespace Graphite {
 		ConfirmRevealedFile();
 	}
 
-	float GitView::PathFieldWidth()
+	float GitView::FilterFieldsBasis()
 	{
-		return ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
+		return WindowBarEm(kFilterFieldPixels) + ImGui::GetFontSize() * kPathBoxWidthInFontSizes + ImGui::GetStyle().ItemSpacing.x;
 	}
 
 	void GitView::RenderFilterFields(float room)
 	{
-		const float pathWidth = PathFieldWidth();
+		// Short of room, the path field gives up its share as the filter field does.
+		const float fullPathWidth = ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
+		const float pathWidth = std::min(fullPathWidth, room * fullPathWidth / FilterFieldsBasis());
 		const float wordsWidth = std::max(0.0f, room - pathWidth - ImGui::GetStyle().ItemSpacing.x);
 
 		DrawFilterField("##commitFilter", m_FilterBuffer.data(), m_FilterBuffer.size(),

@@ -670,20 +670,24 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		// The filter field keeps the mockup's 200 px; the name and the vs button share what the fields and the switch
-		// leave, the name taking at most its share of that and the button the rest.
-		constexpr float kFilterBasis = 200.0f;
-		constexpr float kTitleShare = 0.4f;
-		constexpr float kTitleShareOfShared = 0.45f;
-		const float sharedRoom = std::max(0.0f, rowWidth - HistorySwitchWidth() - PathFieldWidth() - WindowBarEm(kFilterBasis) -
-													4.0f * spacing);
-		const float titleRoom = std::max(0.0f, std::min(rowWidth * kTitleShare, sharedRoom * kTitleShareOfShared) -
-												   (ImGui::GetCursorScreenPos().x - rowStartX));
+		// As in the mockup, the vs button and the switch keep their widths, and the name and the fields share the rest in
+		// proportion to the widths they would take; the filter field takes whatever is left over.
+		constexpr float kVsShare = 0.4f;
+		const float vsWidth = label.Lead.empty() ? 0.0f : std::min(rowWidth * kVsShare, VsButtonWidth(label));
+		const float sharedRoom = std::max(0.0f, rowWidth - (ImGui::GetCursorScreenPos().x - rowStartX) - vsWidth -
+													HistorySwitchWidth() - 4.0f * spacing);
 
 		const float operationWidth =
 			operation.empty() ? 0.0f : ImGui::CalcTextSize(operation.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
-		const float nameRoom = std::max(0.0f, titleRoom - operationWidth);
 		const float prefixWidth = ImGui::CalcTextSize(prefix.c_str()).x;
+
+		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+		const float titleBasis = operationWidth + prefixWidth + ImGui::CalcTextSize(title.c_str()).x;
+		ImGui::PopFont();
+
+		const float wanted = titleBasis + FilterFieldsBasis() + spacing;
+		const float titleRoom = wanted > sharedRoom ? titleBasis * sharedRoom / wanted : titleBasis;
+		const float nameRoom = std::max(0.0f, titleRoom - operationWidth);
 
 		if (!prefix.empty())
 		{
@@ -724,13 +728,9 @@ namespace Graphite {
 
 		if (!label.Lead.empty())
 		{
-			constexpr float kVsShare = 0.4f;
-
 			ImGui::SameLine();
 
-			const float vsRoom = std::max(0.0f, sharedRoom - (ImGui::GetCursorScreenPos().x - rowStartX));
-
-			if (DrawVsButton(label, std::min(rowWidth * kVsShare, vsRoom)))
+			if (DrawVsButton(label, vsWidth))
 			{
 				OpenVsPicker(ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y + WindowBarEm(kVsPickerGap)));
 
