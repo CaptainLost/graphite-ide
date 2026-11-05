@@ -39,7 +39,7 @@ namespace Graphite {
 		Core::Result<std::vector<Core::Remote>> QueryRemotes() override;
 		Core::Result<Core::HeadState> QueryHead() override;
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override;
-		Core::Result<CommitCount> CountCommits(const std::optional<std::string>& ref,
+		Core::Result<CommitCount> CountCommits(const std::optional<std::string>& ref, Core::FollowedParents parents,
 											   const std::optional<CommitCount>& known) override;
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override;
 		Core::Result<FileTexts> ReadFileTexts(

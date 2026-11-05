@@ -511,6 +511,35 @@ TEST_CASE("Counting through a merge counts each side's commits once")
 	CHECK(count.GetValue() == 4);
 }
 
+TEST_CASE("Git: counting first parents only counts a merge and not the commits it merged")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("side.txt", "side\n");
+	fixture.Commit("add side");
+	fixture.Checkout("master");
+	fixture.Write("main.txt", "main\n");
+	fixture.Commit("add main");
+	fixture.MergeCommit("merge side", "side");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Result<Core::Oid> head = repository.HeadCommit();
+	REQUIRE(head.HasValue());
+
+	const Result<std::size_t> firstParents = repository.CountCommits(head.GetValue(), Core::FollowedParents::FirstOnly);
+	const Result<std::size_t> every = repository.CountCommits(head.GetValue(), Core::FollowedParents::All);
+
+	REQUIRE(firstParents.HasValue());
+	REQUIRE(every.HasValue());
+	CHECK(firstParents.GetValue() == 3);
+	CHECK(every.GetValue() == 4);
+}
+
 TEST_CASE("Counting from a commit the repository does not hold is NotFound")
 {
 	GitFixture fixture;

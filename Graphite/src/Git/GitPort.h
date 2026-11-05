@@ -54,9 +54,10 @@ namespace Graphite {
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 
 		// WARNING: Answers `known` unchanged, without walking, while the ref still points at the tip
-		// it was counted from. The model asks on every refresh, and most refreshes are a file saved,
-		// not a commit made. Without a ref, HEAD's history.
-		virtual Core::Result<CommitCount> CountCommits(const std::optional<std::string>& ref,
+		// it was counted from; `known` must have been counted along the same parents. The model asks
+		// on every refresh, and most refreshes are a file saved, not a commit made. Without a ref,
+		// HEAD's history.
+		virtual Core::Result<CommitCount> CountCommits(const std::optional<std::string>& ref, Core::FollowedParents parents,
 													   const std::optional<CommitCount>& known) = 0;
 		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;
 

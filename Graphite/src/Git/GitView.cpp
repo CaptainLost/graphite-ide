@@ -1384,7 +1384,10 @@ namespace Graphite {
 								  .Complete = page.Complete,
 								  .Filtered = IsShownLogNarrowed(),
 								  .Stash = shown.has_value() && shown->Stash.has_value(),
-								  .Total = countsThePage ? m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt)
+								  .Total = countsThePage ? m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt,
+																					  shown.has_value() && shown->FirstParentOnly
+																						  ? Core::FollowedParents::FirstOnly
+																						  : Core::FollowedParents::All)
 														 : std::nullopt,
 								  .Counting = countsThePage && m_Model.IsCommitCountInFlight(),
 								  .FirstParentsOnly = shown.has_value() && shown->FirstParentOnly,

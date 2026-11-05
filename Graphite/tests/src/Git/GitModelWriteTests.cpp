@@ -44,7 +44,7 @@ namespace {
 
 		Core::Result<void> Init() override { return Record("init", std::vector<std::filesystem::path>{}); }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
-		Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>&,
+		Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>&, Core::FollowedParents,
 																		 const std::optional<Graphite::CommitCount>&) override
 		{
 			return Graphite::CommitCount{};

@@ -393,7 +393,7 @@ namespace Core {
 					   .UpstreamKnown = unpushed.UnpushedKnown};
 	}
 
-	Result<std::size_t> Repository::CountCommits(const Oid& tip) const
+	Result<std::size_t> Repository::CountCommits(const Oid& tip, FollowedParents parents) const
 	{
 		if (m_Handle == nullptr)
 		{
@@ -405,6 +405,12 @@ namespace Core {
 		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
 		{
 			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
+		}
+
+		// Set before the tip is pushed, as for a first-parent log.
+		if (parents == FollowedParents::FirstOnly)
+		{
+			git_revwalk_simplify_first_parent(walk.get());
 		}
 
 		const git_oid tipId = ToGitOid(tip);

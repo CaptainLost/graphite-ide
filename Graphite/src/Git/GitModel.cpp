@@ -419,6 +419,8 @@ namespace Graphite {
 		// Copied before the request moves into the log's job, which goes first: on a single worker the
 		// first page of a new ref would otherwise wait for a walk of its whole history.
 		const std::optional<std::string> countedRef = request.Ref;
+		const Core::FollowedParents countedParents =
+			request.FirstParentOnly ? Core::FollowedParents::FirstOnly : Core::FollowedParents::All;
 		const bool isStash = request.Stash.has_value();
 
 		m_Submit([this, generation, markedGeneration, request = std::move(request), marked = std::move(marked)]() {
@@ -449,7 +451,7 @@ namespace Graphite {
 
 		if (!isStash)
 		{
-			RequestCommitCount(countedRef);
+			RequestCommitCount(countedRef, countedParents);
 		}
 	}
 
@@ -496,34 +498,36 @@ namespace Graphite {
 		RequestLog(*m_LastLogRequest, m_LastMarkedRequest);
 	}
 
-	void GitModel::RequestCommitCount(const std::optional<std::string>& ref)
+	void GitModel::RequestCommitCount(const std::optional<std::string>& ref, Core::FollowedParents parents)
 	{
 		const Core::Ref<const RefCommitCount> held = m_CommitCount.Get();
-		const std::optional<CommitCount> known =
-			held && held->Ref == ref ? std::optional<CommitCount>{held->Count} : std::nullopt;
+		const std::optional<CommitCount> known = held && held->Ref == ref && held->Parents == parents
+													 ? std::optional<CommitCount>{held->Count}
+													 : std::nullopt;
 
 		const std::uint64_t generation = m_CommitCount.Begin();
 
-		m_Submit([this, generation, ref, known]() {
-			Core::Result<CommitCount> result = m_Port.CountCommits(ref, known);
+		m_Submit([this, generation, ref, parents, known]() {
+			Core::Result<CommitCount> result = m_Port.CountCommits(ref, parents, known);
 
-			Deliver([this, generation, ref, result = std::move(result)]() mutable {
+			Deliver([this, generation, ref, parents, result = std::move(result)]() mutable {
 				if (!result.HasValue())
 				{
 					m_CommitCount.Land(generation, Core::Result<RefCommitCount>{result.GetError()});
 					return;
 				}
 
-				m_CommitCount.Land(generation, RefCommitCount{.Ref = ref, .Count = result.GetValue()});
+				m_CommitCount.Land(generation, RefCommitCount{.Ref = ref, .Parents = parents, .Count = result.GetValue()});
 			});
 		});
 	}
 
-	std::optional<std::size_t> GitModel::GetCommitCountFor(const std::optional<std::string>& ref) const
+	std::optional<std::size_t> GitModel::GetCommitCountFor(const std::optional<std::string>& ref,
+															 Core::FollowedParents parents) const
 	{
 		const Core::Ref<const RefCommitCount> held = m_CommitCount.Get();
 
-		if (!held || held->Ref != ref)
+		if (!held || held->Ref != ref || held->Parents != parents)
 		{
 			return std::nullopt;
 		}

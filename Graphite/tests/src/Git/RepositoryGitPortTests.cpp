@@ -667,7 +667,7 @@ TEST_CASE("The port counts the commits of HEAD when no ref is named")
 
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::nullopt, std::nullopt);
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::nullopt, Core::FollowedParents::All, std::nullopt);
 
 	REQUIRE(count.HasValue());
 	CHECK(count.GetValue().Count == 3);
@@ -683,7 +683,7 @@ TEST_CASE("The port counts the commits of the ref it is given")
 
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::string{"refs/heads/topic"}, std::nullopt);
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::string{"refs/heads/topic"}, Core::FollowedParents::All, std::nullopt);
 
 	REQUIRE(count.HasValue());
 	CHECK(count.GetValue().Count == 1);
@@ -702,7 +702,7 @@ TEST_CASE("The port answers the count it was given without walking while the ref
 	constexpr std::size_t kImpossibleCount = 999;
 	const Graphite::CommitCount known{.Tip = second, .Count = kImpossibleCount};
 
-	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::nullopt, known);
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::nullopt, Core::FollowedParents::All, known);
 
 	REQUIRE(count.HasValue());
 	CHECK(count.GetValue() == known);
@@ -715,13 +715,13 @@ TEST_CASE("The port counts again once the ref has moved past the tip it was give
 
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	const Core::Result<Graphite::CommitCount> before = port.CountCommits(std::nullopt, std::nullopt);
+	const Core::Result<Graphite::CommitCount> before = port.CountCommits(std::nullopt, Core::FollowedParents::All, std::nullopt);
 	REQUIRE(before.HasValue());
 	REQUIRE(before.GetValue().Tip == first);
 
 	const Core::Oid second = CommitOnHead(repo.GetPath(), "second");
 
-	const Core::Result<Graphite::CommitCount> after = port.CountCommits(std::nullopt, before.GetValue());
+	const Core::Result<Graphite::CommitCount> after = port.CountCommits(std::nullopt, Core::FollowedParents::All, before.GetValue());
 
 	REQUIRE(after.HasValue());
 	CHECK(after.GetValue().Count == 2);
@@ -735,7 +735,7 @@ TEST_CASE("Counting a ref that does not exist fails")
 
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::string{"refs/heads/missing"}, std::nullopt);
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::string{"refs/heads/missing"}, Core::FollowedParents::All, std::nullopt);
 
 	CHECK_FALSE(count.HasValue());
 }

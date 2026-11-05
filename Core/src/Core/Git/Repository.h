@@ -82,10 +82,11 @@ namespace Core {
 		// reached without the file in it.
 		Result<LineHistory> QueryLineHistory(const LineHistoryRequest& request) const;
 
-		// The commits reachable from `tip`, itself included, as `git rev-list --count` gives them.
-		// Reads only the commit graph, not the commits' messages. NotFound for a commit the object
-		// database does not hold.
-		Result<std::size_t> CountCommits(const Oid& tip) const;
+		// The commits reachable from `tip`, itself included, as `git rev-list --count` gives them;
+		// with FirstOnly, as `git rev-list --first-parent --count` does, the rows of a first-parent
+		// history. Reads only the commit graph, not the commits' messages. NotFound for a commit the
+		// object database does not hold.
+		Result<std::size_t> CountCommits(const Oid& tip, FollowedParents parents = FollowedParents::All) const;
 
 		// Renames are detected rather than reported as a delete and an add. A binary file comes back
 		// flagged and with no hunks.

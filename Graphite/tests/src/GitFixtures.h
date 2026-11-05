@@ -35,7 +35,8 @@ public:
 	Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
 	Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
 
-	Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>&, const std::optional<Graphite::CommitCount>&) override
+	Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>&, Core::FollowedParents,
+													 const std::optional<Graphite::CommitCount>&) override
 	{
 		return Graphite::CommitCount{};
 	}

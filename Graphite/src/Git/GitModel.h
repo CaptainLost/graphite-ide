@@ -222,9 +222,10 @@ namespace Graphite {
 		std::optional<MarkedKind> GetMarkedKind() const;
 		const std::string& GetMarkedLabel() const { return m_MarkedLabel; }
 
-		// The length of the history a log walks, counted for exactly `ref`: a count of the branch
-		// shown before never stands beside another branch's page.
-		std::optional<std::size_t> GetCommitCountFor(const std::optional<std::string>& ref) const;
+		// The length of the history a log walks, counted for exactly `ref` along exactly `parents`: a
+		// count of the branch shown before never stands beside another branch's page, and a count of
+		// every commit never stands beside a first-parent history's rows.
+		std::optional<std::size_t> GetCommitCountFor(const std::optional<std::string>& ref, Core::FollowedParents parents) const;
 		bool IsCommitCountInFlight() const { return m_CommitCount.IsInFlight(); }
 
 		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
@@ -629,12 +630,13 @@ namespace Graphite {
 		struct RefCommitCount
 		{
 			std::optional<std::string> Ref;
+			Core::FollowedParents Parents = Core::FollowedParents::All;
 			CommitCount Count;
 		};
 
 		// WARNING: Asked with every log, the model's own refreshes included, and handed the count it
-		// holds for the same ref, so the port walks only when that ref's tip has moved.
-		void RequestCommitCount(const std::optional<std::string>& ref);
+		// holds for the same ref and parents, so the port walks only when that ref's tip has moved.
+		void RequestCommitCount(const std::optional<std::string>& ref, Core::FollowedParents parents);
 
 		GenerationSlot<RefCommitCount> m_CommitCount;
 

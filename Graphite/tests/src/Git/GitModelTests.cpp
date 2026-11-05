@@ -130,11 +130,12 @@ namespace {
 			return Log;
 		}
 
-		Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>& ref,
+		Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>& ref, Core::FollowedParents parents,
 														 const std::optional<Graphite::CommitCount>& known) override
 		{
 			++CountCalls;
 			LastCountRef = ref;
+			LastCountParents = parents;
 			LastKnownCount = known;
 
 			if (FailCount)
@@ -148,7 +149,8 @@ namespace {
 			}
 
 			++CountWalks;
-			return Graphite::CommitCount{.Tip = CountTip, .Count = CountTotal};
+			return Graphite::CommitCount{.Tip = CountTip,
+										 .Count = parents == Core::FollowedParents::FirstOnly ? FirstParentCountTotal : CountTotal};
 		}
 
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override
@@ -378,6 +380,8 @@ namespace {
 		bool FailCount = false;
 		Core::Oid CountTip = OidWithFirstByte(1);
 		std::size_t CountTotal = 1739;
+		std::size_t FirstParentCountTotal = 812;
+		Core::FollowedParents LastCountParents = Core::FollowedParents::All;
 		std::optional<std::string> LastCountRef;
 		std::optional<Graphite::CommitCount> LastKnownCount;
 		int DiffCalls = 0;
@@ -2929,8 +2933,32 @@ TEST_CASE("A log is asked together with the length of its history")
 
 	CHECK(port.CountCalls == 1);
 	CHECK(port.LastCountRef == request.Ref);
-	CHECK(model.GetCommitCountFor(request.Ref) == std::optional<std::size_t>{1739});
+	CHECK(model.GetCommitCountFor(request.Ref, Core::FollowedParents::All) == std::optional<std::size_t>{1739});
 	CHECK_FALSE(model.IsCommitCountInFlight());
+}
+
+TEST_CASE("Git window: a first-parent log is counted along first parents and its count is not given for every commit")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+	request.FirstParentOnly = true;
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.LastCountParents == Core::FollowedParents::FirstOnly);
+	CHECK(model.GetCommitCountFor(request.Ref, Core::FollowedParents::FirstOnly) == std::optional<std::size_t>{812});
+	CHECK_FALSE(model.GetCommitCountFor(request.Ref, Core::FollowedParents::All).has_value());
+
+	request.FirstParentOnly = false;
+	model.RequestLog(request);
+
+	CHECK_FALSE(port.LastKnownCount.has_value());
 }
 
 TEST_CASE("A stash's log asks for no history length")
@@ -2995,7 +3023,7 @@ TEST_CASE("A count is walked again once the tip has moved")
 	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
 
 	CHECK(port.CountWalks == 2);
-	CHECK(model.GetCommitCountFor(request.Ref) == std::optional<std::size_t>{1740});
+	CHECK(model.GetCommitCountFor(request.Ref, Core::FollowedParents::All) == std::optional<std::size_t>{1740});
 }
 
 TEST_CASE("The count of one ref is neither reported for another nor handed to the port for it")
@@ -3010,7 +3038,7 @@ TEST_CASE("The count of one ref is neither reported for another nor handed to th
 
 	model.RequestLog(mainLog);
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
-	REQUIRE(model.GetCommitCountFor(mainLog.Ref).has_value());
+	REQUIRE(model.GetCommitCountFor(mainLog.Ref, Core::FollowedParents::All).has_value());
 
 	Core::LogRequest topicLog;
 	topicLog.Ref = "refs/heads/topic";
@@ -3018,8 +3046,8 @@ TEST_CASE("The count of one ref is neither reported for another nor handed to th
 	model.RequestLog(topicLog);
 
 	CHECK_FALSE(port.LastKnownCount.has_value());
-	CHECK_FALSE(model.GetCommitCountFor(topicLog.Ref).has_value());
-	CHECK_FALSE(model.GetCommitCountFor(std::nullopt).has_value());
+	CHECK_FALSE(model.GetCommitCountFor(topicLog.Ref, Core::FollowedParents::All).has_value());
+	CHECK_FALSE(model.GetCommitCountFor(std::nullopt, Core::FollowedParents::All).has_value());
 }
 
 TEST_CASE("A failed count leaves the history's length unknown and no longer in flight")
@@ -3033,7 +3061,7 @@ TEST_CASE("A failed count leaves the history's length unknown and no longer in f
 	model.RequestLog(Core::LogRequest{});
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	CHECK_FALSE(model.GetCommitCountFor(std::nullopt).has_value());
+	CHECK_FALSE(model.GetCommitCountFor(std::nullopt, Core::FollowedParents::All).has_value());
 	CHECK_FALSE(model.IsCommitCountInFlight());
 }
 

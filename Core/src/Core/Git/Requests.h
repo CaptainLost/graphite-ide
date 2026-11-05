@@ -19,6 +19,16 @@ namespace Core {
 		std::size_t Last = 1;
 	};
 
+	// Which parents a walk of the history follows from each commit.
+	enum class FollowedParents
+	{
+		All,
+
+		// The first parent only, as `git log --first-parent` follows them: a merge is reached and
+		// the commits it merged are not.
+		FirstOnly
+	};
+
 	// The newest commits a history shows before the reader asks for more, and how many commits a
 	// walk may visit before it stops looking.
 	inline constexpr std::size_t kLogPageSize = 500;

@@ -270,6 +270,7 @@ namespace Graphite {
 	}
 
 	Core::Result<CommitCount> RepositoryGitPort::CountCommits(const std::optional<std::string>& ref,
+															  Core::FollowedParents parents,
 															  const std::optional<CommitCount>& known)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
@@ -293,7 +294,7 @@ namespace Graphite {
 			return *known;
 		}
 
-		Core::Result<std::size_t> count = repository->CountCommits(tip.GetValue());
+		Core::Result<std::size_t> count = repository->CountCommits(tip.GetValue(), parents);
 
 		if (!count.HasValue())
 		{
