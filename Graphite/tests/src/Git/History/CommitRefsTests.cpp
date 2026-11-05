@@ -3,6 +3,8 @@
 #include "GitFixtures.h"
 
 #include "Git/History/CommitRefs.h"
+#include "Theme/BuiltInSchemes.h"
+#include "Theme/Palettes.h"
 
 #include <string>
 #include <utility>
@@ -116,7 +118,7 @@ TEST_CASE("Git window: the checked-out branch's pill reads HEAD, an arrow and it
 
 TEST_CASE("Git window: each kind of ref has its own pill colours, the head's on the accent")
 {
-	const Graphite::GitPalette palette;
+	const Graphite::GitPalette palette = Graphite::ReadGitPalette(Graphite::DarkScheme());
 
 	const Graphite::RefPillColours head = Graphite::RefPillColoursOf(CommitRefKind::Head, palette);
 	const Graphite::RefPillColours local = Graphite::RefPillColoursOf(CommitRefKind::Local, palette);
@@ -127,8 +129,11 @@ TEST_CASE("Git window: each kind of ref has its own pill colours, the head's on 
 	CHECK(local.Fill == palette.RefLocalFill);
 	CHECK(remote.Fill == palette.RefRemoteFill);
 	CHECK(tag.Fill == palette.RefTagFill);
-	CHECK(remote.Text == IM_COL32(0xa9, 0xc6, 0xf5, 255));
-	CHECK(tag.Text == IM_COL32(0xf0, 0xcf, 0x8f, 255));
-	CHECK(local.Text == IM_COL32(0xdc, 0xe8, 0xff, 255));
-	CHECK(head.Text == IM_COL32(255, 255, 255, 255));
+	CHECK(head.Text == palette.RefHeadText);
+	CHECK(local.Text == palette.RefLocalText);
+	CHECK(remote.Text == palette.RefRemoteText);
+	CHECK(tag.Text == palette.RefTagText);
+	CHECK(local.Fill != remote.Fill);
+	CHECK(remote.Fill != tag.Fill);
+	CHECK(head.Fill != local.Fill);
 }

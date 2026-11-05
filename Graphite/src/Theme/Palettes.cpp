@@ -32,6 +32,44 @@ namespace Graphite {
 		{
 			return ToImU32(ColourFromScheme(scheme, slot));
 		}
+
+		// `share` of the way from `from` to `toward`, every channel alike.
+		ImU32 Mixed(const Core::Color& from, const Core::Color& toward, float share)
+		{
+			const auto Channel = [share](float start, float end) { return start + (end - start) * share; };
+
+			return ToImU32(Core::Color{.R = Channel(from.R, toward.R),
+									   .G = Channel(from.G, toward.G),
+									   .B = Channel(from.B, toward.B),
+									   .A = Channel(from.A, toward.A)});
+		}
+
+		// How far a ref pill's colours are mixed: a fill mostly of the background with the accent or the warning in it,
+		// and words mostly of the text with a little of that colour.
+		constexpr float kLocalFillTint = 0.45f;
+		constexpr float kRemoteFillTint = 0.12f;
+		constexpr float kTagFillTint = 0.2f;
+		constexpr float kWordsTint = 0.25f;
+		constexpr float kLighterShare = 0.4f;
+
+		void ReadRefPills(const ResolvedScheme& scheme, GitPalette& palette)
+		{
+			const Core::Color& accent = ColourFromScheme(scheme, ChromeColor::Accent);
+			const Core::Color& background = ColourFromScheme(scheme, ChromeColor::Background);
+			const Core::Color& surface = ColourFromScheme(scheme, ChromeColor::Surface);
+			const Core::Color& text = ColourFromScheme(scheme, ChromeColor::Text);
+			const Core::Color& warning = ColourFromScheme(scheme, EditorColor::DiagnosticWarning);
+
+			// As the window bar's HEAD chip: the accent, with the background's colour on it.
+			palette.RefHeadFill = ToImU32(accent);
+			palette.RefHeadText = ToImU32(background);
+			palette.RefLocalFill = Mixed(background, accent, kLocalFillTint);
+			palette.RefLocalText = Mixed(text, accent, kWordsTint);
+			palette.RefRemoteFill = Mixed(surface, accent, kRemoteFillTint);
+			palette.RefRemoteText = Mixed(accent, text, kLighterShare);
+			palette.RefTagFill = Mixed(background, warning, kTagFillTint);
+			palette.RefTagText = Mixed(warning, text, kLighterShare);
+		}
 	}
 
 	SyntaxPalette ReadSyntaxPalette(const ResolvedScheme& scheme)
@@ -93,7 +131,7 @@ namespace Graphite {
 		palette.GutterModified = ImU32FromScheme(scheme, GitColor::GutterModified);
 		palette.GutterRemoved = ImU32FromScheme(scheme, GitColor::GutterRemoved);
 		palette.LineNumber = ImU32FromScheme(scheme, EditorColor::LineNumber);
-		palette.RefHeadFill = ImU32FromScheme(scheme, ChromeColor::Accent);
+		ReadRefPills(scheme, palette);
 
 		palette.Lanes = {ImU32FromScheme(scheme, GitColor::GraphLane1),
 						 ImU32FromScheme(scheme, GitColor::GraphLane2),
