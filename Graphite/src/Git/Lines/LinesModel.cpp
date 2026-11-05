@@ -107,6 +107,8 @@ namespace Graphite {
 		++m_Folder;
 
 		m_Read.Clear();
+		m_ChangeGeneration = 0;
+		m_ChangeFailure.reset();
 		m_LastAsked.reset();
 		m_WaitingBranches.reset();
 		m_WaitingChanges.clear();
@@ -129,9 +131,26 @@ namespace Graphite {
 		return m_Read.IsInFlight();
 	}
 
-	void LinesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches)
+	std::optional<Core::Error> LinesModel::TakeChangeFailure()
 	{
-		if (branches == nullptr || branches == m_LastAsked)
+		return std::exchange(m_ChangeFailure, std::nullopt);
+	}
+
+	void LinesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing)
+	{
+		const bool listedAgain = listing != m_LastListing;
+		m_LastListing = listing;
+
+		if (branches == nullptr)
+		{
+			return;
+		}
+
+		// A failed read is asked again with the next listing, so a quiet repository whose listing stays the same is not left
+		// a read behind for good.
+		const bool retriesFailure = listedAgain && m_Read.GetError().has_value() && !m_Read.IsInFlight();
+
+		if (branches == m_LastAsked && !retriesFailure)
 		{
 			return;
 		}
@@ -202,6 +221,7 @@ namespace Graphite {
 		const std::uint64_t generation = m_Read.Begin();
 		const std::uint64_t folder = m_Folder.load();
 		const std::int64_t now = m_Now();
+		m_ChangeGeneration = generation;
 
 		m_Submit([this, generation, folder, last, change = std::move(change), now]() {
 			if (!IsSameFolder(folder))
@@ -217,9 +237,16 @@ namespace Graphite {
 
 	void LinesModel::Land(std::uint64_t generation, Core::Result<LineRead> result)
 	{
-		if (m_Read.Land(generation, std::move(result)) == SlotLanding::Stale)
+		const SlotLanding landing = m_Read.Land(generation, std::move(result));
+
+		if (landing == SlotLanding::Stale)
 		{
 			return;
+		}
+
+		if (landing == SlotLanding::Failed && generation == m_ChangeGeneration)
+		{
+			m_ChangeFailure = m_Read.GetError();
 		}
 
 		RunNextWaiting();

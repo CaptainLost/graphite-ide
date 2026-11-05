@@ -201,6 +201,9 @@ namespace Graphite {
 		// HEAD is read at once and whose branches only with the refresh it marks.
 		bool IsBranchListingComing() const { return m_Branches.IsInFlight() || m_Debounce.IsDirty(); }
 
+		// Moved by every branch listing that lands, the same listing again too, as each refresh lands one.
+		std::uint64_t GetBranchListingGeneration() const { return m_Branches.GetApplied(); }
+
 		// Read beside every branch listing, so what needs it never waits for the authors walk. Empty while unread and
 		// when git has none.
 		const std::optional<std::string>& GetUserEmail() const;

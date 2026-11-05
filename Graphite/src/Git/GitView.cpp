@@ -141,6 +141,12 @@ namespace Graphite {
 			ApplyDeleteCheck(*check);
 		}
 
+		// A change the user asked for in this window and that could not be saved would otherwise do nothing visible.
+		if (const std::optional<Core::Error> failure = m_Lines.TakeChangeFailure())
+		{
+			ShowFailure(m_Events, "Line change failed", failure->Message, m_Model.GetWorkingDirectory());
+		}
+
 		if (panelOnScreen)
 		{
 			AskDeleteHeldForPanel();

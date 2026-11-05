@@ -83,6 +83,11 @@ namespace {
 			ChangedOn.push_back(last.Answers);
 			ChangedBranches.push_back(last.Branches);
 
+			if (FailChanges)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the answers cannot be written"};
+			}
+
 			LineRead read = last;
 			ApplyLineChange(read.Answers, change);
 			return read;
@@ -91,6 +96,7 @@ namespace {
 		Core::Ref<const Core::AncestryGraph> Graph = SmallGraph();
 		Core::Ref<const std::vector<std::uint32_t>> Generations = Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*Graph));
 		bool FailReads = false;
+		bool FailChanges = false;
 
 		std::vector<std::string> Asked;
 		std::vector<LineReadInput> ReadInputs;
@@ -247,6 +253,65 @@ TEST_CASE("Git window: a failed read keeps the previous read")
 	REQUIRE(model.GetRead() != nullptr);
 	CHECK(model.GetRead()->Branches == later);
 	CHECK_FALSE(model.GetError().has_value());
+}
+
+TEST_CASE("Git window: a failed read is asked again when the branches are listed again as the same snapshot")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	port.FailReads = true;
+	const Snapshot snapshot = NewSnapshot();
+	model.Follow(snapshot, 1);
+	RunUntilSettled(jobs, model);
+	REQUIRE(model.GetError().has_value());
+
+	// Every frame follows the snapshot; only a new listing asks again.
+	model.Follow(snapshot, 1);
+	CHECK(jobs.Count() == 0);
+
+	port.FailReads = false;
+	model.Follow(snapshot, 2);
+	CHECK(model.IsReading());
+	RunUntilSettled(jobs, model);
+
+	REQUIRE(model.GetRead() != nullptr);
+	CHECK_FALSE(model.GetError().has_value());
+
+	// A read that did not fail is not asked again for the same snapshot.
+	model.Follow(snapshot, 3);
+	CHECK(jobs.Count() == 0);
+	CHECK(port.ReadInputs.size() == 2);
+}
+
+TEST_CASE("Git window: a failed change is handed over once to be said and the read stays")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	model.Follow(NewSnapshot());
+	RunUntilSettled(jobs, model);
+	const Core::Ref<const LineRead> read = model.GetRead();
+	CHECK_FALSE(model.TakeChangeFailure().has_value());
+
+	port.FailChanges = true;
+	model.Change(UseAsBase("refs/heads/staging"));
+	RunUntilSettled(jobs, model);
+
+	CHECK(model.GetRead() == read);
+	const std::optional<Core::Error> failure = model.TakeChangeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Message == "the answers cannot be written");
+	CHECK_FALSE(model.TakeChangeFailure().has_value());
+
+	// A failed read is said elsewhere, not handed over as a change.
+	port.FailReads = true;
+	model.Follow(NewSnapshot());
+	RunUntilSettled(jobs, model);
+	CHECK(model.GetError().has_value());
+	CHECK_FALSE(model.TakeChangeFailure().has_value());
 }
 
 TEST_CASE("Git window: a read landing after clear is dropped")

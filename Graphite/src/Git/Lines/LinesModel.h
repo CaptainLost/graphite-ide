@@ -37,9 +37,14 @@ namespace Graphite {
 
 		void OnUpdate(); // drains landed results
 
-		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches); // asks a read when the snapshot differs from the last asked
+		// Asks a read when the snapshot differs from the last asked, or when the last read or change failed and the branches
+		// were listed again since, as a refresh lists them even when nothing changed. `listing` counts the listings.
+		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing = 0);
 
 		void Change(LineAnswerChange change);
+
+		// A change that could not be saved, once, to be said where the user made it; the read before it stays.
+		std::optional<Core::Error> TakeChangeFailure();
 
 		void Clear();
 
@@ -108,7 +113,12 @@ namespace Graphite {
 		GenerationSlot<LineRead> m_Read;
 
 		Core::Ref<const std::vector<Core::Branch>> m_LastAsked;
+		std::uint64_t m_LastListing = 0;
 		Core::Ref<const std::vector<Core::Branch>> m_WaitingBranches;
+
+		// The generation of the last change run, so its failure is told from a read's.
+		std::uint64_t m_ChangeGeneration = 0;
+		std::optional<Core::Error> m_ChangeFailure;
 		std::deque<LineAnswerChange> m_WaitingChanges;
 
 		LruResultCache<DistanceKey, Core::LineDistance, DistanceKeyHash> m_Distances{kCachedQuestions};

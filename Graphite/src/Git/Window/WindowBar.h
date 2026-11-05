@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Base/Result.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Remote.h"
@@ -49,6 +50,16 @@ namespace Graphite {
 	// remotes (or their failure) are all known it holds `held`, the previous complete text of this repository, or the
 	// waiting text when there is none.
 	SettledWindowBar SettleWindowBar(const WindowBarInput& input, bool headFailed, const WindowBarText* held);
+
+	// The failed reads the bar says at its end; null for one that did not fail.
+	struct WindowBarFailures
+	{
+		const Core::Error* Model = nullptr; // a read of the repository
+		const Core::Error* Lines = nullptr; // a read of the branches' lines, or a change to them not saved
+	};
+
+	// Each failure's message, in that order, joined by " · "; empty when none failed.
+	std::string WindowBarProblem(const WindowBarFailures& failures);
 
 	// Every colour comes from the active scheme.
 	struct WindowBarColours

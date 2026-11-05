@@ -350,6 +350,23 @@ namespace Graphite {
 		return text;
 	}
 
+	std::string WindowBarProblem(const WindowBarFailures& failures)
+	{
+		std::string problem;
+
+		for (const Core::Error* const failure : {failures.Model, failures.Lines})
+		{
+			if (failure == nullptr)
+			{
+				continue;
+			}
+
+			problem += (problem.empty() ? "" : " \xC2\xB7 ") + failure->Message;
+		}
+
+		return problem;
+	}
+
 	SettledWindowBar SettleWindowBar(const WindowBarInput& input, bool headFailed, const WindowBarText* held)
 	{
 		const bool headKnown = input.Head != nullptr || headFailed;

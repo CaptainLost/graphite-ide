@@ -326,3 +326,15 @@ TEST_CASE("Git window: the remotes landing first and the HEAD failure after it e
 	CHECK(failed.Complete);
 	CHECK(failed.Text.Remotes == "no remotes");
 }
+
+TEST_CASE("Git window: the bar's end says a failed read of the lines whether or not the repository's reads failed too")
+{
+	const Core::Error log{.Message = "cannot walk the history"};
+	const Core::Error lines{.Message = "The line answers file cannot be read, so the change was not saved."};
+
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{}).empty());
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Model = nullptr, .Lines = &lines}) == lines.Message);
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Model = &log, .Lines = nullptr}) == log.Message);
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Model = &log, .Lines = &lines}) ==
+		  "cannot walk the history \xC2\xB7 The line answers file cannot be read, so the change was not saved.");
+}
