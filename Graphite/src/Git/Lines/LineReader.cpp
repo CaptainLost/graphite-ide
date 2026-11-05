@@ -397,6 +397,7 @@ namespace Graphite {
 
 		const Core::LineAnswers loaded = LoadLineAnswers(store.Answers);
 		read.Model = Core::ComputeLines(Core::LineModelInput{graph.Get(), read.Refs, loaded, input.Now});
+		read.Now = input.Now;
 
 		Core::LineAnswers computed = loaded;
 		AddKeptBasesFound(computed, read.Model, read.Refs);

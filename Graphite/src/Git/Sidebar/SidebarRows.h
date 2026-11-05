@@ -77,7 +77,6 @@ namespace Graphite {
 		std::string_view Search;
 		const std::map<std::string, bool>& OpenByUser; // key -> open; absent keys use the defaults
 		const std::set<std::string>& ShowingMerged;    // remote names
-		std::chrono::sys_seconds Now;
 		const Core::Error* StashesError = nullptr;     // the last read of the stash list failed
 
 		// The full name of the branch whose history is shown; empty for none. Its row stays listed when it is merged, and

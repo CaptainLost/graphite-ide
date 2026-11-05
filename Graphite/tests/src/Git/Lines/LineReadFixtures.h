@@ -91,6 +91,7 @@ namespace Graphite::Fixtures {
 
 			read.Branches = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches));
 			read.Model.Bases = m_Bases;
+			read.Now = Now().time_since_epoch().count();
 
 			for (std::size_t index = 0; index < m_Entries.size(); ++index)
 			{

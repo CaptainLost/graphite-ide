@@ -39,7 +39,6 @@ namespace {
 								 .Search = options.Search,
 								 .OpenByUser = options.OpenByUser,
 								 .ShowingMerged = options.ShowingMerged,
-								 .Now = LineReadBuilder::Now(),
 								 .ShownRef = options.ShownRef};
 		return BuildSidebarRows(input);
 	}
@@ -273,6 +272,25 @@ TEST_CASE("Git window: the remote section's links count with a thousands comma")
 
 	CHECK(std::ranges::find(described, "~ 1,050 more you have locally \xC2\xB7 in Yours") != described.end());
 	CHECK(std::ranges::find(described, "~ 1,200 merged hidden \xC2\xB7 Show") != described.end());
+}
+
+TEST_CASE("Git window: the activity groups are told against the read's time and not the clock")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+
+	for (int index = 0; index < 16; ++index)
+	{
+		builder.AddRemoteBranch("origin", "b" + std::to_string(index), {.AgeDays = 6});
+	}
+
+	LineRead read = builder.Build();
+	CHECK(Describe(read, RowsOf(read))[2] == "> Active this week 16");
+
+	// The same branches read two days later have left the week.
+	constexpr std::int64_t kTwoDays = 2 * 24 * 60 * 60;
+	read.Now += kTwoDays;
+	CHECK(Describe(read, RowsOf(read))[2] == "> Last 90 days 16");
 }
 
 TEST_CASE("Git window: fifteen remote branches stay flat")

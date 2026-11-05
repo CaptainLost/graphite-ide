@@ -494,9 +494,6 @@ namespace Graphite {
 			// Moved by every section or group opened or closed and every remote's merged branches shown or hidden.
 			std::uint64_t ChoicesVersion = 0;
 
-			// In whole minutes, so the activity groups are rebuilt once a minute, not each frame.
-			std::chrono::sys_seconds Now{};
-
 			std::string ShownRef;
 
 			friend bool operator==(const SidebarInputs&, const SidebarInputs&) = default;

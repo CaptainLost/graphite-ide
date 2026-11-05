@@ -468,7 +468,9 @@ namespace Graphite {
 					return kActivityGroups.size() - 1;
 				}
 
-				const std::chrono::seconds age = m_Input.Now - *listed.TipTime;
+				// Against the read's time, not the clock's: a branch moves to an older group only with a new read.
+				const std::chrono::sys_seconds readAt{std::chrono::seconds{m_Input.Read.Now}};
+				const std::chrono::seconds age = readAt - *listed.TipTime;
 
 				for (std::size_t group = 0; group + 1 < kActivityGroups.size(); ++group)
 				{
@@ -627,7 +629,6 @@ namespace Graphite {
 								 .Search = search,
 								 .OpenByUser = openByUser,
 								 .ShowingMerged = kNoneShowingMerged,
-								 .Now = {},
 								 .StashesError = stashesError};
 		return Builder{input}.BuildStashes();
 	}

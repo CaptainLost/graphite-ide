@@ -256,7 +256,6 @@ namespace Graphite {
 							 .Authors = m_Model.GetBranchAuthors(),
 							 .Search = m_Sidebar.GetSearch(),
 							 .ChoicesVersion = m_SidebarChoicesVersion,
-							 .Now = std::chrono::floor<std::chrono::minutes>(NowInSeconds()),
 							 .ShownRef = SidebarShownRef()};
 
 		if (m_SidebarBuiltFrom == inputs)
@@ -289,7 +288,6 @@ namespace Graphite {
 														  .Search = inputs.Search,
 														  .OpenByUser = m_OpenByUser,
 														  .ShowingMerged = m_ShowingMerged,
-														  .Now = inputs.Now,
 														  .StashesError = failedStashRead,
 														  .ShownRef = inputs.ShownRef});
 		}

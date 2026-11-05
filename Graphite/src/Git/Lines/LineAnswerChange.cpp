@@ -99,6 +99,7 @@ namespace Graphite {
 		read.Graph = last.Graph;
 		read.Generations = last.Generations;
 		read.Model = Core::ComputeLines(Core::LineModelInput{*read.Graph, read.Refs, *answers, now});
+		read.Now = now;
 		read.Answers = std::move(*answers);
 		return read;
 	}
