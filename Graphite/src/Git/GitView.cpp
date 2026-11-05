@@ -1372,10 +1372,17 @@ namespace Graphite {
 		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 		const std::optional<Core::LogRequest>& asked = m_Model.GetAskedLogRequest();
 
+		// WARNING: The count is of the reference alone, so a page that also walks its line's newer commits is not
+		// said to be a part of it.
+		const bool countsThePage = !shown.has_value() || shown->AlsoFrom.empty();
+
 		return HistoryStatusInput{.Shown = page.Commits.size(),
 								  .Complete = page.Complete,
 								  .Filtered = IsShownLogNarrowed(),
 								  .Stash = shown.has_value() && shown->Stash.has_value(),
+								  .Total = countsThePage ? m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt)
+														 : std::nullopt,
+								  .Counting = countsThePage && m_Model.IsCommitCountInFlight(),
 								  .FirstParentsOnly = shown.has_value() && shown->FirstParentOnly,
 								  .Asking = !m_Model.IsLogAnswered(m_AskedLogGeneration),
 								  .AskedFiltered = asked.has_value() && NarrowsHistory(*asked)};

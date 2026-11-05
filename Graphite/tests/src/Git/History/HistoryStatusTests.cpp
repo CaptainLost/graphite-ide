@@ -105,6 +105,59 @@ TEST_CASE("Git window: clearing a filter over a filtered page says Loading while
 	CHECK(status->Actions == HistoryActions::None);
 }
 
+TEST_CASE("Git window: while more can be loaded the footer says how many of the total are shown")
+{
+	const std::optional<HistoryStatus> rows = DescribeHistory(
+		HistoryStatusInput{.Shown = 500, .Complete = false, .Total = 1739, .FirstParentsOnly = true});
+	const std::optional<HistoryStatus> commits = DescribeHistory(
+		HistoryStatusInput{.Shown = 500, .Complete = false, .Total = 1739, .FirstParentsOnly = false});
+
+	REQUIRE(rows.has_value());
+	REQUIRE(commits.has_value());
+	CHECK(rows->Text == "500 of 1,739 rows · first parents only: each merge, squash or direct commit is one row");
+	CHECK(commits->Text == "500 of 1,739 commits · every commit with its graph");
+}
+
+TEST_CASE("Git window: until the total is counted its place shows an ellipsis")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(
+		HistoryStatusInput{.Shown = 500, .Complete = false, .Counting = true, .FirstParentsOnly = false});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text == "500 of … commits · every commit with its graph");
+}
+
+TEST_CASE("Git window: once everything is loaded the total is left out and the explanation stays")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(
+		HistoryStatusInput{.Shown = 1739, .Complete = true, .Total = 1739, .FirstParentsOnly = true});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text == "1,739 rows · first parents only: each merge, squash or direct commit is one row");
+}
+
+TEST_CASE("Git window: the footer's noun follows the number it ends on")
+{
+	const std::optional<HistoryStatus> one = DescribeHistory(
+		HistoryStatusInput{.Shown = 1, .Complete = false, .Total = 1, .FirstParentsOnly = false});
+	const std::optional<HistoryStatus> ofMany = DescribeHistory(
+		HistoryStatusInput{.Shown = 1, .Complete = false, .Total = 40, .FirstParentsOnly = true});
+
+	REQUIRE(one.has_value());
+	REQUIRE(ofMany.has_value());
+	CHECK(one->Text.starts_with("1 of 1 commit · "));
+	CHECK(ofMany->Text.starts_with("1 of 40 rows · "));
+}
+
+TEST_CASE("Git window: a filter hides the total as well")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(
+		HistoryStatusInput{.Shown = 37, .Complete = false, .Filtered = true, .Total = 50000});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text == "Filtered: the graph is hidden while a filter is on");
+}
+
 TEST_CASE("A stash shows no line")
 {
 	CHECK_FALSE(DescribeHistory(HistoryStatusInput{.Shown = 1, .Complete = true, .Stash = true}).has_value());

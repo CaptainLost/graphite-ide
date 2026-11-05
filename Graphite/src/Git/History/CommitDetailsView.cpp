@@ -155,8 +155,10 @@ namespace Graphite {
 
 			for (const CommitRef& ref : refs)
 			{
-				flow.Place(RefPillWidth(ref));
-				DrawRefPill(ref, palette);
+				const RefPill pill = MeasureRefPill(ref);
+
+				flow.Place(pill.Width);
+				DrawRefPill(pill, palette);
 				flow.Placed();
 			}
 		}

@@ -23,6 +23,8 @@ namespace Graphite {
 		bool Complete = true;
 		bool Filtered = false;
 		bool Stash = false;
+		std::optional<std::size_t> Total;
+		bool Counting = false;
 
 		// The Merges history: a row is a merge, a squash or a direct commit, not every commit.
 		bool FirstParentsOnly = true;

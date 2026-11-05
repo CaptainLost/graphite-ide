@@ -103,6 +103,7 @@ TEST_CASE("A remote's symbolic HEAD is not a label because the branch it points 
 	REQUIRE(refsOnCommit.size() == 1);
 	CHECK(refsOnCommit[0].Name == "origin/main");
 }
+
 TEST_CASE("Git window: the checked-out branch's pill reads HEAD, an arrow and its name; other refs read their name")
 {
 	CHECK(Graphite::RefPillText(Graphite::CommitRef{.Name = "main", .Kind = CommitRefKind::Head}) ==

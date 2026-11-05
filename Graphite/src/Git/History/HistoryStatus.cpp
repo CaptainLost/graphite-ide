@@ -10,20 +10,20 @@ namespace Graphite {
 
 		constexpr const char* kLoading = "Loading…";
 		constexpr const char* kSearching = "Searching…";
+		constexpr const char* kCounting = "…";
 		constexpr const char* kFiltered = "Filtered: the graph is hidden while a filter is on";
 		constexpr const char* kRowsMeaning = " · first parents only: each merge, squash or direct commit is one row";
 		constexpr const char* kCommitsMeaning = " · every commit with its graph";
 
 		std::string UnfilteredText(const HistoryStatusInput& input)
 		{
-			const std::string shown = Core::FormatCount(input.Shown);
+			// WARNING: "of m" stands only while more can be loaded; its place says the total is being counted until it lands, and is left out when the count failed.
+			const bool saysTotal = !input.Complete && (input.Total.has_value() || input.Counting);
+			const std::size_t counted = saysTotal && input.Total.has_value() ? *input.Total : input.Shown;
+			const std::string shown = Core::FormatCount(input.Shown) + (saysTotal ? " of " + (input.Total.has_value() ? Core::FormatCount(*input.Total) : std::string{kCounting}) : std::string{});
+			const std::string noun = input.FirstParentsOnly ? (counted == 1 ? "row" : "rows") : (counted == 1 ? "commit" : "commits");
 
-			if (input.FirstParentsOnly)
-			{
-				return shown + (input.Shown == 1 ? " row" : " rows") + kRowsMeaning;
-			}
-
-			return shown + (input.Shown == 1 ? " commit" : " commits") + kCommitsMeaning;
+			return shown + " " + noun + (input.FirstParentsOnly ? kRowsMeaning : kCommitsMeaning);
 		}
 	}
 

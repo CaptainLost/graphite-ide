@@ -42,11 +42,20 @@ namespace Graphite {
 
 	RefPillColours RefPillColoursOf(CommitRefKind kind, const GitPalette& palette);
 
-	// The pill's width, whole: its text cut to the longest a pill may be, with the padding.
-	float RefPillWidth(const CommitRef& ref);
+	// A pill cut and measured once, to be laid out and drawn without measuring again.
+	struct RefPill
+	{
+		CommitRefKind Kind = CommitRefKind::Local;
+		std::string Full;
+		std::string Shown; // Full cut to the longest a pill may be, with an ellipsis
+		float Width = 0.0f; // whole, with the padding
+		bool IsCut = false;
+	};
 
-	// Draws the pill at the cursor as one item a text line high, with the full name in its tooltip. `alpha` scales it all.
-	void DrawRefPill(const CommitRef& ref, const GitPalette& palette, float alpha = 1.0f);
+	RefPill MeasureRefPill(const CommitRef& ref);
+
+	// Draws the pill at the cursor as one item a text line high; its tooltip gives the full text when it was cut. `alpha` scales it all.
+	void DrawRefPill(const RefPill& pill, const GitPalette& palette, float alpha = 1.0f);
 
 	std::size_t RefLabelsThatFit(const std::vector<float>& labelWidths, float gap,
 								 float availableWidth, float summaryWidth,

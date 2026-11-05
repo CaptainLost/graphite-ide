@@ -292,12 +292,15 @@ namespace Graphite {
 
 			const float labelGap = MockupPixels(kMessagePiecesGap);
 
+			std::vector<RefPill> pills;
 			std::vector<float> labelWidths;
+			pills.reserve(refs.size());
 			labelWidths.reserve(refs.size());
 
 			for (const CommitRef& ref : refs)
 			{
-				labelWidths.push_back(RefPillWidth(ref));
+				pills.push_back(MeasureRefPill(ref));
+				labelWidths.push_back(pills.back().Width);
 			}
 
 			const std::size_t fittingCount = RefLabelsThatFit(
@@ -306,7 +309,7 @@ namespace Graphite {
 
 			for (std::size_t labelIndex = 0; labelIndex < fittingCount; ++labelIndex)
 			{
-				DrawRefPill(refs[labelIndex], palette, alpha);
+				DrawRefPill(pills[labelIndex], palette, alpha);
 				ImGui::SameLine(kNoOffset, labelGap);
 			}
 		}
@@ -669,8 +672,6 @@ namespace Graphite {
 			PadListTableEnds();
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
-			ImGuiTable* table = ImGui::GetCurrentTable();
-
 			CommitColumnsInput columnInput;
 			columnInput.Available = widthBesideScrollbar;
 			columnInput.Graph = GraphWidth(metrics, laneCount);
@@ -691,20 +692,13 @@ namespace Graphite {
 			const ImGuiTableColumnFlags hashFlags =
 				columns.ShowHash ? kFixedAndLocked : kFixedAndLocked | ImGuiTableColumnFlags_Disabled;
 
+			// A fixed column that cannot be resized has the width given here applied again every frame.
 			ImGui::TableSetupColumn("##graph", kFixedAndLocked, columns.Graph);
 			ImGui::TableSetupColumn("##chevron", kFixedAndLocked, chevronWidth);
 			ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
 			ImGui::TableSetupColumn("Author", kFixedAndLocked, authorWidth);
 			ImGui::TableSetupColumn("Age", kFixedAndLocked, ageWidth);
 			ImGui::TableSetupColumn("Hash", hashFlags, hashWidth);
-
-			// WARNING: ImGui applies the width given to a column once, so a width that changes with the table's width or the lanes is written to the column each frame, before the first row lays the table out.
-			const float fixedWidths[] = {columns.Graph, chevronWidth, 0.0f, authorWidth, ageWidth, hashWidth};
-
-			for (const Column fixed : {Column::Graph, Column::Chevron, Column::Author, Column::Age, Column::Hash})
-			{
-				table->Columns[TableIndexOf(fixed)].WidthRequest = fixedWidths[TableIndexOf(fixed)];
-			}
 
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 
