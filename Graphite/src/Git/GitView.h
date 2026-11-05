@@ -504,6 +504,7 @@ namespace Graphite {
 		// pass for the one the rows were built from. Without a read the rows are the stashes alone.
 		std::optional<SidebarInputs> m_SidebarBuiltFrom;
 		std::vector<SidebarRow> m_SidebarRows;
+		SearchedAuthors m_SearchedAuthors;
 		std::optional<BranchLines> m_SidebarLines;
 
 		// What the shown reference is compared with: opened by the header's vs button and the sidebar's bases link.

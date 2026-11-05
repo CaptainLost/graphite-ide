@@ -293,6 +293,24 @@ TEST_CASE("Git window: the activity groups are told against the read's time and 
 	CHECK(Describe(read, RowsOf(read))[2] == "> Last 90 days 16");
 }
 
+TEST_CASE("Git window: a search matches the authors in hand when it began until it ends")
+{
+	const Core::Ref<const BranchAuthors> before = Core::CreateRef<const BranchAuthors>();
+	const Core::Ref<const BranchAuthors> landed = Core::CreateRef<const BranchAuthors>();
+	const Core::Ref<const BranchAuthors> later = Core::CreateRef<const BranchAuthors>();
+
+	SearchedAuthors authors;
+
+	CHECK(authors.Follow(before, "") == before);
+	CHECK(authors.Follow(before, "zed") == before);
+	CHECK(authors.Follow(landed, "zed") == before);
+	CHECK(authors.Follow(landed, "zed fix") == before);
+
+	// Words that match nothing are no search: the newest authors count again.
+	CHECK(authors.Follow(landed, "  ") == landed);
+	CHECK(authors.Follow(later, "") == later);
+}
+
 TEST_CASE("Git window: fifteen remote branches stay flat")
 {
 	LineReadBuilder builder;

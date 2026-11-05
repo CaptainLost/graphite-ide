@@ -497,6 +497,7 @@ namespace Graphite {
 		m_SidebarLines.reset();
 		m_SidebarBuiltFrom.reset();
 		m_SidebarRows.clear();
+		m_SearchedAuthors = SearchedAuthors{};
 		m_MostCommonLine.clear();
 		m_HeadRef.reset();
 		m_OpenByUser.clear();

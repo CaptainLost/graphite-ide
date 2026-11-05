@@ -253,7 +253,7 @@ namespace Graphite {
 							 .Stashes = m_Model.GetStashes(),
 							 .StashesError = stashesError.has_value() ? std::optional<std::string>{stashesError->Message}
 																	  : std::nullopt,
-							 .Authors = m_Model.GetBranchAuthors(),
+							 .Authors = m_SearchedAuthors.Follow(m_Model.GetBranchAuthors(), m_Sidebar.GetSearch()),
 							 .Search = m_Sidebar.GetSearch(),
 							 .ChoicesVersion = m_SidebarChoicesVersion,
 							 .ShownRef = SidebarShownRef()};

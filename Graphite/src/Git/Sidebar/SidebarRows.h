@@ -4,6 +4,7 @@
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LineReader.h"
 
+#include "Core/Base/Base.h"
 #include "Core/Base/Result.h"
 #include "Core/Git/Stash.h"
 
@@ -91,6 +92,18 @@ namespace Graphite {
 	inline constexpr const char* kYoursSectionKey = "yours";
 
 	std::vector<SidebarRow> BuildSidebarRows(const SidebarInput& input);
+
+	// The authors a search matches against: those in hand when it began, for as long as it runs, so an authors walk that
+	// lands mid-search adds no hits by itself; the newest ones otherwise.
+	class SearchedAuthors
+	{
+	public:
+		Core::Ref<const BranchAuthors> Follow(Core::Ref<const BranchAuthors> newest, std::string_view search);
+
+	private:
+		Core::Ref<const BranchAuthors> m_Held;
+		bool m_Searching = false;
+	};
 
 	// The rows that need no line model, for while the lines are read: the Stashes section alone, as BuildSidebarRows
 	// lists it.

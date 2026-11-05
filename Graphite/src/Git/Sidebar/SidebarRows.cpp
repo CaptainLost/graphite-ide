@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 
 namespace Graphite {
 
@@ -577,6 +578,19 @@ namespace Graphite {
 	std::vector<SidebarRow> BuildSidebarRows(const SidebarInput& input)
 	{
 		return Builder{input}.Build();
+	}
+
+	Core::Ref<const BranchAuthors> SearchedAuthors::Follow(Core::Ref<const BranchAuthors> newest, std::string_view search)
+	{
+		const bool searching = !LoweredWordsOf(search).empty();
+
+		if (!searching || !m_Searching)
+		{
+			m_Held = std::move(newest);
+		}
+
+		m_Searching = searching;
+		return m_Held;
 	}
 
 	std::optional<std::size_t> RefOpenedBy(const SidebarRow& row, const LineRead& read, const BranchLines& lines)
