@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/Sidebar/SidebarRows.h"
+#include "Git/Sidebar/SidebarText.h"
 
 #include "Git/Lines/LineReadFixtures.h"
 
@@ -481,4 +482,16 @@ TEST_CASE("Git window: search with authors read but none for a tip falls back to
 
 	search.Search = "zealot";
 	CHECK(RowsOf(read, search).empty());
+}
+
+TEST_CASE("Git window: a failed stashes read leaves the count's place empty and the section says what failed")
+{
+	const Core::Error error{.Message = "cannot read stashes"};
+	const std::vector<SidebarRow> rows = BuildStashRows(nullptr, &error, "", {});
+
+	REQUIRE(rows.size() == 2);
+	CHECK(rows[0].Kind == SidebarRowKind::Section);
+	CHECK(rows[0].CountFailed);
+	CHECK(SectionCountText(rows[0]).empty());
+	CHECK(rows[1].Label == "cannot read stashes");
 }

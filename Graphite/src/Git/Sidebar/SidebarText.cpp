@@ -483,6 +483,11 @@ namespace Graphite {
 
 	std::string SectionCountText(const SidebarRow& row)
 	{
+		if (row.CountFailed)
+		{
+			return {};
+		}
+
 		if (!row.Counted)
 		{
 			return kEllipsis;

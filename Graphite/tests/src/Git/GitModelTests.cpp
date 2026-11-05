@@ -2687,6 +2687,22 @@ TEST_CASE("Git window: the remotes are read with the branches and forgotten with
 	CHECK(model.GetRemotes() == nullptr);
 }
 
+TEST_CASE("Git window: a repository with no remotes has an empty listing once the read is done, not none")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	CHECK(model.GetRemotes() == nullptr);
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetRemotes() != nullptr);
+	CHECK(model.GetRemotes()->empty());
+	CHECK_FALSE(model.GetRemotesError().has_value());
+}
+
 TEST_CASE("Git window: the user's e-mail is read with the branches")
 {
 	FakePort port;

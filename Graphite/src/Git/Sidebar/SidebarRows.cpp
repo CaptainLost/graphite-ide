@@ -489,6 +489,7 @@ namespace Graphite {
 
 				const bool open = AddSection(SidebarSection::Stashes, "stashes", "Stashes", shown.size(), total);
 				m_Rows.back().Counted = m_Input.Stashes != nullptr;
+				m_Rows.back().CountFailed = m_Input.Stashes == nullptr && m_Input.StashesError != nullptr;
 
 				if (!open)
 				{

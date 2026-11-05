@@ -15,6 +15,9 @@ namespace Graphite {
 		const char* Glyph = ICON_LC_SEARCH;
 
 		std::optional<float> Width;
+
+		// Receives the id of the text input itself, not of the clear button beside it.
+		unsigned int* InputId = nullptr;
 	};
 
 	bool DrawFilterField(const char* id, char* buffer, std::size_t bufferSize, const FilterFieldLook& look);

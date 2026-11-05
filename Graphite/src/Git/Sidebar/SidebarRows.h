@@ -56,7 +56,8 @@ namespace Graphite {
 		std::string Note;  // a remote section's "not on this computer"
 		std::size_t Count = 0;
 		std::optional<std::size_t> Total; // while searching: "n of total"
-		bool Counted = true;              // a section whose list is unread shows no count
+		bool Counted = true;              // a section whose list is unread shows "…" in the count's place
+		bool CountFailed = false;         // its read failed: the count's place is empty and the section's notice says why
 		bool Waiting = false;             // a notice of a list on its way: a loader turns beside it
 		bool Open = false;
 		std::size_t Depth = 0;

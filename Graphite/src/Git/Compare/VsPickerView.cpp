@@ -9,6 +9,7 @@
 #include "UI/Lists/FilterField.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <IconsLucide.h>
 
@@ -223,7 +224,7 @@ namespace Graphite {
 		}
 
 		// The search field in the place and height of the find row.
-		void DrawFindField(std::string& search, float width, bool focus)
+		void DrawFindField(std::string& search, float width, bool focus, unsigned int& inputId)
 		{
 			const float rowHeight = Em(kRowHeight);
 			const float frameHeight = ImGui::GetFrameHeight();
@@ -236,7 +237,7 @@ namespace Graphite {
 				ImGui::SetKeyboardFocusHere();
 			}
 
-			DrawFilterField("##search", search, FilterFieldLook{.Hint = "", .Width = width - 2.0f * Em(kSide)});
+			DrawFilterField("##search", search, FilterFieldLook{.Hint = "", .Width = width - 2.0f * Em(kSide), .InputId = &inputId});
 
 			ImGui::SetCursorPosY(start);
 			ImGui::Dummy(ImVec2(width, std::max(rowHeight, frameHeight)));
@@ -379,7 +380,8 @@ namespace Graphite {
 			Core::PushInterfaceFont(ImGui::GetFontSize() * kFootText / kMockupFont);
 			ImGui::SetCursorPosX(Em(kSide));
 
-			// Wrapped word by word, as the entries named in bold change the face mid-line.
+			// WARNING: Wrapped word by word, as the entries named in bold change the face mid-line; the footer is one fixed
+			// paragraph (VsPicker.cpp) and a newline in it would be drawn as a glyph.
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float right = origin.x + width - 2.0f * Em(kSide);
 			const float lineHeight = ImGui::GetTextLineHeight();
@@ -463,11 +465,12 @@ namespace Graphite {
 			return;
 		}
 
-		DrawFindField(m_Search, width, m_FocusSearch);
+		unsigned int inputId = 0;
+		DrawFindField(m_Search, width, m_FocusSearch, inputId);
 		m_FocusSearch = false;
 
 		// Esc or the clear button leaves the field empty and unfocused: the row comes back.
-		const bool active = ImGui::IsAnyItemActive();
+		const bool active = inputId != 0 && ImGui::GetActiveID() == inputId;
 
 		if (m_SearchWasActive && !active && m_Search.empty())
 		{

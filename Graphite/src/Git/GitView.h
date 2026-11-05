@@ -442,6 +442,7 @@ namespace Graphite {
 			Core::Ref<const std::vector<Core::Branch>> Branches;
 			Core::Ref<const std::vector<Core::Remote>> Remotes;
 			bool RemotesFailed = false;
+			bool HeadFailed = false;
 			std::optional<std::string> CheckingOut;
 			std::filesystem::path Folder;
 

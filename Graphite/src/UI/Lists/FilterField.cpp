@@ -76,6 +76,12 @@ namespace Graphite {
 			// selection, from the frame's own edge, which here is under the glyph.
 			drawList->PushClipRect(ImVec2(textLeft, fieldMin.y), fieldMax, kWithinWhatIsShown);
 			bool edited = input(ImGuiInputTextFlags_EscapeClearsAll);
+
+			if (look.InputId != nullptr)
+			{
+				*look.InputId = ImGui::GetItemID();
+			}
+
 			drawList->PopClipRect();
 
 			ImGui::PopStyleVar(kInputStyleVarCount);

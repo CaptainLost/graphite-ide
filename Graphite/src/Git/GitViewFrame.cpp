@@ -155,14 +155,14 @@ namespace Graphite {
 
 		// WARNING: Rebuilt only when what it describes changed: the checked-out branch is looked up in every branch.
 		const bool remotesFailed = m_Model.GetRemotesError().has_value();
-		const WindowBarSource source{head, branches, remotes, remotesFailed, checkingOut, folder};
+		const bool headFailed = !head && m_Model.GetHeadError().has_value();
+		const WindowBarSource source{head, branches, remotes, remotesFailed, headFailed, checkingOut, folder};
 
 		if (m_WindowBarSource != source)
 		{
 			const std::optional<Core::Error>& remotesError = m_Model.GetRemotesError();
 			const std::string* remotesFailure = remotesFailed && !remotes ? &remotesError->Message : nullptr;
 
-			const bool headFailed = !head && m_Model.GetHeadError().has_value();
 			const SettledWindowBar settled = SettleWindowBar(
 				WindowBarInput{folder, head.get(), branches.get(), remotes.get(), false, remotesFailure}, headFailed,
 				m_WindowBarSettled.has_value() ? &*m_WindowBarSettled : nullptr);
@@ -180,12 +180,12 @@ namespace Graphite {
 		}
 
 		const std::optional<Core::Error>& headError = m_Model.GetHeadError();
-		const bool headFailed = !head && headError.has_value() && m_WindowBarSettled.has_value();
+		const bool showsHeadFailure = headFailed && m_WindowBarSettled.has_value();
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
 
 		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
 										   .WorkingDirectory = folder,
-										   .HeadFailure = headFailed ? std::string_view{headError->Message} : std::string_view{},
+										   .HeadFailure = showsHeadFailure ? std::string_view{headError->Message} : std::string_view{},
 										   .Colours = colours,
 										   .Bleed = ImGui::GetStyle().WindowPadding}))
 		{

@@ -252,3 +252,17 @@ TEST_CASE("Git window: a refresh with the remotes pending keeps the previous com
 		Graphite::WindowBarInput{kFolder, &head, &branches, &changed, false}, false, &during.Text);
 	CHECK(after.Text.Remotes == "origin \xC2\xB7 backup");
 }
+
+TEST_CASE("Git window: the remotes landing first and the HEAD failure after it ends the waiting")
+{
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::vector<Core::Remote> none;
+	const Graphite::WindowBarInput input{kFolder, nullptr, &branches, &none, false};
+
+	const Graphite::SettledWindowBar waiting = Graphite::SettleWindowBar(input, false, nullptr);
+	CHECK_FALSE(waiting.Complete);
+
+	const Graphite::SettledWindowBar failed = Graphite::SettleWindowBar(input, true, nullptr);
+	CHECK(failed.Complete);
+	CHECK(failed.Text.Remotes == "no remotes");
+}

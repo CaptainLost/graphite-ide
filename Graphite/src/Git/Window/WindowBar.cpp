@@ -397,8 +397,10 @@ namespace Graphite {
 		const bool clicked = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), right - x);
 
 		// The bar is one item high however many it drew, so the cursor lands below it, as far down as without the bleed.
-		ImGui::SetCursorScreenPos(origin);
-		ImGui::Dummy(ImVec2(width, height + drawing.Bleed.y));
+		// WARNING: The item keeps to the content region's width, so the bleed, which only the rule and the room for the
+		// items reach into, never widens what the window scrolls; the items start a bar side in, more than the padding.
+		ImGui::SetCursorScreenPos(ImVec2(origin.x + drawing.Bleed.x, origin.y));
+		ImGui::Dummy(ImVec2(width - 2.0f * drawing.Bleed.x, height + drawing.Bleed.y));
 
 		return clicked;
 	}
