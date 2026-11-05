@@ -78,6 +78,10 @@ namespace Graphite {
 		std::string_view HeadFailure;
 
 		const WindowBarColours& Colours;
+
+		// How far the bar reaches past the cursor on the left, the right and the top, to meet the window's edges: the
+		// window's padding. The cursor lands where it would have without it, so what follows keeps its padding.
+		ImVec2 Bleed{};
 	};
 
 	// One bar high across the available width, ending on an item. True when the HEAD chip was clicked.

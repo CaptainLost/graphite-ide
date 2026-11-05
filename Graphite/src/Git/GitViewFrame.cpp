@@ -186,7 +186,8 @@ namespace Graphite {
 		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
 										   .WorkingDirectory = folder,
 										   .HeadFailure = headFailed ? std::string_view{headError->Message} : std::string_view{},
-										   .Colours = colours}))
+										   .Colours = colours,
+										   .Bleed = ImGui::GetStyle().WindowPadding}))
 		{
 			SelectRef(std::nullopt);
 		}

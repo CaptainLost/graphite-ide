@@ -372,8 +372,8 @@ namespace Graphite {
 
 	bool DrawWindowBar(const WindowBarDrawing& drawing)
 	{
-		const ImVec2 origin = ImGui::GetCursorScreenPos();
-		const float width = ImGui::GetContentRegionAvail().x;
+		const ImVec2 origin(ImGui::GetCursorScreenPos().x - drawing.Bleed.x, ImGui::GetCursorScreenPos().y - drawing.Bleed.y);
+		const float width = ImGui::GetContentRegionAvail().x + 2.0f * drawing.Bleed.x;
 		const float height = Em(kBarHeight);
 		const float side = Em(kBarSide);
 		const float gap = Em(kGap);
@@ -396,9 +396,9 @@ namespace Graphite {
 
 		const bool clicked = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), right - x);
 
-		// The bar is one item high however many it drew, so the cursor lands below it.
+		// The bar is one item high however many it drew, so the cursor lands below it, as far down as without the bleed.
 		ImGui::SetCursorScreenPos(origin);
-		ImGui::Dummy(ImVec2(width, height));
+		ImGui::Dummy(ImVec2(width, height + drawing.Bleed.y));
 
 		return clicked;
 	}
