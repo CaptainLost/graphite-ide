@@ -25,8 +25,13 @@ namespace Graphite {
 		HeaderWords Words;
 	};
 
-	// The words drawn: `fresh`, but while the distance they count is measured again for the same reference, the words
-	// drawn last, so the label never shows "…" and widens back, nor the banner rewraps, for a moment.
-	const HeaderWords& HeaderWordsToDraw(const HeaderWords& fresh, bool measuring, std::string_view shownRef,
+	// The words drawn: `fresh`, but while they wait (HeaderWordsWait) for the same reference, the words drawn last.
+	const HeaderWords& HeaderWordsToDraw(const HeaderWords& fresh, bool waits, std::string_view shownRef,
 										 const std::optional<DrawnHeaderWords>& drawn);
+
+	// The words wait while the distance they count is measured again, so the label never shows "…" and widens back, nor
+	// the banner rewraps, for a moment; and while the rows under them are still the page asked with the line before, so
+	// the label, the banner row and the fold row change in the frame the page asked with the new line lands, rather than
+	// the banner row going a moment before the fold row comes.
+	bool HeaderWordsWait(bool measuring, bool rowsOfLineShown);
 }

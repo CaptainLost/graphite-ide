@@ -250,6 +250,32 @@ TEST_CASE("Git window: the header keeps the words it drew for a reference while 
 		  "6 ahead, \xE2\x80\xA6 behind");
 }
 
+TEST_CASE("Git window: the header keeps the words it drew while the rows under them are the page of the line before")
+{
+	// The user picked a line for an old copy: the banner the words had goes, and the fold row comes with the page asked
+	// with the pick, so both wait for that page.
+	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "compared with nothing", .Line = "", .Counts = "", .Mark = std::nullopt},
+									  .Banner = "The default branch of origin, made when the fork was."};
+	const Graphite::HeaderWords picked{.Label = VsLabel{.Lead = "vs", .Line = "upstream/develop", .Counts = "0 ahead, 8,913 behind", .Mark = "your pick"},
+									   .Banner = std::nullopt};
+	const std::optional<Graphite::DrawnHeaderWords> held = Graphite::DrawnHeaderWords{.ShownRef = "refs/heads/develop", .Words = drawn};
+
+	constexpr bool kMeasured = false;
+	constexpr bool kPageOfLineBefore = false;
+	constexpr bool kPageOfLineShown = true;
+
+	CHECK(Graphite::HeaderWordsWait(kMeasured, kPageOfLineBefore));
+	CHECK(Graphite::HeaderWordsToDraw(picked, Graphite::HeaderWordsWait(kMeasured, kPageOfLineBefore), "refs/heads/develop", held)
+			  .Banner.has_value());
+
+	CHECK_FALSE(Graphite::HeaderWordsWait(kMeasured, kPageOfLineShown));
+	CHECK_FALSE(Graphite::HeaderWordsToDraw(picked, Graphite::HeaderWordsWait(kMeasured, kPageOfLineShown), "refs/heads/develop", held)
+					.Banner.has_value());
+
+	// A distance measured again waits whatever page is in hand.
+	CHECK(Graphite::HeaderWordsWait(true, kPageOfLineShown));
+}
+
 namespace {
 
 	// develop and release are bases, fork/develop an old copy of develop; the case picks what they are compared with.

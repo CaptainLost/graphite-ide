@@ -684,13 +684,13 @@ namespace Graphite {
 		{
 			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef)};
 			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input)};
-			const bool measuring = MeasuresShownDistance(*read, shownRef);
-			const HeaderWords& words = HeaderWordsToDraw(fresh, measuring, shownRef, m_DrawnHeaderWords);
+			const bool waits = HeaderWordsWait(MeasuresShownDistance(*read, shownRef), RowsOfLineShown());
+			const HeaderWords& words = HeaderWordsToDraw(fresh, waits, shownRef, m_DrawnHeaderWords);
 
 			label = words.Label;
 			banner = words.Banner;
 
-			if (!measuring)
+			if (!waits)
 			{
 				m_DrawnHeaderWords = DrawnHeaderWords{.ShownRef = shownRef, .Words = fresh};
 			}

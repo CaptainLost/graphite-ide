@@ -393,6 +393,9 @@ namespace Graphite {
 		// The page asked with the line now shown is in hand with the counts its first rows are drawn with.
 		bool FirstRowsReady(const Core::LogRequest& shown);
 
+		// The last page asked of the model was asked with the line now shown, and it has landed.
+		bool RowsOfLineShown() const;
+
 		// The header's distance or the folded line's count is still measured; asking them if not asked yet.
 		bool ShownLineCountsWait();
 

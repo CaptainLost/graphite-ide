@@ -1017,12 +1017,17 @@ namespace Graphite {
 			.FirstRowsReady = !shownForThis && FirstRowsReady(*shown)});
 	}
 
+	bool GitView::RowsOfLineShown() const
+	{
+		return m_LineAsked == ShownRefLine() && m_Model.IsLogAnswered(m_LineAskedGeneration);
+	}
+
 	bool GitView::FirstRowsReady(const Core::LogRequest& shown)
 	{
 		// WARNING: The first rows come from a page asked with the line now shown. The page in hand may carry another
 		// branch's marks: HEAD's is asked again by every refresh, after a checkout too, with the marks of the branch it
 		// was before.
-		if (m_LineAsked != ShownRefLine() || !m_Model.IsLogAnswered(m_LineAskedGeneration))
+		if (!RowsOfLineShown())
 		{
 			return false;
 		}
