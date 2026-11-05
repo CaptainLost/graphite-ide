@@ -12,10 +12,10 @@ namespace Graphite {
 		constexpr const char* kSearching = "Searching…";
 		constexpr const char* kCounting = "…";
 		constexpr const char* kFiltered = "Filtered: the graph is hidden while a filter is on";
-		constexpr const char* kRowsMeaning = " · first parents only: each merge, squash or direct commit is one row";
-		constexpr const char* kCommitsMeaning = " · every commit with its graph";
+		constexpr const char* kRowsMeaning = "First parents only: each merge, squash or direct commit is one row";
+		constexpr const char* kCommitsMeaning = "Every commit with its graph";
 
-		std::string UnfilteredText(const HistoryStatusInput& input)
+		std::string CountText(const HistoryStatusInput& input)
 		{
 			// WARNING: "of m" stands only while more can be loaded; its place says the total is being counted until it lands, and is left out when the count failed.
 			const bool saysTotal = !input.Complete && (input.Total.has_value() || input.Counting);
@@ -23,7 +23,7 @@ namespace Graphite {
 			const std::string shown = Core::FormatCount(input.Shown) + (saysTotal ? " of " + (input.Total.has_value() ? Core::FormatCount(*input.Total) : std::string{kCounting}) : std::string{});
 			const std::string noun = input.FirstParentsOnly ? (counted == 1 ? "row" : "rows") : (counted == 1 ? "commit" : "commits");
 
-			return shown + " " + noun + (input.FirstParentsOnly ? kRowsMeaning : kCommitsMeaning);
+			return shown + " " + noun;
 		}
 	}
 
@@ -43,7 +43,16 @@ namespace Graphite {
 		}
 
 		HistoryStatus status;
-		status.Text = input.Filtered ? std::string{kFiltered} : UnfilteredText(input);
+
+		if (input.Filtered)
+		{
+			status.Text = kFiltered;
+		}
+		else
+		{
+			status.Text = input.FirstParentsOnly ? kRowsMeaning : kCommitsMeaning;
+			status.Count = CountText(input);
+		}
 
 		if (input.Asking)
 		{

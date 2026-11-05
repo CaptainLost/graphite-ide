@@ -123,7 +123,20 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
-		const bool drewSomething = saysText || !busy || !foldFooter.empty();
+		// WARNING: Last of the text, so the total that lands later moves nothing before it.
+		if (!status.Count.empty())
+		{
+			const bool followsText = saysText || !foldFooter.empty();
+
+			if (saysText || !busy || !foldFooter.empty())
+			{
+				ImGui::SameLine(kNoOffset, kNoSpacing);
+			}
+
+			ImGui::TextDisabled("%s", ((followsText ? std::string{kBetween} : std::string{}) + status.Count).c_str());
+		}
+
+		const bool drewSomething = saysText || !busy || !foldFooter.empty() || !status.Count.empty();
 
 		if (busy)
 		{

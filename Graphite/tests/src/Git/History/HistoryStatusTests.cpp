@@ -3,6 +3,7 @@
 #include "Git/History/HistoryStatus.h"
 
 #include <optional>
+#include <string>
 
 using Graphite::DescribeHistory;
 using Graphite::HistoryActions;
@@ -15,7 +16,8 @@ TEST_CASE("Git window: the Merges history says how many rows are loaded and what
 		DescribeHistory(HistoryStatusInput{.Shown = 3448, .Complete = true, .FirstParentsOnly = true});
 
 	REQUIRE(status.has_value());
-	CHECK(status->Text == "3,448 rows · first parents only: each merge, squash or direct commit is one row");
+	CHECK(status->Text == "First parents only: each merge, squash or direct commit is one row");
+	CHECK(status->Count == "3,448 rows");
 	CHECK(status->Actions == HistoryActions::None);
 	CHECK(status->Busy.empty());
 }
@@ -26,7 +28,8 @@ TEST_CASE("Git window: the All commits history says how many commits are loaded"
 		DescribeHistory(HistoryStatusInput{.Shown = 500, .Complete = false, .FirstParentsOnly = false});
 
 	REQUIRE(status.has_value());
-	CHECK(status->Text == "500 commits · every commit with its graph");
+	CHECK(status->Text == "Every commit with its graph");
+	CHECK(status->Count == "500 commits");
 	CHECK(status->Actions == HistoryActions::Load);
 }
 
@@ -39,8 +42,8 @@ TEST_CASE("Git window: one row or one commit reads in the singular")
 
 	REQUIRE(rows.has_value());
 	REQUIRE(commits.has_value());
-	CHECK(rows->Text.starts_with("1 row · "));
-	CHECK(commits->Text.starts_with("1 commit · "));
+	CHECK(rows->Count == "1 row");
+	CHECK(commits->Count == "1 commit");
 }
 
 TEST_CASE("Git window: while a filter is on the footer says the graph is hidden and offers to search further")
@@ -50,6 +53,7 @@ TEST_CASE("Git window: while a filter is on the footer says the graph is hidden 
 
 	REQUIRE(status.has_value());
 	CHECK(status->Text == "Filtered: the graph is hidden while a filter is on");
+	CHECK(status->Count.empty());
 	CHECK(status->Actions == HistoryActions::Search);
 }
 
@@ -60,6 +64,7 @@ TEST_CASE("Git window: a filter that matched the whole history offers nothing mo
 
 	REQUIRE(status.has_value());
 	CHECK(status->Text == "Filtered: the graph is hidden while a filter is on");
+	CHECK(status->Count.empty());
 	CHECK(status->Actions == HistoryActions::None);
 }
 
@@ -78,7 +83,8 @@ TEST_CASE("Git window: while a query the reader asked for runs the footer says L
 		.Shown = 500, .Complete = false, .FirstParentsOnly = false, .Asking = true, .AskedFiltered = false});
 
 	REQUIRE(status.has_value());
-	CHECK(status->Text == "500 commits · every commit with its graph");
+	CHECK(status->Text == "Every commit with its graph");
+	CHECK(status->Count == "500 commits");
 	CHECK(status->Busy == "Loading\xE2\x80\xA6");
 	CHECK(status->Actions == HistoryActions::None);
 }
@@ -89,7 +95,8 @@ TEST_CASE("Git window: typing a filter over an unfiltered page says Searching wh
 		.Shown = 500, .Complete = false, .FirstParentsOnly = false, .Asking = true, .AskedFiltered = true});
 
 	REQUIRE(status.has_value());
-	CHECK(status->Text == "500 commits · every commit with its graph");
+	CHECK(status->Text == "Every commit with its graph");
+	CHECK(status->Count == "500 commits");
 	CHECK(status->Busy == "Searching\xE2\x80\xA6");
 	CHECK(status->Actions == HistoryActions::None);
 }
@@ -101,6 +108,7 @@ TEST_CASE("Git window: clearing a filter over a filtered page says Loading while
 
 	REQUIRE(status.has_value());
 	CHECK(status->Text == "Filtered: the graph is hidden while a filter is on");
+	CHECK(status->Count.empty());
 	CHECK(status->Busy == "Loading\xE2\x80\xA6");
 	CHECK(status->Actions == HistoryActions::None);
 }
@@ -114,8 +122,10 @@ TEST_CASE("Git window: while more can be loaded the footer says how many of the 
 
 	REQUIRE(rows.has_value());
 	REQUIRE(commits.has_value());
-	CHECK(rows->Text == "500 of 1,739 rows · first parents only: each merge, squash or direct commit is one row");
-	CHECK(commits->Text == "500 of 1,739 commits · every commit with its graph");
+	CHECK(rows->Text == "First parents only: each merge, squash or direct commit is one row");
+	CHECK(rows->Count == "500 of 1,739 rows");
+	CHECK(commits->Text == "Every commit with its graph");
+	CHECK(commits->Count == "500 of 1,739 commits");
 }
 
 TEST_CASE("Git window: until the total is counted its place shows an ellipsis")
@@ -124,7 +134,8 @@ TEST_CASE("Git window: until the total is counted its place shows an ellipsis")
 		HistoryStatusInput{.Shown = 500, .Complete = false, .Counting = true, .FirstParentsOnly = false});
 
 	REQUIRE(status.has_value());
-	CHECK(status->Text == "500 of … commits · every commit with its graph");
+	CHECK(status->Text == "Every commit with its graph");
+	CHECK(status->Count == "500 of … commits");
 }
 
 TEST_CASE("Git window: once everything is loaded the total is left out and the explanation stays")
@@ -133,7 +144,8 @@ TEST_CASE("Git window: once everything is loaded the total is left out and the e
 		HistoryStatusInput{.Shown = 1739, .Complete = true, .Total = 1739, .FirstParentsOnly = true});
 
 	REQUIRE(status.has_value());
-	CHECK(status->Text == "1,739 rows · first parents only: each merge, squash or direct commit is one row");
+	CHECK(status->Text == "First parents only: each merge, squash or direct commit is one row");
+	CHECK(status->Count == "1,739 rows");
 }
 
 TEST_CASE("Git window: the footer's noun follows the number it ends on")
@@ -145,8 +157,19 @@ TEST_CASE("Git window: the footer's noun follows the number it ends on")
 
 	REQUIRE(one.has_value());
 	REQUIRE(ofMany.has_value());
-	CHECK(one->Text.starts_with("1 of 1 commit · "));
-	CHECK(ofMany->Text.starts_with("1 of 40 rows · "));
+	CHECK(one->Count == "1 of 1 commit");
+	CHECK(ofMany->Count == "1 of 40 rows");
+}
+
+TEST_CASE("Git window: the count is kept apart from the explanation so the view can put it last")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(
+		HistoryStatusInput{.Shown = 500, .Complete = false, .Counting = true, .FirstParentsOnly = true});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text.find("500") == std::string::npos);
+	CHECK(status->Text.find("…") == std::string::npos);
+	CHECK(status->Count == "500 of … rows");
 }
 
 TEST_CASE("Git window: a filter hides the total as well")
@@ -156,6 +179,7 @@ TEST_CASE("Git window: a filter hides the total as well")
 
 	REQUIRE(status.has_value());
 	CHECK(status->Text == "Filtered: the graph is hidden while a filter is on");
+	CHECK(status->Count.empty());
 }
 
 TEST_CASE("A stash shows no line")

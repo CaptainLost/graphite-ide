@@ -39,7 +39,12 @@ namespace Graphite {
 
 	struct HistoryStatus
 	{
+		// What the history is, said first.
 		std::string Text;
+
+		// How many rows or commits are loaded, "500 of 1,739 rows": the end of the line, after anything the view adds to
+		// Text, because its total lands later and must move nothing. Empty for none.
+		std::string Count;
 		HistoryActions Actions = HistoryActions::None;
 
 		// "Loading…" or "Searching…" while the reader's query runs, standing where the buttons would;
