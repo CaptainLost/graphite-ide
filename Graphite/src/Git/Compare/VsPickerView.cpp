@@ -208,7 +208,9 @@ namespace Graphite {
 		{
 			const float height = Em(kRowHeight);
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
-			const bool clicked = ImGui::Selectable("##find", false, ImGuiSelectableFlags_None, ImVec2(width, height));
+
+			// WARNING: A Selectable in a popup closes the popup when clicked; this one turns into the field in it instead.
+			const bool clicked = ImGui::Selectable("##find", false, ImGuiSelectableFlags_NoAutoClosePopups, ImVec2(width, height));
 
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
 			const float side = Em(kSide);
