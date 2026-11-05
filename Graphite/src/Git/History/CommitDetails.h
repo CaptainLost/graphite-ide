@@ -43,8 +43,14 @@ namespace Graphite {
 		std::optional<std::string> Unknown; // the line read failed: its message, and no answer will come
 	};
 
-	// The line for a moment with no read: waiting while one is coming, unknown once it has failed.
-	InBases InBasesWithoutRead(bool reading, const std::optional<Core::Error>& error);
+	// The line for a moment with no read: waiting while one is coming, unknown once it has failed or once the branches
+	// it would be made of could not be listed.
+	InBases InBasesWithoutRead(bool reading, const std::optional<Core::Error>& linesError,
+							   const std::optional<Core::Error>& branchesError);
+
+	// The line for a commit the read's graph does not hold, as a detached HEAD's own commit or a stash: in no base, since
+	// a base's history is in the graph; waiting while a newer read may hold it.
+	InBases InBasesOutsideRead(bool reading);
 
 	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked.
 	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding);

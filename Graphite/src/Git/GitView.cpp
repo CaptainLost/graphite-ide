@@ -1644,9 +1644,24 @@ namespace Graphite {
 
 		CommitDetailsContent content;
 
-		// Without a read there is no answer to wait for or to give; the line shows its ellipsis.
+		// Without a read the line waits for one that is coming, and says "unknown" when none can come. A commit the read's
+		// graph lacks is in no base.
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
-		content.Bases = read ? DescribeInBases(*read, m_Lines.BasesHolding(commit.Id)) : InBasesWithoutRead(m_Lines.IsReading(), m_Lines.GetError());
+
+		if (!read)
+		{
+			const bool branchesFailed = !m_Model.GetBranches() && m_Model.GetBranchesError().has_value();
+			content.Bases = InBasesWithoutRead(m_Lines.IsReading(), m_Lines.GetError(),
+											   branchesFailed ? m_Model.GetBranchesError() : std::nullopt);
+		}
+		else if (!m_Lines.HoldsCommit(commit.Id))
+		{
+			content.Bases = InBasesOutsideRead(m_Lines.IsReading());
+		}
+		else
+		{
+			content.Bases = DescribeInBases(*read, m_Lines.BasesHolding(commit.Id));
+		}
 
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
 		{

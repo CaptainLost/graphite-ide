@@ -242,13 +242,37 @@ TEST_CASE("Git window: the in bases line is unknown once the line read failed an
 {
 	const Core::Error failure{Core::ErrorCode::IoFailure, "graph.bin is unreadable"};
 
-	const Graphite::InBases failed = Graphite::InBasesWithoutRead(false, failure);
+	const Graphite::InBases failed = Graphite::InBasesWithoutRead(false, failure, std::nullopt);
 
 	CHECK_FALSE(failed.Pending);
 	REQUIRE(failed.Unknown.has_value());
 	CHECK(*failed.Unknown == "graph.bin is unreadable");
 
-	CHECK(Graphite::InBasesWithoutRead(true, failure).Pending);
-	CHECK(Graphite::InBasesWithoutRead(false, std::nullopt).Pending);
-	CHECK_FALSE(Graphite::InBasesWithoutRead(false, std::nullopt).Unknown.has_value());
+	CHECK(Graphite::InBasesWithoutRead(true, failure, std::nullopt).Pending);
+	CHECK(Graphite::InBasesWithoutRead(false, std::nullopt, std::nullopt).Pending);
+	CHECK_FALSE(Graphite::InBasesWithoutRead(false, std::nullopt, std::nullopt).Unknown.has_value());
+}
+
+TEST_CASE("Git window: the in bases line is unknown when the branches could not be listed")
+{
+	const Core::Error failure{Core::ErrorCode::IoFailure, "cannot list the branches"};
+
+	const Graphite::InBases unknown = Graphite::InBasesWithoutRead(false, std::nullopt, failure);
+
+	CHECK_FALSE(unknown.Pending);
+	REQUIRE(unknown.Unknown.has_value());
+	CHECK(*unknown.Unknown == "cannot list the branches");
+
+	CHECK(Graphite::InBasesWithoutRead(true, std::nullopt, failure).Pending);
+}
+
+TEST_CASE("Git window: a commit the read's graph lacks is in no base once no read is coming")
+{
+	const Graphite::InBases settled = Graphite::InBasesOutsideRead(false);
+
+	CHECK_FALSE(settled.Pending);
+	CHECK_FALSE(settled.Unknown.has_value());
+	CHECK(settled.Holding.empty());
+
+	CHECK(Graphite::InBasesOutsideRead(true).Pending);
 }

@@ -51,18 +51,35 @@ namespace Graphite {
 			   commit.Committer.Email != commit.Author.Email;
 	}
 
-	InBases InBasesWithoutRead(bool reading, const std::optional<Core::Error>& error)
+	InBases InBasesWithoutRead(bool reading, const std::optional<Core::Error>& linesError,
+							   const std::optional<Core::Error>& branchesError)
 	{
 		InBases bases;
 
-		if (error.has_value() && !reading)
+		if (reading)
 		{
-			bases.Unknown = error->Message;
+			bases.Pending = true;
+		}
+		else if (linesError.has_value())
+		{
+			bases.Unknown = linesError->Message;
+		}
+		else if (branchesError.has_value())
+		{
+			bases.Unknown = branchesError->Message;
 		}
 		else
 		{
 			bases.Pending = true;
 		}
+
+		return bases;
+	}
+
+	InBases InBasesOutsideRead(bool reading)
+	{
+		InBases bases;
+		bases.Pending = reading;
 
 		return bases;
 	}
