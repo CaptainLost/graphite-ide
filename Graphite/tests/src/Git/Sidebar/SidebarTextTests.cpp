@@ -585,6 +585,43 @@ TEST_CASE("Git window: a row with a worktree carries its path")
 	CHECK_FALSE(DescribeSidebarRow(BranchRow(alone), input).Dirty.has_value());
 }
 
+TEST_CASE("Git window: a worktree whose count failed shows nothing in the dot's place")
+{
+	LineReadBuilder builder;
+	const std::size_t inTree = builder.AddLocal("side");
+	LineRead read = builder.Build();
+	const BranchLines lines(read);
+	const std::optional<std::string> email;
+	const std::string common = MostCommonLineOf(read);
+	const std::filesystem::path tree = "D:/repo-side";
+
+	SidebarTextInput input{.Read = read, .Lines = lines, .UserEmail = email, .MostCommonLine = common, .Now = LineReadBuilder::Now()};
+	input.WorktreeOf = [&tree](std::string_view) -> std::optional<std::filesystem::path> { return tree; };
+	input.IsDirty = [](const std::filesystem::path&) -> std::optional<bool> { return std::nullopt; };
+	input.CountFailureOf = [](const std::filesystem::path&) -> std::optional<std::string> { return "the index is locked"; };
+
+	const SidebarRowText failed = DescribeSidebarRow(BranchRow(inTree), input);
+
+	REQUIRE(failed.Worktree.has_value());
+	CHECK_FALSE(failed.Dirty.has_value());
+	CHECK(failed.CountFailure == "the index is locked");
+	CHECK(WorktreeDotPlaceOf(failed) == WorktreeDotPlace::Nothing);
+}
+
+TEST_CASE("Git window: a worktree's dot place waits for the count then shows the dot only for changes")
+{
+	SidebarRowText text;
+	text.Worktree = std::filesystem::path("D:/repo-side");
+
+	CHECK(WorktreeDotPlaceOf(text) == WorktreeDotPlace::Waiting);
+
+	text.Dirty = true;
+	CHECK(WorktreeDotPlaceOf(text) == WorktreeDotPlace::Dot);
+
+	text.Dirty = false;
+	CHECK(WorktreeDotPlaceOf(text) == WorktreeDotPlace::Nothing);
+}
+
 TEST_CASE("Git window: a section's count shows an ellipsis while its list is unread and the number once read")
 {
 	SidebarRow stashes;

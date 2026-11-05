@@ -67,6 +67,16 @@ namespace Graphite {
 	// Empty for a row that is neither a branch nor a base.
 	SidebarRowText DescribeSidebarRow(const SidebarRow& row, const SidebarTextInput& input);
 
+	// What stands in the place of a worktree marker's dot.
+	enum class WorktreeDotPlace
+	{
+		Waiting, // "…": the count is not in yet
+		Dot,     // the worktree has uncommitted changes
+		Nothing  // it has none, or its count failed (the tooltip says why)
+	};
+
+	WorktreeDotPlace WorktreeDotPlaceOf(const SidebarRowText& text);
+
 	// The full name of the base most branches are compared with; empty when none is. A tie goes to the earlier ref.
 	std::string MostCommonLineOf(const LineRead& read);
 

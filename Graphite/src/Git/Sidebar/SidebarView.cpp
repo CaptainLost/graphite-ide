@@ -511,16 +511,20 @@ namespace Graphite {
 
 			const float dotMiddle = box.Right - dotRoom * kHalf;
 
-			// A count that failed shows nothing in the dot's place; the tooltip says why.
-			if (!text.Dirty.has_value() && text.CountFailure.empty())
+			switch (WorktreeDotPlaceOf(text))
+			{
+			case WorktreeDotPlace::Waiting:
 			{
 				const TextAtSize small(Em(kSmallText));
 				DrawText(ImVec2(box.Right - WidthOf(kEllipsis), CentredTop(box)), colours.Of(SidebarTone::Dim), kEllipsis);
+				break;
 			}
-			else if (*text.Dirty)
-			{
+			case WorktreeDotPlace::Dot:
 				ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(dotMiddle, box.Top + box.Height * kHalf),
 															Em(kWorktreeDot) * kHalf, colours.Of(SidebarTone::Unusual));
+				break;
+			case WorktreeDotPlace::Nothing:
+				break;
 			}
 
 			return iconLeft;

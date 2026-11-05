@@ -479,6 +479,21 @@ namespace Graphite {
 		return text;
 	}
 
+	WorktreeDotPlace WorktreeDotPlaceOf(const SidebarRowText& text)
+	{
+		if (text.Dirty.value_or(false))
+		{
+			return WorktreeDotPlace::Dot;
+		}
+
+		if (!text.Dirty.has_value() && text.CountFailure.empty())
+		{
+			return WorktreeDotPlace::Waiting;
+		}
+
+		return WorktreeDotPlace::Nothing;
+	}
+
 	std::optional<SidebarWaitingRow> DescribeSidebarWait(const SidebarWaitInput& input)
 	{
 		if (input.HasRead)
