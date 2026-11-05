@@ -270,15 +270,28 @@ namespace Graphite {
 		});
 	}
 
+	// WARNING: Read beside every branch listing, so an answer equal to the snapshot held keeps that snapshot's pointer, as
+	// the branches' does: the window bar follows them by pointer and would be built again on every save. Compared on the
+	// worker.
 	void GitModel::RequestUserEmail()
 	{
 		const std::uint64_t generation = m_UserEmail.Begin();
 
-		m_Submit([this, generation]() {
+		m_Submit([this, generation, held = m_UserEmail.Get()]() {
 			Core::Result<std::optional<std::string>> result = m_Port.ReadUserEmail();
+			const bool sameAsHeld = held != nullptr && result.HasValue() && result.GetValue() == *held;
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
-				m_UserEmail.Land(generation, std::move(result));
+			Deliver([this, generation, held, sameAsHeld, result = std::move(result)]() mutable {
+				const bool stillHeld = sameAsHeld && m_UserEmail.Get() == held;
+
+				if (stillHeld)
+				{
+					m_UserEmail.LandSameAsHeld(generation);
+				}
+				else
+				{
+					m_UserEmail.Land(generation, std::move(result));
+				}
 			});
 		});
 	}
@@ -287,11 +300,21 @@ namespace Graphite {
 	{
 		const std::uint64_t generation = m_Remotes.Begin();
 
-		m_Submit([this, generation]() {
+		m_Submit([this, generation, held = m_Remotes.Get()]() {
 			Core::Result<std::vector<Core::Remote>> result = m_Port.QueryRemotes();
+			const bool sameAsHeld = held != nullptr && result.HasValue() && result.GetValue() == *held;
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
-				m_Remotes.Land(generation, std::move(result));
+			Deliver([this, generation, held, sameAsHeld, result = std::move(result)]() mutable {
+				const bool stillHeld = sameAsHeld && m_Remotes.Get() == held;
+
+				if (stillHeld)
+				{
+					m_Remotes.LandSameAsHeld(generation);
+				}
+				else
+				{
+					m_Remotes.Land(generation, std::move(result));
+				}
 			});
 		});
 	}

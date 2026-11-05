@@ -2792,6 +2792,37 @@ TEST_CASE("Git window: a listing of the same branches keeps the snapshot it hold
 	CHECK_FALSE(model.GetBranchesError().has_value());
 }
 
+TEST_CASE("Git window: a refresh that reads the same remotes and e-mail keeps the snapshots it holds")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.Remotes = {Core::Remote{.Name = "origin", .Url = "u"}};
+	port.UserEmail = std::optional<std::string>{"ann@example.com"};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	const Core::Ref<const std::vector<Core::Remote>> remotes = model.GetRemotes();
+	const std::optional<std::string>* const email = &model.GetUserEmail();
+	REQUIRE(remotes != nullptr);
+	REQUIRE(model.GetUserEmail() == std::optional<std::string>{"ann@example.com"});
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetRemotes() == remotes);
+	CHECK(&model.GetUserEmail() == email);
+
+	port.Remotes.push_back(Core::Remote{.Name = "fork", .Url = "v"});
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetRemotes() != nullptr);
+	CHECK(model.GetRemotes() != remotes);
+	CHECK(model.GetRemotes()->size() == 2);
+}
+
 TEST_CASE("Git window: a listing whose branches changed lands a new snapshot")
 {
 	FakePort port;

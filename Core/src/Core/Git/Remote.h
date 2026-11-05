@@ -10,5 +10,7 @@ namespace Core {
 
 		// Empty when the remote's config names none.
 		std::string Url;
+
+		friend bool operator==(const Remote&, const Remote&) = default;
 	};
 }
