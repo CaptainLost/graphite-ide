@@ -55,6 +55,7 @@ namespace Graphite {
 				, m_Lines(input.Read)
 				, m_Words(LoweredWordsOf(input.Search))
 				, m_Searching(!m_Words.empty())
+				, m_Shown(input.ShownRef.empty() ? std::nullopt : m_Lines.IndexOf(input.ShownRef))
 			{
 				IndexCopies();
 			}
@@ -126,6 +127,12 @@ namespace Graphite {
 			bool IsLocalCopyOfBase(const Core::BranchLine& line) const
 			{
 				return line.SameRowAs.has_value() && m_IsBase[*line.SameRowAs];
+			}
+
+			// The row of `ref` is the shown branch's: the ref itself, or a base whose local copy is shown.
+			bool HoldsShown(std::size_t ref) const
+			{
+				return m_Shown.has_value() && (ref == *m_Shown || m_LocalCopyOf[ref] == m_Shown);
 			}
 
 			bool Matches(std::size_t ref) const
@@ -296,8 +303,15 @@ namespace Graphite {
 
 				if (!quiet.empty())
 				{
+					bool holdsShown = false;
+
+					for (const Core::LineBase* base : quiet)
+					{
+						holdsShown = holdsShown || HoldsShown(base->Ref);
+					}
+
 					const std::string key = "bases/quiet";
-					const bool open = OpenOf(key, false);
+					const bool open = OpenOf(key, holdsShown);
 					AddGroup(SidebarSection::Bases, key, "Quiet for 90 days", quiet.size(), open, {});
 
 					if (open)
@@ -355,7 +369,7 @@ namespace Graphite {
 					{
 						++alsoLocal;
 					}
-					else if (mergedHidden && line.State == Core::BranchState::MergedByHistory)
+					else if (mergedHidden && line.State == Core::BranchState::MergedByHistory && !HoldsShown(line.Ref))
 					{
 						++hiddenMerged;
 					}
@@ -414,12 +428,14 @@ namespace Graphite {
 				for (std::size_t group = 0; group < kActivityGroups.size(); ++group)
 				{
 					std::vector<std::size_t> members;
+					bool holdsShown = false;
 
 					for (const Listed& listed : shown)
 					{
 						if (ActivityGroupOf(listed) == group)
 						{
 							members.push_back(listed.Ref);
+							holdsShown = holdsShown || HoldsShown(listed.Ref);
 						}
 					}
 
@@ -429,7 +445,7 @@ namespace Graphite {
 					}
 
 					const std::string groupKey = key + "/" + std::to_string(group);
-					const bool open = OpenOf(groupKey, firstGroup);
+					const bool open = OpenOf(groupKey, firstGroup || holdsShown);
 					firstGroup = false;
 
 					AddGroup(SidebarSection::Remote, groupKey, std::string{kActivityGroups[group].Label}, members.size(), open, remote);
@@ -546,6 +562,7 @@ namespace Graphite {
 			BranchLines m_Lines;
 			std::vector<std::string> m_Words;
 			bool m_Searching;
+			std::optional<std::size_t> m_Shown; // into the read's refs
 
 			std::vector<bool> m_IsBase;
 			std::vector<std::optional<std::size_t>> m_LocalCopyOf; // per ref: the local branch that is one row with it

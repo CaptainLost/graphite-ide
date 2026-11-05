@@ -192,6 +192,10 @@ namespace Graphite {
 		void RenderSidebar();
 		void RebuildSidebarWhenOutOfDate();
 
+		// The full name of the branch the sidebar keeps listed: the selected one, or the checked-out one for HEAD's
+		// history; empty for a stash's.
+		std::string SidebarShownRef() const;
+
 		// What a row stands for in the snapshots its rows were built from; null for another kind of row. A base row stands
 		// for its local copy too: the branch it opens and the branch its menu is for are given by RefOpenedBy and
 		// RefOfRowMenu.
@@ -479,6 +483,8 @@ namespace Graphite {
 
 			// In whole minutes, so the activity groups are rebuilt once a minute, not each frame.
 			std::chrono::sys_seconds Now{};
+
+			std::string ShownRef;
 
 			friend bool operator==(const SidebarInputs&, const SidebarInputs&) = default;
 		};

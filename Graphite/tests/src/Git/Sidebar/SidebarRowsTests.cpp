@@ -27,6 +27,7 @@ namespace {
 		std::set<std::string> ShowingMerged;
 		const std::vector<Core::StashEntry>* Stashes = &kNoStashes;
 		const BranchAuthors* Authors = nullptr;
+		std::string ShownRef;
 	};
 
 	std::vector<SidebarRow> RowsOf(const LineRead& read, const Options& options = {})
@@ -37,7 +38,8 @@ namespace {
 								 .Search = options.Search,
 								 .OpenByUser = options.OpenByUser,
 								 .ShowingMerged = options.ShowingMerged,
-								 .Now = LineReadBuilder::Now()};
+								 .Now = LineReadBuilder::Now(),
+								 .ShownRef = options.ShownRef};
 		return BuildSidebarRows(input);
 	}
 
@@ -607,4 +609,93 @@ TEST_CASE("Git window: a branch row opens and gives the menu of its own ref, and
 	CHECK(RefOfRowMenu(rows[1]) == std::optional<std::size_t>{feature});
 	CHECK_FALSE(RefOpenedBy(rows[0], read, lines).has_value());
 	CHECK_FALSE(RefOfRowMenu(rows[0]).has_value());
+}
+
+namespace {
+
+	// Seventeen remote branches, grouped by activity: three this week, seven this season, six old, and old-merged, an old
+	// one merged by history.
+	LineRead ReadOfGroupedRemote()
+	{
+		LineReadBuilder builder;
+		builder.AddRemote("origin");
+
+		for (int index = 0; index < 3; ++index)
+		{
+			builder.AddRemoteBranch("origin", "week" + std::to_string(index), {.AgeDays = index + 1});
+		}
+
+		for (int index = 0; index < 7; ++index)
+		{
+			builder.AddRemoteBranch("origin", "season" + std::to_string(index), {.AgeDays = 30 + index});
+		}
+
+		for (int index = 0; index < 6; ++index)
+		{
+			builder.AddRemoteBranch("origin", "old" + std::to_string(index), {.AgeDays = 200 + index});
+		}
+
+		builder.AddRemoteBranch("origin", "old-merged", {.AgeDays = 300, .State = Core::BranchState::MergedByHistory});
+		return builder.Build();
+	}
+}
+
+TEST_CASE("Git window: the shown branch stays listed after the search is cleared")
+{
+	const LineRead read = ReadOfGroupedRemote();
+
+	Options searching;
+	searching.Search = "old3";
+	searching.ShownRef = "refs/remotes/origin/old3";
+	CHECK(Describe(read, RowsOf(read, searching)) == Lines{"# remote/origin 1/17", "origin/old3"});
+
+	Options cleared;
+	cleared.ShownRef = "refs/remotes/origin/old3";
+	const Lines described = Describe(read, RowsOf(read, cleared));
+
+	CHECK(described == Lines{"# yours 0", "# remote/origin 16", "> Active this week 3", "  origin/week0", "  origin/week1",
+							 "  origin/week2", "> Last 90 days 7 closed", "> Older than 90 days 6", "  origin/old0", "  origin/old1",
+							 "  origin/old2", "  origin/old3", "  origin/old4", "  origin/old5", kOneMergedHidden, "# stashes 0",
+							 "! No stashes"});
+
+	// A group the user closed stays closed.
+	cleared.OpenByUser = {{"remote/origin/2", false}};
+	CHECK(Describe(read, RowsOf(read, cleared))[7] == "> Older than 90 days 6 closed");
+}
+
+TEST_CASE("Git window: the shown branch stays listed when it becomes merged")
+{
+	const LineRead read = ReadOfGroupedRemote();
+
+	Options shown;
+	shown.ShownRef = "refs/remotes/origin/old-merged";
+	const Lines described = Describe(read, RowsOf(read, shown));
+
+	CHECK(described == Lines{"# yours 0", "# remote/origin 17", "> Active this week 3", "  origin/week0", "  origin/week1",
+							 "  origin/week2", "> Last 90 days 7 closed", "> Older than 90 days 7", "  origin/old0", "  origin/old1",
+							 "  origin/old2", "  origin/old3", "  origin/old4", "  origin/old5", "  origin/old-merged", "# stashes 0",
+							 "! No stashes"});
+}
+
+TEST_CASE("Git window: the quiet bases open when the shown branch is one of them or its local copy")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	const std::size_t active = builder.AddRemoteBranch("origin", "main");
+	const std::size_t quiet = builder.AddRemoteBranch("origin", "release");
+	const std::size_t copy = builder.AddLocal("release", {.State = Core::BranchState::NotMerged});
+	builder.MakeBase(active);
+	builder.MakeBase(quiet, false);
+	builder.SameRow(copy, quiet);
+	const LineRead read = builder.Build();
+
+	for (const std::string shownRef : {"refs/remotes/origin/release", "refs/heads/release"})
+	{
+		Options shown;
+		shown.ShownRef = shownRef;
+
+		CHECK(Describe(read, RowsOf(read, shown)) == Lines{"# yours 0", "# bases 2", "origin/main", "> Quiet for 90 days 1", "  origin/release",
+															"~ Why these, and how to change them", "# remote/origin 0", "# stashes 0",
+															"! No stashes"});
+	}
 }

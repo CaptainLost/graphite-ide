@@ -79,6 +79,11 @@ namespace Graphite {
 		const std::set<std::string>& ShowingMerged;    // remote names
 		std::chrono::sys_seconds Now;
 		const Core::Error* StashesError = nullptr;     // the last read of the stash list failed
+
+		// The full name of the branch whose history is shown; empty for none. Its row stays listed when it is merged, and
+		// the group holding it opens unless the user closed that group, so a branch the user looks at never goes from the
+		// list.
+		std::string_view ShownRef;
 	};
 
 	inline constexpr std::size_t kFlatGroupMost = 15;

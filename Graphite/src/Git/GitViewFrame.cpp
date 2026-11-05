@@ -252,7 +252,8 @@ namespace Graphite {
 							 .Authors = m_Model.GetBranchAuthors(),
 							 .Search = m_Sidebar.GetSearch(),
 							 .ChoicesVersion = m_SidebarChoicesVersion,
-							 .Now = std::chrono::floor<std::chrono::minutes>(NowInSeconds())};
+							 .Now = std::chrono::floor<std::chrono::minutes>(NowInSeconds()),
+							 .ShownRef = SidebarShownRef()};
 
 		if (m_SidebarBuiltFrom == inputs)
 		{
@@ -285,7 +286,8 @@ namespace Graphite {
 														  .OpenByUser = m_OpenByUser,
 														  .ShowingMerged = m_ShowingMerged,
 														  .Now = inputs.Now,
-														  .StashesError = failedStashRead});
+														  .StashesError = failedStashRead,
+														  .ShownRef = inputs.ShownRef});
 		}
 		else
 		{
@@ -293,6 +295,23 @@ namespace Graphite {
 		}
 
 		m_SidebarBuiltFrom = std::move(inputs);
+	}
+
+	std::string GitView::SidebarShownRef() const
+	{
+		if (m_SelectedStash.has_value() || RestoreWaits())
+		{
+			return {};
+		}
+
+		if (m_SelectedRef.has_value())
+		{
+			return *m_SelectedRef;
+		}
+
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
+
+		return head && head->Kind == Core::HeadKind::Branch ? Core::LocalBranchReference(head->BranchName) : std::string{};
 	}
 
 	const Core::Branch* GitView::SidebarBranchAt(std::optional<std::size_t> ref) const
