@@ -201,13 +201,15 @@ namespace Graphite {
 		const bool showsHeadFailure = headFailed && m_WindowBarSettled.has_value();
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
 
-		// WARNING: The last failed read is said in the bar, whose height is fixed: drawn as a line after the window's table
-		// it stood below the window's room and made the whole window scroll. The lines' failure is said whether or not a
-		// read is held: a later read or a change that fails leaves the rows of the last good read on screen.
-		const std::optional<Core::Error>& lastError = m_Model.GetLastError();
-		const std::optional<Core::Error>& linesError = m_Lines.GetError();
-		const std::string problem = WindowBarProblem(WindowBarFailures{.Model = lastError.has_value() ? &*lastError : nullptr,
-																	   .Lines = linesError.has_value() ? &*linesError : nullptr});
+		// WARNING: A failed read is said in the bar, whose height is fixed: drawn as a line after the window's table it
+		// stood below the window's room and made the whole window scroll. The lines' failure is said whether or not a read
+		// is held: a later read or a change that fails leaves the rows of the last good read on screen. A commit's diff
+		// that fails is said in its details, so it neither comes nor goes here with the selection.
+		const auto failureOf = [](const std::optional<Core::Error>& error) { return error.has_value() ? &*error : nullptr; };
+		const std::string problem = WindowBarProblem(WindowBarFailures{.Status = failureOf(m_Model.GetStatusError()),
+																	   .Branches = failureOf(m_Model.GetBranchesError()),
+																	   .Log = failureOf(m_Model.GetLogError()),
+																	   .Lines = failureOf(m_Lines.GetError())});
 
 		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
 										   .WorkingDirectory = folder,

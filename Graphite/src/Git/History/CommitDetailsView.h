@@ -27,6 +27,9 @@ namespace Graphite {
 		InBases Bases;
 		std::vector<CommitRef> Refs;
 		std::optional<BroughtDetails> Brought; // only for a merge
+
+		// Why the commit's diff could not be read; empty while it is read or once it is in.
+		std::string DiffFailure;
 	};
 
 	struct CommitDetailsOutcome

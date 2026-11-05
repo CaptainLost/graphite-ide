@@ -355,7 +355,7 @@ namespace Graphite {
 	{
 		std::string problem;
 
-		for (const Core::Error* const failure : {failures.Model, failures.Lines})
+		for (const Core::Error* const failure : {failures.Status, failures.Branches, failures.Log, failures.Lines})
 		{
 			if (failure == nullptr)
 			{

@@ -1659,6 +1659,11 @@ namespace Graphite {
 
 		CommitDetailsContent content;
 
+		if (const std::optional<Core::Error> failure = m_Model.GetDiffFailure(commit.Id))
+		{
+			content.DiffFailure = failure->Message;
+		}
+
 		// Without a read the line waits for one that is coming, and says "unknown" when none can come. A commit the read's
 		// graph lacks is in no base.
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();

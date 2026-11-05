@@ -51,10 +51,13 @@ namespace Graphite {
 	// waiting text when there is none.
 	SettledWindowBar SettleWindowBar(const WindowBarInput& input, bool headFailed, const WindowBarText* held);
 
-	// The failed reads the bar says at its end; null for one that did not fail.
+	// The failed reads the bar says at its end; null for one that did not fail. HEAD's is said in its chip's place, and a
+	// commit's diff or texts beside the commit.
 	struct WindowBarFailures
 	{
-		const Core::Error* Model = nullptr; // a read of the repository
+		const Core::Error* Status = nullptr;
+		const Core::Error* Branches = nullptr;
+		const Core::Error* Log = nullptr;
 		const Core::Error* Lines = nullptr; // a read of the branches' lines, or a change to them not saved
 	};
 

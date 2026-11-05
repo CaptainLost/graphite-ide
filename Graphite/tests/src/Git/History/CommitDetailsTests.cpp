@@ -181,8 +181,9 @@ TEST_CASE("The change count says it is counting while the diff is read, and that
 	constexpr bool kDiffFailed = true;
 	constexpr bool kDiffOnItsWay = false;
 
-	CHECK(Graphite::UncountedChangesText(kDiffOnItsWay) == "counting changes\xE2\x80\xA6");
-	CHECK(Graphite::UncountedChangesText(kDiffFailed) == "couldn't count changes");
+	CHECK(Graphite::UncountedChangesText(kDiffOnItsWay, {}) == "counting changes\xE2\x80\xA6");
+	CHECK(Graphite::UncountedChangesText(kDiffFailed, {}) == "couldn't count changes");
+	CHECK(Graphite::UncountedChangesText(kDiffFailed, "object not found") == "couldn't count changes: object not found");
 }
 namespace {
 

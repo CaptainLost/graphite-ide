@@ -336,8 +336,19 @@ TEST_CASE("Git window: the bar's end says a failed read of the lines whether or 
 	const Core::Error lines{.Message = "The line answers file cannot be read, so the change was not saved."};
 
 	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{}).empty());
-	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Model = nullptr, .Lines = &lines}) == lines.Message);
-	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Model = &log, .Lines = nullptr}) == log.Message);
-	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Model = &log, .Lines = &lines}) ==
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Lines = &lines}) == lines.Message);
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Log = &log}) == log.Message);
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Log = &log, .Lines = &lines}) ==
 		  "cannot walk the history \xC2\xB7 The line answers file cannot be read, so the change was not saved.");
+}
+
+TEST_CASE("Git window: the bar's end says the status, the branches, the log and the lines in that order")
+{
+	const Core::Error status{.Message = "status failed"};
+	const Core::Error branches{.Message = "branches failed"};
+	const Core::Error log{.Message = "log failed"};
+	const Core::Error lines{.Message = "lines failed"};
+
+	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Status = &status, .Branches = &branches, .Log = &log, .Lines = &lines}) ==
+		  "status failed \xC2\xB7 branches failed \xC2\xB7 log failed \xC2\xB7 lines failed");
 }

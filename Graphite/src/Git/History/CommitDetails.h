@@ -22,7 +22,9 @@ namespace Graphite {
 
 	DiffStats CountChanges(const Core::Diff& diff);
 
-	std::string UncountedChangesText(bool diffFailed);
+	// The stats line while the commit's diff is not in hand; a failure is said with its message, here rather than in the
+	// window bar, so it stays with the commit it is about.
+	std::string UncountedChangesText(bool diffFailed, std::string_view failure);
 
 	// WARNING: The offset is the reader's, not the author's, because Core::Signature drops the author's. Seconds are dropped, not rounded.
 	std::string FormattedTimestamp(std::chrono::sys_seconds instant, std::chrono::minutes offset);

@@ -26,9 +26,14 @@ namespace Graphite {
 		return changeCounts;
 	}
 
-	std::string UncountedChangesText(bool diffFailed)
+	std::string UncountedChangesText(bool diffFailed, std::string_view failure)
 	{
-		return diffFailed ? "couldn't count changes" : "counting changes\xE2\x80\xA6";
+		if (!diffFailed)
+		{
+			return "counting changes\xE2\x80\xA6";
+		}
+
+		return failure.empty() ? std::string{"couldn't count changes"} : "couldn't count changes: " + std::string{failure};
 	}
 
 	std::string FormattedTimestamp(std::chrono::sys_seconds instant, std::chrono::minutes offset)

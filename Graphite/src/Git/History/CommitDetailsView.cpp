@@ -336,7 +336,9 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::TextDisabled("%s", UncountedChangesText(diffFailed).c_str());
+			const std::string uncounted = UncountedChangesText(diffFailed, content.DiffFailure);
+			ImGui::TextDisabled("%s", uncounted.c_str());
+			ImGui::SetItemTooltip("%s", uncounted.c_str());
 		}
 
 		ImGui::Separator();
