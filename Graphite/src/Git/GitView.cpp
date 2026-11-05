@@ -16,6 +16,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 #include "Git/Branches/BranchLookup.h"
+#include "Git/Compare/HeaderShares.h"
 #include "Git/Compare/BranchMenu.h"
 #include "Git/GitRequests.h"
 #include "Git/History/CommitRows.h"
@@ -1187,8 +1188,10 @@ namespace Graphite {
 	{
 		// Short of room, the path field gives up its share as the filter field does.
 		const float fullPathWidth = ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
-		const float pathWidth = std::min(fullPathWidth, room * fullPathWidth / FilterFieldsBasis());
-		const float wordsWidth = std::max(0.0f, room - pathWidth - ImGui::GetStyle().ItemSpacing.x);
+		const FilterFieldWidths widths =
+			SplitFilterFields(room, fullPathWidth, FilterFieldsBasis(), ImGui::GetStyle().ItemSpacing.x);
+		const float pathWidth = widths.Path;
+		const float wordsWidth = widths.Words;
 
 		DrawFilterField("##commitFilter", m_FilterBuffer.data(), m_FilterBuffer.size(),
 						{.Hint = "Message, author or hash", .Width = wordsWidth});

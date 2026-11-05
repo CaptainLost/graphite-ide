@@ -14,6 +14,7 @@
 #include "Core/ImGui/Theme.h"
 
 #include "Git/Branches/BranchLookup.h"
+#include "Git/Compare/HeaderShares.h"
 #include "Git/Compare/HistoryBanner.h"
 #include "Git/GitStatusText.h"
 #include "Git/History/CommitLabels.h"
@@ -658,24 +659,25 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		// As in the mockup, the vs button and the switch keep their widths, and the name and the fields share the rest in
-		// proportion to the widths they would take; the filter field takes whatever is left over.
-		constexpr float kVsShare = 0.4f;
-		const float vsWidth = label.Lead.empty() ? 0.0f : std::min(rowWidth * kVsShare, VsButtonWidth(label));
-		const float sharedRoom = std::max(0.0f, rowWidth - (ImGui::GetCursorScreenPos().x - rowStartX) - vsWidth -
-													HistorySwitchWidth() - 4.0f * spacing);
-
 		const float operationWidth =
 			operation.empty() ? 0.0f : ImGui::CalcTextSize(operation.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
 		const float prefixWidth = ImGui::CalcTextSize(prefix.c_str()).x;
 
 		ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
-		const float titleBasis = operationWidth + prefixWidth + ImGui::CalcTextSize(title.c_str()).x;
+		const float titleWidth = ImGui::CalcTextSize(title.c_str()).x;
 		ImGui::PopFont();
 
-		const float wanted = titleBasis + FilterFieldsBasis() + spacing;
-		const float titleRoom = wanted > sharedRoom ? titleBasis * sharedRoom / wanted : titleBasis;
-		const float nameRoom = std::max(0.0f, titleRoom - operationWidth);
+		const HeaderShares shares = ShareHeader(HeaderWidths{.Row = rowWidth,
+															 .Taken = ImGui::GetCursorScreenPos().x - rowStartX,
+															 .VsButton = label.Lead.empty() ? 0.0f : VsButtonWidth(label),
+															 .Switch = HistorySwitchWidth(),
+															 .Operation = operationWidth,
+															 .Prefix = prefixWidth,
+															 .Title = titleWidth,
+															 .Fields = FilterFieldsBasis(),
+															 .Spacing = spacing});
+		const float vsWidth = shares.VsButton;
+		const float nameRoom = shares.NameRoom;
 
 		if (!prefix.empty())
 		{
