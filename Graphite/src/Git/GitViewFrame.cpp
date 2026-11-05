@@ -95,6 +95,12 @@ namespace Graphite {
 
 			return std::nullopt;
 		}
+
+		// The failure a read left, or null when it has none, as the window bar takes it.
+		const Core::Error* FailureOf(const std::optional<Core::Error>& error)
+		{
+			return error.has_value() ? &*error : nullptr;
+		}
 	}
 
 	void GitView::ConnectViews()
@@ -205,11 +211,10 @@ namespace Graphite {
 		// stood below the window's room and made the whole window scroll. The lines' failure is said whether or not a read
 		// is held: a later read or a change that fails leaves the rows of the last good read on screen. A commit's diff
 		// that fails is said in its details, so it neither comes nor goes here with the selection.
-		const auto failureOf = [](const std::optional<Core::Error>& error) { return error.has_value() ? &*error : nullptr; };
-		const std::string problem = WindowBarProblem(WindowBarFailures{.Status = failureOf(m_Model.GetStatusError()),
-																	   .Branches = failureOf(m_Model.GetBranchesError()),
-																	   .Log = failureOf(m_Model.GetLogError()),
-																	   .Lines = failureOf(m_Lines.GetError())});
+		const std::string problem = WindowBarProblem(WindowBarFailures{.Status = FailureOf(m_Model.GetStatusError()),
+																	   .Branches = FailureOf(m_Model.GetBranchesError()),
+																	   .Log = FailureOf(m_Model.GetLogError()),
+																	   .Lines = FailureOf(m_Lines.GetError())});
 
 		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
 										   .WorkingDirectory = folder,

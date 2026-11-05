@@ -33,15 +33,19 @@ namespace Graphite {
 			return ToImU32(ColourFromScheme(scheme, slot));
 		}
 
+		// `share` of the way from `start` to `end`.
+		float MixedChannel(float start, float end, float share)
+		{
+			return start + (end - start) * share;
+		}
+
 		// `share` of the way from `from` to `toward`, every channel alike.
 		ImU32 Mixed(const Core::Color& from, const Core::Color& toward, float share)
 		{
-			const auto Channel = [share](float start, float end) { return start + (end - start) * share; };
-
-			return ToImU32(Core::Color{.R = Channel(from.R, toward.R),
-									   .G = Channel(from.G, toward.G),
-									   .B = Channel(from.B, toward.B),
-									   .A = Channel(from.A, toward.A)});
+			return ToImU32(Core::Color{.R = MixedChannel(from.R, toward.R, share),
+									   .G = MixedChannel(from.G, toward.G, share),
+									   .B = MixedChannel(from.B, toward.B, share),
+									   .A = MixedChannel(from.A, toward.A, share)});
 		}
 
 		// How far a ref pill's colours are mixed: a fill mostly of the background with the accent or the warning in it,

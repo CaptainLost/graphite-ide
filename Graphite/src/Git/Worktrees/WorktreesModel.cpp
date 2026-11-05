@@ -3,6 +3,8 @@
 #include "Workspace/Workspace.h"
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -15,6 +17,18 @@ namespace Graphite {
 		bool HoldsBranch(const Core::WorktreeEntry& entry)
 		{
 			return !entry.FolderMissing && entry.Head.Kind == Core::HeadKind::Branch && !entry.Head.BranchName.empty();
+		}
+
+		bool IsNotListed(const Core::PathKeyText& worktree, const std::set<Core::PathKeyText>& listed)
+		{
+			return !listed.contains(worktree);
+		}
+
+		// Drops what is held about a worktree the newest listing no longer has.
+		template<typename Held>
+		void ForgetWorktreesNotListed(std::map<Core::PathKeyText, Held>& byWorktree, const std::set<Core::PathKeyText>& listed)
+		{
+			std::erase_if(byWorktree, [&listed](const std::pair<const Core::PathKeyText, Held>& held) { return IsNotListed(held.first, listed); });
 		}
 	}
 
@@ -107,9 +121,9 @@ namespace Graphite {
 			present.insert(Core::PathKey(entry.Path));
 		}
 
-		std::erase_if(m_Dirty, [&present](const auto& counted) { return !present.contains(counted.first); });
-		std::erase_if(m_Failures, [&present](const auto& failed) { return !present.contains(failed.first); });
-		std::erase_if(m_Timing, [&present](const auto& timed) { return !present.contains(timed.first); });
+		ForgetWorktreesNotListed(m_Dirty, present);
+		ForgetWorktreesNotListed(m_Failures, present);
+		ForgetWorktreesNotListed(m_Timing, present);
 		m_Listed = std::move(present);
 	}
 
