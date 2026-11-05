@@ -342,7 +342,7 @@ TEST_CASE("Git window: the bar's end says a failed read of the lines whether or 
 		  "cannot walk the history \xC2\xB7 The line answers file cannot be read, so the change was not saved.");
 }
 
-TEST_CASE("Git window: the bar's end says the status, the branches, the log and the lines in that order")
+TEST_CASE("Git window: the bar's end says the status then the branches then the log then the lines")
 {
 	const Core::Error status{.Message = "status failed"};
 	const Core::Error branches{.Message = "branches failed"};
