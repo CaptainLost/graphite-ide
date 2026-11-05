@@ -57,6 +57,22 @@ namespace Graphite {
 		constexpr float kFindIcon = 12.0f;
 		constexpr ImWchar kFirstPrintable = 32;
 
+		// The characters typed this frame that print, in order.
+		std::vector<ImWchar> PrintableTyped(const ImGuiIO& io)
+		{
+			std::vector<ImWchar> printable;
+
+			for (const ImWchar character : io.InputQueueCharacters)
+			{
+				if (character >= kFirstPrintable)
+				{
+					printable.push_back(character);
+				}
+			}
+
+			return printable;
+		}
+
 		// The footer's phrases that name the menu's entries, drawn in the bold face.
 		constexpr const char* kFooterBold[] = {"Use as base", "Stop using as base"};
 
@@ -448,19 +464,16 @@ namespace Graphite {
 	void VsPickerView::DrawAnotherBranch(const VsOption& option, float width, const WindowBarColours& colours)
 	{
 		ImGuiIO& io = ImGui::GetIO();
+		const std::vector<ImWchar> printable = PrintableTyped(io);
 		const bool typed = !io.KeyCtrl && !io.KeyAlt && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-						   std::any_of(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end(),
-									   [](ImWchar character) { return character >= kFirstPrintable; });
+						   !printable.empty();
 
 		if (!m_Searching && typed)
 		{
 			m_Searching = true;
 			m_FocusSearch = true;
 			m_SearchWasActive = false;
-
-			m_CarriedTyping.clear();
-			std::copy_if(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end(), std::back_inserter(m_CarriedTyping),
-						 [](ImWchar character) { return character >= kFirstPrintable; });
+			m_CarriedTyping = printable;
 		}
 
 		if (!m_Searching)

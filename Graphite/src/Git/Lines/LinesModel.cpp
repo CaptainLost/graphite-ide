@@ -40,7 +40,15 @@ namespace Graphite {
 
 		bool AreAllInGraph(const Core::AncestryGraph& graph, const std::vector<Core::Oid>& commits)
 		{
-			return std::ranges::all_of(commits, [&graph](const Core::Oid& commit) { return IsInGraph(graph, commit); });
+			for (const Core::Oid& commit : commits)
+			{
+				if (!IsInGraph(graph, commit))
+				{
+					return false;
+				}
+			}
+
+			return true;
 		}
 
 		std::vector<Core::AncestryGraph::Index> IndicesOf(const Core::AncestryGraph& graph, const std::vector<Core::Oid>& commits)

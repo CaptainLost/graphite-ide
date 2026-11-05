@@ -70,14 +70,30 @@ namespace Graphite {
 			}
 
 			const std::vector<Core::Branch>& branches = *read.Branches;
-			const auto checkedOut = std::ranges::find(branches, true, &Core::Branch::IsHead);
 
-			if (checkedOut == branches.end())
+			for (std::size_t ref = 0; ref < branches.size(); ++ref)
 			{
-				return std::nullopt;
+				if (branches[ref].IsHead)
+				{
+					return ref;
+				}
 			}
 
-			return static_cast<std::size_t>(checkedOut - branches.begin());
+			return std::nullopt;
+		}
+
+		// The stash's place in the list; empty when the list no longer holds it.
+		std::optional<std::size_t> IndexOfStash(const std::vector<Core::StashEntry>& stashes, const Core::Oid& id)
+		{
+			for (std::size_t index = 0; index < stashes.size(); ++index)
+			{
+				if (stashes[index].Id == id)
+				{
+					return index;
+				}
+			}
+
+			return std::nullopt;
 		}
 	}
 
@@ -377,12 +393,7 @@ namespace Graphite {
 
 			if (stashes)
 			{
-				const auto shown = std::ranges::find(*stashes, *m_SelectedStash, &Core::StashEntry::Id);
-
-				if (shown != stashes->end())
-				{
-					selection.Stash = static_cast<std::size_t>(shown - stashes->begin());
-				}
+				selection.Stash = IndexOfStash(*stashes, *m_SelectedStash);
 			}
 
 			return selection;
@@ -606,14 +617,11 @@ namespace Graphite {
 		{
 			const Core::Ref<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
 
-			if (stashes)
-			{
-				const auto found = std::ranges::find(*stashes, *m_SelectedStash, &Core::StashEntry::Id);
+			const std::optional<std::size_t> found = stashes ? IndexOfStash(*stashes, *m_SelectedStash) : std::nullopt;
 
-				if (found != stashes->end() && !found->Message.empty())
-				{
-					return "Stash \xC2\xB7 " + found->Message;
-				}
+			if (found.has_value() && !(*stashes)[*found].Message.empty())
+			{
+				return "Stash \xC2\xB7 " + (*stashes)[*found].Message;
 			}
 
 			return "Stash";
