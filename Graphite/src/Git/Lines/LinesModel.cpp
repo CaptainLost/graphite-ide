@@ -195,6 +195,18 @@ namespace Graphite {
 		AskRead(m_LastAsked);
 	}
 
+	void LinesModel::AskSnapshotPassedOver()
+	{
+		const Core::Ref<const LineRead> read = m_Read.Get();
+
+		if (read == nullptr || m_LastAsked == nullptr || read->Branches == m_LastAsked || m_WaitingBranches != nullptr)
+		{
+			return;
+		}
+
+		m_WaitingBranches = m_LastAsked;
+	}
+
 	void LinesModel::Change(LineAnswerChange change)
 	{
 		m_Retry = ReadRetry{};
@@ -292,6 +304,7 @@ namespace Graphite {
 		{
 			m_Retry = ReadRetry{};
 			m_RetryWanted = false;
+			AskSnapshotPassedOver();
 		}
 
 		if (landing == SlotLanding::Failed && generation == m_ChangeGeneration)

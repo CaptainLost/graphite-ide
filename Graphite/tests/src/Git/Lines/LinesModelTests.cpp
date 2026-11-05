@@ -437,6 +437,48 @@ TEST_CASE("Git window: a failed change is handed over once to be said and the re
 	CHECK_FALSE(model.TakeChangeFailure().has_value());
 }
 
+TEST_CASE("Git window: a line change that succeeds after a newer snapshot's read failed reads that snapshot next")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	const Snapshot first = NewSnapshot();
+	model.Follow(first, 1);
+	RunUntilSettled(jobs, model);
+	REQUIRE(model.GetRead() != nullptr);
+
+	port.FailReads = true;
+	const Snapshot newer = NewSnapshot();
+	model.Follow(newer, 2);
+	RunUntilSettled(jobs, model);
+	REQUIRE(model.GetError().has_value());
+
+	SUBCASE("with a retry waiting out its back-off")
+	{
+		model.Follow(newer, 3);
+		CHECK(jobs.Count() == 0);
+	}
+
+	SUBCASE("with no listing since the failure")
+	{
+	}
+
+	// The change is recomputed on the first snapshot's read, which the failure left in hand; its success is no read of
+	// the newer snapshot, so that is read right after it, with no time passing and no listing.
+	port.FailReads = false;
+	model.Change(UseAsBase("refs/heads/staging"));
+	RunUntilSettled(jobs, model);
+
+	const std::vector<std::string> order = {"read", "read", "change refs/heads/staging", "read"};
+	CHECK(port.Asked == order);
+	REQUIRE(port.ChangedBranches.size() == 1);
+	CHECK(port.ChangedBranches[0] == first);
+	REQUIRE(model.GetRead() != nullptr);
+	CHECK(model.GetRead()->Branches == newer);
+	CHECK_FALSE(model.GetError().has_value());
+}
+
 TEST_CASE("Git window: a read landing after clear is dropped")
 {
 	FakeLinesPort port;

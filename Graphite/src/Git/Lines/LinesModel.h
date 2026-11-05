@@ -98,6 +98,10 @@ namespace Graphite {
 		void AskRead(const Core::Ref<const std::vector<Core::Branch>>& branches);
 		void RetryWhenDue();
 
+		// A change recomputed on the read before a snapshot whose read failed leaves that snapshot unread, with no failure
+		// held to ask it again: it waits to be read next.
+		void AskSnapshotPassedOver();
+
 		// Starts what waits, when nothing runs: the oldest change first, then the newest snapshot.
 		void RunNextWaiting();
 		void StartRead(const Core::Ref<const LineRead>& last);
