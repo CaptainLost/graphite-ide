@@ -194,11 +194,27 @@ namespace Graphite {
 			return line.Kind == Core::ComparedKind::Branch ? "Built on " + name + ": " + ahead : ahead;
 		}
 
+		// What a base's or an old copy's row says of the line the user picked for it.
+		std::string PickedLineWords(const LineRead& read, std::size_t picked)
+		{
+			return "vs " + read.Refs[picked].ShortName;
+		}
+
 		void AddUnusualSpans(std::vector<SidebarSpan>& meta, const Core::BranchLine* line, std::size_t index, const SidebarTextInput& input)
 		{
 			const LineRead& read = input.Read;
 
-			if (line != nullptr)
+			const Core::OldCopy* copy = input.Lines.OldCopyNamed(read.Refs[index].FullName);
+
+			// The header tells an old copy against nothing but the user's pick, so its row names no line the rule gave it,
+			// and always names the pick, which is never the usual line for it.
+			const std::optional<std::size_t> picked = input.Lines.PickedLineOf(read.Refs[index].FullName);
+
+			if (picked.has_value())
+			{
+				meta.push_back({.Text = PickedLineWords(read, *picked), .Tone = SidebarTone::Unusual});
+			}
+			else if (line != nullptr)
 			{
 				if (line->State == Core::BranchState::NoOwnCommits)
 				{
@@ -208,7 +224,7 @@ namespace Graphite {
 				{
 					meta.push_back({.Text = "merged", .Tone = SidebarTone::Merged});
 				}
-				else if (line->ComparedWith.has_value())
+				else if (line->ComparedWith.has_value() && copy == nullptr)
 				{
 					const Core::LineRef& compared = read.Refs[*line->ComparedWith];
 
@@ -222,8 +238,6 @@ namespace Graphite {
 					}
 				}
 			}
-
-			const Core::OldCopy* copy = input.Lines.OldCopyNamed(read.Refs[index].FullName);
 
 			if (copy != nullptr)
 			{
@@ -382,6 +396,11 @@ namespace Graphite {
 		else if (base != nullptr && base->Reason == Core::BaseReason::MainLineByUser)
 		{
 			text.Meta.push_back({.Text = "chosen by you", .Tone = SidebarTone::Dim});
+		}
+
+		if (const std::optional<std::size_t> picked = base != nullptr ? input.Lines.PickedLineOf(ref.FullName) : std::nullopt)
+		{
+			text.Meta.push_back({.Text = PickedLineWords(read, *picked), .Tone = SidebarTone::Unusual});
 		}
 
 		if (!isBase)

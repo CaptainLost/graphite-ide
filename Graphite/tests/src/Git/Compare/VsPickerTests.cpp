@@ -436,3 +436,70 @@ TEST_CASE("Git window: an old copy, and a local copy shown as one, are compared 
 		CHECK(OptionOf(picker, VsOption::Kind::Base, "origin/release") != nullptr);
 	}
 }
+
+TEST_CASE("Git window: a base's picker marks its pick chosen and Nothing automatic but not chosen")
+{
+	Scene scene = MakeScene();
+	scene.Read.Answers.Comparisons["refs/heads/develop"] = "refs/remotes/origin/release/1.0";
+
+	const VsPicker picker = Build(scene, "refs/heads/develop");
+	const VsOption* const release = OptionOf(picker, VsOption::Kind::Base, "origin/release/1.0");
+	const VsOption* const nothing = OptionOf(picker, VsOption::Kind::Nothing);
+
+	REQUIRE(release != nullptr);
+	REQUIRE(nothing != nullptr);
+	CHECK(release->Chosen);
+	CHECK_FALSE(release->Automatic);
+	CHECK_FALSE(nothing->Chosen);
+	CHECK(nothing->Automatic);
+
+	const std::optional<LineAnswerChange> back = ChangeFor(picker, *nothing, "refs/heads/develop");
+	REQUIRE(back.has_value());
+	CHECK(back->What == LineAnswerChange::Kind::CompareAutomatically);
+}
+
+TEST_CASE("Git window: a base's pick of a branch stays on its picker's list")
+{
+	Scene scene = MakeScene();
+	scene.Read.Answers.Comparisons["refs/heads/develop"] = "refs/heads/feature/parent";
+
+	const VsPicker picker = Build(scene, "refs/heads/develop");
+	const VsOption* const parent = OptionOf(picker, VsOption::Kind::Branch, "feature/parent");
+
+	REQUIRE(parent != nullptr);
+	CHECK(parent->Chosen);
+}
+
+TEST_CASE("Git window: an old copy's picker marks only its pick chosen, and the rule's line is no automatic choice")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("fork");
+
+	const std::size_t develop = builder.AddRemoteBranch("origin", "develop");
+	builder.MakeBase(develop);
+	const std::size_t release = builder.AddRemoteBranch("origin", "release");
+	builder.MakeBase(release);
+	const std::size_t copy = builder.AddRemoteBranch("fork", "develop");
+	builder.Compare(copy, release);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.Read.Model.OldCopies.push_back(Core::OldCopy{.Ref = copy, .Of = develop});
+	scene.FeatureLine().AutomaticComparedWith = develop;
+	scene.FeatureLine().ByAnswer = true;
+
+	const VsPicker picker = Build(scene, "refs/remotes/fork/develop");
+	const VsOption* const picked = OptionOf(picker, VsOption::Kind::Base, "origin/release");
+	const VsOption* const ruled = OptionOf(picker, VsOption::Kind::Base, "origin/develop");
+	const VsOption* const nothing = OptionOf(picker, VsOption::Kind::Nothing);
+
+	REQUIRE(picked != nullptr);
+	REQUIRE(ruled != nullptr);
+	REQUIRE(nothing != nullptr);
+	CHECK(picked->Chosen);
+	CHECK_FALSE(ruled->Chosen);
+	CHECK_FALSE(ruled->Automatic);
+	CHECK_FALSE(nothing->Chosen);
+	CHECK(nothing->Automatic);
+}

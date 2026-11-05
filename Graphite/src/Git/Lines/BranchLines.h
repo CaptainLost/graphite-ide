@@ -33,6 +33,12 @@ namespace Graphite {
 		// The full name of what the branch is compared with; empty when it is compared with nothing or is no branch line.
 		std::optional<std::string> ComparedWithName(std::string_view fullName) const;
 
+		// What the user picked to compare a base or an old copy with, into LineRead::Refs. The rule compares neither with
+		// anything; the model gives a base no line, so a base's pick is read from the answers, and an old copy's is its
+		// line's. Empty when nothing is picked, when the pick is nothing, when it names a ref the read lacks, and for any
+		// other ref.
+		std::optional<std::size_t> PickedLineOf(std::string_view fullName) const;
+
 	private:
 		const LineRead& m_Read;
 		std::unordered_map<std::string_view, std::size_t> m_RefByName;

@@ -53,6 +53,13 @@ namespace Graphite {
 	{
 		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
 
+		// A base or an old copy the user picked a line for is folded against it as a branch is, with no state of the
+		// model's to tell, and the distance given is the pick's.
+		if (input.Lines.PickedLineOf(shown).has_value())
+		{
+			return std::nullopt;
+		}
+
 		if (const Core::OldCopy* const copy = input.Lines.OldCopyNamed(shown); copy != nullptr)
 		{
 			return OldCopyBanner(input, *copy);

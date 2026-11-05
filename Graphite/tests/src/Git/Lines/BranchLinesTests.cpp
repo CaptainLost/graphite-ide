@@ -91,3 +91,28 @@ TEST_CASE("Git window: a base's local copy is shown as the base until it has com
 	read.Model.Branches[0].State = Core::BranchState::NotMerged;
 	CHECK(BranchLines{read}.ShownAs("refs/heads/main") == "refs/heads/main");
 }
+
+TEST_CASE("Git window: a base's pick is read from the answers and an old copy's from its line")
+{
+	LineRead read = ReadOfSixRefs();
+
+	CHECK_FALSE(BranchLines{read}.PickedLineOf("refs/remotes/origin/main").has_value());
+	CHECK_FALSE(BranchLines{read}.PickedLineOf("refs/remotes/old/main").has_value());
+
+	read.Answers.Comparisons["refs/remotes/origin/main"] = "refs/heads/feature";
+	CHECK(BranchLines{read}.PickedLineOf("refs/remotes/origin/main") == std::optional<std::size_t>{1});
+
+	read.Answers.Comparisons["refs/remotes/origin/main"] = "refs/heads/gone";
+	CHECK_FALSE(BranchLines{read}.PickedLineOf("refs/remotes/origin/main").has_value());
+
+	read.Answers.Comparisons["refs/remotes/origin/main"] = std::nullopt;
+	CHECK_FALSE(BranchLines{read}.PickedLineOf("refs/remotes/origin/main").has_value());
+
+	read.Model.Branches[4].ByAnswer = true;
+	read.Model.Branches[4].ComparedWith = 1;
+	CHECK(BranchLines{read}.PickedLineOf("refs/remotes/old/main") == std::optional<std::size_t>{1});
+
+	// A branch's pick is its line's, which the model has applied already.
+	read.Answers.Comparisons["refs/heads/feature"] = "refs/heads/topic";
+	CHECK_FALSE(BranchLines{read}.PickedLineOf("refs/heads/feature").has_value());
+}

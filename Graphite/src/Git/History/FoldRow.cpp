@@ -50,8 +50,29 @@ namespace Graphite {
 
 	HistoryLine HistoryLineOf(const LineRead& read, const BranchLines& lines, std::string_view shownRef, bool newerShown)
 	{
-		// An old copy and a base are compared with nothing, so they are shown alone; so is a local branch shown as one.
+		// An old copy and a base are compared with nothing unless the user picked a line for them, so they are shown
+		// alone; so is a local branch shown as one. A pick is folded as a branch's line is: what the model counts for a
+		// branch it does not count for them, so it is never taken as merged or as having no commits of its own.
 		const std::string_view shown = lines.ShownAs(shownRef);
+
+		if (const std::optional<std::size_t> picked = lines.PickedLineOf(shown))
+		{
+			const std::optional<std::size_t> self = lines.IndexOf(shownRef);
+
+			if (!self.has_value())
+			{
+				return {};
+			}
+
+			const Core::LineRef& line = read.Refs[*picked];
+
+			return HistoryLine{.Fold = newerShown ? LineFold::Shown : LineFold::Folded,
+							   .Branch = std::string{shownRef},
+							   .Line = line.FullName,
+							   .LineName = LineNameOf(read, *picked),
+							   .BranchTip = read.Refs[*self].Tip,
+							   .LineTip = line.Tip};
+		}
 
 		if (lines.OldCopyNamed(shown) != nullptr || lines.BaseNamed(shown) != nullptr)
 		{

@@ -591,7 +591,9 @@ namespace Graphite {
 			}
 			else if (DrawOptionRow(option, drawing.Read, width, drawing.Colours))
 			{
-				chosen = ChangeFor(picker, option, m_Branch);
+				// A base's local copy with no commits of its own is offered what its base is, so the pick is the base's:
+				// its row and the copy's header then name the same line.
+				chosen = ChangeFor(picker, option, drawing.Lines.ShownAs(m_Branch));
 			}
 
 			ImGui::PopID();

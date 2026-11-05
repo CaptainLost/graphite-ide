@@ -253,3 +253,75 @@ TEST_CASE("Git window: a behind count wider than the usual room widens the reser
 
 	CHECK(huge.CountsRoom == "6 ahead, 1,234,567 behind");
 }
+
+namespace {
+
+	// develop and release are bases, fork/develop an old copy of develop; the case picks what they are compared with.
+	struct PickScene
+	{
+		LineRead Read;
+		std::size_t Develop = 0;
+		std::size_t Release = 0;
+		std::size_t Copy = 0;
+	};
+
+	PickScene MakePickScene()
+	{
+		LineReadBuilder builder;
+		builder.AddRemote("origin");
+		builder.AddRemote("fork");
+
+		PickScene scene;
+		scene.Develop = builder.AddRemoteBranch("origin", "develop");
+		builder.MakeBase(scene.Develop);
+		scene.Release = builder.AddRemoteBranch("origin", "release");
+		builder.MakeBase(scene.Release);
+		scene.Copy = builder.AddRemoteBranch("fork", "develop");
+		builder.Compare(scene.Copy, scene.Develop);
+		scene.Read = builder.Build();
+		scene.Read.Model.OldCopies.push_back(Core::OldCopy{.Ref = scene.Copy, .Of = scene.Develop});
+
+		return scene;
+	}
+
+	VsLabel DescribePick(const PickScene& scene, const std::string& ref, std::optional<Core::LineDistance> distance)
+	{
+		const BranchLines lines(scene.Read);
+
+		return DescribeVs(VsInput{scene.Read, lines, ref, distance});
+	}
+}
+
+TEST_CASE("Git window: a base with a pick reads vs the pick with both counts measured and your pick")
+{
+	PickScene scene = MakePickScene();
+	scene.Read.Answers.Comparisons["refs/remotes/origin/release"] = "refs/remotes/origin/develop";
+
+	const VsLabel pending = DescribePick(scene, "refs/remotes/origin/release", std::nullopt);
+	CHECK(pending.Lead == "vs");
+	CHECK(pending.Line == "origin/develop");
+	CHECK(pending.Counts == "\xE2\x80\xA6 ahead, \xE2\x80\xA6 behind");
+	CHECK(pending.Mark == std::optional<std::string>{"your pick"});
+
+	const VsLabel measured = DescribePick(scene, "refs/remotes/origin/release",
+										  Core::LineDistance{.Ahead = 1'200, .Behind = 7, .ForkTime = std::nullopt, .ForkOnLine = true});
+	CHECK(measured.Counts == "1,200 ahead, 7 behind");
+}
+
+TEST_CASE("Git window: an old copy with a pick reads vs the pick rather than compared with nothing")
+{
+	PickScene scene = MakePickScene();
+	CHECK(DescribePick(scene, "refs/remotes/fork/develop", std::nullopt).Lead == "compared with nothing");
+
+	Core::BranchLine& copy = scene.Read.Model.Branches.back();
+	copy.ByAnswer = true;
+	copy.ComparedWith = scene.Release;
+	copy.Kind = Core::ComparedKind::Base;
+
+	const VsLabel label = DescribePick(scene, "refs/remotes/fork/develop",
+									   Core::LineDistance{.Ahead = 2, .Behind = 30, .ForkTime = std::nullopt, .ForkOnLine = true});
+	CHECK(label.Lead == "vs");
+	CHECK(label.Line == "origin/release");
+	CHECK(label.Counts == "2 ahead, 30 behind");
+	CHECK(label.Mark == std::optional<std::string>{"your pick"});
+}

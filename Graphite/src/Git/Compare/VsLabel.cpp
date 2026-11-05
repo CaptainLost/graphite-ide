@@ -85,6 +85,23 @@ namespace Graphite {
 
 			return label;
 		}
+
+		// A base or an old copy the user picked a line for: the model counts nothing for it, so both counts are the
+		// distance's.
+		VsLabel DescribePick(const VsInput& input, std::size_t picked)
+		{
+			const std::string ahead =
+				input.Distance.has_value() ? Core::FormatCount(input.Distance->Ahead) : std::string{kPending};
+
+			VsLabel label;
+			label.Lead = "vs";
+			label.Line = LineNameOf(input.Read, picked);
+			label.Counts = ahead + " ahead, " + BehindText(input.Distance) + " behind";
+			label.CountsRoom = ahead + " ahead, " + ReservedBehindText(input.Distance) + " behind";
+			label.Mark = "your pick";
+
+			return label;
+		}
 	}
 
 	std::string LineNameOf(const LineRead& read, std::size_t index)
@@ -110,6 +127,11 @@ namespace Graphite {
 	VsLabel DescribeVs(const VsInput& input)
 	{
 		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+
+		if (const std::optional<std::size_t> picked = input.Lines.PickedLineOf(shown))
+		{
+			return DescribePick(input, *picked);
+		}
 
 		if (input.Lines.BaseNamed(shown) != nullptr)
 		{

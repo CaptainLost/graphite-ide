@@ -135,3 +135,22 @@ TEST_CASE("Git window: a history cut off and no common history each get a banner
 	scene.Line().State = Core::BranchState::NoCommonHistory;
 	CHECK(Banner(scene, "refs/heads/feature") == std::optional<std::string>{"No commit in common with any line."});
 }
+
+TEST_CASE("Git window: an old copy the user picked a line for has no old copy banner")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("fork");
+
+	const std::size_t origin = builder.AddRemoteBranch("origin", "main");
+	builder.MakeBase(origin);
+	const std::size_t copy = builder.AddRemoteBranch("fork", "main");
+	builder.Compare(copy, origin);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.Read.Model.OldCopies.push_back(Core::OldCopy{.Ref = copy, .Of = origin});
+	scene.Line().ByAnswer = true;
+
+	CHECK_FALSE(Banner(scene, "refs/remotes/fork/main").has_value());
+}

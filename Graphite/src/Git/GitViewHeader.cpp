@@ -237,7 +237,17 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		if (const Core::OldCopy* const copy = lines->OldCopyNamed(lines->ShownAs(shownRef)); copy != nullptr)
+		const std::string_view shown = lines->ShownAs(shownRef);
+
+		// A pick for a base or an old copy is measured from the reference whose history is shown, as its fold row is.
+		if (const std::optional<std::size_t> picked = lines->PickedLineOf(shown))
+		{
+			const std::optional<std::size_t> self = lines->IndexOf(shownRef);
+
+			return self.has_value() ? m_Lines.DistanceOf(read.Refs[*self].Tip, read.Refs[*picked].Tip) : std::nullopt;
+		}
+
+		if (const Core::OldCopy* const copy = lines->OldCopyNamed(shown); copy != nullptr)
 		{
 			return m_Lines.DistanceOf(read.Refs[copy->Ref].Tip, read.Refs[copy->Of].Tip);
 		}

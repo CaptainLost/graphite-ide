@@ -286,6 +286,56 @@ TEST_CASE("Git window: an old copy of a default reads as one")
 	CHECK(SpanWith(text, "default here, an old copy of main") != nullptr);
 }
 
+TEST_CASE("Git window: a base row names the line the user picked for it")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	const std::size_t main = builder.AddRemoteBranch("origin", "main");
+	const std::size_t release = builder.AddRemoteBranch("origin", "release/4.12");
+	builder.MakeBase(main);
+	builder.MakeBase(release);
+	LineRead read = builder.Build();
+
+	CHECK(SpanWith(Describe(read, BaseRow(release)), "vs main") == nullptr);
+
+	read.Answers.Comparisons["refs/remotes/origin/release/4.12"] = "refs/remotes/origin/main";
+	const SidebarRowText text = Describe(read, BaseRow(release));
+
+	REQUIRE(SpanWith(text, "vs main") != nullptr);
+	CHECK(SpanWith(text, "vs main")->Tone == SidebarTone::Unusual);
+}
+
+TEST_CASE("Git window: an old copy names only the line the user picked, even the most common one")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("fork");
+	const std::size_t main = builder.AddRemoteBranch("origin", "main");
+	const std::size_t release = builder.AddRemoteBranch("origin", "release");
+	builder.MakeBase(main);
+	builder.MakeBase(release);
+	const std::size_t feature = builder.AddLocal("feature");
+	const std::size_t copy = builder.AddRemoteBranch("fork", "main");
+	LineRead read = builder.Build();
+	read.Model.OldCopies.push_back(Core::OldCopy{.Ref = copy, .Of = main});
+
+	Core::BranchLine& featureLine = LineOfRef(read, feature);
+	featureLine.Kind = Core::ComparedKind::Base;
+	featureLine.ComparedWith = main;
+
+	Core::BranchLine& copyLine = LineOfRef(read, copy);
+	copyLine.Kind = Core::ComparedKind::Base;
+	copyLine.ComparedWith = release;
+
+	// The header says an old copy alone is compared with nothing, so its row names no line the rule gave it.
+	CHECK(SpanWith(Describe(read, BranchRow(copy, SidebarSection::Remote)), "vs release") == nullptr);
+
+	copyLine.ByAnswer = true;
+	copyLine.ComparedWith = main;
+	CHECK(MostCommonLineOf(read) == "refs/remotes/origin/main");
+	CHECK(SpanWith(Describe(read, BranchRow(copy, SidebarSection::Remote)), "vs main") != nullptr);
+}
+
 TEST_CASE("Git window: history cut off and no common history are said in words")
 {
 	LineReadBuilder builder;

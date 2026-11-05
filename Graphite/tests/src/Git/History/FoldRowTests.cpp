@@ -339,3 +339,49 @@ TEST_CASE("Git window: an opened history without marks or without such a commit 
 	CHECK(Graphite::StartingCommit(PageOf({4, 5}), &none, nullptr) == std::optional<Core::Oid>{OidWithFirstByte(4)});
 	CHECK_FALSE(Graphite::StartingCommit(PageOf({}), nullptr, nullptr).has_value());
 }
+
+TEST_CASE("Git window: a base with a pick folds its history against the pick, and shows it when asked")
+{
+	Scene scene = MakeScene();
+	scene.Read.Answers.Comparisons["refs/heads/develop"] = "refs/heads/feature/x";
+
+	const HistoryLine folded = scene.LineOf("refs/heads/develop");
+	CHECK(folded.Fold == LineFold::Folded);
+	CHECK(folded.Branch == "refs/heads/develop");
+	CHECK(folded.Line == "refs/heads/feature/x");
+	CHECK(folded.LineName == "feature/x");
+	CHECK(folded.BranchTip == scene.Read.Refs[scene.Develop].Tip);
+	CHECK(folded.LineTip == scene.Read.Refs[scene.Feature].Tip);
+
+	CHECK(scene.LineOf("refs/heads/develop", true).Fold == LineFold::Shown);
+}
+
+TEST_CASE("Git window: an old copy with a pick folds its history against the pick")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("fork");
+
+	const std::size_t develop = builder.AddRemoteBranch("origin", "develop");
+	builder.MakeBase(develop);
+	const std::size_t release = builder.AddRemoteBranch("origin", "release");
+	builder.MakeBase(release);
+	const std::size_t copy = builder.AddRemoteBranch("fork", "develop");
+	builder.Compare(copy, develop);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.Read.Model.OldCopies.push_back(Core::OldCopy{.Ref = copy, .Of = develop});
+
+	CHECK(scene.LineOf("refs/remotes/fork/develop").Fold == LineFold::None);
+
+	scene.FeatureLine().ByAnswer = true;
+	scene.FeatureLine().ComparedWith = release;
+	scene.FeatureLine().Kind = Core::ComparedKind::Base;
+	scene.FeatureLine().State = Core::BranchState::MergedByHistory;
+
+	const HistoryLine picked = scene.LineOf("refs/remotes/fork/develop");
+	CHECK(picked.Fold == LineFold::Folded);
+	CHECK(picked.Line == "refs/remotes/origin/release");
+	CHECK(picked.BranchTip == scene.Read.Refs[copy].Tip);
+}

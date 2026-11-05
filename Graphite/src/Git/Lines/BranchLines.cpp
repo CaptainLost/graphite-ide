@@ -1,5 +1,8 @@
 #include "Git/Lines/BranchLines.h"
 
+#include <map>
+#include <string>
+
 namespace Graphite {
 
 	BranchLines::BranchLines(const LineRead& read)
@@ -105,5 +108,40 @@ namespace Graphite {
 		}
 
 		return m_Read.Refs[*line->ComparedWith].FullName;
+	}
+
+	std::optional<std::size_t> BranchLines::PickedLineOf(std::string_view fullName) const
+	{
+		if (OldCopyNamed(fullName) != nullptr)
+		{
+			const Core::BranchLine* const line = LineOf(fullName);
+
+			return line != nullptr && line->ByAnswer ? line->ComparedWith : std::nullopt;
+		}
+
+		if (BaseNamed(fullName) == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const std::map<std::string, std::optional<std::string>>& comparisons = m_Read.Answers.Comparisons;
+		const std::map<std::string, std::optional<std::string>>::const_iterator answer = comparisons.find(std::string{fullName});
+
+		if (answer == comparisons.end())
+		{
+			return std::nullopt;
+		}
+
+		const auto& [name, target] = *answer;
+
+		if (!target.has_value())
+		{
+			return std::nullopt;
+		}
+
+		const std::optional<std::size_t> picked = IndexOf(*target);
+		const bool isItself = picked == IndexOf(fullName);
+
+		return isItself ? std::nullopt : picked;
 	}
 }

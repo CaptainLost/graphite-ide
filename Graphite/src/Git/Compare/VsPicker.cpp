@@ -52,12 +52,20 @@ namespace Graphite {
 			return !bases.empty() && bases.front().Ref == ref && bases.front().Reason == Core::BaseReason::MainLineGuess;
 		}
 
+		// What the branch is compared with by the rule and now; for a base or an old copy, nothing by the rule and the
+		// user's pick now.
+		struct Comparison
+		{
+			std::optional<std::size_t> Automatic;
+			std::optional<std::size_t> Chosen;
+		};
+
 		// Adds the options that name a ref, each ref once.
 		class RefOptions
 		{
 		public:
-			RefOptions(const VsPickerInput& input, const Core::BranchLine* line, std::vector<VsOption>& options)
-				: m_Input(input), m_Line(line), m_Options(options)
+			RefOptions(const VsPickerInput& input, const Comparison& comparison, std::vector<VsOption>& options)
+				: m_Input(input), m_Comparison(comparison), m_Options(options)
 			{
 			}
 
@@ -74,8 +82,8 @@ namespace Graphite {
 				option.Name = LineNameOf(m_Input.Read, ref);
 				option.Why = why.empty() ? ForkedText(distance, m_Input.Now) : std::move(why);
 				option.Counts = CountsText(distance);
-				option.Automatic = m_Line != nullptr && m_Line->AutomaticComparedWith == ref;
-				option.Chosen = m_Line != nullptr && m_Line->ComparedWith == ref;
+				option.Automatic = m_Comparison.Automatic == ref;
+				option.Chosen = m_Comparison.Chosen == ref;
 				option.Guessed = kind == VsOption::Kind::Base && IsGuessedMainLine(m_Input.Read, ref);
 
 				m_Listed.push_back(ref);
@@ -84,7 +92,7 @@ namespace Graphite {
 
 		private:
 			const VsPickerInput& m_Input;
-			const Core::BranchLine* m_Line;
+			const Comparison& m_Comparison;
 			std::vector<VsOption>& m_Options;
 			std::vector<std::size_t> m_Listed;
 		};
@@ -99,9 +107,11 @@ namespace Graphite {
 				   " behind it), so it is never a line of its own";
 		}
 
-		bool HasPlaceInRead(const VsPickerInput& input, const Core::BranchLine* line, std::string_view shown)
+		// A base and an old copy have no line by the rule: the rule compares them with nothing, and only the user's pick
+		// compares them with something.
+		bool StandsAlone(const VsPickerInput& input, std::string_view shown)
 		{
-			return line != nullptr || input.Lines.BaseNamed(shown) != nullptr || input.Lines.OldCopyNamed(shown) != nullptr;
+			return input.Lines.BaseNamed(shown) != nullptr || input.Lines.OldCopyNamed(shown) != nullptr;
 		}
 	}
 
@@ -113,14 +123,16 @@ namespace Graphite {
 		const std::string_view shown = input.Lines.ShownAs(input.Branch);
 		const std::optional<std::size_t> named = input.Lines.IndexOf(input.Branch);
 		const std::optional<std::size_t> self = input.Lines.IndexOf(shown);
-		const Core::BranchLine* const line = input.Lines.LineOf(shown);
-		// A base and an old copy have no line of their own, so the rule compares them with nothing.
-		const bool hasNoLine = input.Lines.BaseNamed(shown) != nullptr || input.Lines.OldCopyNamed(shown) != nullptr;
+		const bool standsAlone = StandsAlone(input, shown);
+		const Core::BranchLine* const line = standsAlone ? nullptr : input.Lines.LineOf(shown);
 
-		if (!named.has_value() || !self.has_value() || !HasPlaceInRead(input, line, shown))
+		if (!named.has_value() || !self.has_value() || (!standsAlone && line == nullptr))
 		{
 			return picker;
 		}
+
+		const Comparison comparison = standsAlone ? Comparison{.Automatic = std::nullopt, .Chosen = input.Lines.PickedLineOf(shown)}
+												  : Comparison{.Automatic = line->AutomaticComparedWith, .Chosen = line->ComparedWith};
 
 		const LineRead& read = input.Read;
 
@@ -130,7 +142,7 @@ namespace Graphite {
 			"A branch is compared with the line it forked from: the branch it is built on, a release line, or a base. Where lines part, "
 			"the line goes on along the side more people worked on. Any branch's menu has Use as base and Stop using as base.";
 
-		RefOptions refs(input, line, picker.Options);
+		RefOptions refs(input, comparison, picker.Options);
 
 		if (line != nullptr && line->AutomaticKind == Core::ComparedKind::Branch && line->AutomaticComparedWith.has_value())
 		{
@@ -140,8 +152,7 @@ namespace Graphite {
 		// A quiet base is offered only when the rule or the user compares the branch with it.
 		for (const Core::LineBase& base : read.Model.Bases)
 		{
-			const bool comparedWithIt =
-				line != nullptr && (line->AutomaticComparedWith == base.Ref || line->ComparedWith == base.Ref);
+			const bool comparedWithIt = comparison.Automatic == base.Ref || comparison.Chosen == base.Ref;
 
 			if (base.Ref != *self && !refs.Includes(base.Ref) && (base.Active || comparedWithIt))
 			{
@@ -150,9 +161,9 @@ namespace Graphite {
 		}
 
 		// A pick of a branch that is neither of those stays on the list, so the radio dot has a place.
-		if (line != nullptr && line->ComparedWith.has_value() && !refs.Includes(*line->ComparedWith))
+		if (comparison.Chosen.has_value() && !refs.Includes(*comparison.Chosen))
 		{
-			refs.Add(VsOption::Kind::Branch, *line->ComparedWith);
+			refs.Add(VsOption::Kind::Branch, *comparison.Chosen);
 		}
 
 		VsOption another;
@@ -182,9 +193,8 @@ namespace Graphite {
 		nothing.What = VsOption::Kind::Nothing;
 		nothing.Name = "Nothing";
 		nothing.Why = "the branch on its own";
-		// A base or an old copy is shown on its own unless the user picks a line for it.
-		nothing.Automatic = hasNoLine || (line != nullptr && !line->AutomaticComparedWith.has_value());
-		nothing.Chosen = hasNoLine || (line != nullptr && !line->ComparedWith.has_value());
+		nothing.Automatic = !comparison.Automatic.has_value();
+		nothing.Chosen = !comparison.Chosen.has_value();
 		picker.Options.push_back(std::move(nothing));
 
 		for (const Core::LineBase& base : read.Model.Bases)
