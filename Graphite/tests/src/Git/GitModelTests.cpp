@@ -1016,7 +1016,7 @@ TEST_CASE("A request made while one is already in flight is not resubmitted")
 	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("stale.txt"));
 }
 
-TEST_CASE("A failed diff keeps the last good one and reports the error")
+TEST_CASE("A failed diff keeps the last good one")
 {
 	FakePort port;
 
