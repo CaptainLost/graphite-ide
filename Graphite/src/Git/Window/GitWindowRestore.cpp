@@ -13,4 +13,9 @@ namespace Graphite {
 
 		return state.Ref;
 	}
+
+	bool RestoreWaitsForBranches(const GitWindowState& state, BranchListing branches)
+	{
+		return !state.Ref.empty() && !branches.Listed && !branches.Failed;
+	}
 }

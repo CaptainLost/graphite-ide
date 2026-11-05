@@ -183,6 +183,9 @@ namespace Graphite {
 
 		void ApplyPendingRestore();
 
+		// A restored state still waits for the branches: the history names no reference and shows one waiting row.
+		bool RestoreWaits() const { return m_PendingRestore.has_value(); }
+
 		// The repository, its remotes and the checked-out branch, and the question for the main line when it is asked.
 		void RenderWindowBar();
 

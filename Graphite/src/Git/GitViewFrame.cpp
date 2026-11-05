@@ -125,8 +125,10 @@ namespace Graphite {
 		}
 
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const BranchListing listing{.Listed = branches != nullptr,
+									.Failed = !branches && m_Model.GetBranchesError().has_value()};
 
-		if (!m_PendingRestore->Ref.empty() && !branches)
+		if (RestoreWaitsForBranches(*m_PendingRestore, listing))
 		{
 			return;
 		}
@@ -540,6 +542,13 @@ namespace Graphite {
 
 	std::string GitView::HistoryTitle() const
 	{
+		// WARNING: No name while the history to show is still being decided, or while HEAD is read: "HEAD" and then the
+		// branch's name would be two names in a row for one history.
+		if (RestoreWaits())
+		{
+			return {};
+		}
+
 		if (m_SelectedStash.has_value())
 		{
 			const Core::Ref<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
@@ -569,7 +578,7 @@ namespace Graphite {
 
 		if (!head)
 		{
-			return "HEAD";
+			return m_Model.GetHeadError().has_value() ? "HEAD" : std::string{};
 		}
 
 		switch (head->Kind)
@@ -613,7 +622,7 @@ namespace Graphite {
 
 		// An operation in progress belongs to HEAD, so it is said by HEAD's history and by the checked-out branch's.
 		std::string operation;
-		const bool isHeadHistory = !m_SelectedStash.has_value() &&
+		const bool isHeadHistory = !RestoreWaits() && !m_SelectedStash.has_value() &&
 								   (!m_SelectedRef.has_value() || (m_HeadRef.has_value() && read != nullptr &&
 																   read->Refs[*m_HeadRef].FullName == *m_SelectedRef));
 		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
@@ -644,7 +653,12 @@ namespace Graphite {
 
 		const bool namesHead = !m_SelectedStash.has_value() && !m_SelectedRef.has_value();
 
-		if (namesHead)
+		if (RestoreWaits())
+		{
+			// Neither HEAD's dot nor a branch's icon before it is known which history this is.
+			ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
+		}
+		else if (namesHead)
 		{
 			// As tall as the frame, so the dot's middle is the text's.
 			const float dot = WindowBarEm(7.0f);

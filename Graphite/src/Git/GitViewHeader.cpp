@@ -210,7 +210,7 @@ namespace Graphite {
 
 	std::string GitView::ShownRefName() const
 	{
-		if (m_SelectedStash.has_value())
+		if (m_SelectedStash.has_value() || RestoreWaits())
 		{
 			return {};
 		}

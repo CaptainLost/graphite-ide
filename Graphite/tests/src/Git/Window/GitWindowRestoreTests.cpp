@@ -40,3 +40,13 @@ TEST_CASE("Git window: a restored ref that is gone shows head's history")
 		  std::optional<std::string>{"refs/remotes/origin/side"});
 	CHECK(RefToRestore(GitWindowState{.Ref = "refs/heads/topic"}, kBranches) == std::optional<std::string>{"refs/heads/topic"});
 }
+
+TEST_CASE("Git window: a restored ref waits for the branches and nothing else does")
+{
+	const GitWindowState named{.Ref = "refs/heads/topic"};
+
+	CHECK(RestoreWaitsForBranches(named, BranchListing{}));
+	CHECK_FALSE(RestoreWaitsForBranches(named, BranchListing{.Listed = true}));
+	CHECK_FALSE(RestoreWaitsForBranches(named, BranchListing{.Failed = true}));
+	CHECK_FALSE(RestoreWaitsForBranches(GitWindowState{}, BranchListing{}));
+}

@@ -854,6 +854,12 @@ namespace Graphite {
 
 	void GitView::AskLogAsNeeded()
 	{
+		// Nothing is asked before it is known which history the window opens on.
+		if (RestoreWaits())
+		{
+			return;
+		}
+
 		if (m_LogHeld)
 		{
 			if (!WaitsForLines())
@@ -938,8 +944,8 @@ namespace Graphite {
 
 	bool GitView::ShowsLocalChanges() const
 	{
-		// A file's history is about that file, not about the whole tree's changes.
-		if (m_SelectedStash.has_value() || IsFileHistory())
+		// A file's history is about that file, not about the whole tree's changes; a history still being decided is none.
+		if (m_SelectedStash.has_value() || IsFileHistory() || RestoreWaits())
 		{
 			return false;
 		}
@@ -1239,7 +1245,7 @@ namespace Graphite {
 			const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 			const bool pageWaitsForCount = page && shown.has_value() && PageAnswersSelection(*shown);
 
-			if (m_LogHeld || WaitsForLines() || pageWaitsForCount)
+			if (m_LogHeld || WaitsForLines() || pageWaitsForCount || RestoreWaits())
 			{
 				marks.Waiting = "Reading the branches' lines\xE2\x80\xA6";
 			}
