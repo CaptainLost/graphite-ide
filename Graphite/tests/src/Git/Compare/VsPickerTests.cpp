@@ -405,3 +405,34 @@ TEST_CASE("Git window: the picker offers a quiet base only when the branch is co
 	CHECK(quiet->Automatic);
 	CHECK(quiet->Chosen);
 }
+
+TEST_CASE("Git window: an old copy, and a local copy shown as one, are compared with nothing and not offered to themselves")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemote("fork");
+
+	const std::size_t develop = builder.AddRemoteBranch("origin", "develop");
+	builder.MakeBase(develop);
+	const std::size_t release = builder.AddRemoteBranch("origin", "release");
+	builder.MakeBase(release);
+	const std::size_t copy = builder.AddRemoteBranch("fork", "develop");
+	const std::size_t localCopy = builder.AddLocal("develop", Graphite::Fixtures::BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	builder.SameRow(localCopy, copy);
+
+	Scene scene;
+	scene.Read = builder.Build();
+	scene.Read.Model.OldCopies.push_back(Core::OldCopy{.Ref = copy, .Of = develop});
+
+	for (const std::string ref : {"refs/remotes/fork/develop", "refs/heads/develop"})
+	{
+		const VsPicker picker = Build(scene, ref);
+		const VsOption* const nothing = OptionOf(picker, VsOption::Kind::Nothing);
+
+		REQUIRE(nothing != nullptr);
+		CHECK(nothing->Chosen);
+		CHECK(nothing->Automatic);
+		CHECK(OptionOf(picker, VsOption::Kind::Base, "fork/develop") == nullptr);
+		CHECK(OptionOf(picker, VsOption::Kind::Base, "origin/release") != nullptr);
+	}
+}

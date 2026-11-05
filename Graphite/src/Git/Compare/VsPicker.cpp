@@ -114,7 +114,8 @@ namespace Graphite {
 		const std::optional<std::size_t> named = input.Lines.IndexOf(input.Branch);
 		const std::optional<std::size_t> self = input.Lines.IndexOf(shown);
 		const Core::BranchLine* const line = input.Lines.LineOf(shown);
-		const bool isBase = input.Lines.BaseNamed(shown) != nullptr;
+		// A base and an old copy have no line of their own, so the rule compares them with nothing.
+		const bool hasNoLine = input.Lines.BaseNamed(shown) != nullptr || input.Lines.OldCopyNamed(shown) != nullptr;
 
 		if (!named.has_value() || !self.has_value() || !HasPlaceInRead(input, line, shown))
 		{
@@ -181,9 +182,9 @@ namespace Graphite {
 		nothing.What = VsOption::Kind::Nothing;
 		nothing.Name = "Nothing";
 		nothing.Why = "the branch on its own";
-		// A base is shown on its own unless the user picks a line for it.
-		nothing.Automatic = isBase || (line != nullptr && !line->AutomaticComparedWith.has_value());
-		nothing.Chosen = isBase || (line != nullptr && !line->ComparedWith.has_value());
+		// A base or an old copy is shown on its own unless the user picks a line for it.
+		nothing.Automatic = hasNoLine || (line != nullptr && !line->AutomaticComparedWith.has_value());
+		nothing.Chosen = hasNoLine || (line != nullptr && !line->ComparedWith.has_value());
 		picker.Options.push_back(std::move(nothing));
 
 		for (const Core::LineBase& base : read.Model.Bases)
