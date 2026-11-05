@@ -43,13 +43,15 @@ namespace Graphite {
 		};
 
 		// WARNING: The space the footer takes is its height whatever it holds, laid out by one item at the end, so the list above it never has to guess.
+		// It starts where the list ends, in the item spacing ImGui put after the list: started below that spacing, it would
+		// reach one spacing past the room the list left for it, and the history would scroll by that much both ways.
 		struct FooterFrame
 		{
 			FooterFrame()
-				: Start(ImGui::GetCursorPos()),
+				: Start(ImGui::GetCursorPos().x, ImGui::GetCursorPos().y - ImGui::GetStyle().ItemSpacing.y),
 				  Width(ImGui::GetContentRegionAvail().x)
 			{
-				const ImVec2 screen = ImGui::GetCursorScreenPos();
+				const ImVec2 screen(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y - ImGui::GetStyle().ItemSpacing.y);
 
 				ImGui::GetWindowDrawList()->AddLine(screen, ImVec2(screen.x + Width, screen.y), ImGui::GetColorU32(ImGuiCol_Separator));
 

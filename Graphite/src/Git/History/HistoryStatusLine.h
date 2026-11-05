@@ -17,7 +17,8 @@ namespace Graphite {
 		Fold
 	};
 
-	// One text line high, so the list above can leave exactly that much room for it.
+	// The footer's height, so the list above can leave exactly that much room for it. The footer is drawn straight after
+	// the list and starts where the list ends.
 	float HistoryStatusLineHeight();
 
 	// The text, then `foldFooter` and its "Fold them" link when it is given, then either the busy loader or the pair of
