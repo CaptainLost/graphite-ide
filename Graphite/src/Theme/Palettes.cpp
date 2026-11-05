@@ -93,6 +93,7 @@ namespace Graphite {
 		palette.GutterModified = ImU32FromScheme(scheme, GitColor::GutterModified);
 		palette.GutterRemoved = ImU32FromScheme(scheme, GitColor::GutterRemoved);
 		palette.LineNumber = ImU32FromScheme(scheme, EditorColor::LineNumber);
+		palette.RefHeadFill = ImU32FromScheme(scheme, ChromeColor::Accent);
 
 		palette.Lanes = {ImU32FromScheme(scheme, GitColor::GraphLane1),
 						 ImU32FromScheme(scheme, GitColor::GraphLane2),

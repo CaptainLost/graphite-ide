@@ -51,21 +51,16 @@ namespace Graphite {
 		constexpr float kNoSpacing = 0.0f;
 		constexpr ImU32 kThemeTextColor = 0;
 		constexpr std::string_view kNoHighlight = {};
-		constexpr ImU32 kLabelFillAlphaByte = 0x38u;
 		constexpr int kLeftMouseButton = 0;
 		constexpr std::size_t kNoFileRows = 0;
 		constexpr int kFrozenColumnCount = 0;
-		constexpr int kFrozenRowCount = 1;
+		constexpr int kFrozenRowCount = 0;
 
 		// WARNING: CalcTextSize rounds each run up by less than a pixel, so a cell is given that pixel back. Without it a column sized to its text by a rescale cuts a hash it has room for.
 		constexpr float kRoundedUpPixel = 1.0f;
 
 		// WARNING: AllowOverlap keeps a click reaching the one Selectable under the row instead of being swallowed by the cells drawn over it.
 		constexpr ImGuiSelectableFlags kRowSelectableFlags = ImGuiSelectableFlags_AllowOverlap;
-
-		constexpr const char* kHashSample = "0000000";
-		constexpr const char* kAuthorSample = "Alice Johnson   ";
-		constexpr const char* kDateSample = "59 minutes ago";
 
 		constexpr std::string_view kLocalChangesTitle = "Local changes";
 		constexpr std::string_view kLocalChangesAge = "now";
@@ -85,6 +80,16 @@ namespace Graphite {
 		// The mockup's sizes, in its pixels at a 13 px font.
 		constexpr float kMockupFontPixels = 13.0f;
 		constexpr float kMessagePiecesGap = 6.0f;
+		constexpr float kAuthorColumnPixels = 132.0f;
+		constexpr float kAuthorAvatarOnlyColumnPixels = 20.0f;
+		constexpr float kAvatarPixels = 16.0f;
+		constexpr float kAvatarInitialsPixels = 8.5f;
+		constexpr float kAvatarNameGapPixels = 6.0f;
+		constexpr float kAgeColumnPixels = 38.0f;
+		constexpr float kAgeTextPixels = 12.0f;
+		constexpr float kHashColumnPixels = 64.0f;
+		constexpr float kHashTextPixels = 11.5f;
+		constexpr ImU32 kAvatarInitialsInk = IM_COL32(255, 255, 255, 255);
 		constexpr float kRingRadius = 3.5f;    // to the middle of its stroke
 		constexpr float kRingThickness = 2.0f;
 		constexpr int kRingDashes = 6;
@@ -137,10 +142,10 @@ namespace Graphite {
 		{
 			Graph,
 			Chevron,
-			Hash,
 			Message,
 			Author,
-			Date,
+			Age,
+			Hash,
 			Count
 		};
 
@@ -177,34 +182,12 @@ namespace Graphite {
 			return ImGui::CalcTextSize("0").x * kMinMessageDigitCount;
 		}
 
-		float SampleWidth(const char* sample)
-		{
-			return ImGui::CalcTextSize(sample).x;
-		}
-
-		// WARNING: The hash is drawn in the code face at the interface size, so a row keeps the pitch the graph is laid out on; the column is sized in the same face or the hash is cut.
-		float HashSampleWidth()
-		{
-			Core::PushCodeFont(Core::kInterfaceFontSize);
-			const float width = SampleWidth(kHashSample);
-			ImGui::PopFont();
-
-			return width;
-		}
-
-		// WARNING: WidthRequest holds the reader's drag or the width saved in the settings, and a hidden column keeps it.
-		float WidthInUse(const ImGuiTable* table, Column column, float usualWidth)
-		{
-			const float requestedWidth = table->Columns[TableIndexOf(column)].WidthRequest;
-			return requestedWidth > 0.0f ? requestedWidth : usualWidth;
-		}
-
-		// `keptFree` is left at the cell's end for what is drawn after the text.
-		void DrawFittedCell(std::string_view text, ImU32 color, std::string_view needle, float keptFree = 0.0f)
+		// WARNING: Whether text came out is answered, because what follows it on the line is anchored to it. Empty text draws nothing and answers false. `keptFree` is left at the cell's end for what is drawn after the text.
+		bool DrawFittedCell(std::string_view text, ImU32 color, std::string_view needle, float keptFree = 0.0f)
 		{
 			if (text.empty())
 			{
-				return;
+				return false;
 			}
 
 			const float roomInCell = ImGui::GetContentRegionAvail().x + kRoundedUpPixel - keptFree;
@@ -215,7 +198,7 @@ namespace Graphite {
 			// WARNING: Nothing rather than an ellipsis the cell would clip, as FitToWidth does.
 			if (cut.has_value() && ellipsisWidth > roomInCell)
 			{
-				return;
+				return false;
 			}
 
 			const HighlightedLabel split =
@@ -251,6 +234,52 @@ namespace Graphite {
 				ImGui::TextUnformatted(piece.Text.data(), piece.Text.data() + piece.Text.size());
 				ImGui::PopStyleColor();
 			}
+
+			return true;
+		}
+
+		// A cell drawn in a font smaller than the row's stands in the middle of the row's line, as the mockup's centred flex items do.
+		void CentreSmallerFontInLine(float lineHeight)
+		{
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::floor((lineHeight - ImGui::GetTextLineHeight()) * kHalf));
+		}
+
+		// Right-aligned in its cell at the age's size.
+		void DrawAge(const std::string& age, ImU32 ink)
+		{
+			const float lineHeight = ImGui::GetTextLineHeight();
+
+			ImGui::PushFont(nullptr, MockupPixels(kAgeTextPixels));
+			CentreSmallerFontInLine(lineHeight);
+
+			const float room = ImGui::GetContentRegionAvail().x;
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, room - ImGui::CalcTextSize(age.c_str()).x));
+
+			ImGui::PushStyleColor(ImGuiCol_Text, ink);
+			ImGui::TextUnformatted(age.c_str());
+			ImGui::PopStyleColor();
+			ImGui::PopFont();
+		}
+
+		// The round avatar with the author's initials, a text line high so it does not move the row.
+		void DrawAvatar(const Core::Signature& author, float alpha)
+		{
+			const float lineHeight = ImGui::GetTextLineHeight();
+			const float size = MockupPixels(kAvatarPixels);
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const ImVec2 centre(origin.x + size * kHalf, origin.y + lineHeight * kHalf);
+			const std::string initials = AuthorInitials(author);
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddCircleFilled(centre, size * kHalf, Core::WithAlphaScaled(AvatarFill(AvatarHue(author.Email)), alpha));
+
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), MockupPixels(kAvatarInitialsPixels));
+			const ImVec2 textSize = ImGui::CalcTextSize(initials.c_str());
+			drawList->AddText(ImVec2(std::floor(centre.x - textSize.x * kHalf), std::floor(centre.y - textSize.y * kHalf)),
+							  Core::WithAlphaScaled(kAvatarInitialsInk, alpha), initials.c_str());
+			ImGui::PopFont();
+
+			ImGui::Dummy(ImVec2(size, lineHeight));
 		}
 
 		void RefLabels(const std::vector<CommitRef>& refs, const GitPalette& palette,
@@ -261,52 +290,23 @@ namespace Graphite {
 				return;
 			}
 
-			const ImGuiStyle& style = ImGui::GetStyle();
-			const float labelPadding = style.ItemInnerSpacing.x;
-			const float labelGap = style.ItemInnerSpacing.x;
+			const float labelGap = MockupPixels(kMessagePiecesGap);
 
 			std::vector<float> labelWidths;
 			labelWidths.reserve(refs.size());
 
 			for (const CommitRef& ref : refs)
 			{
-				labelWidths.push_back(Core::TextWidth(ref.Name) + labelPadding * 2.0f);
+				labelWidths.push_back(RefPillWidth(ref));
 			}
 
 			const std::size_t fittingCount = RefLabelsThatFit(
 				labelWidths, labelGap, ImGui::GetContentRegionAvail().x + kRoundedUpPixel,
 				Core::TextWidth(summary), MinMessageWidth());
 
-			ImDrawList* drawList = ImGui::GetWindowDrawList();
-
 			for (std::size_t labelIndex = 0; labelIndex < fittingCount; ++labelIndex)
 			{
-				const CommitRef& ref = refs[labelIndex];
-
-				ImU32 ink = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-
-				if (ref.Kind == CommitRefKind::Head)
-				{
-					ink = palette.GutterAdded;
-				}
-				else if (ref.Kind == CommitRefKind::Local)
-				{
-					ink = palette.GutterModified;
-				}
-
-				const ImU32 fill = Core::WithAlphaScaled(Core::WithAlphaReplaced(ink, kLabelFillAlphaByte), alpha);
-				ink = Core::WithAlphaScaled(ink, alpha);
-
-				const ImVec2 labelOrigin = ImGui::GetCursorScreenPos();
-				const ImVec2 labelSize(labelWidths[labelIndex], ImGui::GetTextLineHeight());
-
-				drawList->AddRectFilled(
-					labelOrigin, ImVec2(labelOrigin.x + labelSize.x, labelOrigin.y + labelSize.y),
-					fill, style.FrameRounding);
-				drawList->AddText(ImVec2(labelOrigin.x + labelPadding, labelOrigin.y), ink,
-								  ref.Name.data(), ref.Name.data() + ref.Name.size());
-
-				ImGui::Dummy(labelSize);
+				DrawRefPill(refs[labelIndex], palette, alpha);
 				ImGui::SameLine(kNoOffset, labelGap);
 			}
 		}
@@ -346,7 +346,7 @@ namespace Graphite {
 
 				break;
 
-			case Column::Date:
+			case Column::Age:
 				text = FormattedMoment(commit.Author.When, now, zone);
 
 				if (wasCommittedAtAnotherTime)
@@ -615,6 +615,8 @@ namespace Graphite {
 
 		const GraphMetrics metrics = MetricsForCurrentFont();
 
+		m_HoveredCommit.reset();
+
 		const bool hasFold = marks.Fold.has_value() && marks.Fold->BeforeCommit < page.Commits.size();
 		const ExtraRows extra{.LocalChanges = marks.LocalChanges.has_value(),
 							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt,
@@ -655,9 +657,8 @@ namespace Graphite {
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
 
-		// WARNING: Without NoBordersInBody ImGui puts each resize handle down the whole list, so a click near a border on any row would drag the column instead of selecting the commit.
-		constexpr ImGuiTableFlags flags =
-			ImGuiTableFlags_Resizable | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY;
+		// The columns have the mockup's widths and no header row, so none of them is resized by the reader.
+		constexpr ImGuiTableFlags flags = ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY;
 
 		const ImGuiStyle& style = ImGui::GetStyle();
 
@@ -668,40 +669,44 @@ namespace Graphite {
 			PadListTableEnds();
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
-			const ImGuiTable* table = ImGui::GetCurrentTable();
+			ImGuiTable* table = ImGui::GetCurrentTable();
 
 			CommitColumnsInput columnInput;
 			columnInput.Available = widthBesideScrollbar;
 			columnInput.Graph = GraphWidth(metrics, laneCount);
-			columnInput.Chevron = std::max(SampleWidth(ChevronGlyph(false)), SampleWidth(ChevronGlyph(true)));
-			columnInput.Hash = WidthInUse(table, Column::Hash, HashSampleWidth());
-			columnInput.Author = WidthInUse(table, Column::Author, SampleWidth(kAuthorSample));
-			columnInput.Date = WidthInUse(table, Column::Date, SampleWidth(kDateSample));
-			columnInput.CellPadding = style.CellPadding.x * 2.0f;
-			columnInput.MinMessage = MinMessageWidth();
+			columnInput.FontSize = ImGui::GetFontSize();
 
 			const CommitColumns columns = LayoutCommitColumns(columnInput);
+			m_ShowsAuthorName = columns.ShowAuthorName;
+
+			const float chevronWidth = std::max(ImGui::CalcTextSize(ChevronGlyph(false)).x, ImGui::CalcTextSize(ChevronGlyph(true)).x);
+			const float authorWidth = MockupPixels(columns.ShowAuthorName ? kAuthorColumnPixels : kAuthorAvatarOnlyColumnPixels);
+			const float ageWidth = MockupPixels(kAgeColumnPixels);
+			const float hashWidth = MockupPixels(kHashColumnPixels);
 
 			constexpr ImGuiTableColumnFlags kFixedWidth = ImGuiTableColumnFlags_WidthFixed;
-			constexpr ImGuiTableColumnFlags kFixedAndLocked =
-				ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize;
+			constexpr ImGuiTableColumnFlags kFixedAndLocked = kFixedWidth | ImGuiTableColumnFlags_NoResize;
+
+			// WARNING: A narrow table gives up the hash with the Disabled flag, which is read again every frame. The table is not Hideable, so ImGui offers no menu to bring it back and does not save the state.
+			const ImGuiTableColumnFlags hashFlags =
+				columns.ShowHash ? kFixedAndLocked : kFixedAndLocked | ImGuiTableColumnFlags_Disabled;
 
 			ImGui::TableSetupColumn("##graph", kFixedAndLocked, columns.Graph);
-			ImGui::TableSetupColumn("##chevron", kFixedAndLocked, columnInput.Chevron);
-			ImGui::TableSetupColumn("Hash", kFixedWidth, HashSampleWidth());
+			ImGui::TableSetupColumn("##chevron", kFixedAndLocked, chevronWidth);
 			ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Author", kFixedAndLocked, authorWidth);
+			ImGui::TableSetupColumn("Age", kFixedAndLocked, ageWidth);
+			ImGui::TableSetupColumn("Hash", hashFlags, hashWidth);
 
-			// WARNING: A narrow table gives up the author and then the date with the Disabled flag, which is read again every frame. The table is not Hideable, so ImGui offers no menu to bring them back and does not save the state.
-			const ImGuiTableColumnFlags authorFlags =
-				columns.ShowAuthor ? kFixedWidth : kFixedWidth | ImGuiTableColumnFlags_Disabled;
-			const ImGuiTableColumnFlags dateFlags =
-				columns.ShowDate ? kFixedWidth : kFixedWidth | ImGuiTableColumnFlags_Disabled;
+			// WARNING: ImGui applies the width given to a column once, so a width that changes with the table's width or the lanes is written to the column each frame, before the first row lays the table out.
+			const float fixedWidths[] = {columns.Graph, chevronWidth, 0.0f, authorWidth, ageWidth, hashWidth};
 
-			ImGui::TableSetupColumn("Author", authorFlags, SampleWidth(kAuthorSample));
-			ImGui::TableSetupColumn("Date", dateFlags, SampleWidth(kDateSample));
+			for (const Column fixed : {Column::Graph, Column::Chevron, Column::Author, Column::Age, Column::Hash})
+			{
+				table->Columns[TableIndexOf(fixed)].WidthRequest = fixedWidths[TableIndexOf(fixed)];
+			}
 
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
-			ImGui::TableHeadersRow();
 
 			if (std::exchange(m_ScrollToTop, false))
 			{
@@ -763,7 +768,9 @@ namespace Graphite {
 						const Core::Ref<const Core::LogPage> brought = BroughtCountedFor(marks, commit);
 
 						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, dimmed,
-										BroughtDrawing{.Page = brought.get(), .IsBrought = false});
+										BroughtDrawing{.Page = brought.get(),
+													   .IsBrought = false,
+													   .OpensBrought = marks.BroughtOf && IsMerge(commit)});
 
 						if (scrollRow == displayRow)
 						{
@@ -809,9 +816,26 @@ namespace Graphite {
 				{
 					ImGui::TableSetColumnIndex(TableIndexOf(Column::Graph));
 
+					// A dimmed commit is drawn with its row: its dot and the lanes that end at it.
+					CommitGraphView::AlphaOfCommit alphaOfCommit;
+
+					if (marks.Dimmed != nullptr)
+					{
+						alphaOfCommit = [&](std::size_t commitIndex) {
+							const Core::Oid& commit = page.Commits[commitIndex].Id;
+
+							if (!marks.Dimmed->contains(commit))
+							{
+								return 1.0f;
+							}
+
+							return IsPointedAt(commit) ? kDimmedRowPointedAlpha : kDimmedRowAlpha;
+						};
+					}
+
 					CommitGraphView{}.Render(graph, palette, metrics, rows.RowOfCommit,
 											 clipper.DisplayStart, clipper.DisplayEnd - 1,
-											 graphOrigin);
+											 graphOrigin, alphaOfCommit);
 				}
 			}
 
@@ -842,6 +866,11 @@ namespace Graphite {
 		// WARNING: Hover and the context menu are asked of the Selectable here, because every cell below becomes the last item in turn. The caller pushes an id per row, so each row's menu is its own popup.
 		const bool selectableHovered = ImGui::IsItemHovered();
 		const bool selectableHoveredForTooltip = ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip);
+
+		if (selectableHovered)
+		{
+			m_HoveredCommit = commit.Id;
+		}
 
 		if (Core::BeginRightClickPopup("commit-menu"))
 		{
@@ -892,30 +921,29 @@ namespace Graphite {
 
 		ImGui::SetCursorPos(rowStart);
 
-		// A commit a merge brought does not open files.
-		if (!brought.IsBrought)
-		{
-			DrawChevron(expanded);
-		}
-
-		ImGui::TableSetColumnIndex(TableIndexOf(Column::Hash));
-		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x;
-
 		// A dimmed row is dimmed whole, and less while it is pointed at or selected.
 		const float alpha =
 			!dimmed ? 1.0f
 					: (isSelectedCommit || selectableHovered ? CommitListView::kDimmedRowPointedAlpha
 															 : CommitListView::kDimmedRowAlpha);
 
+		// A commit a merge brought does not open files. The room of the chevron is kept on every row, drawn or not, so the
+		// message never moves; a merge of the Merges history shows it always, the rest while pointed at, selected or open.
+		const bool showsChevron = !brought.IsBrought && (brought.OpensBrought || selectableHovered || isSelectedCommit || expanded);
+
+		if (showsChevron)
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * alpha);
+			DrawChevron(expanded);
+			ImGui::PopStyleVar();
+		}
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x - ImGui::GetStyle().CellPadding.x;
+
 		const ImU32 dimmedInk = Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_TextDisabled), alpha);
 		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? Core::WithAlphaScaled(palette.GutterAdded, alpha) : dimmedInk;
 		const ImU32 summaryInk = dimmed ? Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_Text), alpha) : kThemeTextColor;
-
-		Core::PushCodeFont(Core::kInterfaceFontSize);
-		DrawFittedCell(commit.Id.ShortHex(), hashInk, highlight);
-		ImGui::PopFont();
-
-		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
 		if (brought.IsBrought)
 		{
@@ -931,11 +959,12 @@ namespace Graphite {
 		// An opened merge says how many commits it brought after its own subject, dim as the mockup's count.
 		const std::string count = brought.Page != nullptr ? kMiddleDot + DescribeBrought(*brought.Page) : std::string{};
 
-		DrawFittedCell(commit.Summary, summaryInk, highlight, Core::TextWidth(count));
+		const bool drewSubject = DrawFittedCell(commit.Summary, summaryInk, highlight, Core::TextWidth(count));
 
-		if (!count.empty())
+		// WARNING: The count is anchored to the subject, so a subject that did not come out leaves it undrawn too, or it would stand beside whatever came before.
+		if (!count.empty() && (drewSubject || commit.Summary.empty()))
 		{
-			if (!commit.Summary.empty())
+			if (drewSubject)
 			{
 				ImGui::SameLine(kNoOffset, kNoSpacing);
 			}
@@ -949,10 +978,27 @@ namespace Graphite {
 		}
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
-		DrawFittedCell(AuthorName(commit.Author), dimmedInk, highlight);
+		DrawAvatar(commit.Author, alpha);
 
-		ImGui::TableSetColumnIndex(TableIndexOf(Column::Date));
-		DrawFittedCell(RelativeAge(commit.Author.When, now), dimmedInk, kNoHighlight);
+		if (m_ShowsAuthorName)
+		{
+			ImGui::SameLine(kNoOffset, MockupPixels(kAvatarNameGapPixels));
+			DrawFittedCell(AuthorName(commit.Author), dimmedInk, highlight);
+		}
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Age));
+		DrawAge(ShortAge(commit.Author.When, now), dimmedInk);
+
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Hash));
+
+		{
+			const float lineHeight = ImGui::GetTextLineHeight();
+
+			Core::PushCodeFont(MockupPixels(kHashTextPixels));
+			CentreSmallerFontInLine(lineHeight);
+			DrawFittedCell(commit.Id.ShortHex(), hashInk, highlight);
+			ImGui::PopFont();
+		}
 
 		if (selectableHoveredForTooltip)
 		{
@@ -1023,8 +1069,8 @@ namespace Graphite {
 		ImGui::SameLine(kNoOffset, MockupPixels(kMessagePiecesGap));
 		DrawFittedCell(summary, dimmedInk, kNoHighlight);
 
-		ImGui::TableSetColumnIndex(TableIndexOf(Column::Date));
-		DrawFittedCell(kLocalChangesAge, dimmedInk, kNoHighlight);
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Age));
+		DrawAge(std::string{kLocalChangesAge}, dimmedInk);
 	}
 
 	void CommitListView::RenderFoldRow(const FoldRow& fold)

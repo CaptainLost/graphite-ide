@@ -3,70 +3,58 @@
 #include "Git/History/CommitColumns.h"
 
 namespace {
-	Graphite::CommitColumnsInput InputAt(float available, float graph = 30.0f)
+	constexpr float kMockupFont = 13.0f;
+
+	Graphite::CommitColumnsInput InputAt(float available, float fontSize = kMockupFont, float graph = 30.0f)
 	{
 		Graphite::CommitColumnsInput input;
 		input.Available = available;
 		input.Graph = graph;
-		input.Chevron = 20.0f;
-		input.Hash = 60.0f;
-		input.Author = 110.0f;
-		input.Date = 90.0f;
-		input.CellPadding = 8.0f;
-		input.MinMessage = 84.0f;
+		input.FontSize = fontSize;
 		return input;
 	}
 }
 
-TEST_CASE("A wide table shows every column and gives the rest to the message")
+TEST_CASE("Git window: a wide history shows the author's name and the hash")
 {
 	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(900.0f));
 
-	CHECK(columns.ShowAuthor);
-	CHECK(columns.ShowDate);
+	CHECK(columns.ShowAuthorName);
+	CHECK(columns.ShowHash);
 	CHECK(columns.Graph == 30.0f);
-	CHECK(columns.Message == doctest::Approx(900.0f - (30.0f + 20.0f + 60.0f + 110.0f + 90.0f + 8.0f * 6.0f)));
 }
 
-TEST_CASE("The graph is capped to a quarter of the table")
+TEST_CASE("Git window: below 640 mockup pixels the author's name is hidden and the hash stays")
 {
-	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(400.0f, 600.0f));
+	CHECK(Graphite::LayoutCommitColumns(InputAt(640.0f)).ShowAuthorName);
+
+	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(639.0f));
+
+	CHECK_FALSE(columns.ShowAuthorName);
+	CHECK(columns.ShowHash);
+}
+
+TEST_CASE("Git window: below 500 mockup pixels the hash is hidden too")
+{
+	CHECK(Graphite::LayoutCommitColumns(InputAt(500.0f)).ShowHash);
+
+	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(499.0f));
+
+	CHECK_FALSE(columns.ShowAuthorName);
+	CHECK_FALSE(columns.ShowHash);
+}
+
+TEST_CASE("Git window: the thresholds grow with the font like the mockup's em")
+{
+	CHECK(Graphite::LayoutCommitColumns(InputAt(800.0f, 26.0f)).ShowAuthorName == false);
+	CHECK(Graphite::LayoutCommitColumns(InputAt(1280.0f, 26.0f)).ShowAuthorName);
+	CHECK(Graphite::LayoutCommitColumns(InputAt(1000.0f, 26.0f)).ShowHash);
+	CHECK_FALSE(Graphite::LayoutCommitColumns(InputAt(999.0f, 26.0f)).ShowHash);
+}
+
+TEST_CASE("Git window: the graph is capped to a quarter of the table")
+{
+	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(400.0f, kMockupFont, 600.0f));
 
 	CHECK(columns.Graph == doctest::Approx(100.0f));
-}
-
-TEST_CASE("The author is given up first, then the date")
-{
-	const Graphite::CommitColumns noAuthor = Graphite::LayoutCommitColumns(InputAt(420.0f));
-
-	CHECK_FALSE(noAuthor.ShowAuthor);
-	CHECK(noAuthor.ShowDate);
-	CHECK(noAuthor.Message >= 84.0f);
-
-	const Graphite::CommitColumns neither = Graphite::LayoutCommitColumns(InputAt(300.0f));
-
-	CHECK_FALSE(neither.ShowAuthor);
-	CHECK_FALSE(neither.ShowDate);
-	CHECK(neither.Message >= 84.0f);
-}
-
-TEST_CASE("A table narrow enough to leave the message nothing today gives it its minimum")
-{
-	const Graphite::CommitColumnsInput input = InputAt(300.0f, 400.0f);
-	const float today = input.Available - (input.Graph + input.Chevron + input.Hash + input.Author +
-										   input.Date + input.CellPadding * 6.0f);
-	REQUIRE(today <= 0.0f);
-
-	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(input);
-
-	CHECK(columns.Message >= input.MinMessage);
-}
-
-TEST_CASE("When even the always-shown columns leave less than the minimum the message gets what is left")
-{
-	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(100.0f));
-
-	CHECK_FALSE(columns.ShowAuthor);
-	CHECK_FALSE(columns.ShowDate);
-	CHECK(columns.Message < 84.0f);
 }

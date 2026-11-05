@@ -103,3 +103,31 @@ TEST_CASE("A remote's symbolic HEAD is not a label because the branch it points 
 	REQUIRE(refsOnCommit.size() == 1);
 	CHECK(refsOnCommit[0].Name == "origin/main");
 }
+TEST_CASE("Git window: the checked-out branch's pill reads HEAD, an arrow and its name; other refs read their name")
+{
+	CHECK(Graphite::RefPillText(Graphite::CommitRef{.Name = "main", .Kind = CommitRefKind::Head}) ==
+		  "HEAD \xE2\x86\x92 main");
+	CHECK(Graphite::RefPillText(Graphite::CommitRef{.Name = "feature", .Kind = CommitRefKind::Local}) == "feature");
+	CHECK(Graphite::RefPillText(Graphite::CommitRef{.Name = "origin/main", .Kind = CommitRefKind::Remote}) ==
+		  "origin/main");
+	CHECK(Graphite::RefPillText(Graphite::CommitRef{.Name = "v1.0", .Kind = CommitRefKind::Tag}) == "v1.0");
+}
+
+TEST_CASE("Git window: each kind of ref has its own pill colours, the head's on the accent")
+{
+	const Graphite::GitPalette palette;
+
+	const Graphite::RefPillColours head = Graphite::RefPillColoursOf(CommitRefKind::Head, palette);
+	const Graphite::RefPillColours local = Graphite::RefPillColoursOf(CommitRefKind::Local, palette);
+	const Graphite::RefPillColours remote = Graphite::RefPillColoursOf(CommitRefKind::Remote, palette);
+	const Graphite::RefPillColours tag = Graphite::RefPillColoursOf(CommitRefKind::Tag, palette);
+
+	CHECK(head.Fill == palette.RefHeadFill);
+	CHECK(local.Fill == palette.RefLocalFill);
+	CHECK(remote.Fill == palette.RefRemoteFill);
+	CHECK(tag.Fill == palette.RefTagFill);
+	CHECK(remote.Text == IM_COL32(0xa9, 0xc6, 0xf5, 255));
+	CHECK(tag.Text == IM_COL32(0xf0, 0xcf, 0x8f, 255));
+	CHECK(local.Text == IM_COL32(0xdc, 0xe8, 0xff, 255));
+	CHECK(head.Text == IM_COL32(255, 255, 255, 255));
+}

@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace Graphite {
@@ -20,6 +21,56 @@ namespace Graphite {
 		constexpr std::string_view kBetween = " \xC2\xB7 ";
 
 		constexpr float kPaddingSides = 2.0f;
+
+		// The mockup's footer, in its pixels at a 13 pixel font.
+		constexpr float kMockupFontPixels = 13.0f;
+		constexpr float kFooterHeightPixels = 24.0f;
+		constexpr float kFooterTextPixels = 12.0f;
+		constexpr float kFooterSidePaddingPixels = 10.0f;
+		constexpr float kHalf = 0.5f;
+
+		float MockupPixels(float pixels)
+		{
+			return pixels * ImGui::GetFontSize() / kMockupFontPixels;
+		}
+
+		struct FooterFont
+		{
+			FooterFont() { ImGui::PushFont(nullptr, MockupPixels(kFooterTextPixels)); }
+			~FooterFont() { ImGui::PopFont(); }
+			FooterFont(const FooterFont&) = delete;
+			FooterFont& operator=(const FooterFont&) = delete;
+		};
+
+		// WARNING: The space the footer takes is its height whatever it holds, laid out by one item at the end, so the list above it never has to guess.
+		struct FooterFrame
+		{
+			FooterFrame()
+				: Start(ImGui::GetCursorPos()),
+				  Width(ImGui::GetContentRegionAvail().x)
+			{
+				const ImVec2 screen = ImGui::GetCursorScreenPos();
+
+				ImGui::GetWindowDrawList()->AddLine(screen, ImVec2(screen.x + Width, screen.y), ImGui::GetColorU32(ImGuiCol_Separator));
+
+				const FooterFont font;
+				const float textTop = std::floor((HistoryStatusLineHeight() - ImGui::GetTextLineHeight()) * kHalf);
+
+				ImGui::SetCursorPos(ImVec2(Start.x + MockupPixels(kFooterSidePaddingPixels), Start.y + textTop));
+			}
+
+			~FooterFrame()
+			{
+				ImGui::SetCursorPos(Start);
+				ImGui::Dummy(ImVec2(Width, HistoryStatusLineHeight()));
+			}
+
+			FooterFrame(const FooterFrame&) = delete;
+			FooterFrame& operator=(const FooterFrame&) = delete;
+
+			ImVec2 Start;
+			float Width;
+		};
 		constexpr float kNoOffset = 0.0f;
 		constexpr float kNoSpacing = 0.0f;
 
@@ -31,12 +82,15 @@ namespace Graphite {
 
 	float HistoryStatusLineHeight()
 	{
-		return ImGui::GetTextLineHeightWithSpacing();
+		return std::floor(MockupPixels(kFooterHeightPixels));
 	}
 
 	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status, std::string_view foldFooter)
 	{
 		std::optional<HistoryClick> clicked;
+
+		const FooterFrame frame;
+		const FooterFont font;
 
 		const bool busy = !status.Busy.empty();
 		const bool saysText = !status.Text.empty();
@@ -98,7 +152,10 @@ namespace Graphite {
 		// for both they follow it on the same line instead.
 		ImGui::SameLine();
 		const float textEnd = ImGui::GetCursorPosX();
-		ImGui::SetCursorPosX(std::max(textEnd, textEnd + ImGui::GetContentRegionAvail().x - buttonsWidth));
+		const float rightEdge = frame.Start.x + frame.Width - MockupPixels(kFooterSidePaddingPixels);
+		ImGui::SetCursorPosX(std::max(textEnd, rightEdge - buttonsWidth));
+
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_CheckMark));
 
 		if (Core::SmallTextButton(more))
 		{
@@ -111,6 +168,8 @@ namespace Graphite {
 		{
 			clicked = HistoryClick::All;
 		}
+
+		ImGui::PopStyleColor();
 
 		return clicked;
 	}

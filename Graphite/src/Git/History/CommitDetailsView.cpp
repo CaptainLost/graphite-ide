@@ -155,18 +155,9 @@ namespace Graphite {
 
 			for (const CommitRef& ref : refs)
 			{
-				ImU32 ink = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-
-				if (ref.Kind == CommitRefKind::Head)
-				{
-					ink = palette.GutterAdded;
-				}
-				else if (ref.Kind == CommitRefKind::Local)
-				{
-					ink = palette.GutterModified;
-				}
-
-				DrawChip(flow, ref.Name, ink);
+				flow.Place(RefPillWidth(ref));
+				DrawRefPill(ref, palette);
+				flow.Placed();
 			}
 		}
 

@@ -234,3 +234,40 @@ TEST_CASE("A path no file in the diff carries is not found")
 
 	CHECK_FALSE(Graphite::IndexOfFile(diff, "missing.txt").has_value());
 }
+
+TEST_CASE("Git window: a short age reads in the largest unit that fits, as the mockup's")
+{
+	const auto shortAge = [](long long seconds) { return Graphite::ShortAge(At(0), At(seconds)); };
+
+	CHECK(shortAge(0) == "1m");
+	CHECK(shortAge(59 * 60) == "59m");
+	CHECK(shortAge(60 * 60) == "1h");
+	CHECK(shortAge(23 * 3600) == "23h");
+	CHECK(shortAge(13 * 86400) == "13d");
+	CHECK(shortAge(14 * 86400) == "2w");
+	CHECK(shortAge(59 * 86400) == "8w");
+	CHECK(shortAge(60 * 86400) == "2mo");
+	CHECK(shortAge(364 * 86400) == "12mo");
+	CHECK(shortAge(365 * 86400) == "1y");
+}
+
+TEST_CASE("Git window: a commit dated in the future has a short age of one minute")
+{
+	CHECK(Graphite::ShortAge(At(5000), At(1000)) == "1m");
+}
+
+TEST_CASE("Git window: an author's avatar hue is stable for one email and does not depend on its case")
+{
+	CHECK(Graphite::AvatarHue("ada@example.com") == Graphite::AvatarHue("ada@example.com"));
+	CHECK(Graphite::AvatarHue("ada@example.com") == Graphite::AvatarHue("Ada@Example.com"));
+	CHECK(Graphite::AvatarHue("ada@example.com") != Graphite::AvatarHue("grace@example.com"));
+	CHECK(Graphite::AvatarHue("ada@example.com") >= 0);
+	CHECK(Graphite::AvatarHue("ada@example.com") < 360);
+}
+
+TEST_CASE("Git window: an avatar is filled with the mockup's saturation 34 percent and lightness 36 percent")
+{
+	CHECK(Graphite::AvatarFill(0) == IM_COL32(123, 61, 61, 255));
+	CHECK(Graphite::AvatarFill(120) == IM_COL32(61, 123, 61, 255));
+	CHECK(Graphite::AvatarFill(240) == IM_COL32(61, 61, 123, 255));
+}

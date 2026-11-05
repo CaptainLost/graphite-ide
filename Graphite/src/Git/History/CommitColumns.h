@@ -5,26 +5,19 @@ namespace Graphite {
 	struct CommitColumnsInput
 	{
 		float Available = 0.0f;
-
 		float Graph = 0.0f;
-		float Chevron = 0.0f;
-		float Hash = 0.0f;
-		float Author = 0.0f;
-		float Date = 0.0f;
 
-		float CellPadding = 0.0f;
-
-		float MinMessage = 0.0f;
+		// The pixels of the interface font; the thresholds are the mockup's, in its 13 pixel em.
+		float FontSize = 0.0f;
 	};
 
 	struct CommitColumns
 	{
 		float Graph = 0.0f;
-		bool ShowAuthor = true;
-		bool ShowDate = true;
 
-		// WARNING: Message is negative when even the always-shown columns do not fit.
-		float Message = 0.0f;
+		// WARNING: Both read the width of the table alone, never the data, so the columns change only when the reader resizes.
+		bool ShowAuthorName = true;
+		bool ShowHash = true;
 	};
 
 	CommitColumns LayoutCommitColumns(const CommitColumnsInput& input);

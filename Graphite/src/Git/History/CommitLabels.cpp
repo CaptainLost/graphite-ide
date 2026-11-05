@@ -4,7 +4,10 @@
 #include "Core/Base/Strings.h"
 #include "Core/Time/TimeZone.h"
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <format>
 #include <string_view>
 
@@ -69,6 +72,114 @@ namespace Graphite {
 		}
 
 		return AgeText(seconds / kSecondsPerYear, "year");
+	}
+
+	std::string ShortAge(std::chrono::sys_seconds when, std::chrono::sys_seconds now)
+	{
+		constexpr long long kDaysPerWeek = 7;
+		constexpr long long kDaysPerMonth = 30;
+		constexpr long long kDaysPerYear = 365;
+		constexpr long long kDaysBeforeWeeks = 14;
+		constexpr long long kDaysBeforeMonths = 60;
+
+		const long long seconds = std::max(0LL, static_cast<long long>((now - when).count()));
+
+		if (seconds < kSecondsPerHour)
+		{
+			return std::format("{}m", std::max(1LL, seconds / kSecondsPerMinute));
+		}
+
+		if (seconds < kSecondsPerDay)
+		{
+			return std::format("{}h", seconds / kSecondsPerHour);
+		}
+
+		const long long days = seconds / kSecondsPerDay;
+
+		if (days < kDaysBeforeWeeks)
+		{
+			return std::format("{}d", days);
+		}
+
+		if (days < kDaysBeforeMonths)
+		{
+			return std::format("{}w", days / kDaysPerWeek);
+		}
+
+		if (days < kDaysPerYear)
+		{
+			return std::format("{}mo", days / kDaysPerMonth);
+		}
+
+		return std::format("{}y", days / kDaysPerYear);
+	}
+
+	int AvatarHue(std::string_view email)
+	{
+		constexpr std::uint32_t kFnvOffset = 2166136261u;
+		constexpr std::uint32_t kFnvPrime = 16777619u;
+		constexpr std::uint32_t kDegrees = 360u;
+
+		std::uint32_t hash = kFnvOffset;
+
+		for (const char letter : email)
+		{
+			hash ^= static_cast<unsigned char>(std::tolower(static_cast<unsigned char>(letter)));
+			hash *= kFnvPrime;
+		}
+
+		return static_cast<int>(hash % kDegrees);
+	}
+
+	ImU32 AvatarFill(int hue)
+	{
+		constexpr float kSaturation = 0.34f;
+		constexpr float kLightness = 0.36f;
+		constexpr float kDegreesPerSector = 60.0f;
+		constexpr float kByteRange = 255.0f;
+
+		const float chroma = (1.0f - std::fabs(2.0f * kLightness - 1.0f)) * kSaturation;
+		const float sector = static_cast<float>(hue) / kDegreesPerSector;
+		const float second = chroma * (1.0f - std::fabs(std::fmod(sector, 2.0f) - 1.0f));
+		const float base = kLightness - chroma / 2.0f;
+
+		float red = 0.0f;
+		float green = 0.0f;
+		float blue = 0.0f;
+
+		switch (static_cast<int>(sector) % 6)
+		{
+		case 0:
+			red = chroma;
+			green = second;
+			break;
+		case 1:
+			red = second;
+			green = chroma;
+			break;
+		case 2:
+			green = chroma;
+			blue = second;
+			break;
+		case 3:
+			green = second;
+			blue = chroma;
+			break;
+		case 4:
+			red = second;
+			blue = chroma;
+			break;
+		default:
+			red = chroma;
+			blue = second;
+			break;
+		}
+
+		const auto toByte = [&](float channel) {
+			return static_cast<int>(std::lround((channel + base) * kByteRange));
+		};
+
+		return IM_COL32(toByte(red), toByte(green), toByte(blue), 255);
 	}
 
 	const std::chrono::time_zone* ReaderTimeZone()

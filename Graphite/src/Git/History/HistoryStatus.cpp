@@ -2,7 +2,7 @@
 
 #include "Core/Base/Count.h"
 
-#include <format>
+#include <string>
 
 namespace Graphite {
 
@@ -10,49 +10,20 @@ namespace Graphite {
 
 		constexpr const char* kLoading = "Loading…";
 		constexpr const char* kSearching = "Searching…";
-		constexpr const char* kCounting = " · counting…";
-
-		const char* CommitsWord(std::size_t count)
-		{
-			return count == 1 ? "commit" : "commits";
-		}
+		constexpr const char* kFiltered = "Filtered: the graph is hidden while a filter is on";
+		constexpr const char* kRowsMeaning = " · first parents only: each merge, squash or direct commit is one row";
+		constexpr const char* kCommitsMeaning = " · every commit with its graph";
 
 		std::string UnfilteredText(const HistoryStatusInput& input)
 		{
 			const std::string shown = Core::FormatCount(input.Shown);
 
-			if (input.Complete)
+			if (input.FirstParentsOnly)
 			{
-				return input.Shown == 1 ? std::string{"1 commit"} : std::format("All {} commits", shown);
+				return shown + (input.Shown == 1 ? " row" : " rows") + kRowsMeaning;
 			}
 
-			if (input.Total.has_value())
-			{
-				return std::format("{} of {} {}", shown, Core::FormatCount(*input.Total), CommitsWord(*input.Total));
-			}
-
-			const std::string text = std::format("{} {}", shown, CommitsWord(input.Shown));
-
-			return input.Counting ? text + kCounting : text;
-		}
-
-		std::string FilteredText(const HistoryStatusInput& input)
-		{
-			const std::string matches =
-				std::format("{} matching {}", Core::FormatCount(input.Shown), CommitsWord(input.Shown));
-			const std::string walked = Core::FormatCount(input.Walked);
-
-			if (input.Complete)
-			{
-				return std::format("{} in all {}", matches, walked);
-			}
-
-			if (input.Total.has_value())
-			{
-				return std::format("{} in the newest {} of {}", matches, walked, Core::FormatCount(*input.Total));
-			}
-
-			return std::format("{} in the newest {}", matches, walked);
+			return shown + (input.Shown == 1 ? " commit" : " commits") + kCommitsMeaning;
 		}
 	}
 
@@ -72,7 +43,7 @@ namespace Graphite {
 		}
 
 		HistoryStatus status;
-		status.Text = input.Filtered ? FilteredText(input) : UnfilteredText(input);
+		status.Text = input.Filtered ? std::string{kFiltered} : UnfilteredText(input);
 
 		if (input.Asking)
 		{

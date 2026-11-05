@@ -18,13 +18,14 @@ namespace Graphite {
 
 	struct HistoryStatusInput
 	{
+		// The rows (the commits) loaded.
 		std::size_t Shown = 0;
-		std::size_t Walked = 0;
 		bool Complete = true;
 		bool Filtered = false;
 		bool Stash = false;
-		std::optional<std::size_t> Total;
-		bool Counting = false;
+
+		// The Merges history: a row is a merge, a squash or a direct commit, not every commit.
+		bool FirstParentsOnly = true;
 
 		// A query the reader started, with a click, a new ref or a new filter, has not answered yet.
 		bool Asking = false;

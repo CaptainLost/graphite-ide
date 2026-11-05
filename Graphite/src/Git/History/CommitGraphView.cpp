@@ -1,5 +1,6 @@
 #include "Git/History/CommitGraphView.h"
 
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
@@ -36,7 +37,7 @@ namespace Graphite {
 
 	void CommitGraphView::Render(const Core::CommitGraph& graph, const GitPalette& palette,
 								 const GraphMetrics& metrics, const std::vector<std::size_t>& rowOfCommit,
-								 int firstRow, int lastRow, ImVec2 origin)
+								 int firstRow, int lastRow, ImVec2 origin, const AlphaOfCommit& alphaOfCommit)
 	{
 		if (graph.Nodes.empty())
 		{
@@ -66,7 +67,8 @@ namespace Graphite {
 			const ImVec2 from = NodeCentre(origin, metrics, *fromRow, edge.FromLane);
 			const ImVec2 to = NodeCentre(origin, metrics, *toRow, edge.ToLane);
 
-			const ImU32 colour = palette.LaneOf(std::max(edge.FromLane, edge.ToLane));
+			const float alpha = alphaOfCommit ? std::min(alphaOfCommit(edge.FromRow), alphaOfCommit(edge.ToRow)) : 1.0f;
+			const ImU32 colour = Core::WithAlphaScaled(palette.LaneOf(std::max(edge.FromLane, edge.ToLane)), alpha);
 
 			if (ShapeOf(edge) == EdgeShape::Straight)
 			{
@@ -94,8 +96,10 @@ namespace Graphite {
 				continue;
 			}
 
+			const float alpha = alphaOfCommit ? alphaOfCommit(node.Row) : 1.0f;
+
 			drawList->AddCircleFilled(NodeCentre(origin, metrics, *row, node.Lane), metrics.DotRadius,
-									  palette.LaneOf(node.Lane));
+									  Core::WithAlphaScaled(palette.LaneOf(node.Lane), alpha));
 		}
 	}
 }

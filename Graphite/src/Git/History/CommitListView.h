@@ -84,6 +84,7 @@ namespace Graphite {
 	{
 		const Core::LogPage* Page = nullptr; // an opened merge's: the commits it brought; adds their count to its text
 		bool IsBrought = false;              // the row is one of the commits a merge brought
+		bool OpensBrought = false;           // the row is a merge of the Merges history, whose chevron is always drawn
 	};
 
 	// The page a merge row's count of commits is read from: held while the merge is closed too.
@@ -157,6 +158,8 @@ namespace Graphite {
 		void SetLocalChangesInk(ImU32 ink) { m_LocalChangesInk = ink; }
 
 	private:
+		bool IsPointedAt(const Core::Oid& commit) const { return m_SelectedCommit == commit || m_HoveredCommit == commit; }
+
 		bool ListedUnderOpenMerge(const Core::Oid& commit, const Core::LogPage& page, const HistoryMarks& marks) const;
 
 		std::size_t FileRowCountUnder(
@@ -189,6 +192,11 @@ namespace Graphite {
 		bool m_LocalChangesSelected = false;
 		std::optional<Core::Oid> m_ScrollTarget;
 		bool m_ScrollToTop = false;
+
+		// What the last Render drew, which the rows and the graph read: the author's name fits beside the avatar, and
+		// the commit under the pointer.
+		bool m_ShowsAuthorName = true;
+		std::optional<Core::Oid> m_HoveredCommit;
 
 		bool m_FoldClicked = false;
 		bool m_LocalChangesClicked = false;
