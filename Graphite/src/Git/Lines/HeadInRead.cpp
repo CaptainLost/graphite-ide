@@ -40,4 +40,14 @@ namespace Graphite {
 
 		return input.Head == HeadInRead::WaitsForRead || (input.ReadLacksShown && input.Reading);
 	}
+
+	HistoryRows RowsOfHistory(const HistoryRowsInput& input)
+	{
+		if (input.ShownForThis || input.FirstRowsReady)
+		{
+			return HistoryRows::Shown;
+		}
+
+		return input.ShownWithNoLine ? HistoryRows::Kept : HistoryRows::Waiting;
+	}
 }

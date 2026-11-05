@@ -893,8 +893,10 @@ namespace Graphite {
 		}
 
 		// A new read that moved the shown reference's line, its tip or the reference's own tip asks the page and its
-		// marks again, so they keep to what the header says.
-		if (!WaitsForLines() && ShownRefLine() != m_LineAsked)
+		// marks again, so they keep to what the header says. Rows kept from before HEAD's history named a line give way to
+		// that page in the frame it lands, so it is asked once the counts its rows wait for are in.
+		if (!WaitsForLines() && ShownRefLine() != m_LineAsked &&
+			!(HistoryRowsNow() == HistoryRows::Kept && ShownLineCountsWait()))
 		{
 			RequestLog(m_Reach, LogAsk::Again);
 		}
@@ -985,9 +987,14 @@ namespace Graphite {
 
 	bool GitView::ShowsCommitRows()
 	{
+		return HistoryRowsNow() != HistoryRows::Waiting;
+	}
+
+	HistoryRows GitView::HistoryRowsNow()
+	{
 		if (m_LogHeld || WaitsForLines() || !m_Model.GetLog())
 		{
-			return false;
+			return HistoryRows::Waiting;
 		}
 
 		// WARNING: The page in hand may be another history's, kept while the one now selected is read or held back;
@@ -996,16 +1003,22 @@ namespace Graphite {
 
 		if (!shown.has_value() || !PageAnswersSelection(*shown))
 		{
-			return false;
+			return HistoryRows::Waiting;
 		}
 
 		// Rows once on screen stay while they show the same branch; only the first time are they held for the fold row's
 		// count.
-		if (m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()})
-		{
-			return true;
-		}
+		const std::string shownRef = ShownRefName();
+		const bool shownForThis = m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = shownRef};
 
+		return RowsOfHistory(HistoryRowsInput{
+			.ShownForThis = shownForThis,
+			.ShownWithNoLine = !shownRef.empty() && m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash},
+			.FirstRowsReady = !shownForThis && FirstRowsReady(*shown)});
+	}
+
+	bool GitView::FirstRowsReady(const Core::LogRequest& shown)
+	{
 		// WARNING: The first rows come from a page asked with the line now shown. The page in hand may carry another
 		// branch's marks: HEAD's is asked again by every refresh, after a checkout too, with the marks of the branch it
 		// was before.
@@ -1036,11 +1049,30 @@ namespace Graphite {
 
 			if (const std::optional<Core::LineDistance> distance = m_Lines.DistanceOf(line.BranchTip, line.LineTip))
 			{
-				behind = NewerRowsOf(*distance, shown->FirstParentOnly);
+				behind = NewerRowsOf(*distance, shown.FirstParentOnly);
 			}
 		}
 
-		return !RowsWaitForFoldCount(line, *shown, behind);
+		return !RowsWaitForFoldCount(line, shown, behind);
+	}
+
+	bool GitView::ShownLineCountsWait()
+	{
+		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
+		const std::string shownRef = ShownRefName();
+
+		if (read == nullptr || shownRef.empty())
+		{
+			return false;
+		}
+
+		// Both are asked in the same frame, so the page waits for the longer of the two only.
+		const bool headerWaits = MeasuresShownDistance(*read, shownRef);
+		const HistoryLine line = LineToShow();
+		const bool foldWaits = line.Fold == LineFold::Folded && m_Lines.HoldsCommit(line.BranchTip) &&
+							   m_Lines.HoldsCommit(line.LineTip) && !m_Lines.DistanceOf(line.BranchTip, line.LineTip).has_value();
+
+		return headerWaits || foldWaits;
 	}
 
 	const std::unordered_set<Core::Oid>& GitView::MarkedCommitsOnScreen()
@@ -1173,7 +1205,7 @@ namespace Graphite {
 
 		// The rows may still wait for the fold row's count; the opening waits with them, and then happens once only:
 		// a page that lands later never moves the list.
-		if (!ShowsCommitRows())
+		if (HistoryRowsNow() != HistoryRows::Shown)
 		{
 			return;
 		}
@@ -1260,7 +1292,9 @@ namespace Graphite {
 		m_Commits.SetActionsEnabled(!m_Model.IsWriteUnsettled());
 		m_Commits.SetLocalChangesInk(ReadEditorPalette(m_Scheme.Get()).DiagnosticWarning);
 
-		if (!ShowsCommitRows())
+		const HistoryRows rows = HistoryRowsNow();
+
+		if (rows == HistoryRows::Waiting)
 		{
 			// The Local changes row stands above the wait, as it will above the commits.
 			HistoryMarks marks;
@@ -1319,9 +1353,19 @@ namespace Graphite {
 				m_CommitRefs = BuildCommitRefs(branches ? *branches : std::vector<Core::Branch>{});
 			}
 
-			m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()};
+			// Kept rows are drawn as they were shown, with no line's marks, until the page asked with the line lands.
+			HistoryMarks marks;
 
-			HistoryMarks marks = HistoryMarksFor(page);
+			if (rows == HistoryRows::Shown)
+			{
+				m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()};
+				marks = HistoryMarksFor(page);
+			}
+			else
+			{
+				marks.LocalChanges = LocalChangesMark();
+			}
+
 			marks.Banner = m_HistoryBanner;
 			const HistoryMarks broughtMarks = BroughtMarks();
 			marks.BroughtOf = broughtMarks.BroughtOf;

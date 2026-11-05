@@ -42,4 +42,23 @@ namespace Graphite {
 	// Waits for a first read that is coming, for the read that names HEAD's branch checked out, and for a read that may
 	// hold the reference shown. A failure stays said until a read succeeds, so nothing waits while one is held.
 	bool HistoryWaitsForLines(const HistoryWaitInput& input);
+
+	// What a history's list draws once its page is in hand.
+	enum class HistoryRows
+	{
+		Waiting, // the waiting row, until the history's first rows can come with what they are drawn with
+		Shown,   // the page's rows, with the marks and the header words of the line now shown
+		Kept     // the rows on screen, shown before the history named a line, with nothing of the line yet
+	};
+
+	struct HistoryRowsInput
+	{
+		bool ShownForThis = false;    // the rows on screen were shown for this history and the branch it names now
+		bool ShownWithNoLine = false; // they were shown for this history while it named no branch: HEAD's, with no read in hand or the read failing
+		bool FirstRowsReady = false;  // the page asked with the line now shown has landed, and the counts its rows wait for
+	};
+
+	// Rows on screen stay while they show the same branch. HEAD's rows shown with no line stay when a read names HEAD's
+	// branch, until the page asked with its line can take their place in one frame.
+	HistoryRows RowsOfHistory(const HistoryRowsInput& input);
 }

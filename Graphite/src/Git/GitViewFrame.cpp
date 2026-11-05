@@ -680,7 +680,7 @@ namespace Graphite {
 
 		// The label and the banner come in the update that shows the rows under them, which waits for the distance they
 		// count, so the three arrive together and the label at its final width.
-		if (read != nullptr && lines != nullptr && !shownRef.empty() && ShowsCommitRows())
+		if (read != nullptr && lines != nullptr && !shownRef.empty() && HistoryRowsNow() == HistoryRows::Shown)
 		{
 			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef)};
 			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input)};

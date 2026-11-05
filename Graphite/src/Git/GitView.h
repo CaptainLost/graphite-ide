@@ -388,6 +388,13 @@ namespace Graphite {
 		// The list shows the page's rows rather than a wait; the header's banner comes with them. A folded line's
 		// rows wait for the fold row's count the first time the history shows them (asked of the lines model here).
 		bool ShowsCommitRows();
+		HistoryRows HistoryRowsNow();
+
+		// The page asked with the line now shown is in hand with the counts its first rows are drawn with.
+		bool FirstRowsReady(const Core::LogRequest& shown);
+
+		// The header's distance or the folded line's count is still measured; asking them if not asked yet.
+		bool ShownLineCountsWait();
 
 		HistoryMarks HistoryMarksFor(const Core::Ref<const Core::LogPage>& page);
 

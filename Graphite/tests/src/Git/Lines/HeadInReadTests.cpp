@@ -9,9 +9,12 @@
 
 using Graphite::HeadInRead;
 using Graphite::HeadInReadInput;
+using Graphite::HistoryRows;
+using Graphite::HistoryRowsInput;
 using Graphite::HistoryWaitInput;
 using Graphite::HistoryWaitsForLines;
 using Graphite::PlaceHeadInRead;
+using Graphite::RowsOfHistory;
 
 namespace {
 
@@ -125,4 +128,21 @@ TEST_CASE("Git window: a retry after a failed read keeps the history from waitin
 	// A read in hand that lacks the reference shown, and a later read that failed and is asked again.
 	CHECK_FALSE(HistoryWaitsForLines(
 		HistoryWaitInput{.HasRead = true, .Reading = true, .ReadFailed = true, .ReadLacksShown = true}));
+}
+
+TEST_CASE("Git window: HEAD's rows shown while the read failed stay when a read names its branch until the page asked with its line is in")
+{
+	// The read succeeds after a failure and names HEAD's branch: the rows shown with no line stay, with nothing of the
+	// line, while the page asked with it is read.
+	CHECK(RowsOfHistory(HistoryRowsInput{.ShownWithNoLine = true}) == HistoryRows::Kept);
+
+	// That page lands with its counts: its rows take their place in that frame.
+	CHECK(RowsOfHistory(HistoryRowsInput{.ShownWithNoLine = true, .FirstRowsReady = true}) == HistoryRows::Shown);
+}
+
+TEST_CASE("Git window: a history's first rows wait for their page unless rows of the same branch are on screen")
+{
+	CHECK(RowsOfHistory(HistoryRowsInput{}) == HistoryRows::Waiting);
+	CHECK(RowsOfHistory(HistoryRowsInput{.FirstRowsReady = true}) == HistoryRows::Shown);
+	CHECK(RowsOfHistory(HistoryRowsInput{.ShownForThis = true}) == HistoryRows::Shown);
 }
