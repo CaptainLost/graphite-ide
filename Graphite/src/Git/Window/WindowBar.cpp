@@ -334,7 +334,11 @@ namespace Graphite {
 		const bool headKnown = input.Head != nullptr || headFailed;
 		const bool remotesKnown = input.Remotes != nullptr || input.RemotesFailure != nullptr;
 
-		if (headKnown && remotesKnown)
+		// The folder's name stands first on the bar, so a name landing after the rest would push everything right. A
+		// repository that could not be opened has no folder to name, and its HEAD failure ends the waiting.
+		const bool folderKnown = !input.WorkingDirectory.empty() || headFailed;
+
+		if (headKnown && remotesKnown && folderKnown)
 		{
 			return SettledWindowBar{DescribeWindowBar(input), true};
 		}

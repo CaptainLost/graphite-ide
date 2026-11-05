@@ -213,6 +213,27 @@ TEST_CASE("Git window: the bar is complete once HEAD and the remotes are both kn
 	CHECK(settled.Text.Remotes == "origin");
 }
 
+TEST_CASE("Git window: the bar waits for the repository's folder as it waits for HEAD and the remotes")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+	const std::filesystem::path unread;
+
+	const Graphite::SettledWindowBar settled = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{unread, &head, &branches, &remotes, false}, false, nullptr);
+
+	CHECK_FALSE(settled.Complete);
+	CHECK(settled.Text.Head.empty());
+
+	const Graphite::SettledWindowBar named = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, &remotes, false}, false, nullptr);
+
+	CHECK(named.Complete);
+	CHECK(named.Text.Repository == "graphite");
+	CHECK(named.Text.Head == "main");
+}
+
 TEST_CASE("Git window: a failed remotes read or a failed HEAD read counts as known")
 {
 	const Core::HeadState head = OnBranch("main");

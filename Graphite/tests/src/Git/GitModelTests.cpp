@@ -2446,6 +2446,23 @@ TEST_CASE("A requested head becomes readable after the next update")
 	CHECK(model.GetHead()->BranchName == "main");
 }
 
+TEST_CASE("Git window: the repository's folder is known once HEAD is read and before the status")
+{
+	FakePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "main";
+	port.WorkingDirectory = "C:/repo/";
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestHead();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetHead() != nullptr);
+	CHECK(model.GetStatus() == nullptr);
+	CHECK(model.GetWorkingDirectory() == std::filesystem::path{"C:/repo/"});
+}
+
 TEST_CASE("The head is refreshed whenever the status is")
 {
 	FakePort port;

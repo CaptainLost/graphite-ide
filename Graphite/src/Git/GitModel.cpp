@@ -386,8 +386,15 @@ namespace Graphite {
 		submit([this, generation]() {
 			Core::Result<Core::HeadState> result = m_Port.QueryHead();
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
-				m_Head.Land(generation, std::move(result));
+			// WARNING: The window bar names the folder beside HEAD, so the folder is read with HEAD: with the status
+			// alone it would come seconds later in a large working tree, and the bar would wait for it that long.
+			Core::Result<std::filesystem::path> workingDirectory = m_Port.GetWorkingDirectory();
+
+			Deliver([this, generation, result = std::move(result), workingDirectory = std::move(workingDirectory)]() mutable {
+				if (m_Head.Land(generation, std::move(result)) != SlotLanding::Stale && workingDirectory.HasValue())
+				{
+					m_WorkingDirectory = std::move(workingDirectory).GetValue();
+				}
 			});
 		});
 	}

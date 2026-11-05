@@ -45,8 +45,9 @@ namespace Graphite {
 		bool Complete = false; // Text is a state in which every value is known, not the waiting one
 	};
 
-	// The bar goes from waiting to complete in one step: until HEAD (or its failure) and the remotes (or their failure) are
-	// all known it holds `held`, the previous complete text of this repository, or the waiting text when there is none.
+	// The bar goes from waiting to complete in one step: until the repository's folder, HEAD (or its failure) and the
+	// remotes (or their failure) are all known it holds `held`, the previous complete text of this repository, or the
+	// waiting text when there is none.
 	SettledWindowBar SettleWindowBar(const WindowBarInput& input, bool headFailed, const WindowBarText* held);
 
 	// Every colour comes from the active scheme.
