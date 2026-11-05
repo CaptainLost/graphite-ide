@@ -596,7 +596,7 @@ TEST_CASE("Git window: a base row's menu is its local copy's whatever the copy h
 	CHECK(RefOfRowMenu(BaseRowOf(ahead)) == std::optional<std::size_t>{ahead.Main});
 }
 
-TEST_CASE("Git window: a branch row opens and gives the menu of its own ref, and a section row neither")
+TEST_CASE("Git window: a branch row opens and gives the menu of its own ref and a section row neither")
 {
 	LineReadBuilder builder;
 	const std::size_t feature = builder.AddLocal("feature");

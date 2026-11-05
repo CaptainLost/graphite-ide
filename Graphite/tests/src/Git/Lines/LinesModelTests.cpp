@@ -365,6 +365,22 @@ TEST_CASE("Git window: a distance is asked once and cached")
 	CHECK(jobs.Count() == 0);
 }
 
+TEST_CASE("Git window: the lines model says which commits its read's graph holds")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	CHECK_FALSE(model.HoldsCommit(kFeatureTip));
+
+	model.Follow(NewSnapshot());
+	RunUntilSettled(jobs, model);
+
+	CHECK(model.HoldsCommit(kFeatureTip));
+	CHECK(model.HoldsCommit(kMainTip));
+	CHECK_FALSE(model.HoldsCommit(kNotInGraph));
+}
+
 TEST_CASE("Git window: which bases hold a commit is asked once and cached")
 {
 	FakeLinesPort port;

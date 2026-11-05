@@ -225,7 +225,26 @@ namespace Graphite {
 			return {};
 		}
 
+		// WARNING: After a checkout the read names the branch checked out before until the next read lands; its line,
+		// banner and fold row would describe that branch under HEAD's new name.
+		if (HeadPlacement() != HeadInRead::Agrees)
+		{
+			return {};
+		}
+
 		return m_SidebarBuiltFrom->Read->Refs[*m_HeadRef].FullName;
+	}
+
+	HeadInRead GitView::HeadPlacement() const
+	{
+		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
+		const std::string_view checkedOut =
+			read != nullptr && m_HeadRef.has_value() ? std::string_view{read->Refs[*m_HeadRef].FullName} : std::string_view{};
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
+
+		return PlaceHeadInRead(HeadInReadInput{.Head = head.get(),
+											   .ReadCheckedOut = checkedOut,
+											   .ReadComing = m_Lines.IsReading() || m_Model.IsBranchListingComing()});
 	}
 
 	std::optional<Core::LineDistance> GitView::ShownDistance(const LineRead& read, std::string_view shownRef)

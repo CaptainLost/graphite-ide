@@ -192,6 +192,10 @@ namespace Graphite {
 
 		const std::optional<Core::Error>& GetBranchesError() const { return m_Branches.GetError(); }
 
+		// A branch listing is being read, or a refresh that reads one is due, as after this window's own checkout, whose
+		// HEAD is read at once and whose branches only with the refresh it marks.
+		bool IsBranchListingComing() const { return m_Branches.IsInFlight() || m_Debounce.IsDirty(); }
+
 		// Read beside every branch listing, so what needs it never waits for the authors walk. Empty while unread and
 		// when git has none.
 		const std::optional<std::string>& GetUserEmail() const;

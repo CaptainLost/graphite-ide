@@ -51,6 +51,9 @@ namespace Graphite {
 
 		// Asked on first call, answered from the current read's graph on a worker; empty while pending or when a tip is not in the graph.
 		std::optional<Core::LineDistance> DistanceOf(const Core::Oid& from, const Core::Oid& to);
+
+		// The current read's graph holds the commit, so a distance from or to it is answered in time.
+		bool HoldsCommit(const Core::Oid& commit) const;
 		std::optional<std::vector<bool>> BasesHolding(const Core::Oid& commit); // one flag per GetRead()->Model.Bases entry
 
 		static constexpr std::size_t kCachedQuestions = 256;

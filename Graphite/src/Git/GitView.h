@@ -28,6 +28,7 @@
 #include "Git/History/HistoryStatus.h"
 #include "Git/History/HistoryStatusLine.h"
 #include "Git/Lines/BranchLines.h"
+#include "Git/Lines/HeadInRead.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/Sidebar/SidebarRows.h"
 #include "Git/Sidebar/SidebarText.h"
@@ -220,8 +221,12 @@ namespace Graphite {
 		std::string HistoryTitle() const;
 
 		// The full name of the branch whose history is shown: the selected ref, or the checked-out branch for HEAD's.
-		// Empty for a stash, a detached or unborn HEAD, and while no read is held.
+		// Empty for a stash, a detached or unborn HEAD, while no read is held, and for HEAD's history while the read
+		// names another branch checked out than HEAD does.
 		std::string ShownRefName() const;
+
+		// How HEAD's history stands against the read the sidebar's lines view.
+		HeadInRead HeadPlacement() const;
 
 		// What the shown reference is compared with and how far from it; asked of the lines model on every frame the
 		// header is drawn, which answers from its cache after the first.
@@ -356,8 +361,8 @@ namespace Graphite {
 		// The path box names a file, so the history is that file's.
 		bool IsFileHistory() const;
 
-		// A branch's or HEAD's history waits for the line read that holds it; a stash and a file's history do not, and
-		// neither does a history whose read failed.
+		// A branch's or HEAD's history waits for the line read that holds it, and HEAD's for the one that names its branch
+		// checked out; a stash and a file's history do not, and neither does a history whose read failed.
 		bool WaitsForLines() const;
 
 		// HEAD's or the checked-out branch's history of the whole tree, whose first row is Local changes.
@@ -386,8 +391,10 @@ namespace Graphite {
 		// Once the first page of a reference just opened is in, selects the row it starts on and scrolls there.
 		void SelectOpenedStart();
 
-		// The shown reference's line as the last log asked of the model was asked with it.
+		// The shown reference's line as the last log asked of the model was asked with it, and the log generation of that
+		// ask: the page that answers it carries the marks of that line.
 		std::optional<HistoryLine> m_LineAsked;
+		std::uint64_t m_LineAskedGeneration = 0;
 
 		// The history waits for the line read, so its log is not asked yet.
 		bool m_LogHeld = false;
@@ -399,6 +406,9 @@ namespace Graphite {
 		{
 			std::optional<std::string> Ref;
 			std::optional<Core::Oid> Stash;
+
+			// The branch the rows were shown for, which for HEAD's history moves with a checkout.
+			std::string Shown;
 
 			friend bool operator==(const SelectedHistory&, const SelectedHistory&) = default;
 		};

@@ -470,6 +470,7 @@ namespace Graphite {
 		m_LastSeenBranches.reset();
 		m_PendingRename.reset();
 		m_LineAsked.reset();
+		m_LineAskedGeneration = 0;
 		m_LogHeld = false;
 		m_OpeningRef = false;
 		m_NewerShown.clear();
@@ -834,6 +835,7 @@ namespace Graphite {
 		}
 
 		m_Model.RequestLog(std::move(log), std::move(marked));
+		m_LineAskedGeneration = m_Model.GetLogGeneration();
 
 		// Asked with the log, so the rows that wait for the fold row's count wait as little as possible.
 		if (line.Fold == LineFold::Folded)
@@ -934,7 +936,10 @@ namespace Graphite {
 		// A reference the read does not hold yet, one just made or renamed, is waited for while a read is on its way.
 		const bool readLacksSelected = m_SelectedRef.has_value() && !lines->IndexOf(*m_SelectedRef).has_value();
 
-		return readLacksSelected && m_Lines.IsReading();
+		// HEAD's history waits for the read that names HEAD's branch checked out, as after a checkout.
+		const bool headWaits = !m_SelectedRef.has_value() && HeadPlacement() == HeadInRead::WaitsForRead;
+
+		return headWaits || (readLacksSelected && m_Lines.IsReading());
 	}
 
 	bool GitView::ShowsLocalChanges() const
@@ -950,10 +955,9 @@ namespace Graphite {
 			return true;
 		}
 
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-		const Core::Branch* const checkedOut = branches ? CheckedOutBranch(*branches) : nullptr;
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
 
-		return checkedOut != nullptr && checkedOut->FullName == *m_SelectedRef;
+		return head && head->Kind == Core::HeadKind::Branch && Core::LocalBranchReference(head->BranchName) == *m_SelectedRef;
 	}
 
 	std::optional<std::string> GitView::LocalChangesMark() const
@@ -991,10 +995,19 @@ namespace Graphite {
 			return false;
 		}
 
-		// Rows once on screen stay; only the first time are they held for the fold row's count.
-		if (m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash})
+		// Rows once on screen stay while they show the same branch; only the first time are they held for the fold row's
+		// count.
+		if (m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()})
 		{
 			return true;
+		}
+
+		// WARNING: The first rows come from a page asked with the line now shown. The page in hand may carry another
+		// branch's marks: HEAD's is asked again by every refresh, after a checkout too, with the marks of the branch it
+		// was before.
+		if (m_LineAsked != ShownRefLine() || !m_Model.IsLogAnswered(m_LineAskedGeneration))
+		{
+			return false;
 		}
 
 		const HistoryLine line = LineToShow();
@@ -1002,6 +1015,12 @@ namespace Graphite {
 
 		if (line.Fold == LineFold::Folded)
 		{
+			// A tip the read's graph lacks is never measured, so nothing waits for its count.
+			if (!m_Lines.HoldsCommit(line.BranchTip) || !m_Lines.HoldsCommit(line.LineTip))
+			{
+				return true;
+			}
+
 			if (const std::optional<Core::LineDistance> distance = m_Lines.DistanceOf(line.BranchTip, line.LineTip))
 			{
 				behind = distance->Behind;
@@ -1284,7 +1303,7 @@ namespace Graphite {
 				m_CommitRefs = BuildCommitRefs(branches ? *branches : std::vector<Core::Branch>{});
 			}
 
-			m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash};
+			m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()};
 
 			HistoryMarks marks = HistoryMarksFor(page);
 			const HistoryMarks broughtMarks = BroughtMarks();

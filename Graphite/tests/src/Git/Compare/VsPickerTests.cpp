@@ -470,7 +470,7 @@ TEST_CASE("Git window: a base's pick of a branch stays on its picker's list")
 	CHECK(parent->Chosen);
 }
 
-TEST_CASE("Git window: an old copy's picker marks only its pick chosen, and the rule's line is no automatic choice")
+TEST_CASE("Git window: an old copy's picker marks only its pick chosen and the rule's line is no automatic choice")
 {
 	LineReadBuilder builder;
 	builder.AddRemote("origin");

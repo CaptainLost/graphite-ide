@@ -340,7 +340,7 @@ TEST_CASE("Git window: an opened history without marks or without such a commit 
 	CHECK_FALSE(Graphite::StartingCommit(PageOf({}), nullptr, nullptr).has_value());
 }
 
-TEST_CASE("Git window: a base with a pick folds its history against the pick, and shows it when asked")
+TEST_CASE("Git window: a base with a pick folds its history against the pick and shows it when asked")
 {
 	Scene scene = MakeScene();
 	scene.Read.Answers.Comparisons["refs/heads/develop"] = "refs/heads/feature/x";

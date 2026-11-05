@@ -225,6 +225,13 @@ namespace Graphite {
 		RunNextWaiting();
 	}
 
+	bool LinesModel::HoldsCommit(const Core::Oid& commit) const
+	{
+		const Core::Ref<const LineRead> read = m_Read.Get();
+
+		return read != nullptr && IsInGraph(*read->Graph, commit);
+	}
+
 	std::optional<Core::LineDistance> LinesModel::DistanceOf(const Core::Oid& from, const Core::Oid& to)
 	{
 		const Core::Ref<const LineRead> read = m_Read.Get();

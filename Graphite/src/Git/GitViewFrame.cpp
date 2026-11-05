@@ -385,9 +385,27 @@ namespace Graphite {
 			return selection;
 		}
 
-		if (m_SidebarLines.has_value())
+		if (!m_SidebarLines.has_value())
 		{
-			selection.Ref = m_SelectedRef.has_value() ? m_SidebarLines->IndexOf(*m_SelectedRef) : m_HeadRef;
+			return selection;
+		}
+
+		if (m_SelectedRef.has_value())
+		{
+			selection.Ref = m_SidebarLines->IndexOf(*m_SelectedRef);
+			return selection;
+		}
+
+		// HEAD's row is the branch HEAD names, which a read made before a checkout does not mark as checked out yet.
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
+
+		if (!head)
+		{
+			selection.Ref = m_HeadRef;
+		}
+		else if (head->Kind == Core::HeadKind::Branch)
+		{
+			selection.Ref = m_SidebarLines->IndexOf(Core::LocalBranchReference(head->BranchName));
 		}
 
 		return selection;

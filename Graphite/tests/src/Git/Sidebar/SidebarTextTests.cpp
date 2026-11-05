@@ -305,7 +305,7 @@ TEST_CASE("Git window: a base row names the line the user picked for it")
 	CHECK(SpanWith(text, "vs main")->Tone == SidebarTone::Unusual);
 }
 
-TEST_CASE("Git window: an old copy names only the line the user picked, even the most common one")
+TEST_CASE("Git window: an old copy names only the line the user picked even the most common one")
 {
 	LineReadBuilder builder;
 	builder.AddRemote("origin");
