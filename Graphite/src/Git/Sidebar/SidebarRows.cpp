@@ -631,6 +631,16 @@ namespace Graphite {
 		return row.Ref;
 	}
 
+	RowMenuRefs RowMenuRefsOf(const SidebarRow& row, const LineRead& read, const BranchLines& lines)
+	{
+		if (row.Kind != SidebarRowKind::Branch && row.Kind != SidebarRowKind::Base)
+		{
+			return {};
+		}
+
+		return RowMenuRefs{.Menu = RefOfRowMenu(row), .Lines = row.Ref, .Compared = RefOpenedBy(row, read, lines)};
+	}
+
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser)
 	{

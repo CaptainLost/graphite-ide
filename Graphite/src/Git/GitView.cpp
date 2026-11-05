@@ -637,11 +637,11 @@ namespace Graphite {
 			return;
 		}
 
-		RenderRefMenuItems(branch, branch.FullName);
+		RenderRefMenuItems(branch, branch.FullName, branch.FullName);
 		ImGui::EndPopup();
 	}
 
-	void GitView::RenderRefMenuItems(const Core::Branch& branch, const std::string& linesFor)
+	void GitView::RenderRefMenuItems(const Core::Branch& branch, const std::string& linesFor, const std::string& comparedFor)
 	{
 		const bool notSelected = false;
 		const char* const noShortcut = nullptr;
@@ -691,7 +691,7 @@ namespace Graphite {
 		ImGui::EndDisabled();
 		RenderWorktreeItem(branch);
 		RenderReviewItem(branch);
-		RenderLineItems(linesFor);
+		RenderLineItems(linesFor, comparedFor);
 
 		ImGui::Separator();
 
@@ -734,7 +734,7 @@ namespace Graphite {
 		}
 	}
 
-	void GitView::RenderLineItems(const std::string& linesFor)
+	void GitView::RenderLineItems(const std::string& linesFor, const std::string& comparedFor)
 	{
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
 		const BranchLines* const lines = CurrentLines();
@@ -752,8 +752,8 @@ namespace Graphite {
 
 		if (menu.CompareWith && ImGui::MenuItem("Compare with…"))
 		{
-			SelectRef(linesFor);
-			m_VsPicker.Open(linesFor, ImGui::GetMousePos());
+			SelectRef(comparedFor);
+			m_VsPicker.Open(comparedFor, ImGui::GetMousePos());
 		}
 
 		if (menu.UseAsBase && ImGui::MenuItem("Use as base"))

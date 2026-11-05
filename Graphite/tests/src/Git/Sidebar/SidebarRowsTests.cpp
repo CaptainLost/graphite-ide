@@ -658,6 +658,33 @@ TEST_CASE("Git window: a base row's menu is its local copy's whatever the copy h
 	CHECK(RefOfRowMenu(BaseRowOf(ahead)) == std::optional<std::size_t>{ahead.Main});
 }
 
+TEST_CASE("Git window: a base row's Compare with acts on the ref its click opens")
+{
+	const BaseWithCopy checkedOut = MakeBaseWithCopy({.Head = true, .State = Core::BranchState::NoOwnCommits});
+	const BaseWithCopy ahead =
+		MakeBaseWithCopy({.State = Core::BranchState::NotMerged, .Ahead = 2, .DistanceKnown = true});
+	const BaseWithCopy behind =
+		MakeBaseWithCopy({.State = Core::BranchState::NoOwnCommits, .Behind = 3, .DistanceKnown = true});
+	const BranchLines checkedOutLines(checkedOut.Read);
+	const BranchLines aheadLines(ahead.Read);
+	const BranchLines behindLines(behind.Read);
+
+	const RowMenuRefs onCheckedOut = RowMenuRefsOf(BaseRowOf(checkedOut), checkedOut.Read, checkedOutLines);
+	CHECK(onCheckedOut.Compared == std::optional<std::size_t>{checkedOut.Main});
+	CHECK(onCheckedOut.Menu == std::optional<std::size_t>{checkedOut.Main});
+	CHECK(onCheckedOut.Lines == std::optional<std::size_t>{checkedOut.OriginMain});
+
+	const RowMenuRefs onAhead = RowMenuRefsOf(BaseRowOf(ahead), ahead.Read, aheadLines);
+	CHECK(onAhead.Compared == std::optional<std::size_t>{ahead.Main});
+	CHECK(onAhead.Lines == std::optional<std::size_t>{ahead.OriginMain});
+
+	// The copy behind with nothing of its own opens the base, and so is the base compared.
+	const RowMenuRefs onBehind = RowMenuRefsOf(BaseRowOf(behind), behind.Read, behindLines);
+	CHECK(onBehind.Compared == std::optional<std::size_t>{behind.OriginMain});
+	CHECK(onBehind.Menu == std::optional<std::size_t>{behind.Main});
+	CHECK(onBehind.Lines == std::optional<std::size_t>{behind.OriginMain});
+}
+
 TEST_CASE("Git window: a branch row opens and gives the menu of its own ref and a section row neither")
 {
 	LineReadBuilder builder;
@@ -669,8 +696,11 @@ TEST_CASE("Git window: a branch row opens and gives the menu of its own ref and 
 	REQUIRE(rows.size() >= 2);
 	CHECK(RefOpenedBy(rows[1], read, lines) == std::optional<std::size_t>{feature});
 	CHECK(RefOfRowMenu(rows[1]) == std::optional<std::size_t>{feature});
+	CHECK(RowMenuRefsOf(rows[1], read, lines).Lines == std::optional<std::size_t>{feature});
+	CHECK(RowMenuRefsOf(rows[1], read, lines).Compared == std::optional<std::size_t>{feature});
 	CHECK_FALSE(RefOpenedBy(rows[0], read, lines).has_value());
 	CHECK_FALSE(RefOfRowMenu(rows[0]).has_value());
+	CHECK_FALSE(RowMenuRefsOf(rows[0], read, lines).Lines.has_value());
 }
 
 namespace {

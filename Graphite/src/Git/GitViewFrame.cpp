@@ -496,11 +496,14 @@ namespace Graphite {
 	void GitView::DrawSidebarRowMenu(const SidebarRow& row)
 	{
 		const bool isStash = row.Kind == SidebarRowKind::Stash;
-		const Core::Branch* branch = isStash ? nullptr : SidebarBranchAt(RefOfRowMenu(row));
+		const RowMenuRefs refs =
+			m_SidebarLines.has_value() ? RowMenuRefsOf(row, *m_SidebarBuiltFrom->Read, *m_SidebarLines) : RowMenuRefs{};
+		const Core::Branch* branch = SidebarBranchAt(refs.Menu);
 		const Core::StashEntry* stash = isStash ? SidebarStashOf(row) : nullptr;
 
-		// A base row's lines items are the base's, whichever branch its menu is for.
-		const Core::Branch* const linesBranch = row.Kind == SidebarRowKind::Base ? SidebarBranchAt(row.Ref) : branch;
+		// A base row's lines items are the base's, whichever branch its menu is for; Compare with… opens what its click does.
+		const Core::Branch* const linesBranch = SidebarBranchAt(refs.Lines);
+		const Core::Branch* const comparedBranch = SidebarBranchAt(refs.Compared);
 
 		std::string shownFor;
 
@@ -526,9 +529,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (branch != nullptr && linesBranch != nullptr)
+		if (branch != nullptr && linesBranch != nullptr && comparedBranch != nullptr)
 		{
-			RenderRefMenuItems(*branch, linesBranch->FullName);
+			RenderRefMenuItems(*branch, linesBranch->FullName, comparedBranch->FullName);
 		}
 		else if (stash != nullptr)
 		{

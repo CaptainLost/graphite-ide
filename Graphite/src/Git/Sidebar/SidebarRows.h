@@ -116,6 +116,16 @@ namespace Graphite {
 	// act on the local branch. Empty for another kind of row.
 	std::optional<std::size_t> RefOfRowMenu(const SidebarRow& row);
 
+	// The refs a branch or base row's menu acts on, into LineRead::Refs; all empty for another kind of row.
+	struct RowMenuRefs
+	{
+		std::optional<std::size_t> Menu;     // the branch's own items, Checkout to Copy Branch Name: RefOfRowMenu
+		std::optional<std::size_t> Lines;    // Use as base, Stop using as base, Use as main line: the row's own ref
+		std::optional<std::size_t> Compared; // Compare with… opens its history and picker, as a click does: RefOpenedBy
+	};
+
+	RowMenuRefs RowMenuRefsOf(const SidebarRow& row, const LineRead& read, const BranchLines& lines);
+
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser);
 }
