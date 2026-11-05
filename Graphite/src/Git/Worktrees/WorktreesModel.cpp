@@ -2,6 +2,7 @@
 
 #include "Workspace/Workspace.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -46,9 +47,11 @@ namespace Graphite {
 		m_LastAsked.reset();
 		m_WorktreeOfBranch.clear();
 		m_Dirty.clear();
+		m_Failures.clear();
+		m_Timing.clear();
 		m_Listed.clear();
 		m_Counting.clear();
-		m_SinceCount = kPollSeconds;
+		m_InView.clear();
 	}
 
 	void WorktreesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, const std::filesystem::path& openFolder)
@@ -105,15 +108,20 @@ namespace Graphite {
 		}
 
 		std::erase_if(m_Dirty, [&present](const auto& counted) { return !present.contains(counted.first); });
+		std::erase_if(m_Failures, [&present](const auto& failed) { return !present.contains(failed.first); });
+		std::erase_if(m_Timing, [&present](const auto& timed) { return !present.contains(timed.first); });
 		m_Listed = std::move(present);
-		m_SinceCount = kPollSeconds;
 	}
 
 	void WorktreesModel::SetOnScreen(bool onScreen)
 	{
+		// Back on screen, every count is due at once.
 		if (onScreen && !m_OnScreen)
 		{
-			m_SinceCount = kPollSeconds;
+			for (auto& [key, timing] : m_Timing)
+			{
+				timing.Due = m_Clock;
+			}
 		}
 
 		m_OnScreen = onScreen;
@@ -123,21 +131,18 @@ namespace Graphite {
 	{
 		m_Inbox.Drain();
 
+		const std::set<Core::PathKeyText> inView = std::exchange(m_InView, {});
+
 		if (!m_OnScreen)
 		{
 			return;
 		}
 
-		m_SinceCount += timestep.GetSeconds();
-
-		if (m_SinceCount >= kPollSeconds)
-		{
-			m_SinceCount = 0.0f;
-			AskCounts();
-		}
+		m_Clock += timestep.GetSeconds();
+		AskCounts(inView);
 	}
 
-	void WorktreesModel::AskCounts()
+	void WorktreesModel::AskCounts(const std::set<Core::PathKeyText>& inView)
 	{
 		const Core::Ref<const std::vector<Core::WorktreeEntry>> entries = m_Entries.Get();
 
@@ -154,8 +159,10 @@ namespace Graphite {
 			}
 
 			const Core::PathKeyText key = Core::PathKey(entry.Path);
+			const std::map<Core::PathKeyText, CountTiming>::const_iterator timing = m_Timing.find(key);
+			const bool isDue = timing == m_Timing.end() || m_Clock >= timing->second.Due;
 
-			if (!m_Counting.insert(key).second)
+			if (!inView.contains(key) || !isDue || !m_Counting.insert(key).second)
 			{
 				continue;
 			}
@@ -167,27 +174,46 @@ namespace Graphite {
 				}
 
 				Core::Result<std::size_t> count = m_Port.CountUncommitted(path);
-				std::optional<bool> dirty;
 
-				if (count.HasValue())
-				{
-					dirty = count.GetValue() > 0;
-				}
-
-				m_Inbox.Post([this, key, folder, dirty]() {
-					if (!IsSameFolder(folder))
+				m_Inbox.Post([this, key, folder, count = std::move(count)]() {
+					if (IsSameFolder(folder))
 					{
-						return;
-					}
-
-					m_Counting.erase(key);
-
-					if (dirty.has_value() && m_Listed.contains(key))
-					{
-						m_Dirty[key] = *dirty;
+						LandCount(key, count);
 					}
 				});
 			});
+		}
+	}
+
+	void WorktreesModel::LandCount(const Core::PathKeyText& key, const Core::Result<std::size_t>& count)
+	{
+		m_Counting.erase(key);
+
+		if (!m_Listed.contains(key))
+		{
+			return;
+		}
+
+		CountTiming& timing = m_Timing[key];
+		const std::optional<std::size_t> landed = count.HasValue() ? std::optional<std::size_t>{count.GetValue()} : std::nullopt;
+
+		// A worktree left alone, or failing again, is asked less and less often; one that changed, or answered after
+		// failing, as often as at first.
+		const bool failedBefore = m_Failures.contains(key);
+		const bool unchanged = landed.has_value() ? timing.Last == landed : failedBefore;
+		timing.Interval = unchanged ? std::min(timing.Interval * 2.0f, kLongestPollSeconds) : kPollSeconds;
+		timing.Due = m_Clock + timing.Interval;
+		timing.Last = landed;
+
+		if (landed.has_value())
+		{
+			m_Dirty[key] = *landed > 0;
+			m_Failures.erase(key);
+		}
+		else
+		{
+			m_Dirty.erase(key);
+			m_Failures[key] = count.GetError().Message;
 		}
 	}
 
@@ -213,6 +239,24 @@ namespace Graphite {
 		}
 
 		return worktree;
+	}
+
+	std::optional<bool> WorktreesModel::DirtyInView(const std::filesystem::path& worktree)
+	{
+		m_InView.insert(Core::PathKey(worktree));
+		return IsDirty(worktree);
+	}
+
+	std::optional<std::string> WorktreesModel::CountFailureOf(const std::filesystem::path& worktree) const
+	{
+		const auto found = m_Failures.find(Core::PathKey(worktree));
+
+		if (found == m_Failures.end())
+		{
+			return std::nullopt;
+		}
+
+		return found->second;
 	}
 
 	std::optional<bool> WorktreesModel::IsDirty(const std::filesystem::path& worktree) const

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,11 +45,18 @@ namespace {
 		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override
 		{
 			Counted.push_back(worktree);
+
+			if (FailCounts)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the index is locked"};
+			}
+
 			return Changes[worktree.generic_string()];
 		}
 
 		std::vector<Core::WorktreeEntry> Entries;
 		std::map<std::string, std::size_t> Changes;
+		bool FailCounts = false;
 		int Listed = 0;
 		std::vector<std::filesystem::path> Counted;
 	};
@@ -121,6 +129,7 @@ TEST_CASE("Git window: worktree changes are counted only while on screen")
 	CHECK_FALSE(model.IsDirty(kSide).has_value());
 
 	model.SetOnScreen(true);
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{0.0f});
 	jobs.RunAll();
 	model.OnUpdate(Core::Timestep{0.0f});
@@ -128,11 +137,13 @@ TEST_CASE("Git window: worktree changes are counted only while on screen")
 	CHECK(port.Counted.size() == 1);
 	CHECK(model.IsDirty(kSide) == true);
 
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{1.0f});
 	jobs.RunAll();
 	CHECK(port.Counted.size() == 1);
 
 	port.Changes[kSide.generic_string()] = 0;
+	model.DirtyInView(kSide);
 	model.OnUpdate(kPoll);
 	jobs.RunAll();
 	model.OnUpdate(Core::Timestep{0.0f});
@@ -141,9 +152,100 @@ TEST_CASE("Git window: worktree changes are counted only while on screen")
 	CHECK(model.IsDirty(kSide) == false);
 
 	model.SetOnScreen(false);
+	model.DirtyInView(kSide);
 	model.OnUpdate(kPoll);
 	jobs.RunAll();
 	CHECK(port.Counted.size() == 2);
+}
+
+TEST_CASE("Git window: a worktree's changes are counted only while its row is in view")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide), WorktreeOn("other", kOther)};
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	CHECK(port.Counted.empty());
+
+	model.DirtyInView(kOther);
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+
+	REQUIRE(port.Counted.size() == 1);
+	CHECK(port.Counted[0] == kOther);
+}
+
+TEST_CASE("Git window: a failed count of a worktree's changes shows nothing and keeps why")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide)};
+	port.FailCounts = true;
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.DirtyInView(kSide);
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(model.IsDirty(kSide).has_value());
+	CHECK(model.CountFailureOf(kSide) == std::optional<std::string>{"the index is locked"});
+
+	port.FailCounts = false;
+	port.Changes[kSide.generic_string()] = 1;
+	model.DirtyInView(kSide);
+	model.OnUpdate(kPoll);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.IsDirty(kSide) == true);
+	CHECK_FALSE(model.CountFailureOf(kSide).has_value());
+}
+
+TEST_CASE("Git window: a worktree whose count does not change is counted less and less often")
+{
+	FakeWorktreePort port;
+	port.Entries = {WorktreeOn("side", kSide)};
+	port.Changes[kSide.generic_string()] = 2;
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter());
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+
+	// One update every poll period: counted at 0 s, then 3 s later, then only 6 s after that.
+	for (int poll = 0; poll < 4; ++poll)
+	{
+		model.DirtyInView(kSide);
+		model.OnUpdate(poll == 0 ? Core::Timestep{0.0f} : kPoll);
+		jobs.RunAll();
+		model.OnUpdate(Core::Timestep{0.0f});
+	}
+
+	CHECK(port.Counted.size() == 3);
+
+	// The next count is due 12 s after the last, at 21 s; it finds a change, so the one after comes 3 s later.
+	port.Changes[kSide.generic_string()] = 0;
+
+	for (int poll = 0; poll < 5; ++poll)
+	{
+		model.DirtyInView(kSide);
+		model.OnUpdate(kPoll);
+		jobs.RunAll();
+		model.OnUpdate(Core::Timestep{0.0f});
+	}
+
+	CHECK(model.IsDirty(kSide) == false);
+	CHECK(port.Counted.size() == 5);
 }
 
 TEST_CASE("Git window: the open folder's worktree is not counted")
@@ -156,6 +258,8 @@ TEST_CASE("Git window: the open folder's worktree is not counted")
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
+	model.DirtyInView(kOpen);
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{0.0f});
 	jobs.RunAll();
 	model.OnUpdate(Core::Timestep{0.0f});
@@ -190,8 +294,11 @@ TEST_CASE("Git window: a worktree is not counted again while its count is still 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{0.0f});
+	model.DirtyInView(kSide);
 	model.OnUpdate(kPoll);
+	model.DirtyInView(kSide);
 	model.OnUpdate(kPoll);
 	jobs.RunAll();
 
@@ -209,6 +316,7 @@ TEST_CASE("Git window: a count asked for a folder cleared meanwhile is dropped")
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{0.0f});
 	REQUIRE(jobs.Count() == 1);
 
@@ -231,6 +339,7 @@ TEST_CASE("Git window: a count that lands after the window left the screen is ke
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{0.0f});
 	model.SetOnScreen(false);
 	jobs.RunAll();
@@ -252,6 +361,7 @@ TEST_CASE("Git window: a count of a worktree that left the list is not kept")
 	model.Follow(NewSnapshot(), kOpen);
 	waiting.back()();
 	waiting.clear();
+	model.DirtyInView(kSide);
 	model.OnUpdate(Core::Timestep{0.0f});
 	REQUIRE(waiting.size() == 1);
 

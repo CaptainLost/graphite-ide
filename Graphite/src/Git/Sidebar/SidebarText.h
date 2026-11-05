@@ -45,6 +45,7 @@ namespace Graphite {
 		std::string Tooltip;
 		std::optional<std::filesystem::path> Worktree; // where the row's local branch is checked out, if anywhere
 		std::optional<bool> Dirty;                     // that worktree has uncommitted changes; empty while unknown
+		std::string CountFailure;                      // why its changes could not be counted; empty otherwise
 	};
 
 	struct SidebarTextInput
@@ -58,6 +59,9 @@ namespace Graphite {
 		// Where a local branch is checked out, and whether that worktree has changes; unset means no worktree is known.
 		std::function<std::optional<std::filesystem::path>(std::string_view)> WorktreeOf;
 		std::function<std::optional<bool>(const std::filesystem::path&)> IsDirty;
+
+		// Why a worktree's changes could not be counted; empty when they were, or are being.
+		std::function<std::optional<std::string>(const std::filesystem::path&)> CountFailureOf;
 	};
 
 	// Empty for a row that is neither a branch nor a base.

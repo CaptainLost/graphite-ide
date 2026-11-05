@@ -53,14 +53,31 @@ namespace Graphite {
 		// the Local changes row, so it is marked as no worktree.
 		std::optional<std::filesystem::path> OtherWorktreeOf(std::string_view branchFullName) const;
 
-		// Empty while unknown, and for the open folder's own worktree.
+		// Empty while unknown, after a failed count, and for the open folder's own worktree.
 		std::optional<bool> IsDirty(const std::filesystem::path& worktree) const;
 
+		// The same, for a row drawn this frame: only the worktrees of rows in view are counted.
+		std::optional<bool> DirtyInView(const std::filesystem::path& worktree);
+
+		// Why the last count of the worktree's changes failed; empty when it did not.
+		std::optional<std::string> CountFailureOf(const std::filesystem::path& worktree) const;
+
+		// A worktree is counted again this long after its last count landed, twice as long each time the count comes back
+		// the same, up to the longest; a count that changed starts it over.
 		static constexpr float kPollSeconds = 3.0f;
+		static constexpr float kLongestPollSeconds = 48.0f;
 
 	private:
+		struct CountTiming
+		{
+			float Due = 0.0f; // on m_Clock
+			float Interval = kPollSeconds;
+			std::optional<std::size_t> Last;
+		};
+
 		void Land(std::uint64_t generation, Core::Result<std::vector<Core::WorktreeEntry>> result);
-		void AskCounts();
+		void AskCounts(const std::set<Core::PathKeyText>& inView);
+		void LandCount(const Core::PathKeyText& key, const Core::Result<std::size_t>& count);
 		bool IsOpenFolder(const std::filesystem::path& worktree) const;
 		bool IsSameFolder(std::uint64_t folder) const;
 
@@ -78,11 +95,16 @@ namespace Graphite {
 
 		std::map<std::string, std::filesystem::path, std::less<>> m_WorktreeOfBranch; // by full name
 		std::map<Core::PathKeyText, bool> m_Dirty;
+		std::map<Core::PathKeyText, std::string> m_Failures;
+		std::map<Core::PathKeyText, CountTiming> m_Timing;
 		std::set<Core::PathKeyText> m_Listed; // worktrees of the last list: a count of one that left it is dropped
 		std::set<Core::PathKeyText> m_Counting;
 
+		// The worktrees whose rows were drawn since the last update.
+		std::set<Core::PathKeyText> m_InView;
+
 		bool m_OnScreen = false;
-		float m_SinceCount = kPollSeconds; // due at once
+		float m_Clock = 0.0f; // seconds on screen
 
 		// WARNING: Bumped by Clear; a job of the folder before does nothing, and its answer is dropped.
 		std::atomic<std::uint64_t> m_Folder{0};

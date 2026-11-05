@@ -511,7 +511,8 @@ namespace Graphite {
 
 			const float dotMiddle = box.Right - dotRoom * kHalf;
 
-			if (!text.Dirty.has_value())
+			// A count that failed shows nothing in the dot's place; the tooltip says why.
+			if (!text.Dirty.has_value() && text.CountFailure.empty())
 			{
 				const TextAtSize small(Em(kSmallText));
 				DrawText(ImVec2(box.Right - WidthOf(kEllipsis), CentredTop(box)), colours.Of(SidebarTone::Dim), kEllipsis);

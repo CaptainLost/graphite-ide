@@ -360,7 +360,8 @@ namespace Graphite {
 							   .MostCommonLine = m_MostCommonLine,
 							   .Now = NowInSeconds()};
 		input.WorktreeOf = [this](std::string_view fullName) { return m_Worktrees.OtherWorktreeOf(fullName); };
-		input.IsDirty = [this](const std::filesystem::path& worktree) { return m_Worktrees.IsDirty(worktree); };
+		input.IsDirty = [this](const std::filesystem::path& worktree) { return m_Worktrees.DirtyInView(worktree); };
+		input.CountFailureOf = [this](const std::filesystem::path& worktree) { return m_Worktrees.CountFailureOf(worktree); };
 
 		return DescribeSidebarRow(row, input);
 	}

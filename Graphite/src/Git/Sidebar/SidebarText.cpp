@@ -466,6 +466,12 @@ namespace Graphite {
 				{
 					text.Dirty = input.IsDirty(*text.Worktree);
 				}
+
+				if (const std::optional<std::string> failure = input.CountFailureOf ? input.CountFailureOf(*text.Worktree) : std::nullopt)
+				{
+					text.CountFailure = *failure;
+					tip += "\nCannot count the changes: " + *failure;
+				}
 			}
 		}
 
