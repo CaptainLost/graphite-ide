@@ -329,6 +329,25 @@ namespace Graphite {
 		return text;
 	}
 
+	SettledWindowBar SettleWindowBar(const WindowBarInput& input, bool headFailed, const WindowBarText* held)
+	{
+		const bool headKnown = input.Head != nullptr || headFailed;
+		const bool remotesKnown = input.Remotes != nullptr || input.RemotesFailure != nullptr;
+
+		if (headKnown && remotesKnown)
+		{
+			return SettledWindowBar{DescribeWindowBar(input), true};
+		}
+
+		if (held != nullptr)
+		{
+			return SettledWindowBar{*held, true};
+		}
+
+		const WindowBarInput waiting{input.WorkingDirectory, nullptr, nullptr, nullptr, false};
+		return SettledWindowBar{DescribeWindowBar(waiting), false};
+	}
+
 	WindowBarColours ReadWindowBarColours(const ResolvedScheme& scheme)
 	{
 		const ImU32 accent = PackedColour(ColourFromScheme(scheme, ChromeColor::Accent));

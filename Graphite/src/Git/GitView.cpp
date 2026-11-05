@@ -478,6 +478,7 @@ namespace Graphite {
 		m_Fold.reset();
 		m_RowsShownFor.reset();
 		m_WindowBarSource.reset();
+		m_WindowBarSettled.reset();
 		m_MainLineDismissed = false;
 
 		// WARNING: Subscribe runs before GraphiteLayer subscribes its own handlers, so a history the opening folder

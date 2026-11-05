@@ -184,3 +184,71 @@ TEST_CASE("Git window: the bar is drawn one bar high and ends on an item")
 	CHECK(height == doctest::Approx(Graphite::WindowBarEm(36.0f)));
 	CHECK(height > fontSize);
 }
+
+TEST_CASE("Git window: the bar waits while HEAD is known and the remotes are not")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+
+	const Graphite::SettledWindowBar settled = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, nullptr, false}, false, nullptr);
+
+	CHECK_FALSE(settled.Complete);
+	CHECK(settled.Text.Head.empty());
+	CHECK(settled.Text.Remotes == "\xE2\x80\xA6");
+	CHECK(settled.Text.Repository == "graphite");
+}
+
+TEST_CASE("Git window: the bar is complete once HEAD and the remotes are both known")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+
+	const Graphite::SettledWindowBar settled = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, &remotes, false}, false, nullptr);
+
+	CHECK(settled.Complete);
+	CHECK(settled.Text.Head == "main");
+	CHECK(settled.Text.Remotes == "origin");
+}
+
+TEST_CASE("Git window: a failed remotes read or a failed HEAD read counts as known")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::string failure = "cannot open the config";
+
+	const Graphite::SettledWindowBar remotesFailed = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, nullptr, false, &failure}, false, nullptr);
+	CHECK(remotesFailed.Complete);
+	CHECK(remotesFailed.Text.Remotes == "cannot read remotes");
+
+	const std::vector<Core::Remote> none;
+	const Graphite::SettledWindowBar headFailed = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, nullptr, &branches, &none, false}, true, nullptr);
+	CHECK(headFailed.Complete);
+	CHECK(headFailed.Text.Remotes == "no remotes");
+}
+
+TEST_CASE("Git window: a refresh with the remotes pending keeps the previous complete bar")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+
+	const Graphite::SettledWindowBar before = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, &remotes, false}, false, nullptr);
+
+	const Graphite::SettledWindowBar during = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, nullptr, false}, false, &before.Text);
+
+	CHECK(during.Complete);
+	CHECK(during.Text.Head == "main");
+	CHECK(during.Text.Remotes == "origin");
+
+	const std::vector<Core::Remote> changed = {{"origin", "u"}, {"backup", "v"}};
+	const Graphite::SettledWindowBar after = Graphite::SettleWindowBar(
+		Graphite::WindowBarInput{kFolder, &head, &branches, &changed, false}, false, &during.Text);
+	CHECK(after.Text.Remotes == "origin \xC2\xB7 backup");
+}

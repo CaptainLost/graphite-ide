@@ -161,11 +161,17 @@ namespace Graphite {
 			const std::optional<Core::Error>& remotesError = m_Model.GetRemotesError();
 			const std::string* remotesFailure = remotesFailed && !remotes ? &remotesError->Message : nullptr;
 
-			m_WindowBarText = DescribeWindowBar(
-				WindowBarInput{folder, head.get(), branches.get(), remotes.get(), checkingOut.has_value(), remotesFailure});
+			const bool headFailed = !head && m_Model.GetHeadError().has_value();
+			const SettledWindowBar settled = SettleWindowBar(
+				WindowBarInput{folder, head.get(), branches.get(), remotes.get(), false, remotesFailure}, headFailed,
+				m_WindowBarSettled.has_value() ? &*m_WindowBarSettled : nullptr);
 
-			if (checkingOut.has_value())
+			m_WindowBarText = settled.Text;
+			m_WindowBarSettled = settled.Complete ? std::optional<WindowBarText>{settled.Text} : std::nullopt;
+
+			if (settled.Complete && checkingOut.has_value())
 			{
+				m_WindowBarText.Busy = true;
 				m_WindowBarText.Head = CheckingOutText(*checkingOut);
 			}
 
@@ -173,7 +179,7 @@ namespace Graphite {
 		}
 
 		const std::optional<Core::Error>& headError = m_Model.GetHeadError();
-		const bool headFailed = !head && headError.has_value();
+		const bool headFailed = !head && headError.has_value() && m_WindowBarSettled.has_value();
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
 
 		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,

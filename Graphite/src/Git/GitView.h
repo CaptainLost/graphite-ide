@@ -452,6 +452,9 @@ namespace Graphite {
 		std::optional<WindowBarSource> m_WindowBarSource;
 		WindowBarText m_WindowBarText;
 
+		// The last complete bar of this folder, kept while a refresh is incomplete; empty while the first read runs.
+		std::optional<WindowBarText> m_WindowBarSettled;
+
 		// "Not now" on the main-line question: until the folder changes.
 		bool m_MainLineDismissed = false;
 
