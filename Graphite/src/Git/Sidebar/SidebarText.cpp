@@ -268,9 +268,10 @@ namespace Graphite {
 	{
 		std::map<std::size_t, std::size_t> countByRef;
 
+		// Only a base is a line: a stack of branches built on one another must not make one of them the usual line.
 		for (const Core::BranchLine& line : read.Model.Branches)
 		{
-			if (line.ComparedWith.has_value())
+			if (line.ComparedWith.has_value() && line.Kind == Core::ComparedKind::Base)
 			{
 				++countByRef[*line.ComparedWith];
 			}

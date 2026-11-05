@@ -240,6 +240,31 @@ TEST_CASE("Git window: a branch on a less common line names it")
 	CHECK(Describe(read, BranchRow(a)).Tooltip.find("2 ahead of main") != std::string::npos);
 }
 
+TEST_CASE("Git window: the most common line counts only branches compared with a base")
+{
+	LineReadBuilder builder;
+	const std::size_t main = builder.AddLocal("main");
+	builder.MakeBase(main);
+	const std::size_t feature = builder.AddLocal("feature");
+	const std::size_t stackedA = builder.AddLocal("stacked-a");
+	const std::size_t stackedB = builder.AddLocal("stacked-b");
+	LineRead read = builder.Build();
+
+	Core::BranchLine& featureLine = LineOfRef(read, feature);
+	featureLine.Kind = Core::ComparedKind::Base;
+	featureLine.ComparedWith = main;
+
+	// A stack of two on feature outnumbers the one branch on main, but a branch is no line.
+	for (const std::size_t ref : {stackedA, stackedB})
+	{
+		Core::BranchLine& line = LineOfRef(read, ref);
+		line.Kind = Core::ComparedKind::Branch;
+		line.ComparedWith = feature;
+	}
+
+	CHECK(MostCommonLineOf(read) == "refs/heads/main");
+}
+
 TEST_CASE("Git window: the most common line is empty when nothing is compared")
 {
 	LineReadBuilder builder;

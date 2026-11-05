@@ -67,7 +67,7 @@ namespace Graphite {
 	// Empty for a row that is neither a branch nor a base.
 	SidebarRowText DescribeSidebarRow(const SidebarRow& row, const SidebarTextInput& input);
 
-	// The full name of the line most branches are compared with; empty when none is. A tie goes to the earlier ref.
+	// The full name of the base most branches are compared with; empty when none is. A tie goes to the earlier ref.
 	std::string MostCommonLineOf(const LineRead& read);
 
 	std::string BaseReasonText(const Core::LineBase& base, const LineRead& read);
