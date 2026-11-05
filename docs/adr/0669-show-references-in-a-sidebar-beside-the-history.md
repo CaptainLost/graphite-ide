@@ -23,9 +23,9 @@ of nowhere.
 
 Draw the Git window as a sidebar of every reference and stash beside the history of the one selected.
 
-- **Frame.** Under the folder header (the folder's name and path, then HEAD's branch with its distance chip, kept until
-  a window bar replaces it), a table of two columns named `gitWindowA`: the sidebar, 300/13 em wide to start and
-  resizable, and the history with its split preview, as before.
+- **Frame.** Under the window bar ([0673](0673-name-the-repository-its-remotes-and-head-in-a-window-bar-that-also-asks-for-the-main-line.md)),
+  a table of two columns named `gitWindowA`: the sidebar, 300/13 em wide to start and resizable, and the history with
+  its split preview.
 - **Sections**, built by `BuildSidebarRows`, in this order and each collapsible:
   - **Yours**: every local branch, the checked-out one first, then the newest first. A base's local copy is in the
     base's row, not here.
@@ -35,12 +35,17 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   - **Stashes**.
 
   A search field above them matches every word against a branch's name and its authors.
-- **Rows** are rebuilt only when what they are built from changes: the line read, the stash list, the authors, the
-  search text, a section, group or merged-branches choice, or the minute. Only the rows in view are described and
-  drawn. A branch or base row shows its history, a stash row the stash's; a section or group row opens or closes;
-  "in Yours" opens Yours and scrolls to it. A right-click opens the ref menu
+- **Rows** are rebuilt only when what they are built from changes: the line read, the stash list, the authors (held as
+  they were when a search began, for as long as it runs), the search text, a section, group or merged-branches choice,
+  or the shown branch. Remote branches are grouped by activity against the read's time, never the clock's, so a row
+  moves to an older group only with a new read. Only the rows in view are described and drawn. A branch row shows its
+  history, a stash row the stash's; a base row its local copy's when the copy is checked out or has commits of its
+  own, else the base's, and its menu is the local copy's whenever there is one, its lines items acting on the base. A
+  section or group row opens or closes; "in Yours" opens Yours and scrolls to it. A right-click opens the ref menu
   ([0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md)) or the stash menu. A menu whose
   row comes to stand for another reference when the rows are rebuilt closes rather than act on that one.
+- **The shown branch stays listed**: its row is listed even when merged, and the group or quiet bases holding it open
+  unless the user closed them, so clearing a search or a fetch never hides the branch on screen.
 - **Waiting.** Until the first read of the lines lands, one waiting row stands in for the sections that need it:
   "Reading 3,448 branches…" once the branches are listed, "Reading branches…" before. The Stashes section is listed below
   it at once. A failed read or branch listing says so in that row ("Cannot read the branches' lines: …") with no loader
@@ -53,9 +58,8 @@ Draw the Git window as a sidebar of every reference and stash beside the history
 - **Removed:** the Work cards and their facts, the threads and their header, the navigator, the branch table, the
   review embedded in the window and the review progress the cards and threads showed. The branch menu's "Review" and
   "Open review" open the review tab, keeping a draft as a session first.
-- The window's Changes view stays in `GitView`, unreached until the history shows local changes in its preview; until
-  then the side panel's Changes is the one place to commit
-  ([0656](0656-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md)).
+- The window's Changes view is the preview of the history's Local changes row, the first row of HEAD's history and of
+  the checked-out branch's ([0656](0656-draw-changes-as-one-view-hosted-by-the-side-panel-and-the-git-window-sharing-one-commit-draft.md)).
 
 ## Rationale
 
@@ -77,7 +81,6 @@ always exists.
 
 - Until the first read lands, no branch can be picked in the sidebar. On a first opening of a large repository without
   a cache that is seconds.
-- The Git window has no commit view until the history shows local changes.
 - The cards' group of branches ready to remove, the review progress counts and the sessions' titles on cards go with
   nothing in their place.
 - Which sections are open and which remotes show their merged branches is not saved; it starts over with each folder.
@@ -87,7 +90,6 @@ always exists.
 
 - The table is named `gitWindowA`, so the sidebar opens at its own width rather than the one ImGui saved for the
   navigator's column.
-- The folder header above the table is the navigator's, until the window bar replaces it.
 
 ## Alternatives Considered
 

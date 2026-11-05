@@ -702,4 +702,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0670](0670-take-a-branch-s-review-base-from-its-line.md) | Take a branch's review base from its line | proposed | 2026-11-04 |
 | [0671](0671-show-a-branch-s-history-by-first-parents-by-default.md) | Show a branch's history by first parents by default | proposed | 2026-11-04 |
 | [0672](0672-open-a-branch-s-history-on-its-own-commits-with-its-line-s-newer-commits-folded-into-one-row.md) | Open a branch's history on its own commits with its line's newer commits folded into one row | proposed | 2026-11-04 |
+| [0673](0673-name-the-repository-its-remotes-and-head-in-a-window-bar-that-also-asks-for-the-main-line.md) | Name the repository, its remotes and HEAD in a window bar that also asks for the main line | proposed | 2026-11-05 |
+| [0674](0674-mark-a-branch-checked-out-in-another-worktree-and-poll-that-worktree-s-changes-only-while-its-row-is-in-view.md) | Mark a branch checked out in another worktree and poll that worktree's changes only while its row is in view | proposed | 2026-11-05 |
 <!-- /adr-index -->

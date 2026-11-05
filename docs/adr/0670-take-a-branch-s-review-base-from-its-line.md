@@ -11,7 +11,7 @@ Date: 2026-11-04
 
 - A branch's review base is its line: the ref it is compared with, as `BranchLines::ComparedWithName` says. The review item reads `Review against <short name of the line>`.
 - A base is reviewed against its upstream, and not at all without one, as 0589 did for the trunk.
-- A branch compared with nothing has no review base. The message says so and what to do: `<branch> is compared with nothing, so there is nothing to review it against. Pick a line with Compare with… or use Review against.`
+- A branch compared with nothing has no review base, so no review is offered as the menu's first item; `Review against` still lists every other local branch. Nothing says why: the message once planned for it had no place to be shown once the review left the Git window, and went with the code that built it.
 - Until the first line read lands there is no line to take: no review is offered, and the `Review against` submenu still lists every other local branch.
 - The history's fork base is the same base a review would take, so the history and the review agree on where a branch begins.
 - The "own" authors of a branch leave out the commits of every base: `GitModel::SetAuthorsHidden` takes the tips of the read's bases, and the authors are not asked until it has been given them, since with nothing hidden every commit would count as the branch's own.
