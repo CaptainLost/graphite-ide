@@ -11,6 +11,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -61,6 +62,9 @@ namespace Graphite {
 		bool m_Searching = false;
 		bool m_FocusSearch = false;
 		bool m_SearchWasActive = false;
+
+		// The characters that turned the row into the field, handed on frame by frame until the field takes them.
+		std::vector<ImWchar> m_CarriedTyping;
 		ImVec2 m_Below{};
 	};
 }

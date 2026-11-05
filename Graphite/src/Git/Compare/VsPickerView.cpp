@@ -1,5 +1,6 @@
 #include "Git/Compare/VsPickerView.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -437,13 +439,14 @@ namespace Graphite {
 		m_Searching = false;
 		m_FocusSearch = false;
 		m_SearchWasActive = false;
+		m_CarriedTyping.clear();
 		m_Below = below;
 	}
 
-	// A character typed while the picker is open starts the search; the field takes the character in this same frame.
+	// A character typed while the picker is open starts the search, and the field takes the character once it is active.
 	void VsPickerView::DrawAnotherBranch(const VsOption& option, float width, const WindowBarColours& colours)
 	{
-		const ImGuiIO& io = ImGui::GetIO();
+		ImGuiIO& io = ImGui::GetIO();
 		const bool typed = !io.KeyCtrl && !io.KeyAlt && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
 						   std::any_of(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end(),
 									   [](ImWchar character) { return character >= kFirstPrintable; });
@@ -453,6 +456,10 @@ namespace Graphite {
 			m_Searching = true;
 			m_FocusSearch = true;
 			m_SearchWasActive = false;
+
+			m_CarriedTyping.clear();
+			std::copy_if(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end(), std::back_inserter(m_CarriedTyping),
+						 [](ImWchar character) { return character >= kFirstPrintable; });
 		}
 
 		if (!m_Searching)
@@ -468,15 +475,39 @@ namespace Graphite {
 		}
 
 		unsigned int inputId = 0;
+		const std::string searchBefore = m_Search;
 		DrawFindField(m_Search, width, m_FocusSearch, inputId);
 		m_FocusSearch = false;
 
 		// Esc or the clear button leaves the field empty and unfocused: the row comes back.
 		const bool active = inputId != 0 && ImGui::GetActiveID() == inputId;
 
+		// WARNING: The field focused in a frame becomes active in a later one, and the characters of the frames before are
+		// gone by then, so the characters that turned the row into it are queued again each frame until the field has
+		// taken them. A field that was already active when the frame began has had them, taken or not, so they stop there.
+		if (!m_CarriedTyping.empty())
+		{
+			const bool taken = active && m_Search != searchBefore;
+
+			if (taken || (m_SearchWasActive && active))
+			{
+				m_CarriedTyping.clear();
+			}
+			else
+			{
+				for (const ImWchar character : m_CarriedTyping)
+				{
+					io.AddInputCharacter(character);
+				}
+
+				Core::Redraw::Request();
+			}
+		}
+
 		if (m_SearchWasActive && !active && m_Search.empty())
 		{
 			m_Searching = false;
+			m_CarriedTyping.clear();
 		}
 
 		m_SearchWasActive = active;
