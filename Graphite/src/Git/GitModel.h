@@ -265,36 +265,6 @@ namespace Graphite {
 		const std::optional<Core::Error>& GetHeadError() const { return m_Head.GetError(); }
 		const std::optional<Core::Error>& GetStashesError() const { return m_Stashes.GetError(); }
 
-		const std::optional<Core::Error>& GetLastError() const
-		{
-			if (m_Status.GetError().has_value())
-			{
-				return m_Status.GetError();
-			}
-
-			if (m_Branches.GetError().has_value())
-			{
-				return m_Branches.GetError();
-			}
-
-			if (m_Log.GetError().has_value())
-			{
-				return m_Log.GetError();
-			}
-
-			if (m_WorkingTreeDiff.GetError().has_value())
-			{
-				return m_WorkingTreeDiff.GetError();
-			}
-
-			if (m_CommitDiffError.has_value())
-			{
-				return m_CommitDiffError;
-			}
-
-			return m_TextsError;
-		}
-
 		void RequestStage(std::vector<std::filesystem::path> paths);
 		void RequestUnstage(std::vector<std::filesystem::path> paths);
 		void RequestDiscard(DiscardRequest request);
@@ -669,9 +639,5 @@ namespace Graphite {
 		LruResultCache<Core::Oid, Core::Diff> m_CommitDiffs{kCachedDiffs};
 		LruResultCache<Core::Oid, Core::LogPage> m_Brought{kCachedBrought};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_Texts{kCachedTexts};
-
-		std::optional<Core::Error> m_CommitDiffError;
-
-		std::optional<Core::Error> m_TextsError;
 	};
 }

@@ -420,7 +420,7 @@ TEST_CASE("A failed write reports itself and refreshes nothing")
 	model.OnUpdate(Core::Timestep{1.0f});
 
 	REQUIRE(model.TakeWriteError().has_value());
-	CHECK_FALSE(model.GetLastError().has_value());
+	CHECK_FALSE(model.GetStatusError().has_value());
 	CHECK(model.GetStatus() == nullptr);
 
 	CHECK_FALSE(model.TakeCommitted().has_value());
@@ -810,7 +810,7 @@ TEST_CASE("A failed working tree diff is not asked again every frame")
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
-	REQUIRE(model.GetLastError().has_value());
+	REQUIRE(model.GetWorkingTreeDiffFailure().has_value());
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});

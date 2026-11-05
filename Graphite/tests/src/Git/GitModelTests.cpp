@@ -587,26 +587,7 @@ TEST_CASE("A failed query leaves the last good snapshot in place")
 
 	REQUIRE(model.GetStatus() != nullptr);
 	CHECK(model.GetStatus()->Entries.size() == 1);
-	CHECK(model.GetLastError().has_value());
-}
-
-TEST_CASE("A branches success does not hide a status failure")
-{
-	FakePort port;
-	port.FailStatus = true;
-
-	Graphite::GitModel model{port, RunJobsInline()};
-
-	model.RequestStatus();
-	model.OnUpdate(Core::Timestep{kFrameSeconds});
-
-	REQUIRE(model.GetLastError().has_value());
-
-	model.RequestBranches();
-	model.OnUpdate(Core::Timestep{kFrameSeconds});
-
-	REQUIRE(model.GetLastError().has_value());
-	CHECK(model.GetLastError()->Message == "no");
+	CHECK(model.GetStatusError().has_value());
 }
 
 TEST_CASE("An update with nothing pending asks nothing")
@@ -1059,7 +1040,6 @@ TEST_CASE("A failed diff keeps the last good one and reports the error")
 
 	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
 	CHECK(model.GetWorkingTreeDiff()->Files.size() == 1);
-	CHECK(model.GetLastError().has_value());
 }
 
 TEST_CASE("Closing the workspace drops the diff too")
@@ -1213,7 +1193,7 @@ TEST_CASE("A failed diff for a commit leaves no snapshot and reports the error")
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(model.GetDiffFor(OidWithFirstByte(1)) == nullptr);
-	CHECK(model.GetLastError().has_value());
+	CHECK(model.GetDiffFailure(OidWithFirstByte(1)).has_value());
 }
 
 TEST_CASE("A failed diff is not asked for again on its own")
@@ -1294,11 +1274,11 @@ TEST_CASE("Forgetting a failed diff clears the error it left behind")
 
 	model.RequestDiffFor(OidWithFirstByte(1));
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
-	REQUIRE(model.GetLastError().has_value());
+	REQUIRE(model.GetDiffFailure(OidWithFirstByte(1)).has_value());
 
 	model.ForgetFailedDiffFor(OidWithFirstByte(1));
 
-	CHECK(!model.GetLastError().has_value());
+	CHECK(!model.GetDiffFailure(OidWithFirstByte(1)).has_value());
 }
 
 TEST_CASE("Forgetting a successful diff leaves it cached")
@@ -1525,7 +1505,7 @@ TEST_CASE("A failed texts request for a file leaves no snapshot and reports the 
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(model.GetTextsFor(OidWithFirstByte(1), "a.txt") == nullptr);
-	CHECK(model.GetLastError().has_value());
+	CHECK(model.GetTextsFailure(OidWithFirstByte(1), "a.txt").has_value());
 }
 
 TEST_CASE("A failed texts request is not asked for again on its own")
@@ -1681,11 +1661,11 @@ TEST_CASE("Forgetting a failed texts request clears the error it left behind")
 
 	RequestTextsOfUnrenamedFile(model, OidWithFirstByte(1), "a.txt");
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
-	REQUIRE(model.GetLastError().has_value());
+	REQUIRE(model.GetTextsFailure(OidWithFirstByte(1), "a.txt").has_value());
 
 	model.ForgetFailedTextsFor(OidWithFirstByte(1), "a.txt");
 
-	CHECK(!model.GetLastError().has_value());
+	CHECK(!model.GetTextsFailure(OidWithFirstByte(1), "a.txt").has_value());
 }
 
 TEST_CASE("Forgetting a successful texts request leaves it cached")

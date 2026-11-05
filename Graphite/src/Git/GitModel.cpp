@@ -117,8 +117,6 @@ namespace Graphite {
 		m_Untracked.clear();
 
 		m_InitSettlesAfter.reset();
-		m_CommitDiffError.reset();
-		m_TextsError.reset();
 
 		// WARNING: m_WriteInFlight is left alone on purpose. A write still running belongs to
 		// the folder that just closed, and claiming otherwise would let a second start beside it.
@@ -695,21 +693,14 @@ namespace Graphite {
 			Deliver([this, commit, generation, result = std::move(result)]() mutable {
 				if (!result.HasValue())
 				{
-					if (m_CommitDiffs.Fail(commit, generation, result.GetError()))
-					{
-						m_CommitDiffError = result.GetError();
-					}
-
+					m_CommitDiffs.Fail(commit, generation, result.GetError());
 					return;
 				}
 
 				Core::Ref<const Core::Diff> diff =
 					Core::CreateRef<const Core::Diff>(std::move(result).GetValue());
 
-				if (m_CommitDiffs.Succeed(commit, generation, std::move(diff)))
-				{
-					m_CommitDiffError.reset();
-				}
+				m_CommitDiffs.Succeed(commit, generation, std::move(diff));
 			});
 		});
 	}
@@ -880,10 +871,7 @@ namespace Graphite {
 
 	void GitModel::ForgetFailedDiffFor(const Core::Oid& commit)
 	{
-		if (m_CommitDiffs.ForgetFailed(commit))
-		{
-			m_CommitDiffError.reset();
-		}
+		m_CommitDiffs.ForgetFailed(commit);
 	}
 
 	bool GitModel::IsDiffFailed(const Core::Oid& commit) const
@@ -933,31 +921,21 @@ namespace Graphite {
 
 				if (!result.HasValue())
 				{
-					if (m_Texts.Fail(textsKey, generation, result.GetError()))
-					{
-						m_TextsError = result.GetError();
-					}
-
+					m_Texts.Fail(textsKey, generation, result.GetError());
 					return;
 				}
 
 				Core::Ref<const FileTexts> texts =
 					Core::CreateRef<const FileTexts>(std::move(result).GetValue());
 
-				if (m_Texts.Succeed(textsKey, generation, std::move(texts)))
-				{
-					m_TextsError.reset();
-				}
+				m_Texts.Succeed(textsKey, generation, std::move(texts));
 			});
 		});
 	}
 
 	void GitModel::ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& key)
 	{
-		if (m_Texts.ForgetFailed(TextsKey{commit, key}))
-		{
-			m_TextsError.reset();
-		}
+		m_Texts.ForgetFailed(TextsKey{commit, key});
 	}
 
 	Core::Ref<const FileTexts> GitModel::GetTextsFor(
