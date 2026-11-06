@@ -10,9 +10,12 @@
 #include <git2/sys/mempack.h>
 #include <git2/sys/odb_backend.h>
 
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <optional>
+#include <queue>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -162,25 +165,155 @@ namespace Core {
 			return TouchesAny(diff.GetValue().get(), paths);
 		}
 
-		Result<RevwalkHandle> StartFirstParentWalkOldestFirst(git_repository* handle, const Oid& tip, const Oid& since)
+		struct DatedCommit
 		{
-			RevwalkHandle walk;
+			std::int64_t Time = 0;
+			Oid Id;
+		};
 
-			if (git_revwalk_new(Out(walk), handle) != 0)
+		struct IsCommittedEarlier
+		{
+			bool operator()(const DatedCommit& left, const DatedCommit& right) const
 			{
-				return Error{ErrorCode::IoFailure, std::format("cannot walk the line: {}", LastLibgit2Message())};
+				return left.Time < right.Time;
+			}
+		};
+
+		// The commits one commit reaches, found newest first and only as far back in time as a question
+		// needs, so a walk that stops early reads no more of that history than it asked about. A libgit2
+		// walk that hides a commit reads all of what it shows before it shows the first.
+		// WARNING: It trusts a commit to be dated no earlier than its parents. A parent dated after its
+		// child is found a few commits late, which can only add commits from before the fork to a landing
+		// search, and merging the branch into one of those never changes nothing.
+		class CommitsReachedFrom
+		{
+		public:
+			CommitsReachedFrom(git_repository* handle, const DatedCommit& start)
+				: m_Handle(handle)
+			{
+				m_Queued.insert(start.Id);
+				m_Frontier.push(start);
 			}
 
-			const git_oid tipId = ToGitOid(tip);
-			const git_oid sinceId = ToGitOid(since);
-
-			if (git_revwalk_sorting(walk.get(), GIT_SORT_REVERSE) != 0 || git_revwalk_simplify_first_parent(walk.get()) != 0 ||
-				git_revwalk_push(walk.get(), &tipId) != 0 || git_revwalk_hide(walk.get(), &sinceId) != 0)
+			Result<bool> Reaches(const DatedCommit& commit)
 			{
-				return Error{ErrorCode::IoFailure, std::format("cannot walk the line: {}", LastLibgit2Message())};
+				while (!m_Frontier.empty() && m_Frontier.top().Time >= commit.Time)
+				{
+					const DatedCommit next = m_Frontier.top();
+					m_Frontier.pop();
+					m_Reached.insert(next.Id);
+
+					if (const Result<void> queued = QueueParentsOf(next.Id); !queued.HasValue())
+					{
+						return queued.GetError();
+					}
+				}
+
+				return m_Reached.contains(commit.Id);
 			}
 
-			return walk;
+		private:
+			Result<void> QueueParentsOf(const Oid& commitId)
+			{
+				Result<CommitHandle> commit = LookupCommit(m_Handle, commitId);
+
+				if (!commit.HasValue())
+				{
+					return commit.GetError();
+				}
+
+				const unsigned int parentCount = git_commit_parentcount(commit.GetValue().get());
+
+				for (unsigned int parentIndex = 0; parentIndex < parentCount; ++parentIndex)
+				{
+					const Oid parentId = ToOid(*git_commit_parent_id(commit.GetValue().get(), parentIndex));
+
+					if (m_Queued.contains(parentId))
+					{
+						continue;
+					}
+
+					Result<CommitHandle> parent = LookupCommit(m_Handle, parentId);
+
+					if (!parent.HasValue())
+					{
+						return parent.GetError();
+					}
+
+					m_Queued.insert(parentId);
+					m_Frontier.push(DatedCommit{.Time = git_commit_time(parent.GetValue().get()), .Id = parentId});
+				}
+
+				return Result<void>{};
+			}
+
+			git_repository* m_Handle = nullptr;
+			std::priority_queue<DatedCommit, std::vector<DatedCommit>, IsCommittedEarlier> m_Frontier;
+			std::unordered_set<Oid> m_Queued;
+			std::unordered_set<Oid> m_Reached;
+		};
+
+		std::optional<Oid> FirstParentIdOf(git_commit* commit)
+		{
+			if (git_commit_parentcount(commit) == 0)
+			{
+				return std::nullopt;
+			}
+
+			return ToOid(*git_commit_parent_id(commit, kFirstParentIndex));
+		}
+
+		// tip's first-parent chain down to where `since` reaches it, newest first. Empty optional when the
+		// chain is longer than `budget` commits.
+		Result<std::optional<std::vector<Oid>>> FirstParentChainSince(git_repository* handle, const Oid& tip,
+																	   const Oid& since, std::size_t budget)
+		{
+			Result<CommitHandle> sinceCommit = LookupCommit(handle, since);
+
+			if (!sinceCommit.HasValue())
+			{
+				return sinceCommit.GetError();
+			}
+
+			CommitsReachedFrom reachedFromSince(
+				handle, DatedCommit{.Time = git_commit_time(sinceCommit.GetValue().get()), .Id = since});
+
+			const std::optional<std::vector<Oid>> longerThanTheBudget;
+			std::vector<Oid> chain;
+			std::optional<Oid> next = tip;
+
+			while (next.has_value())
+			{
+				Result<CommitHandle> commit = LookupCommit(handle, *next);
+
+				if (!commit.HasValue())
+				{
+					return commit.GetError();
+				}
+
+				const DatedCommit dated{.Time = git_commit_time(commit.GetValue().get()), .Id = *next};
+				const Result<bool> reached = reachedFromSince.Reaches(dated);
+
+				if (!reached.HasValue())
+				{
+					return reached.GetError();
+				}
+
+				if (reached.GetValue())
+				{
+					break;
+				}
+
+				if (chain.size() == budget)
+				{
+					return longerThanTheBudget;
+				}
+
+				chain.push_back(*next);
+				next = FirstParentIdOf(commit.GetValue().get());
+			}
+
+			return std::optional<std::vector<Oid>>{std::move(chain)};
 		}
 	}
 
@@ -300,11 +433,11 @@ namespace Core {
 		return answer;
 	}
 
-	bool Repository::HoldsCommit(const Oid& commit) const
+	Result<bool> Repository::HoldsCommit(const Oid& commit) const
 	{
 		if (m_Handle == nullptr)
 		{
-			return false;
+			return RepositoryNotOpen();
 		}
 
 		return LookupCommit(m_Handle.get(), commit).HasValue();
@@ -335,7 +468,8 @@ namespace Core {
 	}
 
 	Result<std::vector<Oid>> Repository::LineCommitsTouchingBranch(const Oid& lineTip, const Oid& since,
-																   const Oid& branchTip) const
+														   const Oid& branchTip, std::size_t chainBudget,
+														   std::size_t mostCommits) const
 	{
 		if (m_Handle == nullptr)
 		{
@@ -351,39 +485,44 @@ namespace Core {
 
 		std::vector<Oid> touching;
 
-		if (branchPaths.GetValue().empty())
+		if (branchPaths.GetValue().empty() || mostCommits == 0)
 		{
 			return touching;
 		}
 
-		Result<RevwalkHandle> walk = StartFirstParentWalkOldestFirst(m_Handle.get(), lineTip, since);
+		Result<std::optional<std::vector<Oid>>> chain = FirstParentChainSince(m_Handle.get(), lineTip, since, chainBudget);
 
-		if (!walk.HasValue())
+		if (!chain.HasValue())
 		{
-			return std::move(walk).GetError();
+			return std::move(chain).GetError();
 		}
 
-		git_oid walked{};
-		int nextResult = 0;
-
-		while ((nextResult = git_revwalk_next(&walked, walk.GetValue().get())) == 0)
+		if (!chain.GetValue().has_value())
 		{
-			Result<bool> touches = CommitTouchesAny(m_Handle.get(), ToOid(walked), branchPaths.GetValue());
+			return touching;
+		}
+
+		std::vector<Oid> oldestFirst = std::move(*chain.GetValue());
+		std::reverse(oldestFirst.begin(), oldestFirst.end());
+
+		for (const Oid& commit : oldestFirst)
+		{
+			const Result<bool> touches = CommitTouchesAny(m_Handle.get(), commit, branchPaths.GetValue());
 
 			if (!touches.HasValue())
 			{
-				return std::move(touches).GetError();
+				return touches.GetError();
 			}
 
 			if (touches.GetValue())
 			{
-				touching.push_back(ToOid(walked));
+				touching.push_back(commit);
 			}
-		}
 
-		if (nextResult != GIT_ITEROVER)
-		{
-			return Error{ErrorCode::IoFailure, std::format("cannot walk the line: {}", LastLibgit2Message())};
+			if (touching.size() == mostCommits)
+			{
+				break;
+			}
 		}
 
 		return touching;

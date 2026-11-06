@@ -2,6 +2,7 @@
 
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
+#include "Core/Git/Libgit2Support.h"
 #include "Core/Git/PatchMatch.h"
 #include "Core/Git/Repository.h"
 
@@ -22,6 +23,8 @@ namespace {
 	const std::string kLinesTwoAndEightEdit = "1\ntwo\n3\n4\n5\n6\n7\neight\n9\n";
 	const std::string kLinesTwoFiveAndEightEdit = "1\ntwo\n3\n4\nfive\n6\n7\neight\n9\n";
 	const std::string kLineTwoEditedAgain = "1\nTWO\n3\n4\n5\n6\n7\neight\n9\n";
+	const std::string kLineEightEdit = "1\n2\n3\n4\n5\n6\n7\neight\n9\n";
+	const std::string kLinesTwoAndFourEdit = "1\ntwo\n3\nfour\n5\n6\n7\n8\n9\n";
 
 	constexpr std::size_t kPlentyOfBudget = 1000;
 
@@ -71,6 +74,30 @@ namespace {
 
 		REQUIRE(verdict.HasValue());
 		return verdict.GetValue();
+	}
+
+	Core::ContentVerdict CheckWithin(const GitFixture& fixture, const std::string& branchTip, const std::string& lineTip,
+									 Core::PatchIdCache& cache, const Core::ContentBudgets& budgets)
+	{
+		const Core::Repository repository = OpenInMemory(fixture);
+
+		const Core::Result<Core::ContentVerdict> verdict =
+			Core::CheckMergedByContent(repository, OidOf(branchTip), OidOf(lineTip), cache, budgets);
+
+		REQUIRE(verdict.HasValue());
+		return verdict.GetValue();
+	}
+
+	// Patch ids are read while every blob is there, so a later check finds them all in the cache.
+	void LearnPatchIds(const GitFixture& fixture, const std::string& branchTip, const std::string& lineTip,
+					   Core::PatchIdCache& cache)
+	{
+		const Core::Repository repository = OpenInMemory(fixture);
+		const Core::Result<Core::PatchMatch> match =
+			repository.MatchPatches(OidOf(branchTip), OidOf(lineTip), kPlentyOfBudget, cache);
+
+		REQUIRE(match.HasValue());
+		REQUIRE(match.GetValue().Complete);
 	}
 
 	struct SquashedTopic
@@ -221,8 +248,9 @@ TEST_CASE("Content: a branch whose changes cancel out is not merged")
 
 TEST_CASE("Content: a squash past the landing tries is merged without a landing")
 {
+	// The squash is candidate kLandingTries + 1, one past the last try.
 	GitFixture fixture;
-	const SquashedTopic history = SquashAfterLineEdits(fixture, Core::kLandingTries + 1);
+	const SquashedTopic history = SquashAfterLineEdits(fixture, Core::kLandingTries);
 
 	const Core::ContentVerdict expected{
 		.Outcome = Core::ContentOutcome::Merged,
@@ -243,6 +271,171 @@ TEST_CASE("Content: a squash at the last landing try names its landing")
 	CHECK(verdict.Outcome == Core::ContentOutcome::Merged);
 	CHECK(verdict.Kind == Core::ContentKind::Squash);
 	CHECK(verdict.Landing == std::optional<Core::Oid>{OidOf(history.Squash)});
+}
+
+TEST_CASE("Content: a squash past the landing chain budget is merged without a landing")
+{
+	// The line's first-parent chain since the fork is the edits and then the squash.
+	const std::size_t lineEdits = 2;
+	GitFixture fixture;
+	const SquashedTopic history = SquashAfterLineEdits(fixture, lineEdits);
+	Core::PatchIdCache cache;
+	const Core::ContentBudgets oneShortOfTheSquash{.LandingChain = lineEdits};
+
+	const Core::ContentVerdict expected{
+		.Outcome = Core::ContentOutcome::Merged,
+		.Kind = Core::ContentKind::Squash,
+		.Landing = std::nullopt,
+	};
+
+	CHECK(CheckWithin(fixture, history.TopicTip, history.Squash, cache, oneShortOfTheSquash) == expected);
+}
+
+TEST_CASE("Content: a squash within the landing chain budget names its landing")
+{
+	const std::size_t lineEdits = 2;
+	GitFixture fixture;
+	const SquashedTopic history = SquashAfterLineEdits(fixture, lineEdits);
+	Core::PatchIdCache cache;
+	const Core::ContentBudgets reachingTheSquash{.LandingChain = lineEdits + 1};
+
+	const Core::ContentVerdict verdict = CheckWithin(fixture, history.TopicTip, history.Squash, cache, reachingTheSquash);
+
+	CHECK(verdict.Landing == std::optional<Core::Oid>{OidOf(history.Squash)});
+}
+
+TEST_CASE("Content: the landing search stops where the fork's history meets the line off its first-parent chain")
+{
+	// topic forks from side, which master merges as a second parent, so the fork is not on master's
+	// first-parent chain. The chain since the fork is the squash, the merge and master's own commit;
+	// the base commit below them is history the fork already has.
+	GitFixture fixture;
+	fixture.Write("a.txt", kBase);
+	fixture.Commit("base");
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("s.txt", "side\n");
+	fixture.Commit("side adds s");
+	fixture.Branch("topic");
+	fixture.Checkout("topic");
+	fixture.Write("a.txt", kLineTwoEdit);
+	fixture.Commit("topic edits line two");
+	fixture.Write("a.txt", kLinesTwoAndFourEdit);
+	const std::string topicTip = fixture.Commit("topic edits line four");
+
+	fixture.Checkout("master");
+	fixture.Write("b.txt", "master\n");
+	fixture.Commit("master adds b");
+	fixture.MergeCommit("master merges side", "side");
+	fixture.Write("a.txt", kLinesTwoAndFourEdit);
+	const std::string squash = fixture.Commit("squash of topic");
+
+	const std::size_t chainSinceTheFork = 3;
+	Core::PatchIdCache cache;
+	const Core::ContentBudgets justTheChain{.LandingChain = chainSinceTheFork};
+
+	const Core::ContentVerdict verdict = CheckWithin(fixture, topicTip, squash, cache, justTheChain);
+
+	CHECK(verdict.Outcome == Core::ContentOutcome::Merged);
+	CHECK(verdict.Kind == Core::ContentKind::Squash);
+	CHECK(verdict.Landing == std::optional<Core::Oid>{OidOf(squash)});
+}
+
+TEST_CASE("Content: a line past the patch budget answers unknown")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string topicTip = fixture.Commit("topic edits line two");
+
+	fixture.Checkout("master");
+	fixture.Write("b.txt", "one\n");
+	fixture.Commit("master adds b");
+	fixture.Write("c.txt", "two\n");
+	const std::string masterTip = fixture.Commit("master adds c");
+
+	Core::PatchIdCache cache;
+	const Core::ContentBudgets oneLinePatch{.LinePatches = 1};
+
+	CHECK(CheckWithin(fixture, topicTip, masterTip, cache, oneLinePatch) ==
+		  Core::ContentVerdict{.Outcome = Core::ContentOutcome::Unknown});
+}
+
+TEST_CASE("Content: branches with no common history are not merged")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", kBase);
+	const std::string masterTip = fixture.Commit("base");
+	fixture.StartOrphan("topic");
+	fixture.Write("b.txt", "a history of its own\n");
+	const std::string topicTip = fixture.Commit("topic starts anew");
+
+	CHECK(Check(fixture, topicTip, masterTip) == Core::ContentVerdict{.Outcome = Core::ContentOutcome::NotMerged});
+}
+
+TEST_CASE("Content: a squash whose line's patches miss a blob is merged by a squash")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string topicTip = fixture.Commit("topic edits line two");
+
+	// The squash also adds c.txt, whose blob its patch needs and the merge does not.
+	const std::string lineOnlyText = "only on the line\n";
+	fixture.Checkout("master");
+	fixture.Write("a.txt", kLineTwoEdit);
+	fixture.Write("c.txt", lineOnlyText);
+	const std::string squash = fixture.Commit("squash of topic, and a file of the line's own");
+	fixture.RemoveObject(BlobHexOf(lineOnlyText));
+
+	const Core::ContentVerdict expected{
+		.Outcome = Core::ContentOutcome::Merged,
+		.Kind = Core::ContentKind::Squash,
+		.Landing = OidOf(squash),
+	};
+
+	CHECK(Check(fixture, topicTip, squash) == expected);
+}
+
+TEST_CASE("Content: an unknown merge with a complete patch walk answers unknown")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string topicTip = fixture.Commit("topic edits line two");
+
+	// Both sides edit a.txt, so the merge needs topic's blob; the patch walk needs none, its ids known.
+	fixture.Checkout("master");
+	fixture.Write("a.txt", kLineEightEdit);
+	const std::string masterTip = fixture.Commit("master edits line eight");
+
+	Core::PatchIdCache cache;
+	LearnPatchIds(fixture, topicTip, masterTip, cache);
+	fixture.RemoveObject(BlobHexOf(kLineTwoEdit));
+
+	CHECK(CheckWithin(fixture, topicTip, masterTip, cache, Core::ContentBudgets{}) ==
+		  Core::ContentVerdict{.Outcome = Core::ContentOutcome::Unknown});
+}
+
+TEST_CASE("Content: a check on a repository that is not open fails as not open")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string topicTip = fixture.Commit("topic edits line two");
+	fixture.Checkout("master");
+	fixture.Write("b.txt", "unrelated\n");
+	const std::string masterTip = fixture.Commit("unrelated");
+
+	Core::Repository movedFrom = OpenInMemory(fixture);
+	const Core::Repository owner = std::move(movedFrom);
+	Core::PatchIdCache cache;
+
+	const Core::Result<Core::ContentVerdict> verdict =
+		Core::CheckMergedByContent(movedFrom, OidOf(topicTip), OidOf(masterTip), cache);
+
+	REQUIRE_FALSE(verdict.HasValue());
+	CHECK(verdict.GetError().Message == Core::RepositoryNotOpen().Message);
 }
 
 TEST_CASE("Content: a missing blob in the line's patches answers unknown")

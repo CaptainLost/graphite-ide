@@ -3,7 +3,7 @@
 #include "Core/Git/Content/ContentCheck.h"
 
 #include "Core/Git/Content/ContentAnswer.h"
-#include "Core/Git/Content/ContentThresholds.h"
+#include "Core/Git/Libgit2Support.h"
 #include "Core/Git/Repository.h"
 
 #include <cstddef>
@@ -30,43 +30,27 @@ namespace Core {
 			return match.MissingObjects || !match.Complete;
 		}
 
-		bool IsMissing(const Error& failure)
-		{
-			return failure.Code == ErrorCode::NotFound;
-		}
-
-		Result<std::optional<Oid>> FindLanding(const Repository& repository, const Oid& mergeBase, const Oid& branchTip,
-											   const Oid& lineTip)
+		// The merge already said the line holds the branch's changes, so a landing that cannot be found
+		// for any reason leaves a squash without one rather than failing the check.
+		std::optional<Oid> FindLanding(const Repository& repository, const Oid& mergeBase, const Oid& branchTip,
+									   const Oid& lineTip, const ContentBudgets& budgets)
 		{
 			const std::optional<Oid> noLanding;
-			Result<std::vector<Oid>> candidates = repository.LineCommitsTouchingBranch(lineTip, mergeBase, branchTip);
+			const Result<std::vector<Oid>> candidates = repository.LineCommitsTouchingBranch(
+				lineTip, mergeBase, branchTip, budgets.LandingChain, budgets.LandingTries);
 
 			if (!candidates.HasValue())
 			{
-				if (IsMissing(candidates.GetError()))
-				{
-					return noLanding;
-				}
-
-				return std::move(candidates).GetError();
+				return noLanding;
 			}
-
-			std::size_t tries = 0;
 
 			for (const Oid& candidate : candidates.GetValue())
 			{
-				if (tries == kLandingTries)
-				{
-					break;
-				}
-
-				++tries;
-
 				const Result<ContentAnswer> answer = repository.MergeChangesNothing(candidate, branchTip);
 
 				if (!answer.HasValue())
 				{
-					return answer.GetError();
+					return noLanding;
 				}
 
 				if (answer.GetValue() == ContentAnswer::Yes)
@@ -85,28 +69,40 @@ namespace Core {
 			return noLanding;
 		}
 
-		Result<ContentVerdict> SquashVerdict(const Repository& repository, const Oid& mergeBase, const Oid& branchTip,
-											 const Oid& lineTip, const PatchMatch& match)
+		ContentVerdict SquashVerdict(const Repository& repository, const Oid& mergeBase, const Oid& branchTip,
+									 const Oid& lineTip, const std::vector<PatchTwin>& twins, const ContentBudgets& budgets)
 		{
-			Result<std::optional<Oid>> landing = FindLanding(repository, mergeBase, branchTip, lineTip);
-
-			if (!landing.HasValue())
-			{
-				return std::move(landing).GetError();
-			}
-
 			return ContentVerdict{
 				.Outcome = ContentOutcome::Merged,
 				.Kind = ContentKind::Squash,
-				.Landing = landing.GetValue(),
-				.Twins = match.Twins,
+				.Landing = FindLanding(repository, mergeBase, branchTip, lineTip, budgets),
+				.Twins = twins,
 			};
 		}
 
-		Result<ContentVerdict> CheckWithObjectsInMemory(const Repository& repository, const Oid& branchTip,
-														const Oid& lineTip, PatchIdCache& cache)
+		Result<bool> HoldsBothTips(const Repository& repository, const Oid& branchTip, const Oid& lineTip)
 		{
-			if (!repository.HoldsCommit(branchTip) || !repository.HoldsCommit(lineTip))
+			const Result<bool> holdsBranch = repository.HoldsCommit(branchTip);
+
+			if (!holdsBranch.HasValue() || !holdsBranch.GetValue())
+			{
+				return holdsBranch;
+			}
+
+			return repository.HoldsCommit(lineTip);
+		}
+
+		Result<ContentVerdict> CheckWithObjectsInMemory(const Repository& repository, const Oid& branchTip,
+														const Oid& lineTip, PatchIdCache& cache, const ContentBudgets& budgets)
+		{
+			const Result<bool> holdsBothTips = HoldsBothTips(repository, branchTip, lineTip);
+
+			if (!holdsBothTips.HasValue())
+			{
+				return holdsBothTips.GetError();
+			}
+
+			if (!holdsBothTips.GetValue())
 			{
 				return VerdictOf(ContentOutcome::Unknown);
 			}
@@ -115,7 +111,9 @@ namespace Core {
 
 			if (!mergeBase.HasValue())
 			{
-				if (IsMissing(mergeBase.GetError()))
+				const bool noCommonHistory = mergeBase.GetError().Code == ErrorCode::NotFound;
+
+				if (noCommonHistory)
 				{
 					return VerdictOf(ContentOutcome::NotMerged);
 				}
@@ -142,16 +140,23 @@ namespace Core {
 				return mergeChangesNothing.GetError();
 			}
 
-			Result<PatchMatch> patches = repository.MatchPatches(branchTip, lineTip, kPatchCommitsPerCheck, cache);
+			const bool lineHoldsTheChanges = mergeChangesNothing.GetValue() == ContentAnswer::Yes;
+			Result<PatchMatch> patches = repository.MatchPatches(branchTip, lineTip, budgets.LinePatches, cache);
 
 			if (!patches.HasValue())
 			{
-				if (IsMissing(patches.GetError()))
+				if (!IsMissingObject(patches.GetError()))
 				{
-					return VerdictOf(ContentOutcome::Unknown);
+					return std::move(patches).GetError();
 				}
 
-				return std::move(patches).GetError();
+				if (lineHoldsTheChanges)
+				{
+					const std::vector<PatchTwin> noTwins;
+					return SquashVerdict(repository, mergeBase.GetValue(), branchTip, lineTip, noTwins, budgets);
+				}
+
+				return VerdictOf(ContentOutcome::Unknown);
 			}
 
 			const PatchMatch& match = patches.GetValue();
@@ -161,9 +166,9 @@ namespace Core {
 				return ContentVerdict{.Outcome = ContentOutcome::Merged, .Kind = ContentKind::Rebase, .Twins = match.Twins};
 			}
 
-			if (mergeChangesNothing.GetValue() == ContentAnswer::Yes)
+			if (lineHoldsTheChanges)
 			{
-				return SquashVerdict(repository, mergeBase.GetValue(), branchTip, lineTip, match);
+				return SquashVerdict(repository, mergeBase.GetValue(), branchTip, lineTip, match.Twins, budgets);
 			}
 
 			if (mergeChangesNothing.GetValue() == ContentAnswer::Unknown || PatchWalkStoppedShort(match))
@@ -178,7 +183,13 @@ namespace Core {
 	Result<ContentVerdict> CheckMergedByContent(const Repository& repository, const Oid& branchTip, const Oid& lineTip,
 												PatchIdCache& cache)
 	{
-		Result<ContentVerdict> verdict = CheckWithObjectsInMemory(repository, branchTip, lineTip, cache);
+		return CheckMergedByContent(repository, branchTip, lineTip, cache, ContentBudgets{});
+	}
+
+	Result<ContentVerdict> CheckMergedByContent(const Repository& repository, const Oid& branchTip, const Oid& lineTip,
+												PatchIdCache& cache, const ContentBudgets& budgets)
+	{
+		Result<ContentVerdict> verdict = CheckWithObjectsInMemory(repository, branchTip, lineTip, cache, budgets);
 		repository.DropObjectsInMemory();
 		return verdict;
 	}

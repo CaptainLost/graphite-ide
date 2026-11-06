@@ -137,6 +137,11 @@ namespace Core {
 		return Error{code, std::format("{}: {}", action, LastLibgit2Message())};
 	}
 
+	bool IsMissingObject(const Error& failure)
+	{
+		return failure.Code == ErrorCode::NotFound;
+	}
+
 	Result<DiffHandle> DiffWithFirstParent(git_repository* handle, git_commit* commit)
 	{
 		TreeHandle tree;

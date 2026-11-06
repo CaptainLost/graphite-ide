@@ -57,6 +57,10 @@ namespace Core {
 	// NotFound when IsMissingObject judges the failure, IoFailure otherwise. `action` reads "cannot ...".
 	Error ObjectReadFailure(int result, std::string_view action);
 
+	// Whether an error a Repository read returned says an object is missing, as ObjectReadFailure and
+	// LookupCommit report one.
+	bool IsMissingObject(const Error& failure);
+
 	// What the commit changes against its first parent, or against the empty tree for a root commit.
 	// Reads trees only, never a file's contents. NotFound when a tree is missing.
 	Result<DiffHandle> DiffWithFirstParent(git_repository* handle, git_commit* commit);

@@ -267,16 +267,19 @@ namespace Core {
 		// Forgets what in-memory checks wrote; a check does this itself when it ends.
 		void DropObjectsInMemory() const;
 
-		// A tip read a moment ago can be gone when a check in the background asks about it.
-		bool HoldsCommit(const Oid& commit) const;
+		// Whether a commit with this id can be read.
+		Result<bool> HoldsCommit(const Oid& commit) const;
 
 		// Whether the two commits record the same tree. NotFound when either is missing.
 		Result<bool> HaveSameTree(const Oid& one, const Oid& other) const;
 
-		// The commits of lineTip's first-parent chain that `since` does not reach and that change a path
-		// branchTip changes since `since`, oldest first: where a squash of the branch can have landed.
-		// Reads trees only, never a file's contents. NotFound when an object the walk needs is missing.
-		Result<std::vector<Oid>> LineCommitsTouchingBranch(const Oid& lineTip, const Oid& since, const Oid& branchTip) const;
+		// The oldest `mostCommits` commits of lineTip's first-parent chain that `since` does not reach and
+		// that change a path branchTip changes since `since`, oldest first: where a squash of the branch can
+		// have landed. Reads at most `chainBudget` commits of the chain, and answers none when the chain is
+		// longer, since the oldest could lie past them. Reads trees only, never a file's contents. NotFound
+		// when an object the walk needs is missing.
+		Result<std::vector<Oid>> LineCommitsTouchingBranch(const Oid& lineTip, const Oid& since, const Oid& branchTip,
+														   std::size_t chainBudget, std::size_t mostCommits) const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{

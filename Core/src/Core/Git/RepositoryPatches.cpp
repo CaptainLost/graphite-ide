@@ -81,11 +81,6 @@ namespace Core {
 			return computed;
 		}
 
-		bool IsMissingObjectFailure(const Error& patchFailure)
-		{
-			return patchFailure.Code == ErrorCode::NotFound;
-		}
-
 		struct OwnPatch
 		{
 			Oid Commit;
@@ -172,7 +167,7 @@ namespace Core {
 
 			if (!patchId.HasValue())
 			{
-				if (!IsMissingObjectFailure(patchId.GetError()))
+				if (!IsMissingObject(patchId.GetError()))
 				{
 					return std::move(patchId).GetError();
 				}
@@ -235,7 +230,7 @@ namespace Core {
 
 			if (!patchId.HasValue())
 			{
-				if (!IsMissingObjectFailure(patchId.GetError()))
+				if (!IsMissingObject(patchId.GetError()))
 				{
 					return std::move(patchId).GetError();
 				}
