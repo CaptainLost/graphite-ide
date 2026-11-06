@@ -1767,6 +1767,7 @@ namespace Graphite {
 		// Without a read the line waits for one that is coming, and says "unknown" when none can come. A commit the read's
 		// graph lacks is in no base.
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
+		std::optional<std::string> sentence;
 
 		if (!read)
 		{
@@ -1786,16 +1787,15 @@ namespace Graphite {
 											holding.has_value() ? EquivalenceOf(*read, commit.Id, *holding)
 																: std::vector<BaseEquivalence>{});
 
-			std::optional<std::string> sentence;
-
 			if (const std::optional<ContentSource> source = m_Content.SourceOf(commit.Id))
 			{
 				sentence = ContentSourceSentence(*read, *source);
 			}
-
-			// Decided when the commit is selected, so a verdict landing later does not add a line to the open pane.
-			content.Source = m_KeptSource.Keep(commit.Id, sentence);
 		}
+
+		// Decided when the commit is selected, so a verdict landing later does not add a line to the open pane. Kept on
+		// every branch above, so a commit selected outside the read still counts as another selection.
+		content.Source = m_KeptSource.Keep(commit.Id, sentence);
 
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
 		{

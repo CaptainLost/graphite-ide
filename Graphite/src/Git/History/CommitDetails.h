@@ -54,7 +54,9 @@ namespace Graphite {
 		// The bases that do not hold it by history but hold its copy or its squash, in model order.
 		std::vector<InBaseEquivalent> Equivalents;
 
-		// A copy is still searched for in some base: the line keeps a place for it and does not say "in no base yet".
+		// Some base may yet show an equivalent: a copy is still searched for there, or the shown branch's check that may
+		// find this commit's squash has not answered. With nothing held or found the line reads "…", not "in no base yet";
+		// otherwise a "…" ends the line after the chips.
 		bool EquivalentsPending = false;
 		bool Pending = false;             // the answer has not landed
 		std::optional<std::string> Unknown; // the line read failed: its message, and no answer will come

@@ -486,3 +486,22 @@ TEST_CASE("Git window: the source sentence is decided at selection and kept unti
 	kept.Forget();
 	CHECK_FALSE(kept.Keep(commit, none).has_value());
 }
+
+TEST_CASE("Git window: a commit outside the read selected in between decides the source sentence anew")
+{
+	Graphite::KeptSourceSentence kept;
+	const Core::Oid commit = CommitWithFirstByte(1);
+	const Core::Oid outside = CommitWithFirstByte(3);
+	const std::optional<std::string> none;
+	const std::optional<std::string> before = "Squash of feature/x.";
+	const std::optional<std::string> after = "Copy of 1a2b3c4 from feature/y.";
+
+	CHECK(kept.Keep(commit, before) == before);
+
+	// A stash or a detached HEAD's commit the read's graph lacks has no sentence to decide, but it is a selection: the
+	// view keeps it as it keeps any other (GitView::RenderDetails asks on every path).
+	CHECK_FALSE(kept.Keep(outside, none).has_value());
+
+	// Back on the first commit, whose sentence changed meanwhile: not the one kept before.
+	CHECK(kept.Keep(commit, after) == after);
+}
