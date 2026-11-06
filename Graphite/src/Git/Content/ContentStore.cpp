@@ -19,7 +19,13 @@ namespace Graphite {
 		nlohmann::json VerdictToJson(const Core::ContentVerdict& verdict)
 		{
 			nlohmann::json json = nlohmann::json::object();
-			json["outcome"] = verdict.Outcome == Core::ContentOutcome::Merged ? "merged" : "notMerged";
+
+			switch (verdict.Outcome)
+			{
+			case Core::ContentOutcome::Merged: json["outcome"] = "merged"; break;
+			case Core::ContentOutcome::NotMerged: json["outcome"] = "notMerged"; break;
+			case Core::ContentOutcome::Unknown: json["outcome"] = "unknown"; break;
+			}
 
 			if (verdict.Outcome != Core::ContentOutcome::Merged)
 			{
@@ -106,7 +112,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// Nothing for an entry that is malformed or says Unknown.
+		// Nothing for an entry that is malformed.
 		std::optional<Core::ContentVerdict> VerdictFrom(const nlohmann::json& json)
 		{
 			if (!json.is_object())
@@ -125,6 +131,12 @@ namespace Graphite {
 
 			if (outcome->get<std::string>() == "notMerged")
 			{
+				return verdict;
+			}
+
+			if (outcome->get<std::string>() == "unknown")
+			{
+				verdict.Outcome = Core::ContentOutcome::Unknown;
 				return verdict;
 			}
 
@@ -278,11 +290,6 @@ namespace Graphite {
 
 		for (const auto& [key, verdict] : cache.Verdicts)
 		{
-			if (verdict.Outcome == Core::ContentOutcome::Unknown)
-			{
-				continue;
-			}
-
 			nlohmann::json entry = nlohmann::json::object();
 			entry["branch"] = key.BranchTip.ToHex();
 			entry["line"] = key.LineTip.ToHex();

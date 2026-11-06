@@ -75,7 +75,7 @@ TEST_CASE("Git window: the content cache survives a save and a load")
 	CHECK(loaded.Found.at(IdOf(1)).Verdict == SquashAt(9));
 }
 
-TEST_CASE("Git window: an unknown verdict is never stored")
+TEST_CASE("Git window: an unknown verdict is kept for its pair but never as found")
 {
 	TempDirectory directory;
 	const std::filesystem::path file = directory.GetPath() / "content.json";
@@ -88,8 +88,10 @@ TEST_CASE("Git window: an unknown verdict is never stored")
 	saved.Found[IdOf(1)] = ContentFound{"refs/heads/main", unknown};
 	REQUIRE(SaveContentCache(file, saved));
 
+	// The same two tips answer the same, so the second opening knows it without asking; only a merge is remembered.
 	const ContentCache loaded = LoadContentCache(file);
-	CHECK(loaded.Verdicts.empty());
+	REQUIRE(loaded.Verdicts.size() == 1);
+	CHECK(loaded.Verdicts.at({IdOf(1), IdOf(2)}) == unknown);
 	CHECK(loaded.Found.empty());
 }
 

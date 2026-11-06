@@ -28,7 +28,9 @@ namespace Graphite {
 		Core::ContentVerdict Verdict;
 	};
 
-	// Unknown verdicts are never stored: they say a check could not be made, not what the answer is.
+	// A check's unknown answer (an object it needs is missing, or the line ran past what one check reads) is kept for its
+	// pair like any other: the same two tips give the same answer, and the second opening must not ask it again. A check
+	// that failed is never stored.
 	struct ContentCache
 	{
 		std::map<ContentKey, Core::ContentVerdict> Verdicts;

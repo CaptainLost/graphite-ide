@@ -665,7 +665,7 @@ TEST_CASE("Git window: a check asked before a folder switch and run after it ask
 	CHECK(port.Checked.empty());
 }
 
-TEST_CASE("Git window: an unknown or failed check is not saved and reads unknown")
+TEST_CASE("Git window: an unknown answer is saved and known in the next opening while a failed check is asked again")
 {
 	TempDirectory directory;
 	const LineStorePaths store = StoreIn(directory.GetPath());
@@ -699,18 +699,23 @@ TEST_CASE("Git window: an unknown or failed check is not saved and reads unknown
 	Settle(jobs, model);
 	CHECK(port.Checked.size() == 3);
 
+	// The unknown answer is saved with the other; the failure is not.
 	LetSaveRun(jobs, model);
 	const ContentCache saved = LoadContentCache(store.Content);
-	CHECK(saved.Verdicts.size() == 1);
+	CHECK(saved.Verdicts.size() == 2);
+	CHECK(saved.Verdicts.contains(KeyOfBranch(*read, 0)));
+	CHECK_FALSE(saved.Verdicts.contains(KeyOfBranch(*read, 1)));
 	CHECK(saved.Verdicts.contains(KeyOfBranch(*read, 2)));
 
-	// The next session asks both again.
+	// The next session knows the unknown answer in its first frame and asks only the failed check again.
 	ContentModel next{port, jobs.Submitter()};
 	next.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
 	next.SetOnScreen(true);
 	next.Follow(read);
+	CHECK(next.KnownMarkOf(read->Model.Branches[0]).State == ContentMark::State::Unknown);
+	CHECK(next.KnownMarkOf(read->Model.Branches[1]).State == ContentMark::State::Pending);
 	Settle(jobs, next);
-	CHECK(port.Checked.size() == 5);
+	CHECK(port.Checked.size() == 4);
 	CHECK(reported.Messages.size() == 2);
 }
 

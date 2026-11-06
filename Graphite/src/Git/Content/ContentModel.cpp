@@ -150,7 +150,7 @@ namespace Graphite {
 		m_Checking.reset();
 		m_TwinChecking.reset();
 
-		m_Unknown.clear();
+		m_Failed.clear();
 		m_RecheckWaiting.clear();
 		m_RecheckRunning.clear();
 		m_EveryCandidateAsked = false;
@@ -337,7 +337,7 @@ namespace Graphite {
 
 	bool ContentModel::IsWaiting(const ContentKey& key) const
 	{
-		const bool answered = m_Cache.Verdicts.contains(key) || m_Unknown.contains(key);
+		const bool answered = m_Cache.Verdicts.contains(key) || m_Failed.contains(key);
 		const bool rechecking = m_RecheckWaiting.contains(key) || m_RecheckRunning.contains(key);
 
 		return !answered && !rechecking && m_Checking != key;
@@ -548,17 +548,12 @@ namespace Graphite {
 
 			ReportFailure(std::format("Could not check whether {} is merged into {} by its contents: {}", key.BranchTip.ToHex(),
 									  key.LineTip.ToHex(), verdict.GetError().Message));
-			m_Unknown.insert(key);
+			m_Failed.insert(key);
 			return;
 		}
 
+		// An unknown answer is kept and saved like the others: asked again, the same tips would answer the same.
 		const Core::ContentVerdict& found = verdict.GetValue();
-
-		if (found.Outcome == Core::ContentOutcome::Unknown)
-		{
-			m_Unknown.insert(key);
-			return;
-		}
 
 		m_Cache.Verdicts[key] = found;
 		m_VerdictsChanged = true;
@@ -664,12 +659,12 @@ namespace Graphite {
 
 		const std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.find(*key);
 
-		if (verdict != m_Cache.Verdicts.end())
+		if (verdict != m_Cache.Verdicts.end() && verdict->second.Outcome != Core::ContentOutcome::Unknown)
 		{
 			return KnownMark(verdict->second);
 		}
 
-		if (m_Unknown.contains(*key))
+		if (verdict != m_Cache.Verdicts.end() || m_Failed.contains(*key))
 		{
 			return ContentMark{.State = ContentMark::State::Unknown, .Verdict = std::nullopt};
 		}

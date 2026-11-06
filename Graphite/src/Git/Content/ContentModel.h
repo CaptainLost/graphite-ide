@@ -163,7 +163,7 @@ namespace Graphite {
 		std::optional<ContentKey> m_Checking;
 		std::optional<TwinKey> m_TwinChecking;
 
-		std::set<ContentKey> m_Unknown;         // could not answer: asked again in the next session
+		std::set<ContentKey> m_Failed;          // the check failed: not saved, asked again in the next session
 		std::set<ContentKey> m_RecheckWaiting;  // found merged against another line tip; does this one hold it?
 		std::set<ContentKey> m_RecheckRunning;
 		bool m_EveryCandidateAsked = false;     // of the followed read
