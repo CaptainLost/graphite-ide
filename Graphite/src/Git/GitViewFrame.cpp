@@ -304,6 +304,15 @@ namespace Graphite {
 
 		if (inputs.Read)
 		{
+			// What content checks found so far, read now and only now: a verdict that lands later changes no row until this
+			// runs again for another reason.
+			const LineRead& read = *inputs.Read;
+			const std::function<bool(std::size_t)> mergedByContent = [this, &read](std::size_t branch) {
+				const ContentMark mark = m_Content.KnownMarkOf(read.Model.Branches[branch]);
+				return mark.State == ContentMark::State::Known && mark.Verdict.has_value() &&
+					   mark.Verdict->Outcome == Core::ContentOutcome::Merged;
+			};
+
 			m_SidebarRows = BuildSidebarRows(SidebarInput{.Read = *inputs.Read,
 														  .Stashes = inputs.Stashes.get(),
 														  .Authors = inputs.Authors.get(),
@@ -311,7 +320,8 @@ namespace Graphite {
 														  .OpenByUser = m_OpenByUser,
 														  .ShowingMerged = m_ShowingMerged,
 														  .StashesError = failedStashRead,
-														  .ShownRef = inputs.ShownRef});
+														  .ShownRef = inputs.ShownRef,
+														  .MergedByContent = &mergedByContent});
 		}
 		else
 		{
@@ -384,6 +394,7 @@ namespace Graphite {
 		input.WorktreeOf = [this](std::string_view fullName) { return m_Worktrees.OtherWorktreeOf(fullName); };
 		input.IsDirty = [this](const std::filesystem::path& worktree) { return m_Worktrees.DirtyInView(worktree); };
 		input.CountFailureOf = [this](const std::filesystem::path& worktree) { return m_Worktrees.CountFailureOf(worktree); };
+		input.ContentOf = [this](const Core::BranchLine& line) { return m_Content.MarkOf(line); };
 
 		return DescribeSidebarRow(row, input);
 	}

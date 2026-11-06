@@ -1,6 +1,7 @@
 #include "Git/Sidebar/SidebarText.h"
 
 #include "Git/Branches/BranchAge.h"
+#include "Git/Content/ContentOrder.h"
 #include "Git/History/CommitDetails.h"
 
 #include "Core/Base/Count.h"
@@ -170,8 +171,36 @@ namespace Graphite {
 			return ref.Remote.empty() ? ref.ShortName : ref.Remote + "/" + ref.ShortName;
 		}
 
+		std::string ContentSentence(const Core::ContentVerdict& verdict, const std::string& name)
+		{
+			if (verdict.Kind == Core::ContentKind::Rebase)
+			{
+				return "Merged into " + name + " by a rebase.";
+			}
+
+			return "Merged into " + name + " by a squash" +
+				   (verdict.Landing.has_value() ? " in " + verdict.Landing->ShortHex() : std::string()) + ".";
+		}
+
+		bool IsMergedByContent(const std::optional<ContentMark>& content)
+		{
+			return content.has_value() && content->State == ContentMark::State::Known && content->Verdict.has_value() &&
+				   content->Verdict->Outcome == Core::ContentOutcome::Merged;
+		}
+
+		// What is known of a merge by content; empty for a row it does not concern or a window that checks nothing.
+		std::optional<ContentMark> ContentMarkOf(const Core::BranchLine* line, const Core::OldCopy* copy, const SidebarTextInput& input)
+		{
+			if (!input.ContentOf || line == nullptr || copy != nullptr || !IsContentCandidate(*line))
+			{
+				return std::nullopt;
+			}
+
+			return input.ContentOf(*line);
+		}
+
 		// What a branch is compared with, for the tooltip; empty when with nothing.
-		std::string ComparisonSentence(const Core::BranchLine& line, const LineRead& read)
+		std::string ComparisonSentence(const Core::BranchLine& line, const LineRead& read, const std::optional<ContentMark>& content)
 		{
 			if (!line.ComparedWith.has_value())
 			{
@@ -190,8 +219,20 @@ namespace Graphite {
 				return "Merged into " + name;
 			}
 
+			if (IsMergedByContent(content))
+			{
+				return ContentSentence(*content->Verdict, name);
+			}
+
 			const std::string ahead = Core::FormatCount(line.Ahead) + " ahead of " + name;
-			return line.Kind == Core::ComparedKind::Branch ? "Built on " + name + ": " + ahead : ahead;
+			const std::string sentence = line.Kind == Core::ComparedKind::Branch ? "Built on " + name + ": " + ahead : ahead;
+
+			if (content.has_value() && content->State == ContentMark::State::Unknown)
+			{
+				return sentence + "\nWhether " + name + " holds its changes is unknown.";
+			}
+
+			return sentence;
 		}
 
 		// An old copy is compared with nothing but the user's pick, so what the rule compared it with is not said of it.
@@ -206,7 +247,8 @@ namespace Graphite {
 			return "vs " + read.Refs[picked].ShortName;
 		}
 
-		void AddUnusualSpans(std::vector<SidebarSpan>& meta, const Core::BranchLine* line, std::size_t index, const SidebarTextInput& input)
+		void AddUnusualSpans(std::vector<SidebarSpan>& meta, const Core::BranchLine* line, std::size_t index, const SidebarTextInput& input,
+							 const std::optional<ContentMark>& content)
 		{
 			const LineRead& read = input.Read;
 
@@ -266,6 +308,23 @@ namespace Graphite {
 			else if (line->State == Core::BranchState::TipMissing)
 			{
 				meta.push_back({.Text = "tip missing", .Tone = SidebarTone::Unusual});
+			}
+
+			// Last, in the place held for it: a pending check is "…", and an unknown or failed one says nothing.
+			if (!content.has_value())
+			{
+				return;
+			}
+
+			if (content->State == ContentMark::State::Pending)
+			{
+				meta.push_back({.Text = kEllipsis, .Tone = SidebarTone::Dim});
+			}
+			else if (IsMergedByContent(content))
+			{
+				meta.push_back({.Text = std::string("merged") + kSeparator +
+										  (content->Verdict->Kind == Core::ContentKind::Rebase ? "rebase" : "squash"),
+								.Tone = SidebarTone::Merged});
 			}
 		}
 	}
@@ -399,6 +458,7 @@ namespace Graphite {
 		const std::size_t describedIndex = input.Lines.IndexOf(described).value_or(index);
 		const Core::BranchLine* line = isBase ? nullptr : input.Lines.LineOf(described);
 		const Core::LineBase* base = isBase ? input.Lines.BaseNamed(ref.FullName) : nullptr;
+		const std::optional<ContentMark> content = isBase ? std::nullopt : ContentMarkOf(line, input.Lines.OldCopyNamed(described), input);
 
 		if (base != nullptr && base->Reason == Core::BaseReason::MainLineGuess)
 		{
@@ -416,7 +476,7 @@ namespace Graphite {
 
 		if (!isBase)
 		{
-			AddUnusualSpans(text.Meta, line, describedIndex, input);
+			AddUnusualSpans(text.Meta, line, describedIndex, input, content);
 		}
 
 		std::string& tip = text.Tooltip;
@@ -433,7 +493,7 @@ namespace Graphite {
 		}
 		else if (line != nullptr && DescribesLine(described, input))
 		{
-			const std::string sentence = ComparisonSentence(*line, read);
+			const std::string sentence = ComparisonSentence(*line, read, content);
 
 			if (!sentence.empty())
 			{

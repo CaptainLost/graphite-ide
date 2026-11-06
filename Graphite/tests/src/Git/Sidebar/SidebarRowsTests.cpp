@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -790,4 +791,106 @@ TEST_CASE("Git window: the quiet bases open when the shown branch is one of them
 															"~ Why these, and how to change them", "# remote/origin 0", "# stashes 0",
 															"! No stashes"});
 	}
+}
+
+TEST_CASE("Git window: a row found merged by content keeps its place until the rows are rebuilt")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemoteBranch("origin", "live", {.AgeDays = 2});
+	const std::size_t squashed = builder.AddRemoteBranch("origin", "squashed", {.AgeDays = 1});
+	const LineRead read = builder.Build();
+
+	bool found = false;
+	int asked = 0;
+	const std::function<bool(std::size_t)> mergedByContent = [&](std::size_t branch) {
+		++asked;
+		return found && branch == squashed;
+	};
+	const auto build = [&]() {
+		const SidebarInput input{.Read = read,
+								 .Stashes = &kNoStashes,
+								 .Authors = nullptr,
+								 .Search = {},
+								 .OpenByUser = {},
+								 .ShowingMerged = {},
+								 .MergedByContent = &mergedByContent};
+		return BuildSidebarRows(input);
+	};
+
+	const std::vector<SidebarRow> before = build();
+	const int askedAtBuild = asked;
+	CHECK(Describe(read, before) == Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "# stashes 0", "! No stashes"});
+
+	found = true;
+
+	// The rows stand: nothing between two builds asks the callback, so nothing can move.
+	CHECK(asked == askedAtBuild);
+	CHECK(Describe(read, before) == Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "# stashes 0", "! No stashes"});
+
+	// The next build hides it, and the closing row counts it.
+	const std::vector<SidebarRow> after = build();
+	CHECK(Describe(read, after) == Lines{"# yours 0", "# remote/origin 1", "origin/live", kOneMergedHidden, "# stashes 0", "! No stashes"});
+
+	// Shown, it is listed again.
+	const SidebarInput showing{.Read = read,
+							   .Stashes = &kNoStashes,
+							   .Authors = nullptr,
+							   .Search = {},
+							   .OpenByUser = {},
+							   .ShowingMerged = {"origin"},
+							   .MergedByContent = &mergedByContent};
+	CHECK(Describe(read, BuildSidebarRows(showing)) ==
+		  Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "~ Hide merged", "# stashes 0", "! No stashes"});
+}
+
+TEST_CASE("Git window: a local branch merged by content stays listed in Yours with its mark")
+{
+	LineReadBuilder builder;
+	const std::size_t mine = builder.AddLocal("mine");
+	const LineRead read = builder.Build();
+
+	const std::function<bool(std::size_t)> everythingMerged = [](std::size_t) { return true; };
+	const SidebarInput input{.Read = read,
+							 .Stashes = &kNoStashes,
+							 .Authors = nullptr,
+							 .Search = {},
+							 .OpenByUser = {},
+							 .ShowingMerged = {},
+							 .MergedByContent = &everythingMerged};
+
+	CHECK(Describe(read, BuildSidebarRows(input)) == Lines{"# yours 1", "mine", "# stashes 0", "! No stashes"});
+	CHECK(mine == 0);
+}
+
+TEST_CASE("Git window: a landed verdict does not by itself rebuild the sidebar")
+{
+	// GitView rebuilds the rows when its SidebarInputs differ, and those hold no content result; what a build reads of the
+	// checks it reads through this callback, which only a build calls. Between two builds a landed verdict asks nothing.
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemoteBranch("origin", "topic");
+	const LineRead read = builder.Build();
+
+	bool landed = false;
+	int asked = 0;
+	const std::function<bool(std::size_t)> mergedByContent = [&](std::size_t) {
+		++asked;
+		return landed;
+	};
+	const SidebarInput input{.Read = read,
+							 .Stashes = &kNoStashes,
+							 .Authors = nullptr,
+							 .Search = {},
+							 .OpenByUser = {},
+							 .ShowingMerged = {},
+							 .MergedByContent = &mergedByContent};
+
+	const std::vector<SidebarRow> rows = BuildSidebarRows(input);
+	const int askedByTheBuild = asked;
+	CHECK(askedByTheBuild > 0);
+
+	landed = true;
+
+	CHECK(asked == askedByTheBuild);
 }

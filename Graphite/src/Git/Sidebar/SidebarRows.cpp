@@ -342,6 +342,11 @@ namespace Graphite {
 				m_Rows.push_back(std::move(row));
 			}
 
+			bool IsMergedByContent(std::size_t branch) const
+			{
+				return m_Input.MergedByContent != nullptr && *m_Input.MergedByContent && (*m_Input.MergedByContent)(branch);
+			}
+
 			void AddRemote(const std::string& remote)
 			{
 				const std::string key = "remote/" + remote;
@@ -353,8 +358,10 @@ namespace Graphite {
 				std::size_t hiddenMerged = 0;
 				std::vector<Listed> shown;
 
-				for (const Core::BranchLine& line : m_Input.Read.Model.Branches)
+				for (std::size_t branch = 0; branch < m_Input.Read.Model.Branches.size(); ++branch)
 				{
+					const Core::BranchLine& line = m_Input.Read.Model.Branches[branch];
+
 					if (RefAt(line.Ref).Remote != remote || m_BaseOwnsRow[line.Ref])
 					{
 						continue;
@@ -371,7 +378,7 @@ namespace Graphite {
 					{
 						++alsoLocal;
 					}
-					else if (mergedHidden && line.State == Core::BranchState::MergedByHistory && !HoldsShown(line.Ref))
+					else if (mergedHidden && (line.State == Core::BranchState::MergedByHistory || IsMergedByContent(branch)) && !HoldsShown(line.Ref))
 					{
 						++hiddenMerged;
 					}

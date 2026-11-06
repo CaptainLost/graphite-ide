@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -84,6 +85,10 @@ namespace Graphite {
 		// the group holding it opens unless the user closed that group, so a branch the user looks at never goes from the
 		// list.
 		std::string_view ShownRef;
+
+		// Whether the branch at this index of read.Model.Branches is known merged by content. Asked only while the rows are
+		// built, never between builds, so a verdict that lands later changes no row until the next build. Null for none.
+		const std::function<bool(std::size_t branch)>* MergedByContent = nullptr;
 	};
 
 	inline constexpr std::size_t kFlatGroupMost = 15;

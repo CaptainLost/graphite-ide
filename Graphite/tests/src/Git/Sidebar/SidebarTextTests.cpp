@@ -683,3 +683,131 @@ TEST_CASE("Git window: a section's count shows an ellipsis while its list is unr
 	stashes.Total = 5000;
 	CHECK(SectionCountText(stashes) == "3,448 of 5,000");
 }
+
+namespace {
+
+	const char* const kEllipsis = "\xE2\x80\xA6";
+
+	// A local branch on a base with commits of its own, as a content check can concern.
+	struct CandidateRead
+	{
+		LineRead Read;
+		std::size_t Branch = 0;
+	};
+
+	CandidateRead CandidateOnMain()
+	{
+		LineReadBuilder builder;
+		builder.AddRemote("origin");
+		const std::size_t main = builder.AddRemoteBranch("origin", "main");
+		builder.MakeBase(main);
+		const std::size_t topic = builder.AddLocal("topic");
+		builder.Compare(topic, main);
+		CandidateRead out{.Read = builder.Build(), .Branch = topic};
+		LineOfRef(out.Read, topic).Ahead = 2;
+		return out;
+	}
+
+	ContentMark MarkOfState(enum ContentMark::State state)
+	{
+		return ContentMark{.State = state, .Verdict = std::nullopt};
+	}
+
+	ContentMark Merged(Core::ContentKind kind, std::optional<Core::Oid> landing = std::nullopt)
+	{
+		ContentMark mark{.State = ContentMark::State::Known};
+		mark.Verdict = Core::ContentVerdict{.Outcome = Core::ContentOutcome::Merged, .Kind = kind, .Landing = landing, .Twins = {}};
+		return mark;
+	}
+
+	SidebarRowText DescribeWith(const LineRead& read, const SidebarRow& row, const ContentMark& mark)
+	{
+		const BranchLines lines(read);
+		const std::string common = MostCommonLineOf(read);
+		const std::optional<std::string> email;
+		SidebarTextInput input{.Read = read, .Lines = lines, .UserEmail = email, .MostCommonLine = common, .Now = LineReadBuilder::Now()};
+		input.ContentOf = [&mark](const Core::BranchLine&) { return mark; };
+		return DescribeSidebarRow(row, input);
+	}
+}
+
+TEST_CASE("Git window: a candidate row ends with a pending mark until its check lands")
+{
+	const CandidateRead candidate = CandidateOnMain();
+
+	const SidebarRowText pending = DescribeWith(candidate.Read, BranchRow(candidate.Branch), MarkOfState(ContentMark::State::Pending));
+	REQUIRE_FALSE(pending.Meta.empty());
+	CHECK(pending.Meta.back().Text == kEllipsis);
+	CHECK(pending.Meta.back().Tone == SidebarTone::Dim);
+
+	const SidebarRowText landed = DescribeWith(candidate.Read, BranchRow(candidate.Branch), Merged(Core::ContentKind::Squash));
+	CHECK(landed.Meta.size() == pending.Meta.size());
+	CHECK(landed.Meta.back().Text == "merged \xC2\xB7 squash");
+
+	const SidebarRowText notMerged = DescribeWith(candidate.Read, BranchRow(candidate.Branch),
+												  ContentMark{.State = ContentMark::State::Known,
+															  .Verdict = Core::ContentVerdict{.Outcome = Core::ContentOutcome::NotMerged}});
+	CHECK(notMerged.Meta.size() == pending.Meta.size() - 1);
+}
+
+TEST_CASE("Git window: a row merged by a squash says merged squash")
+{
+	const CandidateRead candidate = CandidateOnMain();
+	Core::Oid landing;
+	landing.Bytes.fill(0xAB);
+
+	const SidebarRowText text = DescribeWith(candidate.Read, BranchRow(candidate.Branch), Merged(Core::ContentKind::Squash, landing));
+
+	REQUIRE(SpanWith(text, "merged \xC2\xB7 squash") != nullptr);
+	CHECK(SpanWith(text, "merged \xC2\xB7 squash")->Tone == SidebarTone::Merged);
+	CHECK(text.Meta.back().Text == "merged \xC2\xB7 squash");
+	CHECK(text.Tooltip.find("Merged into main by a squash in " + landing.ShortHex() + ".") != std::string::npos);
+
+	const SidebarRowText noLanding = DescribeWith(candidate.Read, BranchRow(candidate.Branch), Merged(Core::ContentKind::Squash));
+	CHECK(noLanding.Tooltip.find("Merged into main by a squash.") != std::string::npos);
+}
+
+TEST_CASE("Git window: a row merged by a rebase says merged rebase")
+{
+	const CandidateRead candidate = CandidateOnMain();
+
+	const SidebarRowText text = DescribeWith(candidate.Read, BranchRow(candidate.Branch), Merged(Core::ContentKind::Rebase));
+
+	REQUIRE(SpanWith(text, "merged \xC2\xB7 rebase") != nullptr);
+	CHECK(SpanWith(text, "merged \xC2\xB7 rebase")->Tone == SidebarTone::Merged);
+	CHECK(text.Tooltip.find("Merged into main by a rebase.") != std::string::npos);
+}
+
+TEST_CASE("Git window: an unknown content check shows no mark")
+{
+	const CandidateRead candidate = CandidateOnMain();
+	const SidebarRowText known = DescribeWith(candidate.Read, BranchRow(candidate.Branch),
+											  ContentMark{.State = ContentMark::State::Known,
+														  .Verdict = Core::ContentVerdict{.Outcome = Core::ContentOutcome::NotMerged}});
+
+	const SidebarRowText unknown = DescribeWith(candidate.Read, BranchRow(candidate.Branch), MarkOfState(ContentMark::State::Unknown));
+
+	CHECK(Texts(unknown) == Texts(known));
+	CHECK(SpanWith(unknown, kEllipsis) == nullptr);
+	CHECK(unknown.Tooltip.find("Whether main holds its changes is unknown.") != std::string::npos);
+}
+
+TEST_CASE("Git window: a row that is no candidate asks nothing of the content checks")
+{
+	LineReadBuilder builder;
+	const std::size_t empty = builder.AddLocal("empty", BranchSpec{.State = Core::BranchState::NoOwnCommits});
+	LineRead read = builder.Build();
+	const BranchLines lines(read);
+	const std::string common = MostCommonLineOf(read);
+	const std::optional<std::string> email;
+	SidebarTextInput input{.Read = read, .Lines = lines, .UserEmail = email, .MostCommonLine = common, .Now = LineReadBuilder::Now()};
+	int asked = 0;
+	input.ContentOf = [&asked](const Core::BranchLine&) {
+		++asked;
+		return ContentMark{};
+	};
+
+	DescribeSidebarRow(BranchRow(empty), input);
+
+	CHECK(asked == 0);
+}

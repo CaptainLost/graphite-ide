@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Content/ContentModel.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LineReader.h"
 #include "Git/Sidebar/SidebarRows.h"
@@ -62,6 +63,9 @@ namespace Graphite {
 
 		// Why a worktree's changes could not be counted; empty when they were, or are being.
 		std::function<std::optional<std::string>(const std::filesystem::path&)> CountFailureOf;
+
+		// Whether a branch's changes are in its line by content, and records the row as in view; unset for no marks.
+		std::function<ContentMark(const Core::BranchLine&)> ContentOf;
 	};
 
 	// Empty for a row that is neither a branch nor a base.
