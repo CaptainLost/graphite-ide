@@ -139,7 +139,7 @@ namespace Graphite {
 
 			if (bases.Holding.empty() && bases.Equivalents.empty())
 			{
-				ImGui::TextDisabled("%s", bases.EquivalentsPending ? kPendingText : "in no base yet");
+				ImGui::TextDisabled("%s", InBasesEmptyText(bases).c_str());
 				return;
 			}
 

@@ -428,3 +428,61 @@ TEST_CASE("Git window: an unknown twin search adds no chip")
 	CHECK(bases.Equivalents.empty());
 	CHECK_FALSE(bases.EquivalentsPending);
 }
+
+TEST_CASE("Git window: a pending verdict of the shown branch keeps the in bases line waiting")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	const Graphite::InBases bases = Graphite::DescribeInBases(
+		read, std::vector<bool>{false, false, false},
+		{Graphite::BaseEquivalence{
+			.Base = 2, .Twin = Known(std::nullopt), .SquashLanding = std::nullopt, .SquashPending = true}});
+
+	CHECK(bases.EquivalentsPending);
+	CHECK(bases.Equivalents.empty());
+	CHECK(Graphite::InBasesEmptyText(bases) == "\xE2\x80\xA6");
+
+	// The verdict lands: the chip stands where the ellipsis was.
+	const Graphite::InBases landed = Graphite::DescribeInBases(
+		read, std::vector<bool>{false, false, false},
+		{Graphite::BaseEquivalence{
+			.Base = 2, .Twin = Known(std::nullopt), .SquashLanding = CommitWithFirstByte(1), .SquashPending = false}});
+
+	CHECK_FALSE(landed.EquivalentsPending);
+	CHECK(landed.Equivalents.size() == 1);
+}
+
+TEST_CASE("Git window: an empty in bases line says in no base yet only when nothing is pending")
+{
+	Graphite::InBases bases;
+
+	CHECK(Graphite::InBasesEmptyText(bases) == "in no base yet");
+
+	bases.EquivalentsPending = true;
+	CHECK(Graphite::InBasesEmptyText(bases) == "\xE2\x80\xA6");
+}
+
+TEST_CASE("Git window: the source sentence is decided at selection and kept until another commit is selected")
+{
+	Graphite::KeptSourceSentence kept;
+	const Core::Oid commit = CommitWithFirstByte(1);
+	const Core::Oid other = CommitWithFirstByte(2);
+	const std::optional<std::string> none;
+	const std::optional<std::string> sentence = "Squash of feature/x.";
+
+	CHECK_FALSE(kept.Keep(commit, none).has_value());
+
+	// The verdict lands while the commit stays selected: the open pane gains no line.
+	CHECK_FALSE(kept.Keep(commit, sentence).has_value());
+
+	// Another commit, then this one again: decided anew.
+	CHECK_FALSE(kept.Keep(other, none).has_value());
+	CHECK(kept.Keep(commit, sentence) == sentence);
+
+	// A sentence shown stays while it is shown, even if the verdict goes.
+	CHECK(kept.Keep(commit, none) == sentence);
+
+	// The details closed and opened on the same commit decide anew.
+	kept.Forget();
+	CHECK_FALSE(kept.Keep(commit, none).has_value());
+}

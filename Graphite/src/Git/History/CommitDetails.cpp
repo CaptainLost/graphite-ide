@@ -166,13 +166,35 @@ namespace Graphite {
 				bases.Equivalents.push_back(
 					InBaseEquivalent{.Base = name, .Text = "≈ in squash " + base.SquashLanding->ShortHex()});
 			}
-			else if (base.Twin.State == ContentMark::State::Pending)
+			else if (base.Twin.State == ContentMark::State::Pending || base.SquashPending)
 			{
 				bases.EquivalentsPending = true;
 			}
 		}
 
 		return bases;
+	}
+
+	std::string InBasesEmptyText(const InBases& bases)
+	{
+		return bases.EquivalentsPending ? "…" : "in no base yet";
+	}
+
+	const std::optional<std::string>& KeptSourceSentence::Keep(const Core::Oid& commit, const std::optional<std::string>& current)
+	{
+		if (!m_For.has_value() || *m_For != commit)
+		{
+			m_For = commit;
+			m_Text = current;
+		}
+
+		return m_Text;
+	}
+
+	void KeptSourceSentence::Forget()
+	{
+		m_For.reset();
+		m_Text.reset();
 	}
 
 	std::optional<std::string> ContentSourceSentence(const LineRead& read, const ContentSource& source)

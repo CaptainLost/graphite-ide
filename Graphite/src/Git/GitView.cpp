@@ -1696,7 +1696,7 @@ namespace Graphite {
 		RenderDiff(palette);
 	}
 
-	std::optional<Core::Oid> GitView::SquashLandingOf(const Core::Oid& commit, std::size_t base)
+	void GitView::NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t base)
 	{
 		const Core::BranchLine* const line = ShownContentCandidate();
 
@@ -1704,18 +1704,21 @@ namespace Graphite {
 		if (line == nullptr || !ViewFollowsModelsRead() || line->ComparedWith != std::optional<std::size_t>{base} ||
 			m_Model.GetMarkedKind() != GitModel::MarkedKind::Own || !MarkedCommitsOnScreen().contains(commit))
 		{
-			return std::nullopt;
+			return;
 		}
 
 		const ContentMark mark = m_Content.KnownMarkOf(*line);
 
+		// The branch's check is the line's to wait for: it may yet find the squash this commit is part of.
+		equivalence.SquashPending = mark.State == ContentMark::State::Pending;
+
 		if (mark.State != ContentMark::State::Known || !mark.Verdict.has_value() ||
 			mark.Verdict->Outcome != Core::ContentOutcome::Merged || mark.Verdict->Kind != Core::ContentKind::Squash)
 		{
-			return std::nullopt;
+			return;
 		}
 
-		return mark.Verdict->Landing;
+		equivalence.SquashLanding = mark.Verdict->Landing;
 	}
 
 	std::vector<BaseEquivalence> GitView::EquivalenceOf(const LineRead& read, const Core::Oid& commit,
@@ -1734,9 +1737,10 @@ namespace Graphite {
 
 			const std::size_t ref = read.Model.Bases[index].Ref;
 
-			equivalence.push_back(BaseEquivalence{.Base = index,
-												  .Twin = m_Content.TwinIn(commit, read.Refs[ref].Tip),
-												  .SquashLanding = SquashLandingOf(commit, ref)});
+			BaseEquivalence base{.Base = index, .Twin = m_Content.TwinIn(commit, read.Refs[ref].Tip)};
+
+			NoteShownSquash(base, commit, ref);
+			equivalence.push_back(std::move(base));
 		}
 
 		return equivalence;
@@ -1782,10 +1786,15 @@ namespace Graphite {
 											holding.has_value() ? EquivalenceOf(*read, commit.Id, *holding)
 																: std::vector<BaseEquivalence>{});
 
+			std::optional<std::string> sentence;
+
 			if (const std::optional<ContentSource> source = m_Content.SourceOf(commit.Id))
 			{
-				content.Source = ContentSourceSentence(*read, *source);
+				sentence = ContentSourceSentence(*read, *source);
 			}
+
+			// Decided when the commit is selected, so a verdict landing later does not add a line to the open pane.
+			content.Source = m_KeptSource.Keep(commit.Id, sentence);
 		}
 
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
@@ -1829,6 +1838,8 @@ namespace Graphite {
 
 	void GitView::RenderDiff(const GitPalette& palette)
 	{
+		m_KeptSource.Forget();
+
 		const std::optional<FileSelection> selected = m_Commits.GetSelectedFile();
 
 		if (!selected.has_value())

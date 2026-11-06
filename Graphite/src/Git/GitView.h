@@ -264,7 +264,10 @@ namespace Graphite {
 		// branch's own and the base its line.
 		std::vector<BaseEquivalence> EquivalenceOf(const LineRead& read, const Core::Oid& commit,
 												   const std::vector<bool>& holding);
-		std::optional<Core::Oid> SquashLandingOf(const Core::Oid& commit, std::size_t baseRef);
+		void NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t baseRef);
+
+		// The source sentence of the commit the details show, kept until another is selected.
+		KeptSourceSentence m_KeptSource;
 
 		void FollowSelectedRef();
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);

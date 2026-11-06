@@ -82,6 +82,7 @@ namespace Graphite {
 		std::size_t Base = 0;                   // index into read.Model.Bases
 		TwinMark Twin;                          // the search for a copy of the commit on the base
 		std::optional<Core::Oid> SquashLanding; // the base's commit holding the squash of the shown branch this commit is an own commit of
+		bool SquashPending = false;             // that branch's check has not answered yet
 	};
 
 	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked. `equivalence` holds
@@ -90,6 +91,22 @@ namespace Graphite {
 	// could not answer adds nothing.
 	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding,
 							const std::vector<BaseEquivalence>& equivalence = {});
+
+	// What the line says when nothing is held and nothing found: "…" while an equivalent is pending, else "in no base yet".
+	std::string InBasesEmptyText(const InBases& bases);
+
+	// The source sentence of the commit the details show, decided when the commit is selected and kept until another
+	// is: a verdict landing later shows it at the next selection, not as a line added to the open pane.
+	class KeptSourceSentence
+	{
+	public:
+		const std::optional<std::string>& Keep(const Core::Oid& commit, const std::optional<std::string>& current);
+		void Forget();
+
+	private:
+		std::optional<Core::Oid> m_For;
+		std::optional<std::string> m_Text;
+	};
 
 	// Where a commit's change came from, as the details say under the "In bases" line: "Squash of feature/x." or "Copy of
 	// 1a2b3c4 from feature/x."; empty when the branch is not in the read.
