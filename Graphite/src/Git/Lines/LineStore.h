@@ -12,6 +12,8 @@ namespace Graphite {
 	{
 		std::filesystem::path Answers; // <folder>/answers.json
 		std::filesystem::path Graph;   // <folder>/graph.bin
+		std::filesystem::path Content; // <folder>/content.json
+		std::filesystem::path Patches; // <folder>/patches.bin
 	};
 
 	// <root>/<16 lowercase hex digits>: FNV-1a 64 of the UTF-8 text of the common directory made absolute, normalised

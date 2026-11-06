@@ -138,7 +138,7 @@ namespace Graphite {
 	{
 		const std::filesystem::path folder = root / HexName(NormalisedKey(gitCommonDirectory));
 
-		return LineStorePaths{folder / "answers.json", folder / "graph.bin"};
+		return LineStorePaths{folder / "answers.json", folder / "graph.bin", folder / "content.json", folder / "patches.bin"};
 	}
 
 	Core::LineAnswers LoadLineAnswers(const std::filesystem::path& file)

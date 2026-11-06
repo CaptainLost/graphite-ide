@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -30,6 +31,7 @@ namespace Core {
 		std::string ShortHex(std::size_t digits = kGitDefaultShortHexDigits) const;
 
 		friend bool operator==(const Oid&, const Oid&) = default;
+		friend auto operator<=>(const Oid&, const Oid&) = default; // byte order, for ordered containers
 	};
 }
 
