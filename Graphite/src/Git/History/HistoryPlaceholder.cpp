@@ -22,4 +22,14 @@ namespace Graphite {
 
 		return std::nullopt;
 	}
+
+	std::string HeldHistoryText(bool linesAwaited, bool contentChecked)
+	{
+		if (!linesAwaited && contentChecked)
+		{
+			return "Checking whether the branch's changes are in its line\xE2\x80\xA6";
+		}
+
+		return "Reading the branches' lines\xE2\x80\xA6";
+	}
 }

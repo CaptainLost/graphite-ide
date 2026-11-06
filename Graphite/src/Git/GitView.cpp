@@ -1324,9 +1324,12 @@ namespace Graphite {
 			const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 			const bool pageWaitsForCount = page && shown.has_value() && PageAnswersSelection(*shown);
 
-			if (m_LogHeld || WaitsForLines() || pageWaitsForCount || RestoreWaits())
+			const bool linesAwaited = m_LogHeld || WaitsForLines() || RestoreWaits();
+
+			if (linesAwaited || pageWaitsForCount)
 			{
-				marks.Waiting = "Reading the branches' lines\xE2\x80\xA6";
+				// A page in hand may be held for the shown branch's content check rather than for the lines.
+				marks.Waiting = HeldHistoryText(linesAwaited, pageWaitsForCount && ShownContentWaits());
 			}
 			else if (placeholder.has_value())
 			{

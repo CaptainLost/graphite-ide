@@ -3,6 +3,7 @@
 #include "Git/History/HistoryPlaceholder.h"
 
 #include <optional>
+#include <string>
 
 namespace {
 	const Core::Error kNoRepository{Core::ErrorCode::NotFound, "no repository is open"};
@@ -53,6 +54,21 @@ TEST_CASE("While a new attempt at the history runs an earlier failure gives way 
 {
 	CHECK_FALSE(
 		Graphite::HistoryPlaceholder(kStatusDelivered, std::nullopt, kLogFailed, Graphite::LogAttempt::InFlight).has_value());
+}
+
+TEST_CASE("Git window: a history held for the shown branch's content check says so, and for the lines otherwise")
+{
+	const std::string lines = "Reading the branches' lines\xE2\x80\xA6";
+	const std::string contents = "Checking whether the branch's changes are in its line\xE2\x80\xA6";
+
+	CHECK(Graphite::HeldHistoryText(false, true) == contents);
+
+	// While anything of the lines is still awaited, the wait is theirs.
+	CHECK(Graphite::HeldHistoryText(true, true) == lines);
+	CHECK(Graphite::HeldHistoryText(true, false) == lines);
+
+	// A page held for its fold row's count alone is the lines' measuring too.
+	CHECK(Graphite::HeldHistoryText(false, false) == lines);
 }
 
 TEST_CASE("A missing repository is still said while a new attempt at the history runs")
