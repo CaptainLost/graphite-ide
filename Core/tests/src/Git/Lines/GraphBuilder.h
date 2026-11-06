@@ -55,7 +55,12 @@ public:
 	static constexpr int kDefaultNowDay = 100;
 	static constexpr std::size_t kNoRef = std::numeric_limits<std::size_t>::max();
 
-	Core::Oid Commit(std::string_view name, std::vector<std::string_view> parents, int day, std::string_view author = "a@example.com")
+	// The hosting service, which commits the pull requests it merges: a committer for work that lands on a shared line.
+	static constexpr std::string_view kService = "service@example.com";
+
+	// With no committer, the author committed the commit.
+	Core::Oid Commit(std::string_view name, std::vector<std::string_view> parents, int day, std::string_view author = "a@example.com",
+					 std::optional<std::string_view> committer = std::nullopt)
 	{
 		Core::GraphCommit commit;
 		commit.Id = OidOf(name);
@@ -67,14 +72,16 @@ public:
 
 		commit.Time = Seconds(day);
 		commit.AuthorKey = std::string(author);
+		commit.CommittedByAuthor = !committer.has_value() || *committer == author;
 		m_indexByName[std::string(name)] = m_commits.size();
 		m_commits.push_back(std::move(commit));
 		return m_commits.back().Id;
 	}
 
 	// name1..nameN, each the first parent of the next, the first on `parent` (none for a root), day by day from
-	// firstDay, authors taken in turn from `authors`.
-	void Chain(std::string_view name, int count, std::optional<std::string_view> parent, int firstDay, std::vector<std::string_view> authors)
+	// firstDay, authors taken in turn from `authors`, every one committed by `committer` (none: by its author).
+	void Chain(std::string_view name, int count, std::optional<std::string_view> parent, int firstDay, std::vector<std::string_view> authors,
+			   std::optional<std::string_view> committer = std::nullopt)
 	{
 		std::string previous = parent.has_value() ? std::string(*parent) : std::string();
 		bool hasPrevious = parent.has_value();
@@ -91,7 +98,7 @@ public:
 				parents.push_back(previous);
 			}
 
-			Commit(current, parents, firstDay + i - 1, author);
+			Commit(current, parents, firstDay + i - 1, author, committer);
 			previous = current;
 			hasPrevious = true;
 		}

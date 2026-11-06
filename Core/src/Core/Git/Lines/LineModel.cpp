@@ -7,6 +7,7 @@
 #include "Core/Git/Lines/LineThresholds.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -421,16 +422,19 @@ namespace Core {
 		struct VotedLine
 		{
 			std::size_t Guess = 0;   // the ref at its top that the user has not removed
-			std::size_t Authors = 0; // distinct authors of its own commits
+			std::size_t Authors = 0; // distinct authors of every commit on its stretch
 			std::int64_t TopTime = 0;
 		};
 
+		// The guess weighs a line by everyone whose commits are on it, merges and work its author committed included, and
+		// not by the base rules' count of work someone else committed: a guess is made where no remote reports a default,
+		// mostly in a repository whose authors commit their own work, where that count is nought on every line.
 		VotedLine DescribeVotedLine(const AncestryGraph& graph, const RefTable& table, const LineSplit& split, std::uint32_t line,
-									const std::vector<bool>& removed, std::int64_t now)
+									const std::vector<bool>& removed)
 		{
 			VotedLine voted;
 			voted.Guess = GuessAtTopOf(table, split, line, removed).value();
-			voted.Authors = MeasureLine(graph, split, line, {}, now).Authors;
+			voted.Authors = CountStretchAuthors(graph, split, line);
 			voted.TopTime = graph.TimeOf(split.Lines[line].Top);
 			return voted;
 		}
@@ -468,11 +472,11 @@ namespace Core {
 				return GuessAtTopOf(table, unpinned.Split, mostVoted.front(), removed);
 			}
 
-			VotedLine best = DescribeVotedLine(graph, table, unpinned.Split, mostVoted.front(), removed, now);
+			VotedLine best = DescribeVotedLine(graph, table, unpinned.Split, mostVoted.front(), removed);
 
 			for (std::size_t position = 1; position < mostVoted.size(); ++position)
 			{
-				const VotedLine candidate = DescribeVotedLine(graph, table, unpinned.Split, mostVoted[position], removed, now);
+				const VotedLine candidate = DescribeVotedLine(graph, table, unpinned.Split, mostVoted[position], removed);
 
 				if (IsBetterVotedLine(table, candidate, best))
 				{
@@ -655,15 +659,17 @@ namespace Core {
 
 		BaseReason RuleThatHolds(const LineQualities& qualities)
 		{
-			return qualities.MergedLines >= kMergedLinesForBase ? BaseReason::MergedLines : BaseReason::Authors;
+			return QualifiesByMerges(qualities) ? BaseReason::MergedLines : BaseReason::Authors;
 		}
 
 		// Measures every line that is no base's line and adds each that qualifies, unless the user removed the ref that
-		// speaks for its top. True when any was added.
+		// speaks for its top. True when any was added. A line no base owns is cut at every base's history, in one walk
+		// for the pass.
 		bool AddBasesFoundByRules(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
 								  const std::vector<bool>& removed, std::int64_t now, BaseList& list)
 		{
 			const std::vector<Index> baseTips = BaseTipsOf(table, list.Bases);
+			const std::vector<bool> reachedByBases = CommitsReachableFrom(graph, baseTips);
 			bool anyAdded = false;
 
 			for (std::uint32_t line = 0; line < indexed.Split.Lines.size(); ++line)
@@ -680,7 +686,7 @@ namespace Core {
 					continue;
 				}
 
-				const LineQualities qualities = MeasureLine(graph, indexed.Split, line, baseTips, now);
+				const LineQualities qualities = MeasureLine(graph, indexed.Split, line, baseTips, reachedByBases, now);
 
 				if (QualifiesAsBase(qualities))
 				{
@@ -920,19 +926,138 @@ namespace Core {
 			return anySetAside;
 		}
 
-		// Each base's line as the final split draws it. A kept base its line still qualifies for reports the rule. A
-		// base whose tip sits on a line another base listed before it owns has no stretch of its own to measure until
-		// it has a commit of its own.
+		// kNoLine for a base whose tip sits on a line another base listed before it owns.
+		std::uint32_t OwnLineOf(const RefTable& table, const IndexedSplit& indexed, const LineBase& base)
+		{
+			const std::uint32_t line = indexed.Split.LineOf[table.Tips[base.Ref]];
+			const bool ownsIt = line != kNoLine && indexed.BaseOfLine[line] == base.Ref;
+			return ownsIt ? line : kNoLine;
+		}
+
+		// Up to two of the base tips that reach a commit: enough to tell, for any one base, whether another one does.
+		using TipsReaching = std::array<Index, 2>;
+
+		constexpr TipsReaching kNoTipsReaching{AncestryGraph::kNoCommit, AncestryGraph::kNoCommit};
+
+		void AddTipReaching(TipsReaching& tips, Index tip)
+		{
+			if (tips[0] == tip || tips[1] == tip)
+			{
+				return;
+			}
+
+			if (tips[0] == AncestryGraph::kNoCommit)
+			{
+				tips[0] = tip;
+			}
+			else if (tips[1] == AncestryGraph::kNoCommit)
+			{
+				tips[1] = tip;
+			}
+		}
+
+		bool IsReachedByAnotherTip(const TipsReaching& tips, Index ownTip)
+		{
+			const bool firstIsAnother = tips[0] != AncestryGraph::kNoCommit && tips[0] != ownTip;
+			const bool secondIsAnother = tips[1] != AncestryGraph::kNoCommit && tips[1] != ownTip;
+			return firstIsAnother || secondIsAnother;
+		}
+
+		bool HasHigherGeneration(const std::vector<std::uint32_t>& generations, Index first, Index second)
+		{
+			return generations[first] > generations[second];
+		}
+
+		// Every commit before its parents: a child's generation is higher than each of its parents'.
+		std::vector<Index> ChildrenFirst(const AncestryGraph& graph)
+		{
+			const std::vector<std::uint32_t> generations = GenerationsOf(graph);
+			std::vector<Index> order(graph.Size());
+
+			for (Index commit = 0; commit < graph.Size(); ++commit)
+			{
+				order[commit] = commit;
+			}
+
+			std::sort(order.begin(), order.end(),
+					  [&generations](Index first, Index second) { return HasHigherGeneration(generations, first, second); });
+			return order;
+		}
+
+		// One pass, children first, so that whatever reaches a commit has reached all of its children before it.
+		std::vector<TipsReaching> TipsReachingEachCommit(const AncestryGraph& graph, std::span<const Index> tips)
+		{
+			std::vector<TipsReaching> reaching(graph.Size(), kNoTipsReaching);
+
+			for (const Index tip : tips)
+			{
+				AddTipReaching(reaching[tip], tip);
+			}
+
+			for (const Index commit : ChildrenFirst(graph))
+			{
+				for (const Index parent : graph.ParentsOf(commit))
+				{
+					for (const Index tip : reaching[commit])
+					{
+						if (tip != AncestryGraph::kNoCommit)
+						{
+							AddTipReaching(reaching[parent], tip);
+						}
+					}
+				}
+			}
+
+			return reaching;
+		}
+
+		// Per commit on a base's own line, whether another base that owns a line reaches it; false elsewhere. A commit is
+		// on one line, so one array answers for every base, and one pass over the graph finds it for all of them where a
+		// walk per base would not keep up with a hundred bases. A base whose tip sits on another's line reaches nothing
+		// that line's owner lacks, and would only cut the owner's line at itself.
+		std::vector<bool> OwnLinesReachedByOtherBases(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed,
+													  std::span<const LineBase> bases)
+		{
+			std::vector<Index> owningTips;
+
+			for (const LineBase& base : bases)
+			{
+				if (OwnLineOf(table, indexed, base) != kNoLine)
+				{
+					owningTips.push_back(table.Tips[base.Ref]);
+				}
+			}
+
+			const std::vector<TipsReaching> reaching = TipsReachingEachCommit(graph, owningTips);
+			std::vector<bool> reached(graph.Size(), false);
+
+			for (const LineBase& base : bases)
+			{
+				const Index tip = table.Tips[base.Ref];
+
+				for (const Index commit : StretchOf(graph, indexed.Split, OwnLineOf(table, indexed, base)))
+				{
+					reached[commit] = IsReachedByAnotherTip(reaching[commit], tip);
+				}
+			}
+
+			return reached;
+		}
+
+		// Each base's line as the final split draws it, cut, as the rules cut a line, at what the other bases reach. A
+		// kept base its line still qualifies for reports the rule; one whose work another base has since taken in stays
+		// kept. A base whose tip sits on a line another base listed before it owns has no stretch of its own to measure
+		// until it has a commit of its own.
 		void DescribeBases(const AncestryGraph& graph, const RefTable& table, const IndexedSplit& indexed, std::int64_t now, std::vector<LineBase>& bases)
 		{
 			const std::vector<Index> baseTips = BaseTipsOf(table, bases);
+			const std::vector<bool> reachedByOtherBases = OwnLinesReachedByOtherBases(graph, table, indexed, bases);
 
 			for (LineBase& base : bases)
 			{
 				const Index tip = table.Tips[base.Ref];
-				const std::uint32_t line = indexed.Split.LineOf[tip];
-				const bool ownsItsLine = line != kNoLine && indexed.BaseOfLine[line] == base.Ref;
-				base.Qualities = ownsItsLine ? MeasureLine(graph, indexed.Split, line, baseTips, now) : LineQualities{};
+				const std::uint32_t line = OwnLineOf(table, indexed, base);
+				base.Qualities = line != kNoLine ? MeasureLine(graph, indexed.Split, line, baseTips, reachedByOtherBases, now) : LineQualities{};
 				base.Active = IsActive(graph, tip, now);
 
 				if (base.Reason == BaseReason::Kept && QualifiesAsBase(base.Qualities))
@@ -1137,30 +1262,6 @@ namespace Core {
 			scratch.Touched.push_back(commit);
 		}
 
-		std::vector<bool> CommitsReachableFrom(const AncestryGraph& graph, Index start)
-		{
-			std::vector<bool> reached(graph.Size(), false);
-			std::vector<Index> pending{start};
-			reached[start] = true;
-
-			while (!pending.empty())
-			{
-				const Index commit = pending.back();
-				pending.pop_back();
-
-				for (const Index parent : graph.ParentsOf(commit))
-				{
-					if (!reached[parent])
-					{
-						reached[parent] = true;
-						pending.push_back(parent);
-					}
-				}
-			}
-
-			return reached;
-		}
-
 		// The walk never passes a commit `reached` holds, so it visits only the commits it counts and their edge.
 		std::size_t CountUnreached(const AncestryGraph& graph, const std::vector<bool>& reached, Index tip, WalkScratch& scratch)
 		{
@@ -1334,7 +1435,8 @@ namespace Core {
 
 			for (const auto& [baseTip, positions] : comparedWithBaseTip)
 			{
-				const std::vector<bool> reached = CommitsReachableFrom(graph, baseTip);
+				const std::array<Index, 1> tips{baseTip};
+				const std::vector<bool> reached = CommitsReachableFrom(graph, tips);
 
 				for (const std::size_t position : positions)
 				{

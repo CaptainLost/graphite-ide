@@ -46,14 +46,18 @@ namespace Core {
 			return boundary;
 		}
 
+		std::string EmailKeyOf(const git_signature* signature)
+		{
+			return AuthorKeyOf(signature != nullptr && signature->email != nullptr ? signature->email : "");
+		}
+
 		GraphCommit ReadGraphCommit(git_commit* commit, const std::unordered_set<Oid>& shallowBoundary)
 		{
 			GraphCommit graphCommit;
 			graphCommit.Id = ToOid(*git_commit_id(commit));
 			graphCommit.Time = static_cast<std::int64_t>(git_commit_time(commit));
-
-			const git_signature* author = git_commit_author(commit);
-			graphCommit.AuthorKey = AuthorKeyOf(author != nullptr && author->email != nullptr ? author->email : "");
+			graphCommit.AuthorKey = EmailKeyOf(git_commit_author(commit));
+			graphCommit.CommittedByAuthor = EmailKeyOf(git_commit_committer(commit)) == graphCommit.AuthorKey;
 
 			if (shallowBoundary.contains(graphCommit.Id))
 			{

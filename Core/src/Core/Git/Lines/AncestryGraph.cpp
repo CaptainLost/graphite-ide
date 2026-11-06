@@ -39,6 +39,7 @@ namespace Core {
 			m_times.push_back(commit.Time);
 			m_authors.push_back(InternAuthor(commit.AuthorKey));
 			m_parentsCut.push_back(commit.ParentsCut);
+			m_committedByAuthor.push_back(commit.CommittedByAuthor);
 			rawParents.push_back(std::move(commit.Parents));
 		}
 
@@ -109,6 +110,11 @@ namespace Core {
 		return m_parentsCut[commit];
 	}
 
+	bool AncestryGraph::CommittedByAuthor(Index commit) const
+	{
+		return m_committedByAuthor[commit];
+	}
+
 	std::vector<GraphCommit> AncestryGraph::ToCommits() const
 	{
 		std::vector<GraphCommit> commits;
@@ -121,6 +127,7 @@ namespace Core {
 			commit.Time = m_times[i];
 			commit.AuthorKey = m_authorKeys[m_authors[i]];
 			commit.ParentsCut = m_parentsCut[i];
+			commit.CommittedByAuthor = m_committedByAuthor[i];
 
 			for (const Index parent : ParentsOf(i))
 			{

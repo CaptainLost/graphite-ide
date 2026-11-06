@@ -114,12 +114,16 @@ TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest
 	const Core::LineModel& model = read.Model;
 
 	MESSAGE("commits read (cold): ", cold.GetValue().CommitsRead, ", refs: ", read.Refs.size());
+	MESSAGE("bases after the cold read: ", cold.GetValue().Model.Bases.size(), ", kept after it: ", cold.GetValue().Answers.KeptBases.size(),
+			", kept after the warm read: ", read.Answers.KeptBases.size());
 	MESSAGE("cold read ", coldMilliseconds, " ms (reads the whole graph), warm read ", warmMilliseconds,
 			" ms (cached graph and the model), commits read warm: ", read.CommitsRead);
 
 	for (const Core::LineBase& base : model.Bases)
 	{
-		MESSAGE("base ", read.Refs[base.Ref].FullName, " (", std::string{ReasonText(base.Reason)}, std::string{base.Active ? ", active)" : ", quiet)"});
+		MESSAGE("base ", read.Refs[base.Ref].FullName, " (", std::string{ReasonText(base.Reason)}, std::string{base.Active ? ", active)" : ", quiet)"},
+				" merged ", base.Qualities.MergedLines, " mergedAuthors ", base.Qualities.MergedAuthors, " authors ", base.Qualities.Authors,
+				" days ", base.Qualities.Span / 86400, " commits ", base.Qualities.Commits);
 	}
 
 	for (const Core::OldCopy& copy : model.OldCopies)

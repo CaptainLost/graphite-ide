@@ -68,6 +68,31 @@ TEST_CASE("Lines: reading the graph returns every reachable commit with its pare
 	CHECK(firstCommit->Parents.empty());
 }
 
+TEST_CASE("Lines: reading the graph tells work someone else committed from work its author committed")
+{
+	GitFixture repo;
+	repo.Write("a.txt", "1");
+	const std::string own = repo.CommitAs("own", "Ann", "ann@example.com");
+	repo.Write("a.txt", "2");
+	const std::string landed = repo.CommitAtCommittedBy("landed", "ann@example.com", "noreply@example.com", 2);
+	repo.Write("a.txt", "3");
+	const std::string sameKey = repo.CommitAtCommittedBy("same key", "ann@example.com", "Ann@Example.com", 3);
+	const Core::Repository repository = OpenRepositoryAt(repo.GetPath());
+
+	const auto read = repository.ReadGraphCommits({{OidFromHex(sameKey)}, {}});
+
+	REQUIRE(read.HasValue());
+	const Core::GraphCommit* ownCommit = FindCommit(read.GetValue(), own);
+	const Core::GraphCommit* landedCommit = FindCommit(read.GetValue(), landed);
+	const Core::GraphCommit* sameKeyCommit = FindCommit(read.GetValue(), sameKey);
+	REQUIRE(ownCommit != nullptr);
+	REQUIRE(landedCommit != nullptr);
+	REQUIRE(sameKeyCommit != nullptr);
+	CHECK(ownCommit->CommittedByAuthor);
+	CHECK_FALSE(landedCommit->CommittedByAuthor);
+	CHECK(sameKeyCommit->CommittedByAuthor);
+}
+
 TEST_CASE("Lines: known tips and their ancestors are not read again")
 {
 	GitFixture repo;

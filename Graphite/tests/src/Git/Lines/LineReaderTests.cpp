@@ -98,7 +98,7 @@ namespace {
 	}
 
 	// master (days 1..20) pushed to origin as its default, and a release branch from day 10 with six commits by three
-	// e-mails on days 11..19, pushed as origin/release: the rules find release as a base.
+	// e-mails on days 11..19, landed by the service, pushed as origin/release: the rules find release as a base.
 	void BuildReleaseScenario(GitFixture& fixture)
 	{
 	for (int day = 1; day <= 10; ++day)
@@ -116,7 +116,7 @@ namespace {
 	for (int index = 0; index < 6; ++index)
 	{
 		fixture.Write("r.txt", std::to_string(index));
-		releaseTip = fixture.CommitAt("release " + std::to_string(index), emails[index % 3], days[index]);
+		releaseTip = fixture.CommitAtCommittedBy("release " + std::to_string(index), emails[index % 3], "noreply@example.com", days[index]);
 	}
 	fixture.PushTo("release", releaseTip);
 

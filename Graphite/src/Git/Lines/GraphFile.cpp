@@ -16,8 +16,17 @@
 namespace Graphite {
 
 	namespace {
-		constexpr std::string_view kMagic = "GLG1";
+		constexpr std::string_view kMagic = "GLG2";
+		constexpr std::uint8_t kNoFlags = 0;
 		constexpr std::uint8_t kParentsCutFlag = 1;
+		constexpr std::uint8_t kCommittedByOtherFlag = 2;
+
+		std::uint8_t FlagsOf(bool parentsCut, bool committedByAuthor)
+		{
+			const std::uint8_t cutFlag = parentsCut ? kParentsCutFlag : kNoFlags;
+			const std::uint8_t committerFlag = committedByAuthor ? kNoFlags : kCommittedByOtherFlag;
+			return static_cast<std::uint8_t>(cutFlag | committerFlag);
+		}
 
 		void PutUnsigned(std::string& out, std::uint64_t value, int byteCount)
 		{
@@ -202,7 +211,7 @@ namespace Graphite {
 			bytes.append(reinterpret_cast<const char*>(commit.Id.Bytes.data()), Core::Oid::kByteCount);
 			PutUnsigned(bytes, static_cast<std::uint64_t>(commit.Time), 8);
 			PutUnsigned(bytes, authorIndex.at(commit.AuthorKey), 4);
-			PutUnsigned(bytes, cut ? kParentsCutFlag : 0, 1);
+			PutUnsigned(bytes, FlagsOf(cut, commit.CommittedByAuthor), 1);
 			PutUnsigned(bytes, parents.size(), 1);
 
 			for (const std::uint32_t parent : parents)
@@ -291,6 +300,7 @@ namespace Graphite {
 			row.Commit.Time = static_cast<std::int64_t>(time);
 			row.Commit.AuthorKey = authors[static_cast<std::size_t>(author)];
 			row.Commit.ParentsCut = (flags & kParentsCutFlag) != 0;
+			row.Commit.CommittedByAuthor = (flags & kCommittedByOtherFlag) == 0;
 
 			// SaveGraph writes parents first, so a parent at or above its child is damage, and refusing it keeps a
 			// cycle, which every first-parent walk would go round for ever, out of the graph.

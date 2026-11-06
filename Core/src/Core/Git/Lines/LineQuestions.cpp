@@ -198,6 +198,38 @@ namespace Core {
 		return generations;
 	}
 
+	std::vector<bool> CommitsReachableFrom(const AncestryGraph& graph, std::span<const Index> tips)
+	{
+		std::vector<bool> reached(graph.Size(), false);
+		std::vector<Index> pending;
+
+		for (const Index tip : tips)
+		{
+			if (tip != AncestryGraph::kNoCommit && !reached[tip])
+			{
+				reached[tip] = true;
+				pending.push_back(tip);
+			}
+		}
+
+		while (!pending.empty())
+		{
+			const Index commit = pending.back();
+			pending.pop_back();
+
+			for (const Index parent : graph.ParentsOf(commit))
+			{
+				if (!reached[parent])
+				{
+					reached[parent] = true;
+					pending.push_back(parent);
+				}
+			}
+		}
+
+		return reached;
+	}
+
 	// Walks from both tips together, highest generation first, until every queued commit is reached from both: the
 	// rest is shared history. A skewed clock cannot end the walk before a commit's last child has been seen.
 	LineDistance MeasureDistance(const AncestryGraph& graph, std::span<const std::uint32_t> generations, Index from, Index to)

@@ -115,6 +115,15 @@ public:
 		return CommitWithSignatureTime(message, kDefaultAuthorName, authorEmail, kFirstDayStart + kSecondsPerDay * day);
 	}
 
+	// Like CommitAt, but put on the branch by someone else: a hosting service merging a pull request, a maintainer
+	// picking it.
+	std::string CommitAtCommittedBy(const std::string& message, const std::string& authorEmail, const std::string& committerEmail, int day)
+	{
+		const git_time_t kFirstDayStart = 1767225600;
+		const git_time_t kSecondsPerDay = 86400;
+		return CommitWithSignatures(message, kDefaultAuthorName, authorEmail, committerEmail, kFirstDayStart + kSecondsPerDay * day);
+	}
+
 	void Branch(const std::string& name)
 	{
 		git_oid headId{};
@@ -339,12 +348,19 @@ public:
 private:
 	std::string CommitWithSignatureTime(const std::string& message, const std::string& authorName, const std::string& authorEmail, git_time_t commitTime)
 	{
+		return CommitWithSignatures(message, authorName, authorEmail, authorEmail, commitTime);
+	}
+
+	std::string CommitWithSignatures(const std::string& message, const std::string& authorName, const std::string& authorEmail,
+									 const std::string& committerEmail, git_time_t commitTime)
+	{
 		git_oid treeId = StageEverything();
 
 		git_tree* tree = nullptr;
 		REQUIRE(git_tree_lookup(&tree, m_Repository, &treeId) == 0);
 
-		git_signature* signature = MakeSignature(authorName, authorEmail, commitTime);
+		git_signature* author = MakeSignature(authorName, authorEmail, commitTime);
+		git_signature* committer = MakeSignature(authorName, committerEmail, commitTime);
 
 		git_oid parentId{};
 		const bool hasParent = git_reference_name_to_id(&parentId, m_Repository, "HEAD") == 0;
@@ -360,7 +376,7 @@ private:
 		const git_commit** parentsOrNone = hasParent ? parents : nullptr;
 
 		git_oid commitId{};
-		REQUIRE(git_commit_create(&commitId, m_Repository, "HEAD", signature, signature, "UTF-8",
+		REQUIRE(git_commit_create(&commitId, m_Repository, "HEAD", author, committer, "UTF-8",
 								  message.c_str(), tree, parentCount, parentsOrNone) == 0);
 
 		if (parent != nullptr)
@@ -368,7 +384,8 @@ private:
 			git_commit_free(parent);
 		}
 
-		git_signature_free(signature);
+		git_signature_free(committer);
+		git_signature_free(author);
 		git_tree_free(tree);
 
 		return HexTextOf(commitId);

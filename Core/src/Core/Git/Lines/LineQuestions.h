@@ -27,6 +27,9 @@ namespace Core {
 	// clocks said. The questions below walk in this order instead of by time.
 	std::vector<std::uint32_t> GenerationsOf(const AncestryGraph& graph);
 
+	// Per commit, whether a tip in `tips` reaches it (a tip reaches itself); a tip the graph lacks (kNoCommit) is skipped.
+	std::vector<bool> CommitsReachableFrom(const AncestryGraph& graph, std::span<const AncestryGraph::Index> tips);
+
 	// The walk ends where the two histories meet, so it touches the commits it counts and the edge of what both
 	// reach. The overload without generations computes them over the whole graph first; a caller asking many
 	// questions computes them once.

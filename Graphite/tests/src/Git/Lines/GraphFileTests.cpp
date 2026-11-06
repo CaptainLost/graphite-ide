@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace Graphite;
@@ -51,11 +52,12 @@ namespace {
 		}
 	}
 
-	// A version 1 graph file written by hand: commit i has the id IdOf(i + 1), one author, and the parent indices given.
-	std::string GraphFileOf(const std::vector<std::vector<std::uint32_t>>& parentsPerCommit)
+	// A graph file written by hand: commit i has the id IdOf(i + 1), one author, no flags, and the parent indices
+	// given. Version 1 differs from version 2 only in its magic and in having no committer flag.
+	std::string GraphFileOf(const std::vector<std::vector<std::uint32_t>>& parentsPerCommit, std::string_view magic = "GLG2")
 	{
 		const std::string author = "ann@example.com";
-		std::string bytes = "GLG1";
+		std::string bytes(magic);
 		PutLittleEndian(bytes, 1, 4);
 		PutLittleEndian(bytes, author.size(), 4);
 		bytes += author;
@@ -134,6 +136,39 @@ TEST_CASE("Lines: a saved graph loads back equal")
 	CHECK(loaded->Size() == 5);
 }
 
+TEST_CASE("Lines: work someone else committed stays told apart after saving and loading")
+{
+	Core::GraphCommit own{IdOf(1), {}, 100, "ann@example.com", false, true};
+	Core::GraphCommit landed{IdOf(2), {IdOf(1)}, 200, "ann@example.com", false, false};
+	Core::GraphCommit cutAndLanded{IdOf(3), {IdOf(99)}, 300, "bob@example.com", false, false};
+	Core::AncestryGraph graph;
+	graph.Append({own, landed, cutAndLanded});
+
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "graph.bin";
+	REQUIRE(SaveGraph(file, graph).HasValue());
+	const std::optional<Core::AncestryGraph> loaded = LoadGraph(file);
+
+	REQUIRE(loaded.has_value());
+	CHECK(Sorted(loaded->ToCommits()) == Sorted(graph.ToCommits()));
+	CHECK(loaded->CommittedByAuthor(loaded->Find(IdOf(1))));
+	CHECK_FALSE(loaded->CommittedByAuthor(loaded->Find(IdOf(2))));
+	CHECK_FALSE(loaded->CommittedByAuthor(loaded->Find(IdOf(3))));
+	CHECK(loaded->ParentsCutAt(loaded->Find(IdOf(3))));
+}
+
+TEST_CASE("Lines: a graph file of the first version, which cannot tell who committed a commit, is read again")
+{
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "graph.bin";
+
+	REQUIRE(Core::WriteFileAtomically(file, GraphFileOf({{}, {0}}, "GLG1")).HasValue());
+	CHECK_FALSE(LoadGraph(file).has_value());
+
+	REQUIRE(Core::WriteFileAtomically(file, GraphFileOf({{}, {0}})).HasValue());
+	CHECK(LoadGraph(file).has_value());
+}
+
 TEST_CASE("Lines: a damaged graph file is not trusted")
 {
 	TempDirectory directory;
@@ -155,7 +190,7 @@ TEST_CASE("Lines: a damaged graph file is not trusted")
 	SUBCASE("another magic")
 	{
 		std::string changed = bytes;
-		changed[3] = '2';
+		changed[3] = '9';
 		REQUIRE(Core::WriteFileAtomically(damaged, changed).HasValue());
 		CHECK_FALSE(LoadGraph(damaged).has_value());
 	}

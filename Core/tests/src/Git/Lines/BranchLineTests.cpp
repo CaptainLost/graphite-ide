@@ -70,15 +70,16 @@ namespace {
 		builder.Ref("refs/remotes/origin/main", "m" + std::to_string(commitCount), true);
 	}
 
-	// release r1..r6 from m10 by three people over eight days, with no merges: a base by its authors.
+	// release r1..r6 from m10 by three people over eight days, with no merges, each landed by the service: a base by
+	// its authors.
 	void AddRelease(GraphBuilder& builder)
 	{
-		builder.Commit("r1", {"m10"}, 11, "p@example.com");
-		builder.Commit("r2", {"r1"}, 12, "q@example.com");
-		builder.Commit("r3", {"r2"}, 14, "r@example.com");
-		builder.Commit("r4", {"r3"}, 15, "p@example.com");
-		builder.Commit("r5", {"r4"}, 17, "q@example.com");
-		builder.Commit("r6", {"r5"}, 19, "r@example.com");
+		builder.Commit("r1", {"m10"}, 11, "p@example.com", GraphBuilder::kService);
+		builder.Commit("r2", {"r1"}, 12, "q@example.com", GraphBuilder::kService);
+		builder.Commit("r3", {"r2"}, 14, "r@example.com", GraphBuilder::kService);
+		builder.Commit("r4", {"r3"}, 15, "p@example.com", GraphBuilder::kService);
+		builder.Commit("r5", {"r4"}, 17, "q@example.com", GraphBuilder::kService);
+		builder.Commit("r6", {"r5"}, 19, "r@example.com", GraphBuilder::kService);
 		builder.Ref("refs/remotes/origin/release/2", "r6");
 	}
 
@@ -402,6 +403,8 @@ TEST_CASE("Lines: a fix forked from a release line is compared with the release 
 
 TEST_CASE("Lines: a fix forked just before the release went back into the trunk is still on the release line")
 {
+	// release/2 was found as a base before main took r1..r4 in, and is kept: what is left of its own work, r5 and r6,
+	// would no longer make it one.
 	GraphBuilder builder;
 	builder.Chain("m", 20, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
 	AddRelease(builder);
@@ -410,8 +413,10 @@ TEST_CASE("Lines: a fix forked just before the release went back into the trunk 
 	builder.Ref("refs/remotes/origin/main", "m21", true);
 	builder.Ref("refs/remotes/origin/fix", "f1");
 	builder.SetNow(30);
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/origin/release/2"};
 
-	const Core::LineModel model = Compute(builder);
+	const Core::LineModel model = Compute(builder, answers);
 	const Core::BranchLine fix = RequireBranch(model, builder.RefIndex("refs/remotes/origin/fix"));
 
 	CHECK(fix.Kind == Core::ComparedKind::Base);

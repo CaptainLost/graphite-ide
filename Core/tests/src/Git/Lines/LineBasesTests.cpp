@@ -90,24 +90,32 @@ namespace {
 		builder.Commit("M3", {"M2", "h2"}, 15 + shift);
 	}
 
-	// main m1..m20 by three authors; release r1..r6 from m10 by three others over eight days, with no merges.
-	void AddSquashOnlyRelease(GraphBuilder& builder)
+	// main m1..m20 by three authors; release r1..r6 from m10 by three others over eight days, with no merges, each
+	// landed by the service. origin/main, the default, points at `mainTip`.
+	void AddSquashOnlyRelease(GraphBuilder& builder, std::string_view mainTip = "m20")
 	{
 		builder.Chain("m", 20, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
-		builder.Commit("r1", {"m10"}, 11, "p@example.com");
-		builder.Commit("r2", {"r1"}, 12, "q@example.com");
-		builder.Commit("r3", {"r2"}, 14, "r@example.com");
-		builder.Commit("r4", {"r3"}, 15, "p@example.com");
-		builder.Commit("r5", {"r4"}, 17, "q@example.com");
-		builder.Commit("r6", {"r5"}, 19, "r@example.com");
-		builder.Ref("refs/remotes/origin/main", "m20", true);
+		builder.Commit("r1", {"m10"}, 11, "p@example.com", GraphBuilder::kService);
+		builder.Commit("r2", {"r1"}, 12, "q@example.com", GraphBuilder::kService);
+		builder.Commit("r3", {"r2"}, 14, "r@example.com", GraphBuilder::kService);
+		builder.Commit("r4", {"r3"}, 15, "p@example.com", GraphBuilder::kService);
+		builder.Commit("r5", {"r4"}, 17, "q@example.com", GraphBuilder::kService);
+		builder.Commit("r6", {"r5"}, 19, "r@example.com", GraphBuilder::kService);
+		builder.Ref("refs/remotes/origin/main", mainTip, true);
 		builder.Ref("refs/remotes/origin/release/2", "r6");
 	}
 
-	// upstream's main u1..u30 by three authors; the fork's origin/main stopped at u5.
+	// main m1..m20 by three authors, the server's default.
+	void AddDefaultMain(GraphBuilder& builder)
+	{
+		builder.Chain("m", 20, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+		builder.Ref("refs/remotes/origin/main", "m20", true);
+	}
+
+	// upstream's main u1..u30 by three authors, landed by the service; the fork's origin/main stopped at u5.
 	void AddFork(GraphBuilder& builder, bool upstreamReportsDefault)
 	{
-		builder.Chain("u", 30, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+		builder.Chain("u", 30, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"}, GraphBuilder::kService);
 		builder.Ref("refs/remotes/origin/main", "u5", true);
 		builder.Ref("refs/remotes/upstream/main", "u30", upstreamReportsDefault);
 		builder.SetNow(40);
@@ -115,11 +123,11 @@ namespace {
 
 	// The fork's origin/main stopped at u5; upstream's main line `upstreamMainLine` is u1..u30 by three authors, and
 	// upstream/feature, f1..f8 from u5 by four others over seven days, is a base by its authors and the heavier line
-	// above u5.
+	// above u5. The service landed every commit.
 	void AddForkWithHeavierFeature(GraphBuilder& builder, std::string_view upstreamMainLine, bool upstreamReportsDefault)
 	{
-		builder.Chain("u", 30, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
-		builder.Chain("f", 8, "u5", 6, {"d@example.com", "e@example.com", "f@example.com", "g@example.com"});
+		builder.Chain("u", 30, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"}, GraphBuilder::kService);
+		builder.Chain("f", 8, "u5", 6, {"d@example.com", "e@example.com", "f@example.com", "g@example.com"}, GraphBuilder::kService);
 		builder.Ref("refs/remotes/origin/main", "u5", true);
 		builder.Ref(upstreamMainLine, "u30", upstreamReportsDefault);
 		builder.Ref("refs/remotes/upstream/feature", "f8");
@@ -217,7 +225,83 @@ TEST_CASE("Lines: a branch built on the tip of a busy release line does not beco
 	REQUIRE(model.Bases.size() == 2);
 	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/2"));
 	CHECK(model.Bases[1].Reason == Core::BaseReason::Authors);
+	CHECK(model.Bases[1].Qualities.Authors == 3);
 	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/cp")));
+}
+
+TEST_CASE("Lines: a release line is still a base when a pull request by two people sits on its tip")
+{
+	// Two authors above the tip go on with the line, so the line is named after the pull request (a known weak spot of
+	// the split); the release line's own work, landed by the service, still makes it a base.
+	GraphBuilder builder;
+	AddSquashOnlyRelease(builder);
+	builder.Commit("c1", {"r6"}, 20, "d@example.com");
+	builder.Commit("c2", {"c1"}, 21, "e@example.com");
+	builder.Ref("refs/remotes/origin/cp", "c2");
+	builder.SetNow(30);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/cp"));
+	CHECK(model.Bases[1].Reason == Core::BaseReason::Authors);
+	CHECK(model.Bases[1].Qualities.Authors == 3);
+}
+
+TEST_CASE("Lines: one person under two e-mails with a coding agent is not a base")
+{
+	// topic t1..t9 from m10 over nine days: the developer's commits under a home and a work e-mail, pushed by the
+	// developer, and the agent's, which the developer committed.
+	GraphBuilder builder;
+	AddDefaultMain(builder);
+	builder.Chain("t", 9, "m10", 21, {"dev@home.example", "dev@work.example"});
+	builder.Commit("t10", {"t9"}, 30, "agent@example.com", "dev@work.example");
+	builder.Commit("t11", {"t10"}, 31, "agent@example.com", "dev@work.example");
+	builder.Ref("refs/remotes/origin/topic", "t11");
+	builder.SetNow(40);
+
+	const Core::LineModel model = Compute(builder);
+
+	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/topic")));
+	CHECK(ComparedRef(model, builder.RefIndex("refs/remotes/origin/topic")) == builder.RefIndex("refs/remotes/origin/main"));
+}
+
+TEST_CASE("Lines: a topic whose reviewer merged the trunk into it is not a base")
+{
+	// Two people's work, landed by the service; a reviewer twice brings the topic up to date with main.
+	GraphBuilder builder;
+	AddDefaultMain(builder);
+	builder.Commit("t1", {"m10"}, 11, "p@example.com", GraphBuilder::kService);
+	builder.Commit("t2", {"t1"}, 12, "q@example.com", GraphBuilder::kService);
+	builder.Commit("S1", {"t2", "m14"}, 14, "rev@example.com", GraphBuilder::kService);
+	builder.Commit("t3", {"S1"}, 15, "p@example.com", GraphBuilder::kService);
+	builder.Commit("S2", {"t3", "m19"}, 19, "rev@example.com", GraphBuilder::kService);
+	builder.Ref("refs/remotes/origin/topic", "S2");
+	builder.SetNow(30);
+
+	const Core::LineModel model = Compute(builder);
+
+	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/topic")));
+}
+
+TEST_CASE("Lines: an agent merging three of its own sub-branches within a day is not a base")
+{
+	GraphBuilder builder;
+	AddDefaultMain(builder);
+	builder.Commit("g0", {"m1"}, 2, "agent@example.com");
+	builder.Commit("x1", {"m3"}, 39, "agent@example.com");
+	builder.Commit("y1", {"m4"}, 39, "agent@example.com");
+	builder.Commit("z1", {"m5"}, 40, "agent@example.com");
+	builder.Commit("G1", {"g0", "x1"}, 40, "agent@example.com");
+	builder.Commit("G2", {"G1", "y1"}, 40, "agent@example.com");
+	builder.Commit("G3", {"G2", "z1"}, 41, "agent@example.com");
+	builder.Ref("refs/remotes/origin/agents/integration", "G3");
+	builder.SetNow(50);
+
+	const Core::LineModel model = Compute(builder);
+
+	REQUIRE(model.Bases.size() == 1);
+	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
 }
 
 TEST_CASE("Lines: merging the trunk into a feature three times does not make the feature a base")
@@ -291,7 +375,7 @@ TEST_CASE("Lines: a stale default is an old copy of upstream's main line even wh
 	REQUIRE_FALSE(model.Bases.empty());
 	CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/upstream/main"));
 	CHECK(model.Bases[0].Reason == Core::BaseReason::Authors);
-	CHECK(model.Bases[0].Qualities.Commits == 30);
+	CHECK(model.Bases[0].Qualities.Commits == 20); // u1..u10 are release/1's history too, so its own work starts at u11
 	CHECK(IsBase(model, builder.RefIndex("refs/remotes/upstream/release/1")));
 	CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/main")));
 	CHECK_FALSE(model.MainLineGuessed);
@@ -300,12 +384,12 @@ TEST_CASE("Lines: a stale default is an old copy of upstream's main line even wh
 TEST_CASE("Lines: an integration branch on a remote with fewer branches does not make the default an old copy")
 {
 	// origin has the default and two features; a colleague's remote has one integration branch built on origin/main's
-	// tip by three people over eight days, which the rules find as a base.
+	// tip by three people over eight days, landed by the service, which the rules find as a base.
 	GraphBuilder builder;
 	builder.Chain("u", 20, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
 	builder.Commit("f1", {"u10"}, 11, "d@example.com");
 	builder.Commit("g1", {"u12"}, 13, "d@example.com");
-	builder.Chain("i", 9, "u20", 21, {"p@example.com", "q@example.com", "r@example.com"});
+	builder.Chain("i", 9, "u20", 21, {"p@example.com", "q@example.com", "r@example.com"}, GraphBuilder::kService);
 	builder.Ref("refs/remotes/origin/main", "u20", true);
 	builder.Ref("refs/remotes/origin/feature/1", "f1");
 	builder.Ref("refs/remotes/origin/feature/2", "g1");
@@ -363,12 +447,12 @@ TEST_CASE("Lines: a stale default hands the main line to the user's main line an
 TEST_CASE("Lines: without another default the main line after a stale copy is voted among the candidates")
 {
 	// Only the fork reports a default, at u5. upstream/a (three authors) and upstream/b (four, so the heavier line
-	// above u5) both go on from it and are bases by their authors; three active fixes fork from upstream/a and none
-	// from upstream/b.
+	// above u5) both go on from it and are bases by their authors, whose work the service landed; three active fixes
+	// fork from upstream/a and none from upstream/b.
 	GraphBuilder builder;
 	builder.Chain("u", 5, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
-	builder.Chain("a", 8, "u5", 6, {"p@example.com", "q@example.com", "r@example.com"});
-	builder.Chain("b", 8, "u5", 6, {"s@example.com", "t@example.com", "v@example.com", "w@example.com"});
+	builder.Chain("a", 8, "u5", 6, {"p@example.com", "q@example.com", "r@example.com"}, GraphBuilder::kService);
+	builder.Chain("b", 8, "u5", 6, {"s@example.com", "t@example.com", "v@example.com", "w@example.com"}, GraphBuilder::kService);
 	builder.Commit("x1", {"a2"}, 14, "x@example.com");
 	builder.Commit("y1", {"a3"}, 15, "y@example.com");
 	builder.Commit("z1", {"a4"}, 16, "z@example.com");
@@ -521,6 +605,24 @@ TEST_CASE("Lines: a kept base whose line still qualifies carries the rule's reas
 	REQUIRE(model.Bases.size() == 2);
 	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/2"));
 	CHECK(model.Bases[1].Reason == Core::BaseReason::Authors);
+}
+
+TEST_CASE("Lines: a kept base whose work another base now reaches stays a base and is told as kept")
+{
+	// main merged release/2 at m21, so every commit of release/2's line is main's history too.
+	GraphBuilder builder;
+	builder.Commit("m21", {"m20", "r6"}, 21, "a@example.com", GraphBuilder::kService);
+	AddSquashOnlyRelease(builder, "m21");
+	builder.SetNow(30);
+	Core::LineAnswers answers;
+	answers.KeptBases = {"refs/remotes/origin/release/2"};
+
+	const Core::LineModel model = Compute(builder, answers);
+
+	REQUIRE(model.Bases.size() == 2);
+	CHECK(model.Bases[1].Ref == builder.RefIndex("refs/remotes/origin/release/2"));
+	CHECK(model.Bases[1].Reason == Core::BaseReason::Kept);
+	CHECK(model.Bases[1].Qualities.Commits == 0);
 }
 
 TEST_CASE("Lines: a base added on a kept base's tip does not take the kept base's line")

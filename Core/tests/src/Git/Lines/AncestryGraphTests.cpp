@@ -100,3 +100,23 @@ TEST_CASE("Lines: a chain names its commits in order and takes authors in turn")
 	CHECK(b.Now() == GraphBuilder::Seconds(100));
 	CHECK(GraphBuilder::Seconds(0) == 1767225600);
 }
+
+TEST_CASE("Lines: who committed a commit survives a second batch and the round trip")
+{
+	GraphBuilder b;
+	b.Commit("own", {}, 1, "p@example.com");
+	b.Commit("landed", {"own"}, 2, "p@example.com", GraphBuilder::kService);
+	Core::AncestryGraph graph = b.Graph();
+	graph.Append({Core::GraphCommit{OidOf("picked"), {OidOf("landed")}, 3, "q@example.com", false, false}});
+
+	CHECK(graph.CommittedByAuthor(graph.Find(b.Id("own"))));
+	CHECK_FALSE(graph.CommittedByAuthor(graph.Find(b.Id("landed"))));
+	CHECK_FALSE(graph.CommittedByAuthor(graph.Find(OidOf("picked"))));
+
+	Core::AncestryGraph copy;
+	copy.Append(graph.ToCommits());
+	CHECK(copy.ToCommits() == graph.ToCommits());
+	CHECK(copy.CommittedByAuthor(copy.Find(b.Id("own"))));
+	CHECK_FALSE(copy.CommittedByAuthor(copy.Find(b.Id("landed"))));
+	CHECK_FALSE(copy.CommittedByAuthor(copy.Find(OidOf("picked"))));
+}

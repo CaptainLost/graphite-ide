@@ -20,6 +20,10 @@ namespace Core {
 		std::string AuthorKey;    // AuthorKeyOf(author e-mail)
 		bool ParentsCut = false;  // a shallow boundary: git records parents this repository does not have
 
+		// The committer's e-mail key is the author's. False when someone else put the commit on its line: a hosting
+		// service merging a pull request, a maintainer picking it.
+		bool CommittedByAuthor = true;
+
 		friend bool operator==(const GraphCommit&, const GraphCommit&) = default;
 	};
 
@@ -49,6 +53,7 @@ namespace Core {
 
 		const std::vector<std::string>& AuthorKeys() const;
 		bool ParentsCutAt(Index commit) const;
+		bool CommittedByAuthor(Index commit) const;
 
 		// What Append took, for the cache file.
 		std::vector<GraphCommit> ToCommits() const;
@@ -60,6 +65,7 @@ namespace Core {
 		std::vector<std::int64_t> m_times;
 		std::vector<std::uint32_t> m_authors;
 		std::vector<bool> m_parentsCut;
+		std::vector<bool> m_committedByAuthor;
 
 		// Commit i's parents are m_parents[m_parentStarts[i] .. m_parentStarts[i + 1]).
 		std::vector<std::size_t> m_parentStarts{0};

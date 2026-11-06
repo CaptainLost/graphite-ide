@@ -8,6 +8,7 @@ namespace Core {
 	inline constexpr std::int64_t kSecondsPerDay = 86400;
 
 	inline constexpr std::size_t kMergedLinesForBase = 3;
+	inline constexpr std::size_t kMergedAuthorsForBase = 2; // or the merges span kSpanForBase
 	inline constexpr std::size_t kAuthorsForBase = 3;
 	inline constexpr std::int64_t kSpanForBase = 7 * kSecondsPerDay;
 	inline constexpr std::size_t kCommitsForBase = 5;
