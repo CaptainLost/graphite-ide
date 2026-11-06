@@ -2,6 +2,7 @@
 
 #include "Core/Git/Lines/LineMeasure.h"
 
+#include "Core/Base/Assert.h"
 #include "Core/Git/Lines/LineThresholds.h"
 
 #include <algorithm>
@@ -12,12 +13,6 @@ namespace Core {
 	namespace {
 
 		using Index = AncestryGraph::Index;
-
-		Index FirstParentOf(const AncestryGraph& graph, Index commit)
-		{
-			const std::span<const Index> parents = graph.ParentsOf(commit);
-			return parents.empty() ? AncestryGraph::kNoCommit : parents.front();
-		}
 
 		bool IsMerge(const AncestryGraph& graph, Index commit)
 		{
@@ -79,7 +74,7 @@ namespace Core {
 					return true;
 				}
 
-				current = FirstParentOf(graph, current);
+				current = graph.FirstParentOf(current);
 			}
 
 			return false;
@@ -110,7 +105,7 @@ namespace Core {
 
 			for (const Index tip : baseTips)
 			{
-				for (Index current = tip; current != AncestryGraph::kNoCommit && !onBase[current]; current = FirstParentOf(graph, current))
+				for (Index current = tip; current != AncestryGraph::kNoCommit && !onBase[current]; current = graph.FirstParentOf(current))
 				{
 					onBase[current] = true;
 				}
@@ -281,7 +276,7 @@ namespace Core {
 		}
 
 		for (Index commit = split.Lines[line].Top; commit != AncestryGraph::kNoCommit && split.LineOf[commit] == line;
-			 commit = FirstParentOf(graph, commit))
+			 commit = graph.FirstParentOf(commit))
 		{
 			stretch.push_back(commit);
 		}
@@ -292,6 +287,8 @@ namespace Core {
 	LineQualities MeasureLine(const AncestryGraph& graph, const LineSplit& split, std::uint32_t line,
 							  std::span<const AncestryGraph::Index> baseTips, const std::vector<bool>& reachedByOtherBases, std::int64_t now)
 	{
+		CORE_ASSERT(reachedByOtherBases.size() == graph.Size(), "MeasureLine needs one reach entry per commit of the graph");
+
 		const std::vector<Index> stretch = StretchOf(graph, split, line);
 		LineQualities qualities;
 		MeasureOwnWork(graph, stretch, reachedByOtherBases, qualities);

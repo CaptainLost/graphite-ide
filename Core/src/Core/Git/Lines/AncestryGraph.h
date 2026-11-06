@@ -46,6 +46,9 @@ namespace Core {
 
 		const Oid& IdOf(Index commit) const;
 		std::span<const Index> ParentsOf(Index commit) const;
+
+		// kNoCommit for a root, or for a commit whose parents the graph lacks.
+		Index FirstParentOf(Index commit) const;
 		std::int64_t TimeOf(Index commit) const;
 
 		// An index into AuthorKeys().

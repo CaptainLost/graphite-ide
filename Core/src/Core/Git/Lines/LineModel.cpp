@@ -718,19 +718,13 @@ namespace Core {
 			return indexed;
 		}
 
-		Index FirstParentOf(const AncestryGraph& graph, Index commit)
-		{
-			const std::span<const Index> parents = graph.ParentsOf(commit);
-			return parents.empty() ? AncestryGraph::kNoCommit : parents.front();
-		}
-
 		// Commit times are only numbers here: the walk allows a day of skew below the commit it looks for.
 		bool IsOnFirstParentChainBelow(const AncestryGraph& graph, Index commit, Index tip)
 		{
 			const std::int64_t floor = graph.TimeOf(commit) - kSecondsPerDay;
 
-			for (Index below = FirstParentOf(graph, tip); below != AncestryGraph::kNoCommit && graph.TimeOf(below) >= floor;
-				 below = FirstParentOf(graph, below))
+			for (Index below = graph.FirstParentOf(tip); below != AncestryGraph::kNoCommit && graph.TimeOf(below) >= floor;
+				 below = graph.FirstParentOf(below))
 			{
 				if (below == commit)
 				{

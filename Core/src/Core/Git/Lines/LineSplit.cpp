@@ -28,12 +28,6 @@ namespace Core {
 			return commit < graph.Size();
 		}
 
-		Index FirstParentOf(const AncestryGraph& graph, Index commit)
-		{
-			const std::span<const Index> parents = graph.ParentsOf(commit);
-			return parents.empty() ? AncestryGraph::kNoCommit : parents.front();
-		}
-
 		// The commits on some tip's first-parent chain. They form a forest: a commit's path children are the
 		// path commits whose first parent it is.
 		struct PathTree
@@ -80,7 +74,7 @@ namespace Core {
 				{
 					isOnPath[commit] = true;
 					pathCommits.push_back(commit);
-					commit = FirstParentOf(graph, commit);
+					commit = graph.FirstParentOf(commit);
 				}
 			}
 
@@ -93,7 +87,7 @@ namespace Core {
 
 			for (const Index commit : pathCommits)
 			{
-				const Index firstParent = FirstParentOf(graph, commit);
+				const Index firstParent = graph.FirstParentOf(commit);
 
 				if (firstParent == AncestryGraph::kNoCommit)
 				{
@@ -117,7 +111,7 @@ namespace Core {
 
 			for (const Index commit : pathCommits)
 			{
-				const Index firstParent = FirstParentOf(graph, commit);
+				const Index firstParent = graph.FirstParentOf(commit);
 
 				if (firstParent != AncestryGraph::kNoCommit)
 				{
@@ -291,7 +285,7 @@ namespace Core {
 				while (commit != AncestryGraph::kNoCommit && pins.PinnedBy[commit] == kNoBase)
 				{
 					pins.PinnedBy[commit] = baseIndex;
-					commit = FirstParentOf(graph, commit);
+					commit = graph.FirstParentOf(commit);
 				}
 			}
 
@@ -418,7 +412,7 @@ namespace Core {
 
 		for (const Index commit : plan.Tree.ParentsFirst)
 		{
-			if (FirstParentOf(graph, commit) == AncestryGraph::kNoCommit)
+			if (graph.FirstParentOf(commit) == AncestryGraph::kNoCommit)
 			{
 				StartLine(split, lineAuthors, commit, AncestryGraph::kNoCommit);
 			}

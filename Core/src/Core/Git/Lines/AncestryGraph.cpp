@@ -90,6 +90,12 @@ namespace Core {
 		return std::span<const Index>(m_parents).subspan(begin, m_parentStarts[commit + 1] - begin);
 	}
 
+	AncestryGraph::Index AncestryGraph::FirstParentOf(Index commit) const
+	{
+		const std::span<const Index> parents = ParentsOf(commit);
+		return parents.empty() ? kNoCommit : parents.front();
+	}
+
 	std::int64_t AncestryGraph::TimeOf(Index commit) const
 	{
 		return m_times[commit];

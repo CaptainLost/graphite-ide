@@ -625,6 +625,49 @@ TEST_CASE("Lines: a kept base whose work another base now reaches stays a base a
 	CHECK(model.Bases[1].Qualities.Commits == 0);
 }
 
+TEST_CASE("Lines: work a base already reaches does not make a line a base")
+{
+	SUBCASE("a release line whose work main took in")
+	{
+		// main merged r4, so of release/2's line only r5 and r6, by two people, are its own.
+		GraphBuilder builder;
+		builder.Commit("m21", {"m20", "r4"}, 21, "a@example.com", GraphBuilder::kService);
+		AddSquashOnlyRelease(builder, "m21");
+		builder.SetNow(30);
+
+		const Core::LineModel model = Compute(builder);
+
+		REQUIRE(model.Bases.size() == 1);
+		CHECK(model.Bases[0].Ref == builder.RefIndex("refs/remotes/origin/main"));
+		CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/release/2")));
+	}
+
+	SUBCASE("a topic built on a pull request main merged")
+	{
+		// The pull request p1..p6, three people's work landed by the service over eight days, went into main at M;
+		// topic t1 was built on its last commit, so its line runs down through p1..p6.
+		GraphBuilder builder;
+		builder.Chain("m", 20, std::nullopt, 1, {"a@example.com", "b@example.com", "c@example.com"});
+		builder.Commit("p1", {"m5"}, 6, "p@example.com", GraphBuilder::kService);
+		builder.Commit("p2", {"p1"}, 7, "q@example.com", GraphBuilder::kService);
+		builder.Commit("p3", {"p2"}, 9, "r@example.com", GraphBuilder::kService);
+		builder.Commit("p4", {"p3"}, 10, "p@example.com", GraphBuilder::kService);
+		builder.Commit("p5", {"p4"}, 12, "q@example.com", GraphBuilder::kService);
+		builder.Commit("p6", {"p5"}, 14, "r@example.com", GraphBuilder::kService);
+		builder.Commit("M", {"m20", "p6"}, 21, "a@example.com", GraphBuilder::kService);
+		builder.Commit("t1", {"p6"}, 22, "t@example.com");
+		builder.Ref("refs/remotes/origin/main", "M", true);
+		builder.Ref("refs/remotes/origin/topic", "t1");
+		builder.SetNow(30);
+
+		const Core::LineModel model = Compute(builder);
+
+		REQUIRE(model.Bases.size() == 1);
+		CHECK_FALSE(IsBase(model, builder.RefIndex("refs/remotes/origin/topic")));
+		CHECK(ComparedRef(model, builder.RefIndex("refs/remotes/origin/topic")) == builder.RefIndex("refs/remotes/origin/main"));
+	}
+}
+
 TEST_CASE("Lines: a base added on a kept base's tip does not take the kept base's line")
 {
 	// release/2 was found and kept; the user then added staging at its tip. backport forks from release/2's line
