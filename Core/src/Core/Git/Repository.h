@@ -5,6 +5,7 @@
 #include "Core/Git/Blame.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
+#include "Core/Git/Content/ContentAnswer.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Lines/AncestryGraph.h"
@@ -27,9 +28,18 @@
 #include <string_view>
 #include <vector>
 
+struct git_odb_backend;
 struct git_repository;
 
 namespace Core {
+
+	// Whether objects a check creates reach the repository. InMemory keeps them in a store that is
+	// dropped, so a read-only question leaves the object directory as it found it.
+	enum class ObjectWrites
+	{
+		OnDisk,
+		InMemory,
+	};
 
 	// Far smaller than MaximumFileSize: this text is re-read whenever the working tree changes and
 	// lexed again when it differs, so its cost is paid repeatedly rather than once. Two megabytes is
@@ -40,6 +50,8 @@ namespace Core {
 	{
 	public:
 		static Result<Repository> Open(const std::filesystem::path& anyPathInside);
+
+		static Result<Repository> Open(const std::filesystem::path& anyPathInside, ObjectWrites writes);
 
 		// The repository this directory is the working directory of, or the git directory of, and
 		// no other: nothing is searched for above it, so a worktree folder that lost its `.git` file
@@ -238,6 +250,15 @@ namespace Core {
 		// are never touched.
 		Result<void> DiscardAll(UntrackedFiles untrackedFiles);
 
+		// Yes when merging branchTip into lineTip in memory gives lineTip's own tree, so the line already
+		// holds everything the branch has; No on a conflict or another tree. Unknown when an object the
+		// merge needs is missing, as in a blobless clone. Writes nothing into the repository. Needs a
+		// repository opened with ObjectWrites::InMemory, else InvalidArgument.
+		Result<ContentAnswer> MergeChangesNothing(const Oid& lineTip, const Oid& branchTip) const;
+
+		// Forgets what in-memory checks wrote; a check does this itself when it ends.
+		void DropObjectsInMemory() const;
+
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
 			return m_WorkingDirectory;
@@ -247,7 +268,9 @@ namespace Core {
 		Repository() = default;
 
 		// The flags are libgit2's GIT_REPOSITORY_OPEN_* bits.
-		static Result<Repository> OpenWith(const std::filesystem::path& where, unsigned int openFlags);
+		static Result<Repository> OpenWith(const std::filesystem::path& where, unsigned int openFlags, ObjectWrites writes);
+
+		Result<void> AttachMemoryBackend();
 
 		// Defined in Repository.cpp, because no header under Core/Git includes <git2.h>.
 		struct Free
@@ -256,6 +279,8 @@ namespace Core {
 		};
 
 		std::unique_ptr<git_repository, Free> m_Handle;
+		// Owned by the object database of m_Handle.
+		git_odb_backend* m_MemoryBackend = nullptr;
 		std::filesystem::path m_WorkingDirectory;
 		PathKeyText m_WorkingDirectoryKey;
 		std::vector<std::filesystem::path> m_GlobalExcludesFiles;

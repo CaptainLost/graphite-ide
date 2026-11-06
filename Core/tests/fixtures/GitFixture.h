@@ -345,6 +345,35 @@ public:
 		git_reference_free(branch);
 	}
 
+	// Deletes the loose object file, as a clone that left the object out never had it.
+	void RemoveObject(const std::string& hex)
+	{
+		const std::filesystem::path file = m_Directory.GetPath() / ".git" / "objects" / hex.substr(0, 2) / hex.substr(2);
+		REQUIRE(std::filesystem::exists(file));
+
+		std::error_code removeError;
+		std::filesystem::permissions(file, std::filesystem::perms::owner_write, std::filesystem::perm_options::add, removeError);
+		REQUIRE(std::filesystem::remove(file, removeError));
+	}
+
+	// Every file under .git/objects, packs included.
+	std::size_t ObjectFileCount() const
+	{
+		std::size_t count = 0;
+		std::error_code listError;
+
+		for (const std::filesystem::directory_entry& entry :
+			 std::filesystem::recursive_directory_iterator(m_Directory.GetPath() / ".git" / "objects", listError))
+		{
+			if (entry.is_regular_file())
+			{
+				++count;
+			}
+		}
+
+		return count;
+	}
+
 private:
 	std::string CommitWithSignatureTime(const std::string& message, const std::string& authorName, const std::string& authorEmail, git_time_t commitTime)
 	{

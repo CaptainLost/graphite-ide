@@ -135,15 +135,21 @@ namespace Core {
 	Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
 	{
 		const unsigned int noOpenFlags = 0;
-		return OpenWith(anyPathInside, noOpenFlags);
+		return OpenWith(anyPathInside, noOpenFlags, ObjectWrites::OnDisk);
+	}
+
+	Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside, ObjectWrites writes)
+	{
+		const unsigned int noOpenFlags = 0;
+		return OpenWith(anyPathInside, noOpenFlags, writes);
 	}
 
 	Result<Repository> Repository::OpenExactly(const std::filesystem::path& directory)
 	{
-		return OpenWith(directory, GIT_REPOSITORY_OPEN_NO_SEARCH);
+		return OpenWith(directory, GIT_REPOSITORY_OPEN_NO_SEARCH, ObjectWrites::OnDisk);
 	}
 
-	Result<Repository> Repository::OpenWith(const std::filesystem::path& where, unsigned int openFlags)
+	Result<Repository> Repository::OpenWith(const std::filesystem::path& where, unsigned int openFlags, ObjectWrites writes)
 	{
 		EnsureLibgit2Initialised();
 
@@ -177,6 +183,16 @@ namespace Core {
 		repository.m_WorkingDirectory = WorkingDirectoryOf(openedHandle);
 		repository.m_WorkingDirectoryKey = PathKey(repository.m_WorkingDirectory);
 		repository.m_GlobalExcludesFiles = GlobalExcludesFilesOf(repository.m_Handle.get());
+
+		if (writes == ObjectWrites::InMemory)
+		{
+			Result<void> attached = repository.AttachMemoryBackend();
+
+			if (!attached.HasValue())
+			{
+				return attached.GetError();
+			}
+		}
 
 		return repository;
 	}
