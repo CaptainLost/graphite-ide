@@ -1,5 +1,7 @@
 #include "Git/GitView.h"
 
+#include "Git/Content/ContentOrder.h"
+
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/Theme.h"
@@ -104,6 +106,11 @@ namespace Graphite {
 			{
 				pieces.push_back(VsPiece{" ", colours.Dim, false});
 				pieces.push_back(VsPiece{line, text, true});
+			}
+
+			if (!label.How.empty())
+			{
+				pieces.push_back(VsPiece{kSeparator + label.How, colours.Dim, false});
 			}
 
 			if (!label.Counts.empty())
@@ -288,6 +295,51 @@ namespace Graphite {
 		}
 
 		return !m_Lines.DistanceOf(tips->From, tips->To).has_value();
+	}
+
+	std::optional<ContentMark> GitView::ShownContentMark()
+	{
+		const BranchLines* const lines = CurrentLines();
+		const std::string shownRef = ShownRefName();
+
+		if (lines == nullptr || shownRef.empty())
+		{
+			return std::nullopt;
+		}
+
+		const std::string_view shown = lines->ShownAs(shownRef);
+
+		// The line DescribeVs describes as a branch's; a pick or an old copy has no state of the model's to check.
+		if (lines->PickedLineOf(shown).has_value() || lines->OldCopyNamed(shown) != nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const Core::BranchLine* const line = lines->LineOf(shown);
+
+		if (line == nullptr || !IsContentCandidate(*line))
+		{
+			return std::nullopt;
+		}
+
+		return m_Content.MarkOfShown(*line);
+	}
+
+	bool GitView::ShownContentWaits()
+	{
+		const std::optional<ContentMark> mark = ShownContentMark();
+
+		if (!mark.has_value())
+		{
+			return false;
+		}
+
+		// WARNING: The model checks only while the window is drawn, and only the read it follows; a wait outside those
+		// would never end.
+		const bool modelChecks = HasBeenDrawnOnLatestFrame() && m_SidebarBuiltFrom.has_value() &&
+								 m_SidebarBuiltFrom->Read == m_Lines.GetRead();
+
+		return ContentCheckWaits(*mark, modelChecks);
 	}
 
 	float GitView::VsButtonWidth(const VsLabel& label) const

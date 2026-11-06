@@ -14,6 +14,27 @@ namespace Graphite {
 				   " behind it, so no branch is compared with it.";
 		}
 
+		// A branch no commit of the line holds, whose contents the line holds all the same.
+		std::optional<std::string> MergedByContentBanner(const VsInput& input, const Core::BranchLine& line)
+		{
+			if (!IsMergedByContent(input.Content) || !line.ComparedWith.has_value())
+			{
+				return std::nullopt;
+			}
+
+			const std::string name = LineNameOf(input.Read, *line.ComparedWith);
+
+			if (input.Content->Kind == Core::ContentKind::Rebase)
+			{
+				return "Merged into " + name + " by a rebase: each of its commits has a copy in " + name + ".";
+			}
+
+			const std::string landing =
+				input.Content->Landing.has_value() ? " in " + input.Content->Landing->ShortHex() : std::string{};
+
+			return "Merged into " + name + " by a squash" + landing + ": its changes are in " + name + ", its commits are not.";
+		}
+
 		std::optional<std::string> BranchBanner(const VsInput& input, const Core::BranchLine& line)
 		{
 			switch (line.State)
@@ -26,6 +47,7 @@ namespace Graphite {
 			case Core::BranchState::MergedByHistory:
 				break;
 			case Core::BranchState::NotMerged:
+				return MergedByContentBanner(input, line);
 			case Core::BranchState::NotCompared:
 			case Core::BranchState::TipMissing:
 				return std::nullopt;
@@ -57,9 +79,9 @@ namespace Graphite {
 		return keepsDrawn ? drawn->Words : fresh;
 	}
 
-	bool HeaderWordsWait(bool measuring, bool rowsOfLineShown)
+	bool HeaderWordsWait(bool measuring, bool rowsOfLineShown, bool contentPending)
 	{
-		return measuring || !rowsOfLineShown;
+		return measuring || contentPending || !rowsOfLineShown;
 	}
 
 	std::optional<std::string> HistoryBannerFor(const VsInput& input)

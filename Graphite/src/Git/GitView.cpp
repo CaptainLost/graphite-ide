@@ -1045,6 +1045,12 @@ namespace Graphite {
 			return false;
 		}
 
+		// ... and for the check of the branch's contents, which may find it merged by a squash or a rebase.
+		if (ShownContentWaits())
+		{
+			return false;
+		}
+
 		const HistoryLine line = LineToShow();
 		std::optional<std::size_t> behind;
 
@@ -1081,7 +1087,7 @@ namespace Graphite {
 		const bool foldWaits = line.Fold == LineFold::Folded && m_Lines.HoldsCommit(line.BranchTip) &&
 							   m_Lines.HoldsCommit(line.LineTip) && !m_Lines.DistanceOf(line.BranchTip, line.LineTip).has_value();
 
-		return headerWaits || foldWaits;
+		return headerWaits || foldWaits || ShownContentWaits();
 	}
 
 	const std::unordered_set<Core::Oid>& GitView::MarkedCommitsOnScreen()

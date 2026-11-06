@@ -154,3 +154,54 @@ TEST_CASE("Git window: an old copy the user picked a line for has no old copy ba
 
 	CHECK_FALSE(Banner(scene, "refs/remotes/fork/main").has_value());
 }
+
+namespace {
+
+	std::optional<std::string> BannerWithContent(Scene& scene, const Core::ContentVerdict& verdict)
+	{
+		scene.Line().State = Core::BranchState::NotMerged;
+
+		const BranchLines lines(scene.Read);
+
+		return HistoryBannerFor(VsInput{scene.Read, lines, "refs/heads/feature", std::nullopt, verdict});
+	}
+}
+
+TEST_CASE("Git window: the banner names a squash's landing commit")
+{
+	Scene scene = MakeScene();
+	const Core::Oid landing = scene.Read.Refs[scene.Line().Ref].Tip;
+
+	const std::optional<std::string> banner = BannerWithContent(
+		scene, Core::ContentVerdict{.Outcome = Core::ContentOutcome::Merged, .Kind = Core::ContentKind::Squash, .Landing = landing, .Twins = {}});
+
+	CHECK(banner == std::optional<std::string>{"Merged into develop by a squash in " + landing.ShortHex() +
+											   ": its changes are in develop, its commits are not."});
+}
+
+TEST_CASE("Git window: the banner of a squash without a landing names none")
+{
+	Scene scene = MakeScene();
+
+	const std::optional<std::string> banner = BannerWithContent(
+		scene, Core::ContentVerdict{.Outcome = Core::ContentOutcome::Merged, .Kind = Core::ContentKind::Squash, .Landing = std::nullopt, .Twins = {}});
+
+	CHECK(banner == std::optional<std::string>{"Merged into develop by a squash: its changes are in develop, its commits are not."});
+}
+
+TEST_CASE("Git window: the banner of a branch merged by a rebase says each commit has a copy")
+{
+	Scene scene = MakeScene();
+
+	const std::optional<std::string> banner = BannerWithContent(
+		scene, Core::ContentVerdict{.Outcome = Core::ContentOutcome::Merged, .Kind = Core::ContentKind::Rebase, .Landing = std::nullopt, .Twins = {}});
+
+	CHECK(banner == std::optional<std::string>{"Merged into develop by a rebase: each of its commits has a copy in develop."});
+}
+
+TEST_CASE("Git window: a branch the check found not merged gets no banner")
+{
+	Scene scene = MakeScene();
+
+	CHECK_FALSE(BannerWithContent(scene, Core::ContentVerdict{}).has_value());
+}

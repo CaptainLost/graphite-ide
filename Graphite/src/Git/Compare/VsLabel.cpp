@@ -13,7 +13,7 @@ namespace Graphite {
 
 		VsLabel Plain(std::string lead)
 		{
-			return VsLabel{.Lead = std::move(lead), .Line = {}, .Counts = {}, .Mark = std::nullopt};
+			return VsLabel{.Lead = std::move(lead), .Line = {}, .Counts = {}, .How = {}, .Mark = std::nullopt};
 		}
 
 		bool IsGuessedMainLine(const LineRead& read, std::size_t ref)
@@ -75,6 +75,11 @@ namespace Graphite {
 			{
 				label.Lead = "merged into";
 			}
+			else if (line.State == Core::BranchState::NotMerged && IsMergedByContent(input.Content))
+			{
+				label.Lead = "merged into";
+				label.How = input.Content->Kind == Core::ContentKind::Squash ? "squash" : "rebase";
+			}
 			else
 			{
 				label.Lead = line.Kind == Core::ComparedKind::Branch ? "on top of" : "vs";
@@ -99,6 +104,11 @@ namespace Graphite {
 
 			return label;
 		}
+	}
+
+	bool IsMergedByContent(const std::optional<Core::ContentVerdict>& verdict)
+	{
+		return verdict.has_value() && verdict->Outcome == Core::ContentOutcome::Merged;
 	}
 
 	std::string LineNameOf(const LineRead& read, std::size_t index)

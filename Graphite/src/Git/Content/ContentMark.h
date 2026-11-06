@@ -27,4 +27,12 @@ namespace Graphite {
 		std::optional<Core::Oid> Twin; // when Known and the line holds one
 	};
 
+	// Whether a mark holds back what is drawn with it: it is pending, and the model is able to answer. The model checks
+	// nothing while the window is off screen, nor for a line of a read it does not follow, so a wait on those would never
+	// end; an unknown or failed answer is an answer.
+	inline bool ContentCheckWaits(const ContentMark& mark, bool modelChecks)
+	{
+		return modelChecks && mark.State == ContentMark::State::Pending;
+	}
+
 }

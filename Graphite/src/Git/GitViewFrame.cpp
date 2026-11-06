@@ -693,9 +693,11 @@ namespace Graphite {
 		// count, so the three arrive together and the label at its final width.
 		if (read != nullptr && lines != nullptr && !shownRef.empty() && HistoryRowsNow() == HistoryRows::Shown)
 		{
-			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef)};
+			const std::optional<ContentMark> content = ShownContentMark();
+			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef),
+								content.has_value() ? content->Verdict : std::nullopt};
 			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input)};
-			const bool waits = HeaderWordsWait(MeasuresShownDistance(*read, shownRef), RowsOfLineShown());
+			const bool waits = HeaderWordsWait(MeasuresShownDistance(*read, shownRef), RowsOfLineShown(), ShownContentWaits());
 			const HeaderWords& words = HeaderWordsToDraw(fresh, waits, shownRef, m_DrawnHeaderWords);
 
 			label = words.Label;

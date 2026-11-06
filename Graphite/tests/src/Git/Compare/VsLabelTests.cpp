@@ -2,6 +2,7 @@
 
 #include "Git/Compare/HistoryBanner.h"
 #include "Git/Compare/VsLabel.h"
+#include "Git/Content/ContentMark.h"
 #include "Git/Lines/LineReadFixtures.h"
 
 #include <optional>
@@ -232,11 +233,11 @@ TEST_CASE("Git window: the operation in progress is said in words")
 
 TEST_CASE("Git window: the header keeps the words it drew for a reference while their distance is measured again")
 {
-	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 80 behind", .Mark = std::nullopt},
+	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 80 behind", .How = "", .Mark = std::nullopt},
 									  .Banner = std::nullopt};
 	const Graphite::HeaderWords pending{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, \xE2\x80\xA6 behind", .Mark = std::nullopt},
 										.Banner = std::nullopt};
-	const Graphite::HeaderWords landed{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 81 behind", .Mark = std::nullopt},
+	const Graphite::HeaderWords landed{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 81 behind", .How = "", .Mark = std::nullopt},
 									   .Banner = std::nullopt};
 	const std::optional<Graphite::DrawnHeaderWords> held =
 		Graphite::DrawnHeaderWords{.ShownRef = "refs/heads/feature/x", .Words = drawn};
@@ -254,26 +255,27 @@ TEST_CASE("Git window: the header keeps the words it drew while the rows under t
 {
 	// The user picked a line for an old copy: the banner the words had goes, and the fold row comes with the page asked
 	// with the pick, so both wait for that page.
-	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "compared with nothing", .Line = "", .Counts = "", .Mark = std::nullopt},
+	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "compared with nothing", .Line = "", .Counts = "", .How = "", .Mark = std::nullopt},
 									  .Banner = "The default branch of origin, made when the fork was."};
-	const Graphite::HeaderWords picked{.Label = VsLabel{.Lead = "vs", .Line = "upstream/develop", .Counts = "0 ahead, 8,913 behind", .Mark = "your pick"},
+	const Graphite::HeaderWords picked{.Label = VsLabel{.Lead = "vs", .Line = "upstream/develop", .Counts = "0 ahead, 8,913 behind", .How = "", .Mark = "your pick"},
 									   .Banner = std::nullopt};
 	const std::optional<Graphite::DrawnHeaderWords> held = Graphite::DrawnHeaderWords{.ShownRef = "refs/heads/develop", .Words = drawn};
 
 	constexpr bool kMeasured = false;
+	constexpr bool kContentKnown = false;
 	constexpr bool kPageOfLineBefore = false;
 	constexpr bool kPageOfLineShown = true;
 
-	CHECK(Graphite::HeaderWordsWait(kMeasured, kPageOfLineBefore));
-	CHECK(Graphite::HeaderWordsToDraw(picked, Graphite::HeaderWordsWait(kMeasured, kPageOfLineBefore), "refs/heads/develop", held)
+	CHECK(Graphite::HeaderWordsWait(kMeasured, kPageOfLineBefore, kContentKnown));
+	CHECK(Graphite::HeaderWordsToDraw(picked, Graphite::HeaderWordsWait(kMeasured, kPageOfLineBefore, kContentKnown), "refs/heads/develop", held)
 			  .Banner.has_value());
 
-	CHECK_FALSE(Graphite::HeaderWordsWait(kMeasured, kPageOfLineShown));
-	CHECK_FALSE(Graphite::HeaderWordsToDraw(picked, Graphite::HeaderWordsWait(kMeasured, kPageOfLineShown), "refs/heads/develop", held)
+	CHECK_FALSE(Graphite::HeaderWordsWait(kMeasured, kPageOfLineShown, kContentKnown));
+	CHECK_FALSE(Graphite::HeaderWordsToDraw(picked, Graphite::HeaderWordsWait(kMeasured, kPageOfLineShown, kContentKnown), "refs/heads/develop", held)
 					.Banner.has_value());
 
 	// A distance measured again waits whatever page is in hand.
-	CHECK(Graphite::HeaderWordsWait(true, kPageOfLineShown));
+	CHECK(Graphite::HeaderWordsWait(true, kPageOfLineShown, kContentKnown));
 }
 
 namespace {
@@ -346,4 +348,88 @@ TEST_CASE("Git window: an old copy with a pick reads vs the pick rather than com
 	CHECK(label.Line == "origin/release");
 	CHECK(label.Counts == "2 ahead, 30 behind");
 	CHECK(label.Mark == std::optional<std::string>{"your pick"});
+}
+
+namespace {
+
+	VsLabel DescribeWithContent(Scene& scene, const std::string& ref, Core::ContentKind kind)
+	{
+		scene.Line().State = Core::BranchState::NotMerged;
+
+		const BranchLines lines(scene.Read);
+		const Core::ContentVerdict verdict{.Outcome = Core::ContentOutcome::Merged, .Kind = kind, .Landing = std::nullopt, .Twins = {}};
+
+		return DescribeVs(VsInput{scene.Read, lines, ref, std::nullopt, verdict});
+	}
+}
+
+TEST_CASE("Git window: a branch merged by a squash is labelled merged into its line with squash")
+{
+	Scene scene = MakeScene();
+
+	const VsLabel label = DescribeWithContent(scene, "refs/heads/feature/x", Core::ContentKind::Squash);
+
+	CHECK(label.Lead == "merged into");
+	CHECK(label.Line == "develop");
+	CHECK(label.How == "squash");
+	CHECK(label.Counts.empty());
+}
+
+TEST_CASE("Git window: a branch merged by a rebase is labelled merged into its line with rebase")
+{
+	Scene scene = MakeScene();
+
+	const VsLabel label = DescribeWithContent(scene, "refs/heads/feature/x", Core::ContentKind::Rebase);
+
+	CHECK(label.Lead == "merged into");
+	CHECK(label.Line == "develop");
+	CHECK(label.How == "rebase");
+}
+
+TEST_CASE("Git window: a branch the check found not merged keeps its counts")
+{
+	Scene scene = MakeScene();
+	scene.Line().State = Core::BranchState::NotMerged;
+
+	const BranchLines lines(scene.Read);
+	const Core::ContentVerdict notMerged{.Outcome = Core::ContentOutcome::NotMerged, .Kind = Core::ContentKind::Squash, .Landing = std::nullopt, .Twins = {}};
+	const VsLabel label = DescribeVs(VsInput{scene.Read, lines, "refs/heads/feature/x", std::nullopt, notMerged});
+
+	CHECK(label.Lead == "vs");
+	CHECK(label.How.empty());
+	CHECK(label.Counts == "6 ahead, \xE2\x80\xA6 behind");
+}
+
+TEST_CASE("Git window: the header words wait for the shown branch's content check")
+{
+	const Graphite::HeaderWords drawn{.Label = VsLabel{.Lead = "vs", .Line = "main", .Counts = "6 ahead, 80 behind", .How = "", .Mark = std::nullopt},
+									  .Banner = std::nullopt};
+	const Graphite::HeaderWords merged{.Label = VsLabel{.Lead = "merged into", .Line = "main", .Counts = "", .How = "squash", .Mark = std::nullopt},
+									   .Banner = "Merged into main by a squash: its changes are in main, its commits are not."};
+	const std::optional<Graphite::DrawnHeaderWords> held =
+		Graphite::DrawnHeaderWords{.ShownRef = "refs/heads/feature/x", .Words = drawn};
+
+	const Graphite::ContentMark pending;
+
+	// The distance is in and the page is the line's, yet the words stay what they were until the check answers.
+	const bool waits = Graphite::HeaderWordsWait(false, true, Graphite::ContentCheckWaits(pending, true));
+
+	CHECK(waits);
+	CHECK(Graphite::HeaderWordsToDraw(merged, waits, "refs/heads/feature/x", held).Label.How.empty());
+
+	const Graphite::ContentMark known{.State = Graphite::ContentMark::State::Known, .Verdict = Core::ContentVerdict{}};
+
+	CHECK_FALSE(Graphite::HeaderWordsWait(false, true, Graphite::ContentCheckWaits(known, true)));
+}
+
+TEST_CASE("Git window: an unknown content check releases the header words")
+{
+	const Graphite::ContentMark unknown{.State = Graphite::ContentMark::State::Unknown, .Verdict = std::nullopt};
+	const Graphite::ContentMark pending;
+
+	CHECK_FALSE(Graphite::ContentCheckWaits(unknown, true));
+	CHECK_FALSE(Graphite::HeaderWordsWait(false, true, Graphite::ContentCheckWaits(unknown, true)));
+
+	// The model checks nothing while the window is off screen: a pending mark then holds nothing back.
+	CHECK_FALSE(Graphite::ContentCheckWaits(pending, false));
 }

@@ -245,6 +245,13 @@ namespace Graphite {
 		// The header counts a distance that is still being measured.
 		bool MeasuresShownDistance(const LineRead& read, std::string_view shownRef);
 
+		// What the check of the shown branch's contents found, asking it first; empty for a reference that is no
+		// candidate for one (a pick, an old copy, a base, a branch merged by history).
+		std::optional<ContentMark> ShownContentMark();
+
+		// Whether the header and the first rows wait for that check: it is pending and the model can answer it.
+		bool ShownContentWaits();
+
 		void FollowSelectedRef();
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
 		void FollowSelectedStash();
