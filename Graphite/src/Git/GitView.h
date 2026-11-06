@@ -245,6 +245,13 @@ namespace Graphite {
 		// The header counts a distance that is still being measured.
 		bool MeasuresShownDistance(const LineRead& read, std::string_view shownRef);
 
+		// The shown branch's line when it is a candidate for a check of its contents; empty for a pick, an old copy, a base,
+		// a branch merged by history.
+		const Core::BranchLine* ShownContentCandidate() const;
+
+		// Whether the view's read is the one the models follow; it is not in the one frame a new read lands.
+		bool ViewFollowsModelsRead() const;
+
 		// What the check of the shown branch's contents found, asking it first; empty for a reference that is no
 		// candidate for one (a pick, an old copy, a base, a branch merged by history).
 		std::optional<ContentMark> ShownContentMark();

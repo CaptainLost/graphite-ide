@@ -35,4 +35,29 @@ namespace Graphite {
 		return modelChecks && mark.State == ContentMark::State::Pending;
 	}
 
+	// What the shown branch's content mark asks of a frame. The view's read is the model's read except in the one frame a
+	// new read lands (the sidebar is rebuilt later in it); that frame asks nothing, since the line belongs to the read
+	// before, and counts as waiting, so what waits for the mark does not let go a frame early.
+	enum class ShownContentStep
+	{
+		NoWait,      // not a candidate, or the window is not drawn
+		WaitForRead, // the read just landed: wait, and ask the model next frame
+		AskModel,    // ask the model and wait while its mark is pending
+	};
+
+	inline ShownContentStep StepForShownContent(bool isCandidate, bool drawn, bool viewFollowsModelsRead)
+	{
+		if (!isCandidate)
+		{
+			return ShownContentStep::NoWait;
+		}
+
+		if (!viewFollowsModelsRead)
+		{
+			return drawn ? ShownContentStep::WaitForRead : ShownContentStep::NoWait;
+		}
+
+		return ShownContentStep::AskModel;
+	}
+
 }

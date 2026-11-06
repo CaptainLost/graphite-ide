@@ -297,14 +297,14 @@ namespace Graphite {
 		return !m_Lines.DistanceOf(tips->From, tips->To).has_value();
 	}
 
-	std::optional<ContentMark> GitView::ShownContentMark()
+	const Core::BranchLine* GitView::ShownContentCandidate() const
 	{
 		const BranchLines* const lines = CurrentLines();
 		const std::string shownRef = ShownRefName();
 
 		if (lines == nullptr || shownRef.empty())
 		{
-			return std::nullopt;
+			return nullptr;
 		}
 
 		const std::string_view shown = lines->ShownAs(shownRef);
@@ -312,12 +312,31 @@ namespace Graphite {
 		// The line DescribeVs describes as a branch's; a pick or an old copy has no state of the model's to check.
 		if (lines->PickedLineOf(shown).has_value() || lines->OldCopyNamed(shown) != nullptr)
 		{
-			return std::nullopt;
+			return nullptr;
 		}
 
 		const Core::BranchLine* const line = lines->LineOf(shown);
 
 		if (line == nullptr || !IsContentCandidate(*line))
+		{
+			return nullptr;
+		}
+
+		return line;
+	}
+
+	bool GitView::ViewFollowsModelsRead() const
+	{
+		return m_SidebarBuiltFrom.has_value() && m_SidebarBuiltFrom->Read == m_Lines.GetRead();
+	}
+
+	std::optional<ContentMark> GitView::ShownContentMark()
+	{
+		const Core::BranchLine* const line = ShownContentCandidate();
+
+		// WARNING: The line is a line of the view's read; the model answers only for the read it follows, and indexes
+		// its branches by the line's ref, so a line of another read is never asked.
+		if (line == nullptr || !ViewFollowsModelsRead())
 		{
 			return std::nullopt;
 		}
@@ -327,19 +346,24 @@ namespace Graphite {
 
 	bool GitView::ShownContentWaits()
 	{
-		const std::optional<ContentMark> mark = ShownContentMark();
+		const bool candidate = ShownContentCandidate() != nullptr;
+		const bool drawn = HasBeenDrawnOnLatestFrame();
 
-		if (!mark.has_value())
+		switch (StepForShownContent(candidate, drawn, ViewFollowsModelsRead()))
 		{
+		case ShownContentStep::NoWait:
 			return false;
+
+		case ShownContentStep::WaitForRead:
+			return true;
+
+		case ShownContentStep::AskModel:
+			break;
 		}
 
-		// WARNING: The model checks only while the window is drawn, and only the read it follows; a wait outside those
-		// would never end.
-		const bool modelChecks = HasBeenDrawnOnLatestFrame() && m_SidebarBuiltFrom.has_value() &&
-								 m_SidebarBuiltFrom->Read == m_Lines.GetRead();
+		const std::optional<ContentMark> mark = ShownContentMark();
 
-		return ContentCheckWaits(*mark, modelChecks);
+		return mark.has_value() && ContentCheckWaits(*mark, drawn);
 	}
 
 	float GitView::VsButtonWidth(const VsLabel& label) const

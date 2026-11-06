@@ -433,3 +433,19 @@ TEST_CASE("Git window: an unknown content check releases the header words")
 	// The model checks nothing while the window is off screen: a pending mark then holds nothing back.
 	CHECK_FALSE(Graphite::ContentCheckWaits(pending, false));
 }
+
+TEST_CASE("Git window: the frame a new read lands counts as waiting for the shown branch's content check")
+{
+	using Graphite::ShownContentStep;
+
+	// The view's read is still the read before: the line is of that read, so the model is not asked and the rows wait.
+	CHECK(Graphite::StepForShownContent(true, true, false) == ShownContentStep::WaitForRead);
+
+	// The next frame the reads agree and the model is asked.
+	CHECK(Graphite::StepForShownContent(true, true, true) == ShownContentStep::AskModel);
+
+	// Nothing waits that the model would not answer: off screen, or no candidate.
+	CHECK(Graphite::StepForShownContent(true, false, false) == ShownContentStep::NoWait);
+	CHECK(Graphite::StepForShownContent(false, true, false) == ShownContentStep::NoWait);
+	CHECK(Graphite::StepForShownContent(false, true, true) == ShownContentStep::NoWait);
+}
