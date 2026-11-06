@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -58,7 +59,8 @@ namespace {
 	};
 
 	// Answers each check from the verdicts and failures it is given, NotMerged otherwise, and reads one patch id of the
-	// repository asked about into the cache it is handed, as a check reads the patches it compares.
+	// repository asked about into the cache it is handed, as a check reads the patches it compares. A pair or commit in
+	// RefuseOnce is refused the first time, as the port refuses a question for a repository it no longer opens.
 	class FakeContentPort final : public ContentPort
 	{
 	public:
@@ -72,6 +74,12 @@ namespace {
 		{
 			const ContentKey key{branchTip, lineTip};
 			Checked.push_back(key);
+
+			if (RefuseOnce.erase(key) > 0)
+			{
+				return Refused();
+			}
+
 			patchIds.Store(PatchedCommitOf(repository), PatchIdOf(repository));
 
 			const std::map<ContentKey, Core::Error>::const_iterator failure = Failures.find(key);
@@ -95,6 +103,12 @@ namespace {
 														Core::PatchIdCache& patchIds) override
 		{
 			TwinsSearched.push_back(TwinAsk{commit, lineTip});
+
+			if (RefuseTwinOnce.erase(commit) > 0)
+			{
+				return Refused();
+			}
+
 			patchIds.Store(PatchedCommitOf(repository), PatchIdOf(repository));
 
 			if (MissingObjectsOf.contains(commit))
@@ -112,14 +126,58 @@ namespace {
 			return std::optional<Core::Oid>{};
 		}
 
+		static Core::Error Refused()
+		{
+			return Core::Error{Core::ErrorCode::Cancelled, "the folder changed since this was asked"};
+		}
+
 		std::uint64_t Repository = 1;
 		std::map<ContentKey, Core::ContentVerdict> Verdicts;
 		std::map<ContentKey, Core::Error> Failures;
+		std::set<ContentKey> RefuseOnce;
 		std::map<Core::Oid, Core::Oid> TwinOf;
 		std::set<Core::Oid> MissingObjectsOf;
+		std::set<Core::Oid> RefuseTwinOnce;
 
 		std::vector<ContentKey> Checked;
 		std::vector<TwinAsk> TwinsSearched;
+	};
+
+	// Holds submitted jobs and runs the newest first, as two workers can when the older one is slow to start.
+	class NewestFirstJobs
+	{
+	public:
+		Core::JobSubmitter Submitter()
+		{
+			return [this](std::function<void()> job) { m_Jobs.push_back(std::move(job)); };
+		}
+
+		void RunNewest()
+		{
+			REQUIRE_FALSE(m_Jobs.empty());
+			std::function<void()> job = std::move(m_Jobs.back());
+			m_Jobs.pop_back();
+			job();
+		}
+
+		void RunAllNewestFirst()
+		{
+			while (!m_Jobs.empty())
+			{
+				RunNewest();
+			}
+		}
+
+	private:
+		std::vector<std::function<void()>> m_Jobs;
+	};
+
+	// Collects what the model would write to the log.
+	struct ReportedFailures
+	{
+		void Report(const std::string& message) { Messages.push_back(message); }
+
+		std::vector<std::string> Messages;
 	};
 
 	// origin/main, the line, then `count` local branches compared with it, each with a commit of its own, the first the
@@ -233,12 +291,14 @@ namespace {
 	const Core::Oid kBranchTip = IdOf(0x05);
 	const Core::Oid kCopyOnLine = IdOf(0x06);
 	const Core::Oid kAfterCopy = IdOf(0x07);
+	const Core::Oid kOtherBranchTip = IdOf(0x08);
 
 	Core::Ref<const Core::AncestryGraph> LandingGraph()
 	{
 		Core::AncestryGraph graph;
 		graph.Append({Core::GraphCommit{.Id = kRoot, .Time = 100},
 					  Core::GraphCommit{.Id = kBranchTip, .Parents = {kRoot}, .Time = 150},
+					  Core::GraphCommit{.Id = kOtherBranchTip, .Parents = {kRoot}, .Time = 160},
 					  Core::GraphCommit{.Id = kLandingOnLine, .Parents = {kRoot}, .Time = 200},
 					  Core::GraphCommit{.Id = kCopyOnLine, .Parents = {kRoot}, .Time = 250},
 					  Core::GraphCommit{.Id = kAfterLanding, .Parents = {kLandingOnLine}, .Time = 300},
@@ -253,6 +313,36 @@ namespace {
 		LineRead read = CandidatesRead(1);
 		read.Refs[0].Tip = lineTip;
 		read.Refs[1].Tip = kBranchTip;
+		read.Graph = LandingGraph();
+		read.Generations = Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*read.Graph));
+		return Shared(std::move(read));
+	}
+
+	// topic at kBranchTip compared with main, fix at kOtherBranchTip compared with release.
+	Core::Ref<const LineRead> TwoLinesRead(const Core::Oid& mainTip, const Core::Oid& releaseTip)
+	{
+		Fixtures::LineReadBuilder builder;
+		builder.AddRemote("origin");
+		const std::size_t mainLine = builder.AddRemoteBranch("origin", "main", {.AgeDays = 0});
+		const std::size_t releaseLine = builder.AddRemoteBranch("origin", "release", {.AgeDays = 0});
+		builder.MakeBase(mainLine);
+		builder.MakeBase(releaseLine);
+		const std::size_t topic = builder.AddLocal("topic", {.AgeDays = 1});
+		const std::size_t fix = builder.AddLocal("fix", {.AgeDays = 2});
+		builder.Compare(topic, mainLine);
+		builder.Compare(fix, releaseLine);
+
+		LineRead read = builder.Build();
+		read.Refs[mainLine].Tip = mainTip;
+		read.Refs[releaseLine].Tip = releaseTip;
+		read.Refs[topic].Tip = kBranchTip;
+		read.Refs[fix].Tip = kOtherBranchTip;
+
+		for (Core::BranchLine& candidate : read.Model.Branches)
+		{
+			candidate.Ahead = 1;
+		}
+
 		read.Graph = LandingGraph();
 		read.Generations = Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*read.Graph));
 		return Shared(std::move(read));
@@ -372,20 +462,28 @@ TEST_CASE("Git window: the shown branch is checked before a thousand waiting bra
 	model.SetOnScreen(true);
 	model.Follow(read);
 
-	model.OnUpdate(Core::Timestep{});
-	REQUIRE(jobs.Count() == 1);
-
 	// The oldest branch, last in the order of the rest.
 	const std::size_t shown = kWaiting;
 	CHECK(model.MarkOfShown(read->Model.Branches[shown]).State == ContentMark::State::Pending);
 
+	model.OnUpdate(Core::Timestep{});
 	jobs.RunAll();
+	REQUIRE(port.Checked.size() == 1);
+	CHECK(port.Checked[0] == KeyOfBranch(*read, shown));
+
+	// The line moves on, so every branch waits again. The shown branch was asked against the read before, in the frame
+	// before the new read is followed; it is still the first checked.
+	LineRead movedOn = CandidatesRead(kWaiting + 1);
+	movedOn.Refs[0].Tip = IdOf(0xEF);
+	const Core::Ref<const LineRead> next = Shared(std::move(movedOn));
+
+	static_cast<void>(model.MarkOfShown(read->Model.Branches[shown]));
+	model.Follow(next);
 	model.OnUpdate(Core::Timestep{});
 	jobs.RunAll();
 
 	REQUIRE(port.Checked.size() == 2);
-	CHECK(port.Checked[0] == KeyOfBranch(*read, 0));
-	CHECK(port.Checked[1] == KeyOfBranch(*read, shown));
+	CHECK(port.Checked[1] == KeyOfBranch(*next, shown));
 }
 
 TEST_CASE("Git window: rows in view are checked before the branches out of view")
@@ -416,6 +514,19 @@ TEST_CASE("Git window: rows in view are checked before the branches out of view"
 	CHECK(port.Checked[0] == KeyOfBranch(*read, 60));
 	CHECK(port.Checked[1] == KeyOfBranch(*read, 70));
 	CHECK(port.Checked[2] == KeyOfBranch(*read, 0));
+
+	// A row drawn in the frame before a new read is followed is still checked first.
+	LineRead movedOn = CandidatesRead(100);
+	movedOn.Refs[0].Tip = IdOf(0xEF);
+	const Core::Ref<const LineRead> next = Shared(std::move(movedOn));
+
+	static_cast<void>(model.MarkOf(read->Model.Branches[80]));
+	model.Follow(next);
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+
+	REQUIRE(port.Checked.size() == 4);
+	CHECK(port.Checked[3] == KeyOfBranch(*next, 80));
 }
 
 TEST_CASE("Git window: a verdict found once counts while the line holds its landing")
@@ -564,12 +675,19 @@ TEST_CASE("Git window: an unknown or failed check is not saved and reads unknown
 	ContentModel model{port, jobs.Submitter()};
 	model.SetOnScreen(true);
 
+	ReportedFailures reported;
+	model.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
+
 	const Core::Ref<const LineRead> read = Shared(CandidatesRead(3, store));
 	port.Verdicts[KeyOfBranch(*read, 0)] = UnknownVerdict();
 	port.Failures[KeyOfBranch(*read, 1)] = Core::Error{Core::ErrorCode::IoFailure, "the object database cannot be read"};
 
 	model.Follow(read);
 	Settle(jobs, model);
+
+	// The failure is logged, once; an unknown answer is not a failure.
+	REQUIRE(reported.Messages.size() == 1);
+	CHECK(reported.Messages[0].find("the object database cannot be read") != std::string::npos);
 
 	const ContentMark unknown = model.KnownMarkOf(read->Model.Branches[0]);
 	CHECK(unknown.State == ContentMark::State::Unknown);
@@ -588,10 +706,12 @@ TEST_CASE("Git window: an unknown or failed check is not saved and reads unknown
 
 	// The next session asks both again.
 	ContentModel next{port, jobs.Submitter()};
+	next.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
 	next.SetOnScreen(true);
 	next.Follow(read);
 	Settle(jobs, next);
 	CHECK(port.Checked.size() == 5);
+	CHECK(reported.Messages.size() == 2);
 }
 
 TEST_CASE("Git window: a commit that is a squash's landing names the branch it came from")
@@ -731,4 +851,158 @@ TEST_CASE("Git window: a commit's copy on a line is searched once and kept")
 
 	static_cast<void>(TwinAfterSearch(jobs, model, kOwn, lineTip));
 	CHECK(port.TwinsSearched.size() == 3);
+}
+
+TEST_CASE("Git window: a check the port refuses for a repository it no longer opens is asked again")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	ReportedFailures reported;
+	model.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
+	model.SetOnScreen(true);
+
+	const Core::Ref<const LineRead> read = Shared(CandidatesRead(1));
+	port.Verdicts[KeyOfBranch(*read, 0)] = SquashLandingAt(kLanding);
+	port.RefuseOnce.insert(KeyOfBranch(*read, 0));
+	model.Follow(read);
+
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{});
+	CHECK(model.KnownMarkOf(read->Model.Branches[0]).State == ContentMark::State::Pending);
+
+	Settle(jobs, model);
+	CHECK(port.Checked.size() == 2);
+	CHECK(IsKnownAs(model.KnownMarkOf(read->Model.Branches[0]), SquashLandingAt(kLanding)));
+
+	const Core::Oid lineTip = TipOfRef(0);
+	port.TwinOf[kOwn] = kCopy;
+	port.RefuseTwinOnce.insert(kOwn);
+
+	CHECK(TwinAfterSearch(jobs, model, kOwn, lineTip).State == ContentMark::State::Pending);
+
+	const TwinMark found = TwinAfterSearch(jobs, model, kOwn, lineTip);
+	CHECK(found.State == ContentMark::State::Known);
+	CHECK(found.Twin == kCopy);
+	CHECK(port.TwinsSearched.size() == 2);
+
+	CHECK(reported.Messages.empty());
+}
+
+TEST_CASE("Git window: the next folder's first check waits for the folder before's check to finish")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	model.Follow(Shared(CandidatesRead(1)));
+	model.OnUpdate(Core::Timestep{});
+	REQUIRE(jobs.Count() == 1);
+
+	model.Clear();
+	model.Follow(Shared(CandidatesRead(2)));
+	model.OnUpdate(Core::Timestep{});
+	model.OnUpdate(Core::Timestep{});
+	CHECK(jobs.Count() == 1);
+
+	// The folder before's check finds its folder gone and asks nothing; then the next folder's first one starts.
+	jobs.RunAll();
+	CHECK(port.Checked.empty());
+
+	model.OnUpdate(Core::Timestep{});
+	CHECK(jobs.Count() == 1);
+	jobs.RunAll();
+	CHECK(port.Checked.size() == 1);
+}
+
+TEST_CASE("Git window: a save of one folder is not skipped for a later save of another folder")
+{
+	TempDirectory directory;
+	const LineStorePaths first = StoreIn(directory.GetPath() / "first");
+	const LineStorePaths second = StoreIn(directory.GetPath() / "second");
+
+	FakeContentPort port;
+	NewestFirstJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	const Core::Ref<const LineRead> firstRead = Shared(CandidatesRead(1, first));
+	model.Follow(firstRead);
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunNewest();
+	model.OnUpdate(Core::Timestep{});
+	model.Clear();
+
+	// The first folder's save waits while the second folder's check runs, lands and is saved.
+	const Core::Ref<const LineRead> secondRead = Shared(CandidatesRead(2, second));
+	model.Follow(secondRead);
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunNewest();
+	model.OnUpdate(Core::Timestep{});
+	model.Clear();
+
+	jobs.RunAllNewestFirst();
+
+	CHECK(LoadContentCache(second.Content).Verdicts.contains(KeyOfBranch(*secondRead, 0)));
+	CHECK(LoadContentCache(first.Content).Verdicts.contains(KeyOfBranch(*firstRead, 0)));
+}
+
+TEST_CASE("Git window: a save asked earlier never writes over a later one of the same store")
+{
+	TempDirectory directory;
+	const LineStorePaths store = StoreIn(directory.GetPath());
+
+	FakeContentPort port;
+	NewestFirstJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+
+	const Core::Ref<const LineRead> read = Shared(CandidatesRead(2, store));
+	model.Follow(read);
+
+	for (int checkedBranches = 1; checkedBranches <= 2; ++checkedBranches)
+	{
+		model.SetOnScreen(true);
+		model.OnUpdate(Core::Timestep{});
+		model.SetOnScreen(false);
+		jobs.RunNewest();
+		model.OnUpdate(Core::Timestep{ContentModel::kSecondsBetweenSaves});
+	}
+
+	jobs.RunAllNewestFirst();
+	CHECK(LoadContentCache(store.Content).Verdicts.size() == 2);
+}
+
+TEST_CASE("Git window: remembered verdicts are rechecked against each branch's own line tip")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	port.Verdicts[ContentKey{kBranchTip, kLandingOnLine}] = SquashLandingAt(kLandingOnLine);
+	port.Verdicts[ContentKey{kOtherBranchTip, kCopyOnLine}] = SquashLandingAt(kCopyOnLine);
+	model.Follow(TwoLinesRead(kLandingOnLine, kCopyOnLine));
+	Settle(jobs, model);
+	REQUIRE(port.Checked.size() == 2);
+
+	// Both lines move on past their branch's landing: neither is checked again, though only release holds fix's.
+	const Core::Ref<const LineRead> movedOn = TwoLinesRead(kAfterLanding, kAfterCopy);
+	model.Follow(movedOn);
+	Settle(jobs, model);
+
+	CHECK(port.Checked.size() == 2);
+	CHECK(IsKnownAs(model.KnownMarkOf(movedOn->Model.Branches[0]), SquashLandingAt(kLandingOnLine)));
+	CHECK(IsKnownAs(model.KnownMarkOf(movedOn->Model.Branches[1]), SquashLandingAt(kCopyOnLine)));
+
+	// release is reset to before fix's landing; main still holds topic's.
+	const Core::Ref<const LineRead> reset = TwoLinesRead(kAfterLanding, kReset);
+	model.Follow(reset);
+	Settle(jobs, model);
+
+	REQUIRE(port.Checked.size() == 3);
+	CHECK(port.Checked[2] == ContentKey{kOtherBranchTip, kReset});
+	CHECK(IsKnownAs(model.KnownMarkOf(reset->Model.Branches[0]), SquashLandingAt(kLandingOnLine)));
+	CHECK(IsKnownAs(model.KnownMarkOf(reset->Model.Branches[1]), Core::ContentVerdict{}));
 }

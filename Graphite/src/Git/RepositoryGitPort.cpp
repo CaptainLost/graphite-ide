@@ -71,6 +71,8 @@ namespace Graphite {
 			}
 		}
 
+		// WARNING: A stale handle is erased, not bypassed. On Windows libgit2 keeps packfiles
+		// mapped, and a handle left open would block deleting the .git directory.
 		void DropStaleHandle(HandleMap& handlesByRoot, const std::string& root, std::uint64_t generation)
 		{
 			const HandleMap::iterator cachedEntry = handlesByRoot.find(root);
@@ -140,9 +142,13 @@ namespace Graphite {
 	Core::Result<Core::Repository*> RepositoryGitPort::OpenForThisThread(const std::string& root, std::uint64_t generation,
 																		 Core::ObjectWrites writes)
 	{
-		// Both kinds of handle of a root no longer open go, whichever is asked for: each keeps its packfiles mapped.
-		DropHandlesOfOtherRoots(HandlesForThisThread(), root);
-		DropHandlesOfOtherRoots(ContentHandlesForThisThread(), root);
+		// Both kinds of handle of a root or generation no longer open go, whichever is asked for: each keeps its packfiles
+		// mapped.
+		for (HandleMap* handles : {&HandlesForThisThread(), &ContentHandlesForThisThread()})
+		{
+			DropHandlesOfOtherRoots(*handles, root);
+			DropStaleHandle(*handles, root, generation);
+		}
 
 		HandleMap& handlesByRoot = HandlesForThisThreadThatWrite(writes);
 
@@ -156,15 +162,7 @@ namespace Graphite {
 		if (cachedEntry != handlesByRoot.end())
 		{
 			auto& [cachedRoot, cachedRepository] = *cachedEntry;
-
-			if (cachedRepository.Generation == generation)
-			{
-				return &cachedRepository.Repo;
-			}
-
-			// WARNING: A stale handle is erased, not bypassed. On Windows libgit2 keeps packfiles
-			// mapped, and a handle left open would block deleting the .git directory.
-			handlesByRoot.erase(cachedEntry);
+			return &cachedRepository.Repo;
 		}
 
 		Core::Result<Core::Repository> opened = Core::Repository::Open(Core::FromUtf8(root), writes);

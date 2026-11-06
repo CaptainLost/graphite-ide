@@ -4,66 +4,100 @@
 #include "Workspace/Workspace.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Git/Lines/LineQuestions.h"
 
-#include <span>
+#include <format>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
 
-		// A folder switch refuses what was asked before it, and its answer is dropped unseen.
-		bool IsWorthLogging(const Core::Error& error)
+		// The port refuses a question asked for a repository it no longer opens: a folder switch, or the folder moved. It
+		// is asked again, of the repository open now.
+		bool IsRefused(const Core::Error& error)
 		{
-			return error.Code != Core::ErrorCode::Cancelled;
+			return error.Code == Core::ErrorCode::Cancelled;
 		}
 
-		void LogFailedCheck(const ContentKey& key, const Core::Error& error)
+		void WarnInLog(const std::string& message)
 		{
-			if (IsWorthLogging(error))
-			{
-				APP_WARN("Could not check whether {} is merged into {} by its contents: {}", key.BranchTip.ToHex(),
-						 key.LineTip.ToHex(), error.Message);
-			}
+			APP_WARN("{}", message);
 		}
 
-		// NotFound is a missing commit or object, as in a blobless clone: an answer, not a failure.
-		void LogFailedTwinSearch(const Core::Oid& commit, const Core::Oid& lineTip, const Core::Error& error)
+		// Counts a job as unfinished until its body returns, whether it asked anything or found its folder gone.
+		class UnfinishedJob : Core::NonCopyable
 		{
-			if (IsWorthLogging(error) && error.Code != Core::ErrorCode::NotFound)
-			{
-				APP_WARN("Could not search {} for a copy of {}: {}", lineTip.ToHex(), commit.ToHex(), error.Message);
-			}
-		}
+		public:
+			explicit UnfinishedJob(std::atomic<std::size_t>& unfinished) : m_Unfinished(unfinished) {}
+
+			~UnfinishedJob() { --m_Unfinished; }
+
+		private:
+			std::atomic<std::size_t>& m_Unfinished;
+		};
 
 		ContentMark KnownMark(const Core::ContentVerdict& verdict)
 		{
 			return ContentMark{.State = ContentMark::State::Known, .Verdict = verdict};
 		}
 
-		// A read without a graph holds nothing; one handed on without generations gets them computed.
-		std::vector<RememberedVerdict> HeldIn(const Core::Ref<const Core::AncestryGraph>& graph,
-											  const Core::Ref<const std::vector<std::uint32_t>>& generations,
-											  const std::vector<RememberedVerdict>& remembered)
+		std::unordered_map<std::string_view, std::size_t> BranchesByName(const LineRead& read)
 		{
-			if (graph == nullptr)
+			std::unordered_map<std::string_view, std::size_t> branches;
+
+			for (std::size_t branch = 0; branch < read.Model.Branches.size(); ++branch)
 			{
-				return {};
+				const std::size_t ref = read.Model.Branches[branch].Ref;
+
+				if (ref < read.Refs.size())
+				{
+					branches.emplace(read.Refs[ref].FullName, branch);
+				}
 			}
 
-			if (generations != nullptr)
+			return branches;
+		}
+
+		// The same branch's place in the next read, by its full name; empty when the next read lacks it.
+		std::optional<std::size_t> SameBranchIn(const LineRead& before, std::size_t branch,
+												const std::unordered_map<std::string_view, std::size_t>& nextByName)
+		{
+			if (branch >= before.Model.Branches.size() || before.Model.Branches[branch].Ref >= before.Refs.size())
 			{
-				return VerdictsStillHeld(*graph, *generations, remembered);
+				return std::nullopt;
 			}
 
-			const std::vector<std::uint32_t> computed = Core::GenerationsOf(*graph);
-			return VerdictsStillHeld(*graph, computed, remembered);
+			const std::string& name = before.Refs[before.Model.Branches[branch].Ref].FullName;
+			const std::unordered_map<std::string_view, std::size_t>::const_iterator found = nextByName.find(name);
+
+			if (found == nextByName.end())
+			{
+				return std::nullopt;
+			}
+
+			return found->second;
 		}
 	}
 
-	ContentModel::ContentModel(ContentPort& port, Core::JobSubmitter submit) : m_Port(port), m_Submit(std::move(submit))
+	ContentModel::ContentModel(ContentPort& port, Core::JobSubmitter submit)
+		: LogFailure(WarnInLog), m_Port(port), m_Submit(std::move(submit))
 	{
+	}
+
+	void ContentModel::ReportFailure(const std::string& message) const
+	{
+		if (LogFailure)
+		{
+			LogFailure(message);
+		}
+	}
+
+	void ContentModel::Submit(std::function<void()> job)
+	{
+		++m_UnfinishedJobs;
+		m_Submit(std::move(job));
 	}
 
 	void ContentModel::Deliver(DeliveryInbox::Delivery delivery)
@@ -150,16 +184,43 @@ namespace Graphite {
 			LoadStore(read->Store);
 		}
 
+		CarryAsksTo(read);
 		m_Read = std::move(read);
-
-		// What was asked in the last frame indexes the read before.
-		m_InView.clear();
-		m_Shown.reset();
 
 		m_EveryCandidateAsked = false;
 		IndexBranches();
 		FindVerdictsToRecheck();
 		RebuildSources();
+	}
+
+	void ContentModel::CarryAsksTo(const Core::Ref<const LineRead>& next)
+	{
+		const bool asked = m_Shown.has_value() || !m_InView.empty();
+
+		if (m_Read == nullptr || next == nullptr || !asked)
+		{
+			m_InView.clear();
+			m_Shown.reset();
+			return;
+		}
+
+		const std::unordered_map<std::string_view, std::size_t> nextByName = BranchesByName(*next);
+		std::set<std::size_t> inView;
+
+		for (const std::size_t branch : m_InView)
+		{
+			if (const std::optional<std::size_t> same = SameBranchIn(*m_Read, branch, nextByName); same.has_value())
+			{
+				inView.insert(*same);
+			}
+		}
+
+		m_InView = std::move(inView);
+
+		if (m_Shown.has_value())
+		{
+			m_Shown = SameBranchIn(*m_Read, *m_Shown, nextByName);
+		}
 	}
 
 	void ContentModel::LoadStore(const LineStorePaths& store)
@@ -337,7 +398,10 @@ namespace Graphite {
 	void ContentModel::StartNext(const std::set<std::size_t>& inView, std::optional<std::size_t> shown,
 								 const std::vector<TwinKey>& twinsAsked)
 	{
-		if (m_Running || !m_OnScreen || m_Read == nullptr)
+		// A job of the folder before may still run on a worker after a folder switch freed the slot.
+		const bool jobRunsOnWorker = m_UnfinishedJobs.load() > 0;
+
+		if (m_Running || jobRunsOnWorker || !m_OnScreen || m_Read == nullptr)
 		{
 			return;
 		}
@@ -389,14 +453,20 @@ namespace Graphite {
 		m_RecheckRunning = std::exchange(m_RecheckWaiting, {});
 		m_Running = true;
 
-		m_Submit([this, folder = m_Folder.load(), graph = m_Read->Graph, generations = m_Read->Generations,
-				  remembered = std::move(remembered)]() {
+		Submit([this, folder = m_Folder.load(), graph = m_Read->Graph, remembered = std::move(remembered)]() {
+			const UnfinishedJob finishing{m_UnfinishedJobs};
+
 			if (!IsSameFolder(folder))
 			{
 				return;
 			}
 
-			std::vector<RememberedVerdict> held = HeldIn(graph, generations, remembered);
+			std::vector<RememberedVerdict> held;
+
+			if (graph != nullptr)
+			{
+				held = VerdictsStillHeld(*graph, remembered);
+			}
 
 			Deliver([this, folder, held = std::move(held)]() {
 				if (IsSameFolder(folder))
@@ -439,7 +509,9 @@ namespace Graphite {
 		m_Checking = key;
 		m_Running = true;
 
-		m_Submit([this, key, lineName = std::move(lineName), repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
+		Submit([this, key, lineName = std::move(lineName), repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
+			const UnfinishedJob finishing{m_UnfinishedJobs};
+
 			if (!IsSameFolder(folder))
 			{
 				return;
@@ -469,7 +541,13 @@ namespace Graphite {
 
 		if (!verdict.HasValue())
 		{
-			LogFailedCheck(key, verdict.GetError());
+			if (IsRefused(verdict.GetError()))
+			{
+				return;
+			}
+
+			ReportFailure(std::format("Could not check whether {} is merged into {} by its contents: {}", key.BranchTip.ToHex(),
+									  key.LineTip.ToHex(), verdict.GetError().Message));
 			m_Unknown.insert(key);
 			return;
 		}
@@ -499,7 +577,9 @@ namespace Graphite {
 		m_TwinChecking = key;
 		m_Running = true;
 
-		m_Submit([this, key, repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
+		Submit([this, key, repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
+			const UnfinishedJob finishing{m_UnfinishedJobs};
+
 			if (!IsSameFolder(folder))
 			{
 				return;
@@ -532,7 +612,19 @@ namespace Graphite {
 			return;
 		}
 
-		LogFailedTwinSearch(key.Commit, key.LineTip, twin.GetError());
+		const Core::Error& error = twin.GetError();
+
+		if (IsRefused(error))
+		{
+			return;
+		}
+
+		// NotFound is a missing commit or object, as in a blobless clone: an answer, not a failure.
+		if (error.Code != Core::ErrorCode::NotFound)
+		{
+			ReportFailure(std::format("Could not search {} for a copy of {}: {}", key.LineTip.ToHex(), key.Commit.ToHex(), error.Message));
+		}
+
 		m_Twins[key] = TwinMark{.State = ContentMark::State::Unknown, .Twin = std::nullopt};
 	}
 

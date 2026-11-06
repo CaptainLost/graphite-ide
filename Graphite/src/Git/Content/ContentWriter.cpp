@@ -63,24 +63,33 @@ namespace Graphite {
 		return kept;
 	}
 
+	bool ContentWriter::IsNewest(const std::filesystem::path& file, std::uint64_t sequence)
+	{
+		std::uint64_t& written = m_Written[file];
+
+		if (sequence <= written)
+		{
+			return false;
+		}
+
+		written = sequence;
+		return true;
+	}
+
 	void ContentWriter::Write(const ContentWrite& write)
 	{
 		const std::lock_guard<std::mutex> lock{m_Mutex};
 
-		if (write.Verdicts.has_value() && write.Sequence > m_VerdictsWritten)
+		if (write.Verdicts.has_value() && IsNewest(write.VerdictsFile, write.Sequence))
 		{
-			m_VerdictsWritten = write.Sequence;
-
 			if (const Core::Result<void> saved = SaveContentCache(write.VerdictsFile, *write.Verdicts); !saved.HasValue())
 			{
 				APP_WARN("Could not save the content checks: {}", saved.GetError().Message);
 			}
 		}
 
-		if (write.PatchIds != nullptr && write.Sequence > m_PatchIdsWritten)
+		if (write.PatchIds != nullptr && IsNewest(write.PatchIds->File, write.Sequence))
 		{
-			m_PatchIdsWritten = write.Sequence;
-
 			// Read first, so the file is written over with what it held as well.
 			LoadPatchIdsOnce(*write.PatchIds);
 

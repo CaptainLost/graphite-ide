@@ -1121,6 +1121,29 @@ TEST_CASE("Git window: the port refuses a content check for another repository g
 	CHECK(port.GetLiveHandleCountForThisThread() == 0);
 }
 
+TEST_CASE("Git window: the folder opened again lets go of its content handle at the next call of either kind")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "1\n");
+	const Core::Oid tip = OidOfHex(fixture.Commit("one"));
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{fixture.GetPath(), storeRoot.GetPath()};
+	Core::PatchIdCache patchIds;
+
+	REQUIRE(port.FindTwin(port.RepositoryNow(), tip, tip, patchIds).HasValue());
+	REQUIRE(port.QueryHead().HasValue());
+	REQUIRE(port.GetLiveHandleCountForThisThread() == 2);
+
+	// Each handle keeps the folder's packfiles mapped, so the one of the folder before goes too.
+	port.SetRoot(fixture.GetPath());
+	REQUIRE(port.QueryHead().HasValue());
+	CHECK(port.GetLiveHandleCountForThisThread() == 1);
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
+}
+
 TEST_CASE("Counting a worktree's uncommitted files reads that folder alone")
 {
 	ReviewRepository repository;

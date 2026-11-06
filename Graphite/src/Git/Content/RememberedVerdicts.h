@@ -5,8 +5,6 @@
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Lines/AncestryGraph.h"
 
-#include <cstdint>
-#include <span>
 #include <vector>
 
 namespace Graphite {
@@ -20,7 +18,6 @@ namespace Graphite {
 
 	// Those whose line tip, in the graph, still holds what was found: the squash's landing, or every copy of the rebase.
 	// A squash whose landing was not found is never held. The line's later edits to the same lines would make a new check
-	// say no, so a held verdict counts unchecked.
-	std::vector<RememberedVerdict> VerdictsStillHeld(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations,
-													 const std::vector<RememberedVerdict>& remembered);
+	// say no, so a held verdict counts unchecked. One walk of the graph per distinct line tip answers them all.
+	std::vector<RememberedVerdict> VerdictsStillHeld(const Core::AncestryGraph& graph, const std::vector<RememberedVerdict>& remembered);
 }

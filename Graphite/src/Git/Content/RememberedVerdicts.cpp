@@ -2,31 +2,49 @@
 
 #include "Core/Git/Lines/LineQuestions.h"
 
+#include <map>
+#include <span>
+
 namespace Graphite {
 
 	namespace {
 
-		bool Holds(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations, Core::AncestryGraph::Index lineTip,
-				   const Core::Oid& commit)
+		// Per commit of the graph, whether the line tip reaches it; empty for a line tip the graph lacks.
+		using Reach = std::vector<bool>;
+
+		const Reach& ReachOf(const Core::AncestryGraph& graph, const Core::Oid& lineTip, std::map<Core::Oid, Reach>& reachByLineTip)
+		{
+			const std::map<Core::Oid, Reach>::const_iterator known = reachByLineTip.find(lineTip);
+
+			if (known != reachByLineTip.end())
+			{
+				return known->second;
+			}
+
+			// WARNING: A reference into the map stays valid as later line tips are added.
+			Reach& reach = reachByLineTip[lineTip];
+			const Core::AncestryGraph::Index tip = graph.Find(lineTip);
+
+			if (tip != Core::AncestryGraph::kNoCommit)
+			{
+				reach = Core::CommitsReachableFrom(graph, std::span<const Core::AncestryGraph::Index>{&tip, 1});
+			}
+
+			return reach;
+		}
+
+		bool Holds(const Core::AncestryGraph& graph, const Reach& reach, const Core::Oid& commit)
 		{
 			const Core::AncestryGraph::Index held = graph.Find(commit);
 
-			if (held == Core::AncestryGraph::kNoCommit)
-			{
-				return false;
-			}
-
-			const std::vector<bool> holding =
-				Core::TipsHolding(graph, generations, held, std::span<const Core::AncestryGraph::Index>{&lineTip, 1});
-			return holding.front();
+			return held != Core::AncestryGraph::kNoCommit && held < reach.size() && reach[held];
 		}
 
-		bool HoldsEveryCopy(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations,
-							Core::AncestryGraph::Index lineTip, const std::vector<Core::PatchTwin>& twins)
+		bool HoldsEveryCopy(const Core::AncestryGraph& graph, const Reach& reach, const std::vector<Core::PatchTwin>& twins)
 		{
 			for (const Core::PatchTwin& twin : twins)
 			{
-				if (!Holds(graph, generations, lineTip, twin.Twin))
+				if (!Holds(graph, reach, twin.Twin))
 				{
 					return false;
 				}
@@ -35,34 +53,27 @@ namespace Graphite {
 			return true;
 		}
 
-		bool StillHolds(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations, const RememberedVerdict& remembered)
+		bool StillHolds(const Core::AncestryGraph& graph, const Reach& reach, const Core::ContentVerdict& verdict)
 		{
-			const Core::AncestryGraph::Index lineTip = graph.Find(remembered.Key.LineTip);
-
-			if (lineTip == Core::AncestryGraph::kNoCommit)
-			{
-				return false;
-			}
-
-			const Core::ContentVerdict& verdict = remembered.Verdict;
-
 			if (verdict.Kind == Core::ContentKind::Squash)
 			{
-				return verdict.Landing.has_value() && Holds(graph, generations, lineTip, *verdict.Landing);
+				return verdict.Landing.has_value() && Holds(graph, reach, *verdict.Landing);
 			}
 
-			return !verdict.Twins.empty() && HoldsEveryCopy(graph, generations, lineTip, verdict.Twins);
+			return !verdict.Twins.empty() && HoldsEveryCopy(graph, reach, verdict.Twins);
 		}
 	}
 
-	std::vector<RememberedVerdict> VerdictsStillHeld(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations,
-													 const std::vector<RememberedVerdict>& remembered)
+	std::vector<RememberedVerdict> VerdictsStillHeld(const Core::AncestryGraph& graph, const std::vector<RememberedVerdict>& remembered)
 	{
+		std::map<Core::Oid, Reach> reachByLineTip;
 		std::vector<RememberedVerdict> held;
 
 		for (const RememberedVerdict& candidate : remembered)
 		{
-			if (StillHolds(graph, generations, candidate))
+			const Reach& reach = ReachOf(graph, candidate.Key.LineTip, reachByLineTip);
+
+			if (StillHolds(graph, reach, candidate.Verdict))
 			{
 				held.push_back(candidate);
 			}

@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <mutex>
 #include <optional>
 
@@ -40,15 +41,18 @@ namespace Graphite {
 	};
 
 	// Writes the cache files, on workers.
-	// WARNING: Writes may run at once and out of order; they take turns, and one asked earlier never writes over a later one.
+	// WARNING: Writes may run at once and out of order; they take turns, and one asked earlier never writes over a later
+	// one of the same file. Another store's later write stops nothing.
 	class ContentWriter : Core::NonCopyable
 	{
 	public:
 		void Write(const ContentWrite& write);
 
 	private:
+		// Whether this write of the file is the newest yet; records it when it is.
+		bool IsNewest(const std::filesystem::path& file, std::uint64_t sequence);
+
 		std::mutex m_Mutex;
-		std::uint64_t m_VerdictsWritten = 0; // under m_Mutex
-		std::uint64_t m_PatchIdsWritten = 0; // under m_Mutex
+		std::map<std::filesystem::path, std::uint64_t> m_Written; // the newest sequence written, by file; under m_Mutex
 	};
 }

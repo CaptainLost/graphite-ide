@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -110,6 +111,9 @@ namespace Graphite {
 		// Asked like the shown branch, before the rows in view, and only while the window is on screen.
 		TwinMark TwinIn(const Core::Oid& commit, const Core::Oid& lineTip);
 
+		// A check or a copy search that failed, once each: to the log, unless a test listens instead.
+		std::function<void(const std::string& message)> LogFailure;
+
 		static constexpr float kSecondsBetweenSaves = 5.0f;
 
 	private:
@@ -122,9 +126,15 @@ namespace Graphite {
 		};
 
 		void Deliver(DeliveryInbox::Delivery delivery);
+		void Submit(std::function<void()> job);
+		void ReportFailure(const std::string& message) const;
 
 		// Read on worker threads: a job of a folder cleared since it was asked does nothing.
 		bool IsSameFolder(std::uint64_t folder) const;
+
+		// The rows in view and the shown branch asked in the last frame, of the read before, found again by name: the
+		// first check after a new read is theirs, as every other.
+		void CarryAsksTo(const Core::Ref<const LineRead>& next);
 
 		void LoadStore(const LineStorePaths& store);
 		void IndexBranches();
@@ -194,6 +204,9 @@ namespace Graphite {
 		std::uint64_t m_SaveSequence = 0;
 
 		ContentWriter m_Writer; // used by the save jobs
+
+		// Submitted and not yet returned, of any folder: one job runs at a time across a folder switch too.
+		std::atomic<std::size_t> m_UnfinishedJobs{0};
 
 		// WARNING: Bumped by Clear, which the folder events run before the port is pointed at the next folder, and read by
 		// every job as it starts and every delivery as it lands: a check asked for the folder before must not land in the
