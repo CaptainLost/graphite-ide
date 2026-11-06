@@ -17,6 +17,7 @@
 #include "Git/History/CommitDetailsView.h"
 #include "Git/History/CommitReveal.h"
 #include "Git/History/FoldRow.h"
+#include "Git/Content/ContentModel.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Editor/EditorSettings.h"
@@ -73,9 +74,9 @@ namespace Graphite {
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ChangesView& changes, const ActiveScheme& scheme,
-				EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
-				Core::EventBus& events);
+		GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
+				const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
+				EditorBuffers& buffers, Core::EventBus& events);
 
 		void OnUpdate(Core::Timestep timestep) override;
 
@@ -460,6 +461,7 @@ namespace Graphite {
 		GitModel& m_Model;
 		LinesModel& m_Lines;
 		WorktreesModel& m_Worktrees;
+		ContentModel& m_Content;
 		ChangesView& m_Changes;
 		const ActiveScheme& m_Scheme;
 

@@ -1058,6 +1058,69 @@ TEST_CASE("Git window: a read whose folder switched before the port opened it le
 	gitPort.LetGoOfHandlesNoLongerCurrent();
 }
 
+namespace {
+
+	Core::Oid OidOfHex(const std::string& hex)
+	{
+		const std::optional<Core::Oid> id = Core::Oid::FromHex(hex);
+		REQUIRE(id.has_value());
+		return *id;
+	}
+}
+
+TEST_CASE("Git window: the port refuses a content check for another repository generation")
+{
+	const std::string base = "1\n2\n3\n";
+	const std::string lineTwoEdited = "1\ntwo\n3\n";
+
+	GitFixture fixture;
+	fixture.Write("a.txt", base);
+	fixture.Commit("base");
+	fixture.Branch("topic");
+	fixture.Checkout("topic");
+	fixture.Write("a.txt", lineTwoEdited);
+	const Core::Oid topicTip = OidOfHex(fixture.Commit("topic edits line two"));
+	fixture.Checkout("master");
+	fixture.Write("a.txt", lineTwoEdited);
+	const Core::Oid copy = OidOfHex(fixture.Commit("line two edited on master too"));
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{fixture.GetPath(), storeRoot.GetPath()};
+	const std::uint64_t asked = port.RepositoryNow();
+	Core::PatchIdCache patchIds;
+	const std::size_t objectsBefore = fixture.ObjectFileCount();
+
+	// The check merges in memory, which a handle that writes to disk refuses, and writes nothing into the repository.
+	const Core::Result<Core::ContentVerdict> checked = port.CheckContent(asked, topicTip, copy, patchIds);
+	INFO((checked.HasValue() ? std::string{} : checked.GetError().Message));
+	REQUIRE(checked.HasValue());
+	CHECK(checked.GetValue() == Core::ContentVerdict{.Outcome = Core::ContentOutcome::Merged,
+													 .Kind = Core::ContentKind::Rebase,
+													 .Twins = {Core::PatchTwin{.Own = topicTip, .Twin = copy}}});
+	CHECK(fixture.ObjectFileCount() == objectsBefore);
+
+	const Core::Result<std::optional<Core::Oid>> twin = port.FindTwin(asked, topicTip, copy, patchIds);
+	REQUIRE(twin.HasValue());
+	CHECK(twin.GetValue() == copy);
+
+	// The same folder opened again is another repository to the port: what was asked before is not checked.
+	port.SetRoot(fixture.GetPath());
+
+	const Core::Result<Core::ContentVerdict> refused = port.CheckContent(asked, topicTip, copy, patchIds);
+	REQUIRE_FALSE(refused.HasValue());
+	CHECK(refused.GetError().Code == Core::ErrorCode::Cancelled);
+
+	const Core::Result<std::optional<Core::Oid>> refusedTwin = port.FindTwin(asked, topicTip, copy, patchIds);
+	REQUIRE_FALSE(refusedTwin.HasValue());
+	CHECK(refusedTwin.GetError().Code == Core::ErrorCode::Cancelled);
+
+	CHECK(port.CheckContent(port.RepositoryNow(), topicTip, copy, patchIds).HasValue());
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
+	CHECK(port.GetLiveHandleCountForThisThread() == 0);
+}
+
 TEST_CASE("Counting a worktree's uncommitted files reads that folder alone")
 {
 	ReviewRepository repository;

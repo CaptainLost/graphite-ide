@@ -208,8 +208,8 @@ namespace Graphite {
 
 		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
-		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Worktrees, m_GitWindowChanges, m_ActiveScheme,
-																   m_EditorSettings, m_DiffWindows, m_Modals,
+		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Worktrees, m_Content, m_GitWindowChanges,
+																   m_ActiveScheme, m_EditorSettings, m_DiffWindows, m_Modals,
 																   m_DocumentBuffers, m_Events));
 		gitView->Subscribe();
 		m_GitView = gitView;
@@ -431,6 +431,7 @@ namespace Graphite {
 		// folder: a read asked for the folder before must find it cleared, or it would write the next folder's line store.
 		m_Lines.SubscribeTo(m_Events);
 		m_Worktrees.SubscribeTo(m_Events);
+		m_Content.SubscribeTo(m_Events);
 		m_ChangeMarkers.SubscribeTo(m_Events);
 		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
@@ -749,6 +750,9 @@ namespace Graphite {
 	{
 		// WARNING: Before m_Jobs is destroyed, which runs every read still queued and waits for the one running.
 		m_Documents.CancelAllReads();
+
+		// Saves the content checks' verdicts by a job, which the queue runs before its workers stop.
+		m_Content.Clear();
 
 		m_StateKeeper.Flush();
 		m_ReviewStore.Flush();

@@ -83,11 +83,11 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ChangesView& changes, const ActiveScheme& scheme,
-					 EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
-					 Core::EventBus& events)
+	GitView::GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
+					 const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
+					 EditorBuffers& buffers, Core::EventBus& events)
 		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines), m_Worktrees(worktrees),
-		  m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
+		  m_Content(content), m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
 		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
@@ -98,10 +98,14 @@ namespace Graphite {
 		ConnectViews();
 	}
 
-	void GitView::OnUpdate(Core::Timestep)
+	void GitView::OnUpdate(Core::Timestep timestep)
 	{
 		const bool panelOnScreen = HasBeenDrawnOnLatestFrame();
 		m_Worktrees.SetOnScreen(panelOnScreen);
+
+		m_Content.SetOnScreen(panelOnScreen);
+		m_Content.Follow(m_Lines.GetRead());
+		m_Content.OnUpdate(timestep);
 
 		// WARNING: Begin hands the modal gate back, and it only runs from OnImGuiRender, which is
 		// skipped for a panel that is hidden or behind another tab. An undrawn panel withdraws its

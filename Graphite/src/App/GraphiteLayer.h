@@ -18,6 +18,7 @@
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/Changes/ChangesShared.h"
 #include "Git/Changes/ChangesView.h"
+#include "Git/Content/ContentModel.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
@@ -374,9 +375,9 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these nine is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel,
-		// ReviewModel, LinesModel and WorktreesModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST
-		// of the nine: members are destroyed in reverse order, which joins every worker before the models and the port
+		// The order among these ten is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel, ReviewModel,
+		// LinesModel, WorktreesModel and ContentModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST
+		// of the ten: members are destroyed in reverse order, which joins every worker before the models and the port
 		// go away. Declaring a queue first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
@@ -388,6 +389,7 @@ namespace Graphite {
 							  WatchWithDirectoryWatcher()};
 		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		WorktreesModel m_Worktrees{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		ContentModel m_Content{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::JobQueue m_Jobs;
 
 		static constexpr std::size_t kGitWriteWorkers = 1;

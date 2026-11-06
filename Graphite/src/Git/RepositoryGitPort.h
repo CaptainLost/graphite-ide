@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 #include "Git/Blame/HeadBlame.h"
 #include "Git/Changes/ChangeBases.h"
+#include "Git/Content/ContentPort.h"
 #include "Git/GitPort.h"
 #include "Git/Lines/LinesPort.h"
 #include "Git/Worktrees/WorktreePort.h"
@@ -21,9 +22,9 @@
 namespace Graphite {
 
 	// WARNING: A git_repository must not be used from two threads at once, so each worker thread
-	// caches its own handle per root.
+	// caches its own handle per root, and a second one for the content checks, whose objects stay in memory.
 	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public LinesPort,
-									 public WorktreePort
+									 public WorktreePort, public ContentPort
 	{
 	public:
 		// Each repository's line store is a folder under lineStoreRoot (LineStoreFor).
@@ -95,6 +96,11 @@ namespace Graphite {
 		Core::Result<LineRead> ReadLines(std::uint64_t repository, const LineReadInput& input) override;
 		Core::Result<LineRead> RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now) override;
 
+		Core::Result<Core::ContentVerdict> CheckContent(std::uint64_t repository, const Core::Oid& branchTip, const Core::Oid& lineTip,
+														Core::PatchIdCache& patchIds) override;
+		Core::Result<std::optional<Core::Oid>> FindTwin(std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
+														Core::PatchIdCache& patchIds) override;
+
 		void SetRoot(std::filesystem::path root);
 
 		// WARNING: Reaches the calling thread's handles only, so it is run on the thread whose handles of a closed or
@@ -109,9 +115,12 @@ namespace Graphite {
 		Core::Result<Core::Repository*> RepositoryForThisThread();
 
 		// The repository of that generation of the root, or an error once the port has been pointed at a folder since.
-		Core::Result<Core::Repository*> RepositoryForThisThreadOf(std::uint64_t generation);
+		Core::Result<Core::Repository*> RepositoryForThisThreadOf(std::uint64_t generation,
+																  Core::ObjectWrites writes = Core::ObjectWrites::OnDisk);
 
-		Core::Result<Core::Repository*> OpenForThisThread(const std::string& root, std::uint64_t generation);
+		// The handle that writes objects to disk, or the one whose writes stay in memory, kept apart per thread.
+		Core::Result<Core::Repository*> OpenForThisThread(const std::string& root, std::uint64_t generation,
+														  Core::ObjectWrites writes = Core::ObjectWrites::OnDisk);
 
 		// WARNING: m_Root and m_Generation are read on worker threads and written on the UI thread,
 		// both under m_RootMutex.

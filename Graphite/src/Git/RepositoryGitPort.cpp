@@ -1,6 +1,8 @@
 #include "Git/RepositoryGitPort.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Content/ContentCheck.h"
+#include "Core/Git/Content/ContentThresholds.h"
 
 #include <optional>
 #include <system_error>
@@ -28,6 +30,23 @@ namespace Graphite {
 			return handlesByRoot;
 		}
 
+		// Opened with ObjectWrites::InMemory: what a content check's merge writes never reaches the repository.
+		HandleMap& ContentHandlesForThisThread()
+		{
+			static thread_local HandleMap contentHandlesByRoot;
+			return contentHandlesByRoot;
+		}
+
+		HandleMap& HandlesForThisThreadThatWrite(Core::ObjectWrites writes)
+		{
+			if (writes == Core::ObjectWrites::InMemory)
+			{
+				return ContentHandlesForThisThread();
+			}
+
+			return HandlesForThisThread();
+		}
+
 		// WARNING: SetRoot runs on the UI thread and cannot reach another thread's thread_local map,
 		// so each thread drops handles of other roots on its next call, and callers must run this
 		// before returning for an empty root. On Windows an open handle keeps the packfiles of a
@@ -49,6 +68,23 @@ namespace Graphite {
 				{
 					++entry;
 				}
+			}
+		}
+
+		void DropStaleHandle(HandleMap& handlesByRoot, const std::string& root, std::uint64_t generation)
+		{
+			const HandleMap::iterator cachedEntry = handlesByRoot.find(root);
+
+			if (cachedEntry == handlesByRoot.end())
+			{
+				return;
+			}
+
+			const auto& [cachedRoot, cachedRepository] = *cachedEntry;
+
+			if (cachedRepository.Generation != generation)
+			{
+				handlesByRoot.erase(cachedEntry);
 			}
 		}
 	}
@@ -83,7 +119,7 @@ namespace Graphite {
 		return OpenForThisThread(root, generation);
 	}
 
-	Core::Result<Core::Repository*> RepositoryGitPort::RepositoryForThisThreadOf(std::uint64_t generation)
+	Core::Result<Core::Repository*> RepositoryGitPort::RepositoryForThisThreadOf(std::uint64_t generation, Core::ObjectWrites writes)
 	{
 		std::string root;
 
@@ -92,20 +128,23 @@ namespace Graphite {
 
 			if (m_Generation != generation)
 			{
-				return Core::Error{Core::ErrorCode::Cancelled, "The folder changed, so the lines were not read."};
+				return Core::Error{Core::ErrorCode::Cancelled, "The folder changed since this was asked, so nothing was read."};
 			}
 
 			root = m_Root;
 		}
 
-		return OpenForThisThread(root, generation);
+		return OpenForThisThread(root, generation, writes);
 	}
 
-	Core::Result<Core::Repository*> RepositoryGitPort::OpenForThisThread(const std::string& root, std::uint64_t generation)
+	Core::Result<Core::Repository*> RepositoryGitPort::OpenForThisThread(const std::string& root, std::uint64_t generation,
+																		 Core::ObjectWrites writes)
 	{
-		HandleMap& handlesByRoot = HandlesForThisThread();
+		// Both kinds of handle of a root no longer open go, whichever is asked for: each keeps its packfiles mapped.
+		DropHandlesOfOtherRoots(HandlesForThisThread(), root);
+		DropHandlesOfOtherRoots(ContentHandlesForThisThread(), root);
 
-		DropHandlesOfOtherRoots(handlesByRoot, root);
+		HandleMap& handlesByRoot = HandlesForThisThreadThatWrite(writes);
 
 		if (root.empty())
 		{
@@ -128,7 +167,7 @@ namespace Graphite {
 			handlesByRoot.erase(cachedEntry);
 		}
 
-		Core::Result<Core::Repository> opened = Core::Repository::Open(Core::FromUtf8(root));
+		Core::Result<Core::Repository> opened = Core::Repository::Open(Core::FromUtf8(root), writes);
 
 		// WARNING: Open's error is returned as is. Only NotFound means there is no repository, and
 		// the UI offers to initialise one on exactly that answer. A failed open is not cached, so a
@@ -157,28 +196,16 @@ namespace Graphite {
 			generation = m_Generation;
 		}
 
-		HandleMap& handlesByRoot = HandlesForThisThread();
-
-		DropHandlesOfOtherRoots(handlesByRoot, root);
-
-		const HandleMap::iterator cachedEntry = handlesByRoot.find(root);
-
-		if (cachedEntry == handlesByRoot.end())
+		for (HandleMap* handlesByRoot : {&HandlesForThisThread(), &ContentHandlesForThisThread()})
 		{
-			return;
-		}
-
-		const auto& [cachedRoot, cachedRepository] = *cachedEntry;
-
-		if (cachedRepository.Generation != generation)
-		{
-			handlesByRoot.erase(cachedEntry);
+			DropHandlesOfOtherRoots(*handlesByRoot, root);
+			DropStaleHandle(*handlesByRoot, root, generation);
 		}
 	}
 
 	std::size_t RepositoryGitPort::GetLiveHandleCountForThisThread() const
 	{
-		return HandlesForThisThread().size();
+		return HandlesForThisThread().size() + ContentHandlesForThisThread().size();
 	}
 
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryStatus()
@@ -1343,5 +1370,31 @@ namespace Graphite {
 		const Core::Repository* repository = opened.GetValue();
 
 		return Graphite::RecomputeLines(last, LineStoreFor(repository->CommonDirectory(), m_LineStoreRoot), change, now);
+	}
+
+	Core::Result<Core::ContentVerdict> RepositoryGitPort::CheckContent(std::uint64_t repository, const Core::Oid& branchTip,
+																	   const Core::Oid& lineTip, Core::PatchIdCache& patchIds)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return Core::CheckMergedByContent(*opened.GetValue(), branchTip, lineTip, patchIds);
+	}
+
+	Core::Result<std::optional<Core::Oid>> RepositoryGitPort::FindTwin(std::uint64_t repository, const Core::Oid& commit,
+																	   const Core::Oid& lineTip, Core::PatchIdCache& patchIds)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return opened.GetValue()->FindPatchTwin(commit, lineTip, Core::kPatchCommitsPerCheck, patchIds);
 	}
 }
