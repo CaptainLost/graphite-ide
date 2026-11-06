@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Git/Content/ContentModel.h"
+#include "Git/Content/ContentMark.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LineReader.h"
 #include "Git/Sidebar/SidebarRows.h"

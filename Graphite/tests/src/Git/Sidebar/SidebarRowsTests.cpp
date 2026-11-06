@@ -863,10 +863,10 @@ TEST_CASE("Git window: a local branch merged by content stays listed in Yours wi
 	CHECK(mine == 0);
 }
 
-TEST_CASE("Git window: a landed verdict does not by itself rebuild the sidebar")
+TEST_CASE("Git window: a callback for content verdicts is asked only while the rows are built")
 {
-	// GitView rebuilds the rows when its SidebarInputs differ, and those hold no content result; what a build reads of the
-	// checks it reads through this callback, which only a build calls. Between two builds a landed verdict asks nothing.
+	// What a build reads of the content checks it reads through this callback, which only a build calls; between two builds
+	// a landed verdict asks nothing. (That GitView's SidebarInputs hold no content result is not reachable from here.)
 	LineReadBuilder builder;
 	builder.AddRemote("origin");
 	builder.AddRemoteBranch("origin", "topic");
@@ -893,4 +893,24 @@ TEST_CASE("Git window: a landed verdict does not by itself rebuild the sidebar")
 	landed = true;
 
 	CHECK(asked == askedByTheBuild);
+}
+
+TEST_CASE("Git window: a search lists a branch merged by content as it lists one merged by history")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddRemoteBranch("origin", "live", {.AgeDays = 2});
+	const std::size_t squashed = builder.AddRemoteBranch("origin", "squashed", {.AgeDays = 1});
+	const LineRead read = builder.Build();
+
+	const std::function<bool(std::size_t)> mergedByContent = [&](std::size_t branch) { return branch == squashed; };
+	const SidebarInput input{.Read = read,
+							 .Stashes = &kNoStashes,
+							 .Authors = nullptr,
+							 .Search = "squashed",
+							 .OpenByUser = {},
+							 .ShowingMerged = {},
+							 .MergedByContent = &mergedByContent};
+
+	CHECK(Describe(read, BuildSidebarRows(input)) == Lines{"# remote/origin 1/2", "origin/squashed"});
 }
