@@ -4,8 +4,6 @@
 
 #include "GitFixture.h"
 
-#include <git2.h>
-
 #include <optional>
 #include <string>
 #include <utility>
@@ -38,15 +36,6 @@ namespace {
 		fixture.Commit("base");
 		fixture.Branch("topic");
 		fixture.Checkout("topic");
-	}
-
-	std::string BlobIdOf(const std::string& contents)
-	{
-		git_oid id{};
-		REQUIRE(git_odb_hash(&id, contents.data(), contents.size(), GIT_OBJECT_BLOB) == 0);
-		char hex[GIT_OID_SHA1_HEXSIZE + 1] = {};
-		git_oid_tostr(hex, sizeof(hex), &id);
-		return hex;
 	}
 }
 
@@ -113,8 +102,8 @@ TEST_CASE("Content: the check writes no object into the repository")
 	fixture.Write("a.txt", kTopicEdit);
 	const std::string topicTip = fixture.Commit("topic edits line two");
 
-	// The line edits another line of the same file, so merging builds a new file: a blob and a
-	// tree that no commit holds, which must not reach the object directory.
+	// The line edits another line of the same file, so merging builds a new file: a blob that no
+	// commit holds, which must not reach the object directory.
 	fixture.Checkout("master");
 	fixture.Write("a.txt", kLineEightEdit);
 	const std::string masterTip = fixture.Commit("master edits line eight");
@@ -143,13 +132,35 @@ TEST_CASE("Content: a missing blob answers unknown")
 	fixture.Write("a.txt", kLineEightEdit);
 	const std::string masterTip = fixture.Commit("master edits another line");
 
-	fixture.RemoveObject(BlobIdOf(kTopicEdit));
+	fixture.RemoveObject(BlobHexOf(kTopicEdit));
 
 	const Core::Repository repository = OpenInMemory(fixture);
 	const Core::Result<Core::ContentAnswer> answer = repository.MergeChangesNothing(OidOf(masterTip), OidOf(topicTip));
 
 	REQUIRE(answer.HasValue());
 	CHECK(answer.GetValue() == Core::ContentAnswer::Unknown);
+}
+
+TEST_CASE("Content: a missing blob of a file only the line changed does not stop the check")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+	fixture.Write("a.txt", kTopicEdit);
+	const std::string topicTip = fixture.Commit("topic");
+
+	const std::string lineOnlyText = "only on the line\n";
+	fixture.Checkout("master");
+	fixture.Write("a.txt", kTopicEdit);
+	fixture.Write("c.txt", lineOnlyText);
+	const std::string masterTip = fixture.Commit("squash of topic, and a file of the line's own");
+
+	fixture.RemoveObject(BlobHexOf(lineOnlyText));
+
+	const Core::Repository repository = OpenInMemory(fixture);
+	const Core::Result<Core::ContentAnswer> answer = repository.MergeChangesNothing(OidOf(masterTip), OidOf(topicTip));
+
+	REQUIRE(answer.HasValue());
+	CHECK(answer.GetValue() == Core::ContentAnswer::Yes);
 }
 
 TEST_CASE("Content: dropping the objects of a moved-from repository touches nothing")

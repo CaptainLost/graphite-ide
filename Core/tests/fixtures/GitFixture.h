@@ -25,6 +25,13 @@ inline std::string HexTextOf(const git_oid& id)
 	return std::string(hexText, GIT_OID_SHA1_HEXSIZE);
 }
 
+inline std::string BlobHexOf(const std::string& contents)
+{
+	git_oid id{};
+	REQUIRE(git_odb_hash(&id, contents.data(), contents.size(), GIT_OBJECT_BLOB) == 0);
+	return HexTextOf(id);
+}
+
 class GitFixture
 {
 public:

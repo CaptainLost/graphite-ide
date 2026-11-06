@@ -172,8 +172,16 @@ namespace Core {
 
 		// Like `git cherry base tip`: a commit of tip's own is in the base when a commit the base has and
 		// tip lacks carries the same patch id. NotFound when either commit is missing. Reads at most
-		// `budget` of the base's commits; Complete says whether that was all of them.
+		// `budget` of the base's commits; Complete says whether that was all of them. A patch that cannot
+		// be read for a missing object, as in a blobless clone, stops the walk with MissingObjects set: an
+		// answer, not a failure.
 		Result<PatchMatch> MatchPatches(const Oid& tip, const Oid& base, std::size_t budget, PatchIdCache& cache) const;
+
+		// The newest commit lineTip reaches and `commit` does not that carries `commit`'s patch: its copy
+		// on that line. Empty when none is among the first `budget` commits read, and for a commit with no
+		// patch of its own. NotFound when either commit, or an object a patch needs, is missing.
+		Result<std::optional<Oid>> FindPatchTwin(const Oid& commit, const Oid& lineTip, std::size_t budget,
+												 PatchIdCache& cache) const;
 
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
 		Result<HeadState> QueryHead() const;
@@ -258,6 +266,17 @@ namespace Core {
 
 		// Forgets what in-memory checks wrote; a check does this itself when it ends.
 		void DropObjectsInMemory() const;
+
+		// A tip read a moment ago can be gone when a check in the background asks about it.
+		bool HoldsCommit(const Oid& commit) const;
+
+		// Whether the two commits record the same tree. NotFound when either is missing.
+		Result<bool> HaveSameTree(const Oid& one, const Oid& other) const;
+
+		// The commits of lineTip's first-parent chain that `since` does not reach and that change a path
+		// branchTip changes since `since`, oldest first: where a squash of the branch can have landed.
+		// Reads trees only, never a file's contents. NotFound when an object the walk needs is missing.
+		Result<std::vector<Oid>> LineCommitsTouchingBranch(const Oid& lineTip, const Oid& since, const Oid& branchTip) const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{

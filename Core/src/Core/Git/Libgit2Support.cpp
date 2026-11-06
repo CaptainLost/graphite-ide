@@ -6,6 +6,7 @@
 #include "Core/FileSystem/FileSystem.h"
 
 #include <git2.h>
+#include <git2/sys/errors.h>
 
 #include <chrono>
 #include <cstddef>
@@ -117,6 +118,66 @@ namespace Core {
 		}
 
 		return commit;
+	}
+
+	bool IsMissingObject(int result)
+	{
+		if (result == GIT_ENOTFOUND)
+		{
+			return true;
+		}
+
+		const git_error* const lastError = git_error_last();
+		return lastError != nullptr && lastError->klass == GIT_ERROR_ODB;
+	}
+
+	Error ObjectReadFailure(int result, std::string_view action)
+	{
+		const ErrorCode code = IsMissingObject(result) ? ErrorCode::NotFound : ErrorCode::IoFailure;
+		return Error{code, std::format("{}: {}", action, LastLibgit2Message())};
+	}
+
+	Result<DiffHandle> DiffWithFirstParent(git_repository* handle, git_commit* commit)
+	{
+		TreeHandle tree;
+		git_error_clear();
+
+		if (const int treeResult = git_commit_tree(Out(tree), commit); treeResult != 0)
+		{
+			return ObjectReadFailure(treeResult, "cannot read a commit's tree");
+		}
+
+		// A root commit is diffed against the empty tree, which libgit2 takes as a null one.
+		TreeHandle parentTree;
+
+		if (git_commit_parentcount(commit) > 0)
+		{
+			CommitHandle parent;
+			git_error_clear();
+
+			if (const int parentResult = git_commit_parent(Out(parent), commit, kFirstParentIndex); parentResult != 0)
+			{
+				return ObjectReadFailure(parentResult, "cannot read a commit's first parent");
+			}
+
+			git_error_clear();
+
+			if (const int parentTreeResult = git_commit_tree(Out(parentTree), parent.get()); parentTreeResult != 0)
+			{
+				return ObjectReadFailure(parentTreeResult, "cannot read a commit's first parent's tree");
+			}
+		}
+
+		DiffHandle diff;
+		git_error_clear();
+
+		if (const int diffResult = git_diff_tree_to_tree(Out(diff), handle, parentTree.get(), tree.get(), nullptr);
+			diffResult != 0)
+		{
+			return ObjectReadFailure(diffResult, "cannot compare a commit with its first parent");
+		}
+
+		return diff;
 	}
 
 	std::optional<std::string> HeadReferenceName(git_repository* handle)

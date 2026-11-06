@@ -3,6 +3,7 @@
 #include "Core/Git/PatchMatch.h"
 
 #include <utility>
+#include <vector>
 
 namespace Core {
 
@@ -30,5 +31,20 @@ namespace Core {
 	{
 		const std::lock_guard lock(m_Mutex);
 		return m_Ids.size();
+	}
+
+	std::vector<PatchIdEntry> PatchIdCache::Entries() const
+	{
+		const std::lock_guard lock(m_Mutex);
+
+		std::vector<PatchIdEntry> entries;
+		entries.reserve(m_Ids.size());
+
+		for (const auto& [commit, patchId] : m_Ids)
+		{
+			entries.push_back(PatchIdEntry{.Commit = commit, .PatchId = patchId});
+		}
+
+		return entries;
 	}
 }

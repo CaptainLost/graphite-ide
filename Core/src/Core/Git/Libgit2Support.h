@@ -49,6 +49,18 @@ namespace Core {
 	// NotFound, naming the id, when the repository holds no such commit.
 	Result<CommitHandle> LookupCommit(git_repository* handle, const Oid& id);
 
+	// Whether a failed call failed for an object the object database lacks, as in a blobless clone.
+	// libgit2 leaves the last error in place when a call succeeds, so the call judged must be preceded
+	// by git_error_clear(), or an earlier harmless miss reads as its own.
+	bool IsMissingObject(int result);
+
+	// NotFound when IsMissingObject judges the failure, IoFailure otherwise. `action` reads "cannot ...".
+	Error ObjectReadFailure(int result, std::string_view action);
+
+	// What the commit changes against its first parent, or against the empty tree for a root commit.
+	// Reads trees only, never a file's contents. NotFound when a tree is missing.
+	Result<DiffHandle> DiffWithFirstParent(git_repository* handle, git_commit* commit);
+
 	// The full name of the branch HEAD is on, "HEAD" itself when it is detached, and nothing when it is unborn or
 	// cannot be read.
 	std::optional<std::string> HeadReferenceName(git_repository* handle);

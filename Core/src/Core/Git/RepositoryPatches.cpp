@@ -6,11 +6,13 @@
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
+#include <git2/sys/errors.h>
 
 #include <cstddef>
 #include <format>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -20,14 +22,14 @@ namespace Core {
 	namespace {
 
 		// Nothing for a merge, which carries no change of its own, and for a commit whose tree is its
-		// first parent's. Outer empty only when libgit2 failed.
-		std::optional<std::optional<Oid>> ComputePatchId(git_repository* handle, const Oid& commitId)
+		// first parent's. NotFound when the commit, or an object its patch needs, is missing.
+		Result<std::optional<Oid>> ComputePatchId(git_repository* handle, const Oid& commitId)
 		{
 			Result<CommitHandle> looked = LookupCommit(handle, commitId);
 
 			if (!looked.HasValue())
 			{
-				return std::nullopt;
+				return std::move(looked).GetError();
 			}
 
 			const CommitHandle commit = std::move(looked).GetValue();
@@ -37,48 +39,24 @@ namespace Core {
 				return std::optional<Oid>{};
 			}
 
-			TreeHandle tree;
+			Result<DiffHandle> diff = DiffWithFirstParent(handle, commit.get());
 
-			if (git_commit_tree(Out(tree), commit.get()) != 0)
+			if (!diff.HasValue())
 			{
-				return std::nullopt;
+				return std::move(diff).GetError();
 			}
 
-			// A root commit is diffed against the empty tree, which libgit2 takes as a null one.
-			TreeHandle parentTree;
-
-			if (git_commit_parentcount(commit.get()) == 1)
-			{
-				CommitHandle parent;
-
-				if (git_commit_parent(Out(parent), commit.get(), kFirstParentIndex) != 0)
-				{
-					return std::nullopt;
-				}
-
-				if (git_commit_tree(Out(parentTree), parent.get()) != 0)
-				{
-					return std::nullopt;
-				}
-			}
-
-			DiffHandle diff;
-
-			if (git_diff_tree_to_tree(Out(diff), handle, parentTree.get(), tree.get(), nullptr) != 0)
-			{
-				return std::nullopt;
-			}
-
-			if (git_diff_num_deltas(diff.get()) == 0)
+			if (git_diff_num_deltas(diff.GetValue().get()) == 0)
 			{
 				return std::optional<Oid>{};
 			}
 
 			git_oid patchId{};
+			git_error_clear();
 
-			if (git_diff_patchid(&patchId, diff.get(), nullptr) != 0)
+			if (const int patchResult = git_diff_patchid(&patchId, diff.GetValue().get(), nullptr); patchResult != 0)
 			{
-				return std::nullopt;
+				return ObjectReadFailure(patchResult, std::format("cannot work out the patch of {}", commitId.ShortHex()));
 			}
 
 			return std::optional<Oid>{ToOid(patchId)};
@@ -93,16 +71,37 @@ namespace Core {
 				return *known;
 			}
 
-			std::optional<std::optional<Oid>> computed = ComputePatchId(handle, commit);
+			Result<std::optional<Oid>> computed = ComputePatchId(handle, commit);
 
-			if (!computed)
+			if (computed.HasValue())
 			{
-				return Error{ErrorCode::IoFailure,
-							 std::format("cannot work out the patch of {}: {}", commit.ShortHex(), LastLibgit2Message())};
+				cache.Store(commit, computed.GetValue());
 			}
 
-			cache.Store(commit, *computed);
-			return *computed;
+			return computed;
+		}
+
+		bool IsMissingObjectFailure(const Error& patchFailure)
+		{
+			return patchFailure.Code == ErrorCode::NotFound;
+		}
+
+		struct OwnPatch
+		{
+			Oid Commit;
+			Oid PatchId;
+		};
+
+		std::unordered_set<Oid> PatchIdsOf(const std::vector<OwnPatch>& ownPatches)
+		{
+			std::unordered_set<Oid> patchIds;
+
+			for (const OwnPatch& ownPatch : ownPatches)
+			{
+				patchIds.insert(ownPatch.PatchId);
+			}
+
+			return patchIds;
 		}
 
 		Result<RevwalkHandle> StartWalk(git_repository* handle, const Oid& include, const Oid& exclude)
@@ -162,7 +161,7 @@ namespace Core {
 			return std::move(ownWalk).GetError();
 		}
 
-		std::vector<Oid> ownPatchIds;
+		std::vector<OwnPatch> ownPatches;
 
 		git_oid walked{};
 		int nextResult = 0;
@@ -173,12 +172,22 @@ namespace Core {
 
 			if (!patchId.HasValue())
 			{
-				return std::move(patchId).GetError();
+				if (!IsMissingObjectFailure(patchId.GetError()))
+				{
+					return std::move(patchId).GetError();
+				}
+
+				// WARNING: With one own patch unread, twins for all the others would still not make every own
+				// change twinned, so the base side is not walked at all.
+				match.OwnChanges = ownPatches.size();
+				match.Complete = false;
+				match.MissingObjects = true;
+				return match;
 			}
 
 			if (patchId.GetValue().has_value())
 			{
-				ownPatchIds.push_back(*patchId.GetValue());
+				ownPatches.push_back(OwnPatch{.Commit = ToOid(walked), .PatchId = *patchId.GetValue()});
 			}
 		}
 
@@ -189,11 +198,11 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
 		}
 
-		match.OwnChanges = ownPatchIds.size();
+		match.OwnChanges = ownPatches.size();
 
 		// A branch merged long ago has no change of its own, and its base side can hold every trunk commit
 		// since: walking it would cost a patch id per commit for an answer already known.
-		std::unordered_set<Oid> unmatched(ownPatchIds.begin(), ownPatchIds.end());
+		std::unordered_set<Oid> unmatched = PatchIdsOf(ownPatches);
 
 		if (unmatched.empty())
 		{
@@ -207,7 +216,8 @@ namespace Core {
 			return std::move(baseWalk).GetError();
 		}
 
-		std::unordered_set<Oid> matched;
+		// The walk comes newest first, so the first base commit to carry a patch is the newest.
+		std::unordered_map<Oid, Oid> twinOfPatchId;
 		std::size_t read = 0;
 		bool allMatched = false;
 
@@ -225,12 +235,19 @@ namespace Core {
 
 			if (!patchId.HasValue())
 			{
-				return std::move(patchId).GetError();
+				if (!IsMissingObjectFailure(patchId.GetError()))
+				{
+					return std::move(patchId).GetError();
+				}
+
+				match.Complete = false;
+				match.MissingObjects = true;
+				break;
 			}
 
 			if (patchId.GetValue().has_value() && unmatched.erase(*patchId.GetValue()) == 1)
 			{
-				matched.insert(*patchId.GetValue());
+				twinOfPatchId.emplace(*patchId.GetValue(), ToOid(walked));
 			}
 
 			if (unmatched.empty())
@@ -245,14 +262,87 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
 		}
 
-		for (const Oid& patchId : ownPatchIds)
+		for (const OwnPatch& ownPatch : ownPatches)
 		{
-			if (matched.contains(patchId))
+			if (twinOfPatchId.contains(ownPatch.PatchId))
 			{
 				++match.InBase;
+				match.Twins.push_back(PatchTwin{.Own = ownPatch.Commit, .Twin = twinOfPatchId.at(ownPatch.PatchId)});
 			}
 		}
 
 		return match;
+	}
+
+	Result<std::optional<Oid>> Repository::FindPatchTwin(const Oid& commit, const Oid& lineTip, std::size_t budget,
+														 PatchIdCache& cache) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return RepositoryNotOpen();
+		}
+
+		if (Result<CommitHandle> lineCommit = LookupCommit(m_Handle.get(), lineTip); !lineCommit.HasValue())
+		{
+			return std::move(lineCommit).GetError();
+		}
+
+		Result<std::optional<Oid>> ownPatchId = PatchIdOf(m_Handle.get(), commit, cache);
+
+		if (!ownPatchId.HasValue())
+		{
+			return std::move(ownPatchId).GetError();
+		}
+
+		const std::optional<Oid> noTwin;
+
+		if (!ownPatchId.GetValue().has_value())
+		{
+			return noTwin;
+		}
+
+		const Oid wantedPatchId = *ownPatchId.GetValue();
+
+		Result<RevwalkHandle> lineWalk = StartWalk(m_Handle.get(), lineTip, commit);
+
+		if (!lineWalk.HasValue())
+		{
+			return std::move(lineWalk).GetError();
+		}
+
+		git_oid walked{};
+		int nextResult = 0;
+		std::size_t read = 0;
+
+		while ((nextResult = git_revwalk_next(&walked, lineWalk.GetValue().get())) == 0)
+		{
+			if (read == budget)
+			{
+				return noTwin;
+			}
+
+			++read;
+
+			Result<std::optional<Oid>> patchId = PatchIdOf(m_Handle.get(), ToOid(walked), cache);
+
+			if (!patchId.HasValue())
+			{
+				return std::move(patchId).GetError();
+			}
+
+			const bool carriesTheSamePatch = patchId.GetValue() == wantedPatchId;
+
+			if (carriesTheSamePatch)
+			{
+				return std::optional<Oid>{ToOid(walked)};
+			}
+		}
+
+		if (nextResult != GIT_ITEROVER)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
+		}
+
+		return noTwin;
 	}
 }
