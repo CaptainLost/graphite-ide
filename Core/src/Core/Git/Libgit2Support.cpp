@@ -142,47 +142,78 @@ namespace Core {
 		return failure.Code == ErrorCode::NotFound;
 	}
 
+	namespace {
+
+		Result<DiffHandle> DiffWithFirstParentUsing(git_repository* handle, git_commit* commit, const git_diff_options* options)
+		{
+			TreeHandle tree;
+			git_error_clear();
+
+			if (const int treeResult = git_commit_tree(Out(tree), commit); treeResult != 0)
+			{
+				return ObjectReadFailure(treeResult, "cannot read a commit's tree");
+			}
+
+			// A root commit is diffed against the empty tree, which libgit2 takes as a null one.
+			TreeHandle parentTree;
+
+			if (git_commit_parentcount(commit) > 0)
+			{
+				CommitHandle parent;
+				git_error_clear();
+
+				if (const int parentResult = git_commit_parent(Out(parent), commit, kFirstParentIndex); parentResult != 0)
+				{
+					return ObjectReadFailure(parentResult, "cannot read a commit's first parent");
+				}
+
+				git_error_clear();
+
+				if (const int parentTreeResult = git_commit_tree(Out(parentTree), parent.get()); parentTreeResult != 0)
+				{
+					return ObjectReadFailure(parentTreeResult, "cannot read a commit's first parent's tree");
+				}
+			}
+
+			DiffHandle diff;
+			git_error_clear();
+
+			if (const int diffResult = git_diff_tree_to_tree(Out(diff), handle, parentTree.get(), tree.get(), options);
+				diffResult != 0)
+			{
+				return ObjectReadFailure(diffResult, "cannot compare a commit with its first parent");
+			}
+
+			return diff;
+		}
+	}
+
 	Result<DiffHandle> DiffWithFirstParent(git_repository* handle, git_commit* commit)
 	{
-		TreeHandle tree;
-		git_error_clear();
+		return DiffWithFirstParentUsing(handle, commit, nullptr);
+	}
 
-		if (const int treeResult = git_commit_tree(Out(tree), commit); treeResult != 0)
+	Result<DiffHandle> DiffWithFirstParentOn(git_repository* handle, git_commit* commit, const std::vector<std::string>& paths)
+	{
+		// git_strarray takes writable strings; libgit2 only reads them.
+		std::vector<std::string> copies = paths;
+		std::vector<char*> pathspec;
+		pathspec.reserve(copies.size());
+
+		for (std::string& path : copies)
 		{
-			return ObjectReadFailure(treeResult, "cannot read a commit's tree");
+			pathspec.push_back(path.data());
 		}
 
-		// A root commit is diffed against the empty tree, which libgit2 takes as a null one.
-		TreeHandle parentTree;
+		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
 
-		if (git_commit_parentcount(commit) > 0)
-		{
-			CommitHandle parent;
-			git_error_clear();
+		// WARNING: Without this flag libgit2 takes each path as a pattern and walks every tree of the commit to match
+		// it; with it, each path names itself (and what lies under it) and only the trees on the way are read.
+		options.flags |= GIT_DIFF_DISABLE_PATHSPEC_MATCH;
+		options.pathspec.strings = pathspec.data();
+		options.pathspec.count = pathspec.size();
 
-			if (const int parentResult = git_commit_parent(Out(parent), commit, kFirstParentIndex); parentResult != 0)
-			{
-				return ObjectReadFailure(parentResult, "cannot read a commit's first parent");
-			}
-
-			git_error_clear();
-
-			if (const int parentTreeResult = git_commit_tree(Out(parentTree), parent.get()); parentTreeResult != 0)
-			{
-				return ObjectReadFailure(parentTreeResult, "cannot read a commit's first parent's tree");
-			}
-		}
-
-		DiffHandle diff;
-		git_error_clear();
-
-		if (const int diffResult = git_diff_tree_to_tree(Out(diff), handle, parentTree.get(), tree.get(), nullptr);
-			diffResult != 0)
-		{
-			return ObjectReadFailure(diffResult, "cannot compare a commit with its first parent");
-		}
-
-		return diff;
+		return DiffWithFirstParentUsing(handle, commit, &options);
 	}
 
 	std::optional<std::string> HeadReferenceName(git_repository* handle)

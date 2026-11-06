@@ -146,7 +146,27 @@ namespace Core {
 			return PathsIn(diff.get());
 		}
 
-		Result<bool> CommitTouchesAny(git_repository* handle, const Oid& commitId, const std::unordered_set<std::string>& paths)
+		// The branch's paths as the diff of each line commit is kept to: never empty, since an empty list keeps every path.
+		std::vector<std::string> PathListOf(const std::unordered_set<std::string>& paths)
+		{
+			std::vector<std::string> list;
+			list.reserve(paths.size());
+
+			for (const std::string& path : paths)
+			{
+				if (!path.empty())
+				{
+					list.push_back(path);
+				}
+			}
+
+			return list;
+		}
+
+		// Only the trees `pathList` lies in are read: a whole first-parent diff per line commit took about 10 ms on a large
+		// tree, so a landing search over thousands of line commits took half a minute.
+		Result<bool> CommitTouchesAny(git_repository* handle, const Oid& commitId, const std::unordered_set<std::string>& paths,
+									  const std::vector<std::string>& pathList)
 		{
 			Result<CommitHandle> commit = LookupCommit(handle, commitId);
 
@@ -155,7 +175,7 @@ namespace Core {
 				return std::move(commit).GetError();
 			}
 
-			Result<DiffHandle> diff = DiffWithFirstParent(handle, commit.GetValue().get());
+			Result<DiffHandle> diff = DiffWithFirstParentOn(handle, commit.GetValue().get(), pathList);
 
 			if (!diff.HasValue())
 			{
@@ -484,8 +504,9 @@ namespace Core {
 		}
 
 		std::vector<Oid> touching;
+		const std::vector<std::string> pathList = PathListOf(branchPaths.GetValue());
 
-		if (branchPaths.GetValue().empty() || mostCommits == 0)
+		if (pathList.empty() || mostCommits == 0)
 		{
 			return touching;
 		}
@@ -507,7 +528,7 @@ namespace Core {
 
 		for (const Oid& commit : oldestFirst)
 		{
-			const Result<bool> touches = CommitTouchesAny(m_Handle.get(), commit, branchPaths.GetValue());
+			const Result<bool> touches = CommitTouchesAny(m_Handle.get(), commit, branchPaths.GetValue(), pathList);
 
 			if (!touches.HasValue())
 			{

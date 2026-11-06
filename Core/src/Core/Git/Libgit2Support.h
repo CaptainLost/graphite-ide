@@ -65,6 +65,11 @@ namespace Core {
 	// Reads trees only, never a file's contents. NotFound when a tree is missing.
 	Result<DiffHandle> DiffWithFirstParent(git_repository* handle, git_commit* commit);
 
+	// The same, kept to `paths`, each a file's or a directory's path as written (no pattern is expanded). libgit2 then
+	// reads only the trees those paths lie in, where a whole diff reads every tree the commit holds. An empty list keeps
+	// every path, as DiffWithFirstParent does.
+	Result<DiffHandle> DiffWithFirstParentOn(git_repository* handle, git_commit* commit, const std::vector<std::string>& paths);
+
 	// The full name of the branch HEAD is on, "HEAD" itself when it is detached, and nothing when it is unborn or
 	// cannot be read.
 	std::optional<std::string> HeadReferenceName(git_repository* handle);

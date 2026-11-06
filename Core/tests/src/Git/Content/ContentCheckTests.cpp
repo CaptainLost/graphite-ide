@@ -273,6 +273,45 @@ TEST_CASE("Content: a squash at the last landing try names its landing")
 	CHECK(verdict.Landing == std::optional<Core::Oid>{OidOf(history.Squash)});
 }
 
+TEST_CASE("Content: the landing search reads the branch's paths as written, not as patterns")
+{
+	// The search keeps each line commit's diff to the branch's paths: a name a pattern would read otherwise, "[ab]" as a
+	// class or a leading "!" as an exclusion, must still name the file itself.
+	std::string name;
+
+	SUBCASE("brackets")
+	{
+		name = "f[ab].txt";
+	}
+
+	SUBCASE("a leading exclamation mark")
+	{
+		name = "!b.txt";
+	}
+
+	GitFixture fixture;
+	fixture.Write(name, kBase);
+	fixture.Commit("base");
+	fixture.Branch("topic");
+	fixture.Checkout("topic");
+	fixture.Write(name, kLineTwoEdit);
+	fixture.Commit("topic edits line two");
+	fixture.Write(name, kLinesTwoAndFourEdit);
+	const std::string topicTip = fixture.Commit("topic edits line four");
+
+	fixture.Checkout("master");
+	fixture.Write("fa.txt", "unrelated\n");
+	fixture.Commit("unrelated");
+	fixture.Write(name, kLinesTwoAndFourEdit);
+	const std::string squash = fixture.Commit("squash of topic");
+
+	const Core::ContentVerdict verdict = Check(fixture, topicTip, squash);
+
+	CHECK(verdict.Outcome == Core::ContentOutcome::Merged);
+	CHECK(verdict.Kind == Core::ContentKind::Squash);
+	CHECK(verdict.Landing == std::optional<Core::Oid>{OidOf(squash)});
+}
+
 TEST_CASE("Content: a squash past the landing chain budget is merged without a landing")
 {
 	// The line's first-parent chain since the fork is the edits and then the squash.
