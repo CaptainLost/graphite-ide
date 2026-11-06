@@ -43,8 +43,12 @@ Find the bases from the data, in `Core::ComputeLines`, with the thresholds named
 - **Merged lines.** A line into whose own stretch (its commits up to where it joins another line) three or more
   different lines were merged in the last 90 days is a base. A second parent on a base's first-parent line does not
   count (trunk merged into one's own branch), and two second parents are one line when one lies on the other's chain.
+  *Superseded by [0675](0675-count-a-line-s-own-work-committed-by-someone-else-toward-a-base-and-ask-merged-lines-for-two-people-or-a-week.md): the merged lines' tips must also have two or more authors, or the merges span seven
+  days or more.*
 - **Authors.** A line whose own stretch has five or more commits by three or more authors over seven days or more is a
-  base. This finds release lines in teams that squash and leave no merges.
+  base. This finds release lines in teams that squash and leave no merges. *Superseded by [0675](0675-count-a-line-s-own-work-committed-by-someone-else-toward-a-base-and-ask-merged-lines-for-two-people-or-a-week.md): only
+  the stretch's commits no other base reaches count, and only the authors of those that are no merge and that someone
+  other than their author committed.*
 - **Active and kept.** A base is active when its tip is within 90 days; the others are listed folded. A line found by
   the rules stays a base afterwards, stored with the repository's answers, until the user stops it or the branch is
   deleted. A base the user stopped is never kept again, not even by a read that found it and was still running when
@@ -90,7 +94,8 @@ The guess has to be a question because in a copy of this repository the plain he
 ### Negative
 
 - Agent and integration branches that many people merge into appear as bases while they are active. They are not wrong
-  by the rules and the user can stop one; the window cannot tell them from a release line.
+  by the rules and the user can stop one; the window cannot tell them from a release line. *Narrowed by [0675](0675-count-a-line-s-own-work-committed-by-someone-else-toward-a-base-and-ask-merged-lines-for-two-people-or-a-week.md):
+  one person's or one agent's branches, merged within a week, no longer make a base.*
 - A repository with no remote default and no stated main line is asked once, and its guess is shown as a guess until
   then.
 - A stale default in a fork whose upstream has fewer refs than the fork stays a base.
@@ -115,6 +120,9 @@ The guess has to be a question because in a copy of this repository the plain he
 - [0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md)
   stores the user's answers and the kept bases.
 - `docs/superpowers/specs/2026-11-03-git-window-lines-design.md`, sections 5.3 and 5.4.
+
+Superseded in part by [0675](0675-count-a-line-s-own-work-committed-by-someone-else-toward-a-base-and-ask-merged-lines-for-two-people-or-a-week.md): the merged-lines and authors rules above. Server defaults, old copies, the
+user's answers, kept bases, the order, bases before lines and the guess are unchanged.
 
 ## Evidence
 
