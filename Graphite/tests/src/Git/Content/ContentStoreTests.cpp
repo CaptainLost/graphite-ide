@@ -44,6 +44,12 @@ namespace {
 		return R"({"version": )" + version + R"(, "verdicts": [{"branch": ")" + kBranch + R"(", "line": ")" + kLine
 			   + R"(", "verdict": {"outcome": "notMerged"}}]})";
 	}
+
+	bool LoadsEmpty(TempDirectory& directory, const std::string& name, const std::string& text)
+	{
+		const ContentCache cache = LoadContentCache(directory.MakeFile(name, text));
+		return cache.Verdicts.empty() && cache.Found.empty();
+	}
 }
 
 TEST_CASE("Git window: the content cache survives a save and a load")
@@ -93,16 +99,10 @@ TEST_CASE("Git window: a damaged or newer content cache loads as empty")
 
 	CHECK(LoadContentCache(directory.MakeFile("current.json", OneEntryOfVersion("1"))).Verdicts.size() == 1);
 
-	const auto loadsEmpty = [&](const std::string& name, const std::string& text)
-	{
-		const ContentCache cache = LoadContentCache(directory.MakeFile(name, text));
-		return cache.Verdicts.empty() && cache.Found.empty();
-	};
-
-	CHECK(loadsEmpty("newer.json", OneEntryOfVersion("2")));
-	CHECK(loadsEmpty("malformed.json", "{not json"));
-	CHECK(loadsEmpty("array.json", "[]"));
-	CHECK(loadsEmpty("noversion.json", R"({"verdicts": []})"));
+	CHECK(LoadsEmpty(directory, "newer.json", OneEntryOfVersion("2")));
+	CHECK(LoadsEmpty(directory, "malformed.json", "{not json"));
+	CHECK(LoadsEmpty(directory, "array.json", "[]"));
+	CHECK(LoadsEmpty(directory, "noversion.json", R"({"verdicts": []})"));
 	CHECK(LoadContentCache(directory.GetPath() / "missing.json").Verdicts.empty());
 
 	// A bad entry is dropped; the good one beside it is kept.
