@@ -140,7 +140,7 @@ TEST_CASE("Content: a missing blob answers unknown")
 	const std::string topicTip = fixture.Commit("topic");
 
 	fixture.Checkout("master");
-	fixture.Write("a.txt", "1\n2\n3\n4\n5\n6\n7\neight\n9\n");
+	fixture.Write("a.txt", kLineEightEdit);
 	const std::string masterTip = fixture.Commit("master edits another line");
 
 	fixture.RemoveObject(BlobIdOf(kTopicEdit));
@@ -150,6 +150,22 @@ TEST_CASE("Content: a missing blob answers unknown")
 
 	REQUIRE(answer.HasValue());
 	CHECK(answer.GetValue() == Core::ContentAnswer::Unknown);
+}
+
+TEST_CASE("Content: dropping the objects of a moved-from repository touches nothing")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+
+	Core::Repository movedFrom = OpenInMemory(fixture);
+
+	{
+		const Core::Repository owner = std::move(movedFrom);
+	}
+
+	movedFrom.DropObjectsInMemory();
+
+	CHECK_FALSE(movedFrom.HeadCommit().HasValue());
 }
 
 TEST_CASE("Content: the in-memory check needs a repository opened for it")

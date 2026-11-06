@@ -6,9 +6,12 @@
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
+#include <git2/sys/errors.h>
 #include <git2/sys/mempack.h>
+#include <git2/sys/odb_backend.h>
 
 #include <format>
+#include <string>
 #include <utility>
 
 namespace Core {
@@ -18,6 +21,8 @@ namespace Core {
 		// Higher than the backends the repository opens with, so every write lands in memory.
 		constexpr int kMempackPriority = 1000;
 
+		// libgit2 leaves the last error in place when a call succeeds, so the call judged here must be
+		// preceded by git_error_clear(), or an earlier harmless miss reads as this call's.
 		bool IsMissingObject(int result)
 		{
 			if (result == GIT_ENOTFOUND)
@@ -47,13 +52,15 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, "cannot create an in-memory object store: " + LastLibgit2Message()};
 		}
 
-		// The database owns the backend from here on, also when adding fails.
-		const int added = git_odb_add_backend(database, backend, kMempackPriority);
+		const int addResult = git_odb_add_backend(database, backend, kMempackPriority);
 		git_odb_free(database);
 
-		if (added != 0)
+		// The database owns the backend only once adding it succeeded.
+		if (addResult != 0)
 		{
-			return Error{ErrorCode::IoFailure, "cannot add an in-memory object store: " + LastLibgit2Message()};
+			const std::string message = LastLibgit2Message();
+			backend->free(backend);
+			return Error{ErrorCode::IoFailure, "cannot add an in-memory object store: " + message};
 		}
 
 		m_MemoryBackend = backend;
@@ -62,7 +69,9 @@ namespace Core {
 
 	void Repository::DropObjectsInMemory() const
 	{
-		if (m_MemoryBackend != nullptr)
+		// A moved-from repository keeps the pointer, but the database that owned the backend went with
+		// the handle.
+		if (m_Handle != nullptr && m_MemoryBackend != nullptr)
 		{
 			git_mempack_reset(m_MemoryBackend);
 		}
@@ -92,6 +101,7 @@ namespace Core {
 		options.flags = GIT_MERGE_FAIL_ON_CONFLICT | GIT_MERGE_SKIP_REUC;
 
 		IndexHandle merged;
+		git_error_clear();
 		const int mergeResult =
 			git_merge_commits(Out(merged), m_Handle.get(), line.GetValue().get(), branch.GetValue().get(), &options);
 
@@ -120,6 +130,7 @@ namespace Core {
 		else
 		{
 			git_oid mergedTree{};
+			git_error_clear();
 			const int writeResult = git_index_write_tree_to(&mergedTree, merged.get(), m_Handle.get());
 
 			if (writeResult == 0)

@@ -279,7 +279,7 @@ namespace Core {
 		};
 
 		std::unique_ptr<git_repository, Free> m_Handle;
-		// Owned by the object database of m_Handle.
+		// Owned by the object database of m_Handle, so it dangles once a move has emptied m_Handle.
 		git_odb_backend* m_MemoryBackend = nullptr;
 		std::filesystem::path m_WorkingDirectory;
 		PathKeyText m_WorkingDirectoryKey;
