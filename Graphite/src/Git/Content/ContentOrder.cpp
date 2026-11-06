@@ -78,6 +78,23 @@ namespace Graphite {
 		return line.State == Core::BranchState::NotMerged && line.ComparedWith.has_value() && line.Ahead > 0;
 	}
 
+	std::optional<ContentKey> ContentKeyOf(const LineRead& read, const Core::BranchLine& line)
+	{
+		if (!line.ComparedWith.has_value())
+		{
+			return std::nullopt;
+		}
+
+		const std::size_t refCount = read.Refs.size();
+
+		if (line.Ref >= refCount || *line.ComparedWith >= refCount)
+		{
+			return std::nullopt;
+		}
+
+		return ContentKey{read.Refs[line.Ref].Tip, read.Refs[*line.ComparedWith].Tip};
+	}
+
 	std::vector<std::size_t> OrderCandidates(const LineRead& read, const std::set<std::size_t>& inView,
 											 std::optional<std::size_t> shown)
 	{

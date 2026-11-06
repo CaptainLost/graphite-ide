@@ -4,6 +4,8 @@
 
 #include "Git/Content/ContentPort.h"
 #include "Git/Content/ContentStore.h"
+#include "Git/Content/ContentWriter.h"
+#include "Git/Content/RememberedVerdicts.h"
 #include "Git/DeliveryInbox.h"
 #include "Git/Lines/LineReader.h"
 #include "Git/Lines/LineStore.h"
@@ -25,7 +27,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
-#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -120,35 +121,10 @@ namespace Graphite {
 			friend auto operator<=>(const TwinKey&, const TwinKey&) = default;
 		};
 
-		// The patch ids of one repository's store, grown by the jobs and written with the verdicts.
-		struct PatchIdStore
-		{
-			std::filesystem::path File;
-			Core::PatchIdCache Ids;
-			std::once_flag Loaded; // the file is read by the first job that needs the ids
-		};
-
-		struct FoundVerdict
-		{
-			ContentKey Key;
-			Core::ContentVerdict Verdict;
-		};
-
-		struct StoreWrite
-		{
-			std::uint64_t Sequence = 0;
-			LineStorePaths Paths;
-			std::optional<ContentCache> Verdicts;    // empty: unchanged since the last write
-			Core::Ref<PatchIdStore> PatchIds;        // null: unchanged since the last write
-		};
-
 		void Deliver(DeliveryInbox::Delivery delivery);
 
 		// Read on worker threads: a job of a folder cleared since it was asked does nothing.
 		bool IsSameFolder(std::uint64_t folder) const;
-
-		// On a worker: the first job that needs the ids reads the file.
-		static void LoadPatchIdsOnce(PatchIdStore& store);
 
 		void LoadStore(const LineStorePaths& store);
 		void IndexBranches();
@@ -169,12 +145,7 @@ namespace Graphite {
 		void StartCheck(std::size_t branch);
 		void StartTwin(const TwinKey& key);
 
-		// On a worker: the verdicts whose line tip still holds what was found.
-		static std::vector<FoundVerdict> KeepStillHeld(const Core::Ref<const Core::AncestryGraph>& graph,
-													   const Core::Ref<const std::vector<std::uint32_t>>& generations,
-													   const std::vector<FoundVerdict>& found);
-
-		void LandRecheck(const std::vector<FoundVerdict>& held);
+		void LandRecheck(const std::vector<RememberedVerdict>& held);
 		void LandCheck(const ContentKey& key, const std::string& lineName, const Core::Result<Core::ContentVerdict>& verdict,
 					   bool patchIdsGrew);
 		void LandTwin(const TwinKey& key, const Core::Result<std::optional<Core::Oid>>& twin, bool patchIdsGrew);
@@ -182,20 +153,11 @@ namespace Graphite {
 		void SaveWhenDue();
 		void SaveChanges();
 
-		// Only what the read's branches can use: the verdicts of their pairs, and what was found for their tips. The
-		// rest would pile up in the file as the lines move on.
-		ContentCache VerdictsOfRead() const;
-		void KeepFoundOf(const Core::BranchLine& line, ContentCache& kept) const;
-		void KeepVerdictOf(const Core::BranchLine& line, ContentCache& kept) const;
-
-		// On a worker.
-		void Write(const StoreWrite& write);
-
 		ContentPort& m_Port;
 		Core::JobSubmitter m_Submit;
 
-		// WARNING: The inbox's mutex covers the inbox and nothing else; every member from here to the save mutex is touched
-		// on the UI thread only.
+		// WARNING: The inbox's mutex covers the inbox and nothing else; every member from here to the writer is touched on
+		// the UI thread only.
 		DeliveryInbox m_Inbox;
 
 		Core::Ref<const LineRead> m_Read;
@@ -231,11 +193,7 @@ namespace Graphite {
 		bool m_PatchIdsChanged = false;
 		std::uint64_t m_SaveSequence = 0;
 
-		// WARNING: Saves run on workers, so two may overlap; they take turns, and one asked earlier never writes over a
-		// later one.
-		std::mutex m_SaveMutex;
-		std::uint64_t m_VerdictsWritten = 0; // under m_SaveMutex
-		std::uint64_t m_PatchIdsWritten = 0; // under m_SaveMutex
+		ContentWriter m_Writer; // used by the save jobs
 
 		// WARNING: Bumped by Clear, which the folder events run before the port is pointed at the next folder, and read by
 		// every job as it starts and every delivery as it lands: a check asked for the folder before must not land in the

@@ -1,69 +1,17 @@
 #include "Git/Content/ContentModel.h"
 
 #include "Git/Content/ContentOrder.h"
-#include "Git/Content/PatchIdFile.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/Lines/LineQuestions.h"
 
-#include <functional>
 #include <span>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
-
-		bool Holds(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations, Core::AncestryGraph::Index lineTip,
-				   const Core::Oid& commit)
-		{
-			const Core::AncestryGraph::Index held = graph.Find(commit);
-
-			if (held == Core::AncestryGraph::kNoCommit)
-			{
-				return false;
-			}
-
-			const std::vector<bool> holding =
-				Core::TipsHolding(graph, generations, held, std::span<const Core::AncestryGraph::Index>{&lineTip, 1});
-			return holding.front();
-		}
-
-		bool HoldsEveryCopy(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations,
-							Core::AncestryGraph::Index lineTip, const std::vector<Core::PatchTwin>& twins)
-		{
-			for (const Core::PatchTwin& twin : twins)
-			{
-				if (!Holds(graph, generations, lineTip, twin.Twin))
-				{
-					return false;
-				}
-			}
-
-			return true;
-		}
-
-		// A verdict found against an earlier line tip counts for this one while the line still holds what was found: the
-		// squash's landing, or every copy of a rebase.
-		bool StillHolds(const Core::AncestryGraph& graph, std::span<const std::uint32_t> generations, const ContentKey& key,
-						const Core::ContentVerdict& verdict)
-		{
-			const Core::AncestryGraph::Index lineTip = graph.Find(key.LineTip);
-
-			if (lineTip == Core::AncestryGraph::kNoCommit)
-			{
-				return false;
-			}
-
-			if (verdict.Kind == Core::ContentKind::Squash)
-			{
-				return verdict.Landing.has_value() && Holds(graph, generations, lineTip, *verdict.Landing);
-			}
-
-			return !verdict.Twins.empty() && HoldsEveryCopy(graph, generations, lineTip, verdict.Twins);
-		}
 
 		// A folder switch refuses what was asked before it, and its answer is dropped unseen.
 		bool IsWorthLogging(const Core::Error& error)
@@ -93,6 +41,25 @@ namespace Graphite {
 		{
 			return ContentMark{.State = ContentMark::State::Known, .Verdict = verdict};
 		}
+
+		// A read without a graph holds nothing; one handed on without generations gets them computed.
+		std::vector<RememberedVerdict> HeldIn(const Core::Ref<const Core::AncestryGraph>& graph,
+											  const Core::Ref<const std::vector<std::uint32_t>>& generations,
+											  const std::vector<RememberedVerdict>& remembered)
+		{
+			if (graph == nullptr)
+			{
+				return {};
+			}
+
+			if (generations != nullptr)
+			{
+				return VerdictsStillHeld(*graph, *generations, remembered);
+			}
+
+			const std::vector<std::uint32_t> computed = Core::GenerationsOf(*graph);
+			return VerdictsStillHeld(*graph, computed, remembered);
+		}
 	}
 
 	ContentModel::ContentModel(ContentPort& port, Core::JobSubmitter submit) : m_Port(port), m_Submit(std::move(submit))
@@ -107,11 +74,6 @@ namespace Graphite {
 	bool ContentModel::IsSameFolder(std::uint64_t folder) const
 	{
 		return folder == m_Folder.load();
-	}
-
-	void ContentModel::LoadPatchIdsOnce(PatchIdStore& store)
-	{
-		std::call_once(store.Loaded, LoadPatchIds, std::cref(store.File), std::ref(store.Ids));
 	}
 
 	void ContentModel::SubscribeTo(Core::EventBus& events)
@@ -304,19 +266,12 @@ namespace Graphite {
 
 	std::optional<ContentKey> ContentModel::KeyOf(const Core::BranchLine& line) const
 	{
-		if (m_Read == nullptr || !line.ComparedWith.has_value())
+		if (m_Read == nullptr)
 		{
 			return std::nullopt;
 		}
 
-		const std::size_t refCount = m_Read->Refs.size();
-
-		if (line.Ref >= refCount || *line.ComparedWith >= refCount)
-		{
-			return std::nullopt;
-		}
-
-		return ContentKey{m_Read->Refs[line.Ref].Tip, m_Read->Refs[*line.ComparedWith].Tip};
+		return ContentKeyOf(*m_Read, line);
 	}
 
 	bool ContentModel::IsWaiting(const ContentKey& key) const
@@ -423,25 +378,25 @@ namespace Graphite {
 
 	void ContentModel::StartRecheck()
 	{
-		std::vector<FoundVerdict> found;
-		found.reserve(m_RecheckWaiting.size());
+		std::vector<RememberedVerdict> remembered;
+		remembered.reserve(m_RecheckWaiting.size());
 
 		for (const ContentKey& key : m_RecheckWaiting)
 		{
-			found.push_back(FoundVerdict{.Key = key, .Verdict = m_Cache.Found.at(key.BranchTip).Verdict});
+			remembered.push_back(RememberedVerdict{.Key = key, .Verdict = m_Cache.Found.at(key.BranchTip).Verdict});
 		}
 
 		m_RecheckRunning = std::exchange(m_RecheckWaiting, {});
 		m_Running = true;
 
 		m_Submit([this, folder = m_Folder.load(), graph = m_Read->Graph, generations = m_Read->Generations,
-				  found = std::move(found)]() {
+				  remembered = std::move(remembered)]() {
 			if (!IsSameFolder(folder))
 			{
 				return;
 			}
 
-			std::vector<FoundVerdict> held = KeepStillHeld(graph, generations, found);
+			std::vector<RememberedVerdict> held = HeldIn(graph, generations, remembered);
 
 			Deliver([this, folder, held = std::move(held)]() {
 				if (IsSameFolder(folder))
@@ -452,39 +407,7 @@ namespace Graphite {
 		});
 	}
 
-	std::vector<ContentModel::FoundVerdict> ContentModel::KeepStillHeld(const Core::Ref<const Core::AncestryGraph>& graph,
-																		const Core::Ref<const std::vector<std::uint32_t>>& generations,
-																		const std::vector<FoundVerdict>& found)
-	{
-		std::vector<FoundVerdict> held;
-
-		if (graph == nullptr)
-		{
-			return held;
-		}
-
-		std::vector<std::uint32_t> computed;
-
-		if (generations == nullptr)
-		{
-			computed = Core::GenerationsOf(*graph);
-		}
-
-		const std::span<const std::uint32_t> generationsOfGraph =
-			generations != nullptr ? std::span<const std::uint32_t>{*generations} : std::span<const std::uint32_t>{computed};
-
-		for (const FoundVerdict& candidate : found)
-		{
-			if (StillHolds(*graph, generationsOfGraph, candidate.Key, candidate.Verdict))
-			{
-				held.push_back(candidate);
-			}
-		}
-
-		return held;
-	}
-
-	void ContentModel::LandRecheck(const std::vector<FoundVerdict>& held)
+	void ContentModel::LandRecheck(const std::vector<RememberedVerdict>& held)
 	{
 		m_Running = false;
 		m_RecheckRunning.clear();
@@ -497,9 +420,9 @@ namespace Graphite {
 			return;
 		}
 
-		for (const FoundVerdict& found : held)
+		for (const RememberedVerdict& remembered : held)
 		{
-			m_Cache.Verdicts[found.Key] = found.Verdict;
+			m_Cache.Verdicts[remembered.Key] = remembered.Verdict;
 		}
 
 		m_VerdictsChanged = true;
@@ -711,13 +634,13 @@ namespace Graphite {
 			return;
 		}
 
-		StoreWrite write;
+		ContentWrite write;
 		write.Sequence = ++m_SaveSequence;
-		write.Paths = *m_Store;
+		write.VerdictsFile = m_Store->Content;
 
 		if (m_VerdictsChanged)
 		{
-			write.Verdicts = VerdictsOfRead();
+			write.Verdicts = m_Read != nullptr ? VerdictsUsedBy(*m_Read, m_Cache) : m_Cache;
 		}
 
 		if (m_PatchIdsChanged)
@@ -729,85 +652,6 @@ namespace Graphite {
 		m_PatchIdsChanged = false;
 		m_LastSaveAt = m_Clock;
 
-		m_Submit([this, write = std::move(write)]() { Write(write); });
-	}
-
-	ContentCache ContentModel::VerdictsOfRead() const
-	{
-		if (m_Read == nullptr)
-		{
-			return m_Cache;
-		}
-
-		ContentCache kept;
-
-		for (const Core::BranchLine& line : m_Read->Model.Branches)
-		{
-			KeepFoundOf(line, kept);
-			KeepVerdictOf(line, kept);
-		}
-
-		return kept;
-	}
-
-	void ContentModel::KeepFoundOf(const Core::BranchLine& line, ContentCache& kept) const
-	{
-		if (line.Ref >= m_Read->Refs.size())
-		{
-			return;
-		}
-
-		const Core::Oid& tip = m_Read->Refs[line.Ref].Tip;
-		const std::map<Core::Oid, ContentFound>::const_iterator found = m_Cache.Found.find(tip);
-
-		if (found != m_Cache.Found.end())
-		{
-			kept.Found.insert(*found);
-		}
-	}
-
-	void ContentModel::KeepVerdictOf(const Core::BranchLine& line, ContentCache& kept) const
-	{
-		const std::optional<ContentKey> key = KeyOf(line);
-
-		if (!IsContentCandidate(line) || !key.has_value())
-		{
-			return;
-		}
-
-		const std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.find(*key);
-
-		if (verdict != m_Cache.Verdicts.end())
-		{
-			kept.Verdicts.insert(*verdict);
-		}
-	}
-
-	void ContentModel::Write(const StoreWrite& write)
-	{
-		const std::lock_guard<std::mutex> lock{m_SaveMutex};
-
-		if (write.Verdicts.has_value() && write.Sequence > m_VerdictsWritten)
-		{
-			m_VerdictsWritten = write.Sequence;
-
-			if (const Core::Result<void> saved = SaveContentCache(write.Paths.Content, *write.Verdicts); !saved.HasValue())
-			{
-				APP_WARN("Could not save the content checks: {}", saved.GetError().Message);
-			}
-		}
-
-		if (write.PatchIds != nullptr && write.Sequence > m_PatchIdsWritten)
-		{
-			m_PatchIdsWritten = write.Sequence;
-
-			// Read first, so the file is written over with what it held as well.
-			LoadPatchIdsOnce(*write.PatchIds);
-
-			if (const Core::Result<void> saved = SavePatchIds(write.PatchIds->File, write.PatchIds->Ids); !saved.HasValue())
-			{
-				APP_WARN("Could not save the patch ids: {}", saved.GetError().Message);
-			}
-		}
+		m_Submit([this, write = std::move(write)]() { m_Writer.Write(write); });
 	}
 }
