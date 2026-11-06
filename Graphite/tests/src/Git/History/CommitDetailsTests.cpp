@@ -321,3 +321,110 @@ TEST_CASE("Git window: a retry after a failed read keeps a commit the read's gra
 	CHECK(retrying.Holding.empty());
 	CHECK_FALSE(Graphite::InBasesOutsideRead(false, failure).Pending);
 }
+
+namespace {
+	Core::Oid CommitWithFirstByte(std::uint8_t firstByte)
+	{
+		Core::Oid id;
+		id.Bytes[0] = firstByte;
+		return id;
+	}
+
+	Graphite::TwinMark Known(std::optional<Core::Oid> twin)
+	{
+		return Graphite::TwinMark{.State = Graphite::ContentMark::State::Known, .Twin = twin};
+	}
+}
+
+TEST_CASE("Git window: a commit copied onto a release line shows an approximate chip for it")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	// develop and main hold it by history, the release line holds a copy of it.
+	const Graphite::InBases bases = Graphite::DescribeInBases(
+		read, std::vector<bool>{true, false, true},
+		{Graphite::BaseEquivalence{.Base = 1, .Twin = Known(CommitWithFirstByte(7)), .SquashLanding = std::nullopt}});
+
+	REQUIRE(bases.Holding.size() == 2);
+	REQUIRE(bases.Equivalents.size() == 1);
+	CHECK(bases.Equivalents[0].Base == "origin/release");
+	CHECK(bases.Equivalents[0].Text == "\xE2\x89\x88 copy");
+	CHECK_FALSE(bases.EquivalentsPending);
+}
+
+TEST_CASE("Git window: an own commit of a squashed branch shows in squash with the landing")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+	const Core::Oid landing = CommitWithFirstByte(0xab);
+
+	const Graphite::InBases bases = Graphite::DescribeInBases(
+		read, std::vector<bool>{false, false, false},
+		{Graphite::BaseEquivalence{.Base = 2, .Twin = Known(std::nullopt), .SquashLanding = landing}});
+
+	REQUIRE(bases.Equivalents.size() == 1);
+	CHECK(bases.Equivalents[0].Base == "main");
+	CHECK(bases.Equivalents[0].Text == "\xE2\x89\x88 in squash " + landing.ShortHex());
+}
+
+TEST_CASE("Git window: in no base yet waits for the equivalents")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	const Graphite::InBases waiting = Graphite::DescribeInBases(
+		read, std::vector<bool>{false, false, false},
+		{Graphite::BaseEquivalence{.Base = 0, .Twin = Known(std::nullopt), .SquashLanding = std::nullopt},
+		 Graphite::BaseEquivalence{.Base = 1, .Twin = Graphite::TwinMark{}, .SquashLanding = std::nullopt}});
+
+	// The line says "in no base yet" only with nothing held, nothing found and nothing pending (CommitDetailsView).
+	CHECK(waiting.Holding.empty());
+	CHECK(waiting.Equivalents.empty());
+	CHECK(waiting.EquivalentsPending);
+
+	const Graphite::InBases settled = Graphite::DescribeInBases(
+		read, std::vector<bool>{false, false, false},
+		{Graphite::BaseEquivalence{.Base = 0, .Twin = Known(std::nullopt), .SquashLanding = std::nullopt}});
+
+	CHECK(settled.Holding.empty());
+	CHECK(settled.Equivalents.empty());
+	CHECK_FALSE(settled.EquivalentsPending);
+}
+
+TEST_CASE("Git window: a squash commit names the branch it came from")
+{
+	Graphite::Fixtures::LineReadBuilder builder;
+	const std::size_t main = builder.AddLocal("main");
+	const std::size_t feature = builder.AddLocal("feature/x");
+	builder.MakeBase(main);
+	const Graphite::LineRead read = builder.Build();
+	(void)feature;
+
+	Graphite::ContentSource squash;
+	squash.Branch = read.Refs[feature].FullName;
+	squash.Kind = Core::ContentKind::Squash;
+
+	CHECK(Graphite::ContentSourceSentence(read, squash) == "Squash of feature/x.");
+
+	Graphite::ContentSource copy = squash;
+	copy.Kind = Core::ContentKind::Rebase;
+	copy.Own = CommitWithFirstByte(0x1a);
+
+	CHECK(Graphite::ContentSourceSentence(read, copy) == "Copy of " + copy.Own->ShortHex() + " from feature/x.");
+
+	// A branch no longer in the read is not named.
+	copy.Branch = "refs/heads/gone";
+	CHECK_FALSE(Graphite::ContentSourceSentence(read, copy).has_value());
+}
+
+TEST_CASE("Git window: an unknown twin search adds no chip")
+{
+	const Graphite::LineRead read = TwoBasesRead();
+
+	const Graphite::TwinMark unknown{.State = Graphite::ContentMark::State::Unknown, .Twin = std::nullopt};
+	const Graphite::InBases bases = Graphite::DescribeInBases(
+		read, std::vector<bool>{true, false, false},
+		{Graphite::BaseEquivalence{.Base = 1, .Twin = unknown, .SquashLanding = std::nullopt}});
+
+	REQUIRE(bases.Holding.size() == 1);
+	CHECK(bases.Equivalents.empty());
+	CHECK_FALSE(bases.EquivalentsPending);
+}

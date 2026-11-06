@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Git/Content/ContentModel.h"
+#include "Git/Content/ContentMark.h"
 #include "Git/Lines/LineReader.h"
 
 #include "Core/Git/Commit.h"
@@ -37,10 +39,23 @@ namespace Graphite {
 
 	bool ShowsCommitter(const Core::CommitSummary& commit);
 
+	// A base that holds a copy of the commit, or a squash of it, without holding the commit: "release" and "≈ copy".
+	struct InBaseEquivalent
+	{
+		std::string Base; // as the model names it
+		std::string Text; // "≈ copy" or "≈ in squash <short hash>"
+	};
+
 	// The bases that hold a commit, as the "In bases" line names them.
 	struct InBases
 	{
 		std::vector<std::string> Holding; // short names in model order; a remote base keeps its remote
+
+		// The bases that do not hold it by history but hold its copy or its squash, in model order.
+		std::vector<InBaseEquivalent> Equivalents;
+
+		// A copy is still searched for in some base: the line keeps a place for it and does not say "in no base yet".
+		bool EquivalentsPending = false;
 		bool Pending = false;             // the answer has not landed
 		std::optional<std::string> Unknown; // the line read failed: its message, and no answer will come
 	};
@@ -61,6 +76,22 @@ namespace Graphite {
 	// What follows the chips shown: "and 29 more", "30 bases" when none is shown, empty when all are.
 	std::string InBasesMoreText(std::size_t shown, std::size_t total);
 
-	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked.
-	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding);
+	// What is known of a base that does not hold the commit by history.
+	struct BaseEquivalence
+	{
+		std::size_t Base = 0;                   // index into read.Model.Bases
+		TwinMark Twin;                          // the search for a copy of the commit on the base
+		std::optional<Core::Oid> SquashLanding; // the base's commit holding the squash of the shown branch this commit is an own commit of
+	};
+
+	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked. `equivalence` holds
+	// the bases that do not hold the commit: a found copy reads "≈ copy" (before a squash, which would name only
+	// the same change), a squash "≈ in squash <short hash>"; a search still running makes the line pending, one that
+	// could not answer adds nothing.
+	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding,
+							const std::vector<BaseEquivalence>& equivalence = {});
+
+	// Where a commit's change came from, as the details say under the "In bases" line: "Squash of feature/x." or "Copy of
+	// 1a2b3c4 from feature/x."; empty when the branch is not in the read.
+	std::optional<std::string> ContentSourceSentence(const LineRead& read, const ContentSource& source);
 }

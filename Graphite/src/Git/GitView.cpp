@@ -1696,6 +1696,52 @@ namespace Graphite {
 		RenderDiff(palette);
 	}
 
+	std::optional<Core::Oid> GitView::SquashLandingOf(const Core::Oid& commit, std::size_t base)
+	{
+		const Core::BranchLine* const line = ShownContentCandidate();
+
+		// Only an own commit of the shown branch, the rows before the fold, has the branch's squash for an equivalent.
+		if (line == nullptr || !ViewFollowsModelsRead() || line->ComparedWith != std::optional<std::size_t>{base} ||
+			m_Model.GetMarkedKind() != GitModel::MarkedKind::Own || !MarkedCommitsOnScreen().contains(commit))
+		{
+			return std::nullopt;
+		}
+
+		const ContentMark mark = m_Content.KnownMarkOf(*line);
+
+		if (mark.State != ContentMark::State::Known || !mark.Verdict.has_value() ||
+			mark.Verdict->Outcome != Core::ContentOutcome::Merged || mark.Verdict->Kind != Core::ContentKind::Squash)
+		{
+			return std::nullopt;
+		}
+
+		return mark.Verdict->Landing;
+	}
+
+	std::vector<BaseEquivalence> GitView::EquivalenceOf(const LineRead& read, const Core::Oid& commit,
+														const std::vector<bool>& holding)
+	{
+		std::vector<BaseEquivalence> equivalence;
+		const std::size_t known = std::min(holding.size(), read.Model.Bases.size());
+
+		// Asked for each base that does not hold the commit by history, and only while the details show it.
+		for (std::size_t index = 0; index < known; ++index)
+		{
+			if (holding[index])
+			{
+				continue;
+			}
+
+			const std::size_t ref = read.Model.Bases[index].Ref;
+
+			equivalence.push_back(BaseEquivalence{.Base = index,
+												  .Twin = m_Content.TwinIn(commit, read.Refs[ref].Tip),
+												  .SquashLanding = SquashLandingOf(commit, ref)});
+		}
+
+		return equivalence;
+	}
+
 	void GitView::RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette)
 	{
 		std::optional<DiffStats> stats;
@@ -1730,7 +1776,16 @@ namespace Graphite {
 		}
 		else
 		{
-			content.Bases = DescribeInBases(*read, m_Lines.BasesHolding(commit.Id));
+			const std::optional<std::vector<bool>> holding = m_Lines.BasesHolding(commit.Id);
+
+			content.Bases = DescribeInBases(*read, holding,
+											holding.has_value() ? EquivalenceOf(*read, commit.Id, *holding)
+																: std::vector<BaseEquivalence>{});
+
+			if (const std::optional<ContentSource> source = m_Content.SourceOf(commit.Id))
+			{
+				content.Source = ContentSourceSentence(*read, *source);
+			}
 		}
 
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())

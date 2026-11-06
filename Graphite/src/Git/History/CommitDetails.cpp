@@ -127,7 +127,8 @@ namespace Graphite {
 		return bases;
 	}
 
-	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding)
+	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding,
+							const std::vector<BaseEquivalence>& equivalence)
 	{
 		InBases bases;
 
@@ -147,6 +148,52 @@ namespace Graphite {
 			}
 		}
 
+		for (const BaseEquivalence& base : equivalence)
+		{
+			if (base.Base >= read.Model.Bases.size())
+			{
+				continue;
+			}
+
+			const std::string name = LineNameOf(read, read.Model.Bases[base.Base].Ref);
+
+			if (base.Twin.State == ContentMark::State::Known && base.Twin.Twin.has_value())
+			{
+				bases.Equivalents.push_back(InBaseEquivalent{.Base = name, .Text = "≈ copy"});
+			}
+			else if (base.SquashLanding.has_value())
+			{
+				bases.Equivalents.push_back(
+					InBaseEquivalent{.Base = name, .Text = "≈ in squash " + base.SquashLanding->ShortHex()});
+			}
+			else if (base.Twin.State == ContentMark::State::Pending)
+			{
+				bases.EquivalentsPending = true;
+			}
+		}
+
 		return bases;
+	}
+
+	std::optional<std::string> ContentSourceSentence(const LineRead& read, const ContentSource& source)
+	{
+		for (std::size_t ref = 0; ref < read.Refs.size(); ++ref)
+		{
+			if (read.Refs[ref].FullName != source.Branch)
+			{
+				continue;
+			}
+
+			const std::string name = LineNameOf(read, ref);
+
+			if (source.Own.has_value())
+			{
+				return "Copy of " + source.Own->ShortHex() + " from " + name + ".";
+			}
+
+			return "Squash of " + name + ".";
+		}
+
+		return std::nullopt;
 	}
 }

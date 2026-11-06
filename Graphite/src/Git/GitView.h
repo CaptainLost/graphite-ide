@@ -259,6 +259,13 @@ namespace Graphite {
 		// Whether the header and the first rows wait for that check: it is pending and the model can answer it.
 		bool ShownContentWaits();
 
+		// For each base that does not hold `commit` by history: whether it holds a copy of it, asked of the content model
+		// (the base's tip is the line searched), and the landing of the shown branch's squash when the commit is one of that
+		// branch's own and the base its line.
+		std::vector<BaseEquivalence> EquivalenceOf(const LineRead& read, const Core::Oid& commit,
+												   const std::vector<bool>& holding);
+		std::optional<Core::Oid> SquashLandingOf(const Core::Oid& commit, std::size_t baseRef);
+
 		void FollowSelectedRef();
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
 		void FollowSelectedStash();

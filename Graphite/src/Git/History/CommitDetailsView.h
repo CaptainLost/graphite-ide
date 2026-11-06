@@ -25,6 +25,10 @@ namespace Graphite {
 	struct CommitDetailsContent
 	{
 		InBases Bases;
+
+		// "Squash of feature/x." under the bases line when the commit is the landing of a branch's squash or the copy of one
+		// of its commits and the branch is in the read.
+		std::optional<std::string> Source;
 		std::vector<CommitRef> Refs;
 		std::optional<BroughtDetails> Brought; // only for a merge
 

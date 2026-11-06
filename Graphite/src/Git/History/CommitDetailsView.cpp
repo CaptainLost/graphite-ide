@@ -137,27 +137,42 @@ namespace Graphite {
 				return;
 			}
 
-			if (bases.Holding.empty())
+			if (bases.Holding.empty() && bases.Equivalents.empty())
 			{
-				ImGui::TextDisabled("in no base yet");
+				ImGui::TextDisabled("%s", bases.EquivalentsPending ? kPendingText : "in no base yet");
 				return;
 			}
 
 			// WARNING: One line, never wrapped: chips that wrapped grew the pane when the answer landed and pushed the
 			// parents, stats and message down. Those that do not fit are counted after the rest, and named in the tooltip.
+			// A copy still searched for keeps its place at the end, as "…", so the line does not change when it lands.
 			std::vector<std::string> chips;
+			std::vector<bool> approximate;
 			std::vector<float> widths;
+			std::vector<std::string> names; // the tooltip's list, without the check mark
 
 			for (const std::string& base : bases.Holding)
 			{
 				chips.push_back(std::string(ICON_LC_CHECK " ") + base);
+				names.push_back(base);
+				approximate.push_back(false);
+				widths.push_back(ChipWidth(chips.back()));
+			}
+
+			for (const InBaseEquivalent& equivalent : bases.Equivalents)
+			{
+				chips.push_back(equivalent.Base + " " + equivalent.Text);
+				names.push_back(chips.back());
+				approximate.push_back(true);
 				widths.push_back(ChipWidth(chips.back()));
 			}
 
 			const float gap = WindowBarEm(kChipGapPixels);
+			const float pendingWidth = bases.EquivalentsPending ? gap + ImGui::CalcTextSize(kPendingText).x : 0.0f;
 			const std::string widestMore = "and " + Core::FormatCount(chips.size()) + " more";
-			const std::size_t shown = InBasesChipsThatFit(widths, gap, ImGui::GetContentRegionAvail().x,
-														  ImGui::CalcTextSize(widestMore.c_str()).x);
+			const std::size_t shown =
+				InBasesChipsThatFit(widths, gap, ImGui::GetContentRegionAvail().x - pendingWidth,
+									ImGui::CalcTextSize(widestMore.c_str()).x);
 			const std::string more = InBasesMoreText(shown, chips.size());
 
 			ImGui::BeginGroup();
@@ -165,7 +180,7 @@ namespace Graphite {
 
 			for (std::size_t chip = 0; chip < shown; ++chip)
 			{
-				DrawChip(flow, chips[chip], palette.GutterAdded);
+				DrawChip(flow, chips[chip], approximate[chip] ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : palette.GutterAdded);
 			}
 
 			if (!more.empty())
@@ -178,11 +193,17 @@ namespace Graphite {
 				ImGui::TextDisabled("%s", more.c_str());
 			}
 
+			if (bases.EquivalentsPending)
+			{
+				ImGui::SameLine(0.0f, gap);
+				ImGui::TextDisabled("%s", kPendingText);
+			}
+
 			ImGui::EndGroup();
 
 			if (!more.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
-				ImGui::SetTooltip("%s", Core::JoinedWith(bases.Holding, "\n").c_str());
+				ImGui::SetTooltip("%s", Core::JoinedWith(names, "\n").c_str());
 			}
 		}
 
@@ -307,6 +328,12 @@ namespace Graphite {
 		}
 
 		InBasesLine(content.Bases, palette);
+
+		if (content.Source.has_value())
+		{
+			ImGui::TextDisabled("%s", content.Source->c_str());
+		}
+
 		RefsLine(content.Refs, palette);
 
 		if (!commit.Parents.empty())
