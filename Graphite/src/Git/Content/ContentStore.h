@@ -20,21 +20,16 @@ namespace Graphite {
 		friend auto operator<=>(const ContentKey&, const ContentKey&) = default;
 	};
 
-	// The first Merged verdict found for a branch tip and the full ref name of the line it was found against,
-	// kept so that the landing is not lost when the line later moves on.
-	struct ContentFound
-	{
-		std::string Line;
-		Core::ContentVerdict Verdict;
-	};
-
 	// A check's unknown answer (an object it needs is missing, or the line ran past what one check reads) is kept for its
 	// pair like any other: the same two tips give the same answer, and the second opening must not ask it again. A check
 	// that failed is never stored.
 	struct ContentCache
 	{
 		std::map<ContentKey, Core::ContentVerdict> Verdicts;
-		std::map<Core::Oid, ContentFound> Found;
+
+		// By branch tip, the first merged verdict found for it, kept so that the landing is not lost when the line later
+		// moves on.
+		std::map<Core::Oid, Core::ContentVerdict> Found;
 	};
 
 	// A missing or damaged file, or one of another "version", gives an empty cache.

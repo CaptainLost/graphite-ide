@@ -19,7 +19,7 @@ namespace Graphite {
 				return;
 			}
 
-			const std::map<Core::Oid, ContentFound>::const_iterator found = cache.Found.find(read.Refs[line.Ref].Tip);
+			const std::map<Core::Oid, Core::ContentVerdict>::const_iterator found = cache.Found.find(read.Refs[line.Ref].Tip);
 
 			if (found != cache.Found.end())
 			{

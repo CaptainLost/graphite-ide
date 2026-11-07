@@ -158,8 +158,7 @@ namespace Graphite {
 		void StartTwin(const TwinKey& key);
 
 		void LandResolve(const ResolvedVerdicts& resolved);
-		void LandCheck(const ContentKey& key, const std::string& lineName, const Core::Result<Core::ContentVerdict>& verdict,
-					   bool patchIdsGrew);
+		void LandCheck(const ContentKey& key, const Core::Result<Core::ContentVerdict>& verdict, bool patchIdsGrew);
 		void LandTwin(const TwinKey& key, std::size_t budget, const Core::Result<Core::PatchTwinSearch>& twin, bool patchIdsGrew);
 
 		void SaveWhenDue();

@@ -339,7 +339,7 @@ namespace {
 
 			if (run.Verdict->Outcome == Core::ContentOutcome::Merged)
 			{
-				cache.Found[run.Key.BranchTip] = ContentFound{.Line = ComparedLineOf(read, run.Branch), .Verdict = *run.Verdict};
+				cache.Found[run.Key.BranchTip] = *run.Verdict;
 			}
 		}
 

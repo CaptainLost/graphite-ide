@@ -61,7 +61,7 @@ TEST_CASE("Git window: the content cache survives a save and a load")
 	saved.Verdicts[{IdOf(1), IdOf(2)}] = SquashAt(9);
 	saved.Verdicts[{IdOf(3), IdOf(2)}] = RebaseOfTwo();
 	saved.Verdicts[{IdOf(4), IdOf(2)}] = Core::ContentVerdict{};
-	saved.Found[IdOf(1)] = ContentFound{"refs/remotes/origin/main", SquashAt(9)};
+	saved.Found[IdOf(1)] = SquashAt(9);
 	REQUIRE(SaveContentCache(file, saved));
 
 	const ContentCache loaded = LoadContentCache(file);
@@ -71,8 +71,20 @@ TEST_CASE("Git window: the content cache survives a save and a load")
 	CHECK(loaded.Verdicts.at({IdOf(3), IdOf(2)}) == RebaseOfTwo());
 	CHECK(loaded.Verdicts.at({IdOf(4), IdOf(2)}).Outcome == Core::ContentOutcome::NotMerged);
 	REQUIRE(loaded.Found.size() == 1);
-	CHECK(loaded.Found.at(IdOf(1)).Line == "refs/remotes/origin/main");
-	CHECK(loaded.Found.at(IdOf(1)).Verdict == SquashAt(9));
+	CHECK(loaded.Found.at(IdOf(1)) == SquashAt(9));
+}
+
+TEST_CASE("Git window: a found verdict an earlier build saved with its line's name loads without it")
+{
+	TempDirectory directory;
+	const std::string older = R"({"version": 1, "verdicts": [], "found": [{"branch": ")" + kBranch +
+							  R"(", "line": "refs/remotes/origin/main", "verdict": {"outcome": "merged", "kind": "squash", "landing": ")" +
+							  kLine + R"("}}]})";
+
+	const ContentCache loaded = LoadContentCache(directory.MakeFile("content.json", older));
+
+	REQUIRE(loaded.Found.size() == 1);
+	CHECK(loaded.Found.begin()->second.Landing == Core::Oid::FromHex(kLine));
 }
 
 TEST_CASE("Git window: an unknown verdict is kept for its pair but never as found")
@@ -85,7 +97,7 @@ TEST_CASE("Git window: an unknown verdict is kept for its pair but never as foun
 
 	ContentCache saved;
 	saved.Verdicts[{IdOf(1), IdOf(2)}] = unknown;
-	saved.Found[IdOf(1)] = ContentFound{"refs/heads/main", unknown};
+	saved.Found[IdOf(1)] = unknown;
 	REQUIRE(SaveContentCache(file, saved));
 
 	// The same two tips answer the same, so the second opening knows it without asking; only a merge is remembered.

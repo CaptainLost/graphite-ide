@@ -399,8 +399,8 @@ namespace Graphite {
 		// Found against an earlier tip of the line, and rechecked against this one: it counts meanwhile.
 		if (m_RecheckWaiting.contains(key) || m_RecheckRunning.contains(key))
 		{
-			const std::map<Core::Oid, ContentFound>::const_iterator found = m_Cache.Found.find(key.BranchTip);
-			return found != m_Cache.Found.end() ? &found->second.Verdict : nullptr;
+			const std::map<Core::Oid, Core::ContentVerdict>::const_iterator found = m_Cache.Found.find(key.BranchTip);
+			return found != m_Cache.Found.end() ? &found->second : nullptr;
 		}
 
 		for (const std::map<ContentKey, CarryAsk>* carries : {&m_CarryWaiting, &m_CarryRunning})
@@ -574,7 +574,7 @@ namespace Graphite {
 
 		for (const ContentKey& key : m_RecheckWaiting)
 		{
-			remembered.push_back(RememberedVerdict{.Key = key, .Verdict = m_Cache.Found.at(key.BranchTip).Verdict});
+			remembered.push_back(RememberedVerdict{.Key = key, .Verdict = m_Cache.Found.at(key.BranchTip)});
 		}
 
 		std::vector<CarryAsk> carries;
@@ -640,15 +640,13 @@ namespace Graphite {
 
 	void ContentModel::StartCheck(std::size_t branch)
 	{
-		const Core::BranchLine& line = m_Read->Model.Branches[branch];
-		const ContentKey key = *KeyOf(line);
-		std::string lineName = m_Read->Refs[*line.ComparedWith].FullName;
+		const ContentKey key = *KeyOf(m_Read->Model.Branches[branch]);
 		const std::uint64_t repository = m_Port.RepositoryNow();
 
 		m_Checking = key;
 		m_Running = true;
 
-		Submit([this, key, lineName = std::move(lineName), repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
+		Submit([this, key, repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
 			const UnfinishedJob finishing{m_UnfinishedJobs};
 
 			if (!IsSameFolder(folder))
@@ -662,17 +660,16 @@ namespace Graphite {
 			Core::Result<Core::ContentVerdict> verdict = m_Port.CheckContent(repository, key.BranchTip, key.LineTip, patchIds->Ids);
 			const bool patchIdsGrew = patchIds->Ids.GetSize() > idsBefore;
 
-			Deliver([this, folder, key, lineName, verdict = std::move(verdict), patchIdsGrew]() {
+			Deliver([this, folder, key, verdict = std::move(verdict), patchIdsGrew]() {
 				if (IsSameFolder(folder))
 				{
-					LandCheck(key, lineName, verdict, patchIdsGrew);
+					LandCheck(key, verdict, patchIdsGrew);
 				}
 			});
 		});
 	}
 
-	void ContentModel::LandCheck(const ContentKey& key, const std::string& lineName, const Core::Result<Core::ContentVerdict>& verdict,
-								 bool patchIdsGrew)
+	void ContentModel::LandCheck(const ContentKey& key, const Core::Result<Core::ContentVerdict>& verdict, bool patchIdsGrew)
 	{
 		m_Running = false;
 		m_Checking.reset();
@@ -699,7 +696,7 @@ namespace Graphite {
 
 		if (found.Outcome == Core::ContentOutcome::Merged)
 		{
-			m_Cache.Found[key.BranchTip] = ContentFound{.Line = lineName, .Verdict = found};
+			m_Cache.Found[key.BranchTip] = found;
 			RebuildSources();
 		}
 	}

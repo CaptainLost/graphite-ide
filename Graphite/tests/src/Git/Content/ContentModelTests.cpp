@@ -1317,6 +1317,31 @@ TEST_CASE("Git window: an unknown answer is saved and known in the next opening 
 	CHECK(reported.Messages.size() == 2);
 }
 
+TEST_CASE("Git window: a branch found merged into a line whose ref name is not UTF-8 is saved")
+{
+	TempDirectory directory;
+	const LineStorePaths store = StoreIn(directory.GetPath());
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	// A ref name git took as bytes, here Latin-1.
+	LineRead built = CandidatesRead(1, store);
+	built.Refs[0].FullName = "refs/remotes/origin/caf\xE9";
+	const Core::Ref<const LineRead> read = Shared(std::move(built));
+	port.Verdicts[KeyOfBranch(*read, 0)] = SquashLandingAt(kLanding);
+
+	model.Follow(read);
+	Settle(jobs, model);
+	LetSaveRun(jobs, model);
+
+	const ContentCache saved = LoadContentCache(store.Content);
+	CHECK(saved.Verdicts.contains(KeyOfBranch(*read, 0)));
+	CHECK(saved.Found.contains(KeyOfBranch(*read, 0).BranchTip));
+}
+
 TEST_CASE("Git window: a commit that is a squash's landing names the branch it came from")
 {
 	FakeContentPort port;

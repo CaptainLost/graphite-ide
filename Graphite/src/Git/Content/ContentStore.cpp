@@ -16,6 +16,10 @@ namespace Graphite {
 	namespace {
 		constexpr std::int64_t kContentVersion = 1;
 
+		constexpr int kIndentWidth = 1;
+		constexpr char kIndentCharacter = '\t';
+		constexpr bool kKeepNonAscii = false;
+
 		nlohmann::json VerdictToJson(const Core::ContentVerdict& verdict)
 		{
 			nlohmann::json json = nlohmann::json::object();
@@ -236,11 +240,11 @@ namespace Graphite {
 					continue;
 				}
 
+				// An earlier build also wrote the line's ref name here, which nothing reads.
 				const std::optional<Core::Oid> branch = OidAt(entry, "branch");
-				const auto line = entry.find("line");
 				const auto verdictJson = entry.find("verdict");
 
-				if (!branch || line == entry.end() || !line->is_string() || verdictJson == entry.end())
+				if (!branch || verdictJson == entry.end())
 				{
 					continue;
 				}
@@ -249,7 +253,7 @@ namespace Graphite {
 
 				if (verdict && verdict->Outcome == Core::ContentOutcome::Merged)
 				{
-					cache.Found[*branch] = ContentFound{line->get<std::string>(), *verdict};
+					cache.Found[*branch] = *verdict;
 				}
 			}
 		}
@@ -301,15 +305,14 @@ namespace Graphite {
 
 		for (const auto& [branch, remembered] : cache.Found)
 		{
-			if (remembered.Verdict.Outcome != Core::ContentOutcome::Merged)
+			if (remembered.Outcome != Core::ContentOutcome::Merged)
 			{
 				continue;
 			}
 
 			nlohmann::json entry = nlohmann::json::object();
 			entry["branch"] = branch.ToHex();
-			entry["line"] = remembered.Line;
-			entry["verdict"] = VerdictToJson(remembered.Verdict);
+			entry["verdict"] = VerdictToJson(remembered);
 			found.push_back(std::move(entry));
 		}
 
@@ -321,6 +324,9 @@ namespace Graphite {
 		std::error_code error;
 		std::filesystem::create_directories(file.parent_path(), error);
 
-		return Core::WriteFileAtomically(file, document.dump(1, '\t'));
+		// WARNING: The strict handler throws on any text that is not UTF-8, which would end the save's job with nothing
+		// written; the file holds hex ids alone, but a text that slips in must not cost the file.
+		return Core::WriteFileAtomically(file, document.dump(kIndentWidth, kIndentCharacter, kKeepNonAscii,
+															 nlohmann::json::error_handler_t::replace));
 	}
 }
