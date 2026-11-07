@@ -508,6 +508,8 @@ namespace Graphite {
 		m_OpenByUser.clear();
 		m_ShowingMerged.clear();
 		++m_SidebarChoicesVersion;
+		++m_SidebarMergedChoicesVersion;
+		m_HiddenByContent = MergedByContentSnapshot{};
 
 		m_ChangesPicked = false;
 		m_ChangesDiff.Diff = {};

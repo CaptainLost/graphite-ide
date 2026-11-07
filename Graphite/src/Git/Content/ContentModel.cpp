@@ -295,13 +295,32 @@ namespace Graphite {
 				continue;
 			}
 
-			const std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.find(*key);
+			const Core::ContentVerdict* const verdict = StandingVerdictOf(*key);
 
-			if (verdict != m_Cache.Verdicts.end() && verdict->second.Outcome == Core::ContentOutcome::Merged)
+			if (verdict != nullptr && verdict->Outcome == Core::ContentOutcome::Merged)
 			{
-				AddSourcesOf(m_Read->Refs[line.Ref].FullName, verdict->second);
+				AddSourcesOf(m_Read->Refs[line.Ref].FullName, *verdict);
 			}
 		}
+	}
+
+	const Core::ContentVerdict* ContentModel::StandingVerdictOf(const ContentKey& key) const
+	{
+		const std::map<ContentKey, Core::ContentVerdict>::const_iterator own = m_Cache.Verdicts.find(key);
+
+		if (own != m_Cache.Verdicts.end())
+		{
+			return &own->second;
+		}
+
+		// Found against an earlier tip of the line, and rechecked against this one: it counts meanwhile.
+		if (m_RecheckWaiting.contains(key) || m_RecheckRunning.contains(key))
+		{
+			const std::map<Core::Oid, ContentFound>::const_iterator found = m_Cache.Found.find(key.BranchTip);
+			return found != m_Cache.Found.end() ? &found->second.Verdict : nullptr;
+		}
+
+		return nullptr;
 	}
 
 	void ContentModel::AddSourcesOf(const std::string& branch, const Core::ContentVerdict& verdict)
@@ -496,20 +515,15 @@ namespace Graphite {
 		m_Running = false;
 		m_RecheckRunning.clear();
 
-		// Those the line no longer holds wait for a check of their own.
+		// Those the line no longer holds wait for a check of their own, and stand no longer.
 		m_EveryCandidateAsked = false;
-
-		if (held.empty())
-		{
-			return;
-		}
 
 		for (const RememberedVerdict& remembered : held)
 		{
 			m_Cache.Verdicts[remembered.Key] = remembered.Verdict;
 		}
 
-		m_VerdictsChanged = true;
+		m_VerdictsChanged = m_VerdictsChanged || !held.empty();
 		RebuildSources();
 	}
 
@@ -688,14 +702,14 @@ namespace Graphite {
 			return ContentMark{};
 		}
 
-		const std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.find(*key);
+		const Core::ContentVerdict* const verdict = StandingVerdictOf(*key);
 
-		if (verdict != m_Cache.Verdicts.end() && verdict->second.Outcome != Core::ContentOutcome::Unknown)
+		if (verdict != nullptr && verdict->Outcome != Core::ContentOutcome::Unknown)
 		{
-			return KnownMark(verdict->second);
+			return KnownMark(*verdict);
 		}
 
-		if (verdict != m_Cache.Verdicts.end() || m_Failed.contains(*key))
+		if (verdict != nullptr || m_Failed.contains(*key))
 		{
 			return ContentMark{.State = ContentMark::State::Unknown, .Verdict = std::nullopt};
 		}

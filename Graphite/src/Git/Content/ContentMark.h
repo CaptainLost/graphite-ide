@@ -20,6 +20,13 @@ namespace Graphite {
 		std::optional<Core::ContentVerdict> Verdict; // when Known
 	};
 
+	// The mark is a verdict that the branch's changes are in its line.
+	inline bool IsMergedByContent(const ContentMark& mark)
+	{
+		return mark.State == ContentMark::State::Known && mark.Verdict.has_value() &&
+			   mark.Verdict->Outcome == Core::ContentOutcome::Merged;
+	}
+
 	// Whether a line holds a copy of a commit: a commit carrying the same patch.
 	struct TwinMark
 	{

@@ -844,6 +844,118 @@ TEST_CASE("Git window: a row found merged by content keeps its place until the r
 		  Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "~ Hide merged", "# stashes 0", "! No stashes"});
 }
 
+namespace {
+
+	// origin/live, and origin/squashed, which a check finds merged by content once `Found` is set.
+	struct FoundLater
+	{
+		Core::Ref<const LineRead> Read;
+		std::size_t Squashed = 0;
+		bool Found = false;
+
+		bool IsMergedNow(std::size_t branch) const { return Found && branch == Squashed; }
+	};
+
+	FoundLater SquashedFoundLater()
+	{
+		LineReadBuilder builder;
+		builder.AddRemote("origin");
+		builder.AddRemoteBranch("origin", "live", {.AgeDays = 2});
+		const std::size_t squashed = builder.AddRemoteBranch("origin", "squashed", {.AgeDays = 1});
+
+		return FoundLater{.Read = Core::CreateRef<const LineRead>(builder.Build()), .Squashed = squashed};
+	}
+
+	// The rows as the window builds them from `inputs`: the branches hidden by content are the snapshot's, which follows
+	// the inputs first and asks the live verdicts only at the moments it is taken.
+	std::vector<SidebarRow> RowsFromSnapshot(const SidebarInputs& inputs, MergedByContentSnapshot& snapshot, const FoundLater& found,
+											 const std::set<std::string>& showingMerged = {})
+	{
+		const std::function<bool(std::size_t)> mergedNow = [&found](std::size_t branch) { return found.IsMergedNow(branch); };
+		snapshot.Follow(inputs, mergedNow);
+
+		const std::function<bool(std::size_t)> hiddenByContent = [&snapshot](std::size_t branch) { return snapshot.IsMerged(branch); };
+		const SidebarInput input{.Read = *inputs.Read,
+								 .Stashes = &kNoStashes,
+								 .Authors = inputs.Authors.get(),
+								 .Search = inputs.Search,
+								 .OpenByUser = {},
+								 .ShowingMerged = showingMerged,
+								 .ShownRef = inputs.ShownRef,
+								 .MergedByContent = &hiddenByContent};
+		return BuildSidebarRows(input);
+	}
+
+	const Lines kSquashedListed{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "# stashes 0", "! No stashes"};
+	const Lines kSquashedHidden{"# yours 0", "# remote/origin 1", "origin/live", kOneMergedHidden, "# stashes 0", "! No stashes"};
+}
+
+TEST_CASE("Git window: a verdict found since the last snapshot hides no row when the rows are built for another reason")
+{
+	FoundLater found = SquashedFoundLater();
+	MergedByContentSnapshot snapshot;
+	SidebarInputs inputs{.Read = found.Read};
+
+	REQUIRE(Describe(*found.Read, RowsFromSnapshot(inputs, snapshot, found)) == kSquashedListed);
+
+	found.Found = true;
+
+	SUBCASE("another branch selected")
+	{
+		inputs.ShownRef = "refs/remotes/origin/live";
+	}
+
+	SUBCASE("a group opened or closed")
+	{
+		++inputs.ChoicesVersion;
+	}
+
+	SUBCASE("the authors read landing")
+	{
+		inputs.Authors = Core::CreateRef<const BranchAuthors>();
+	}
+
+	CHECK(Describe(*found.Read, RowsFromSnapshot(inputs, snapshot, found)) == kSquashedListed);
+}
+
+TEST_CASE("Git window: a verdict found since the last snapshot hides its row at a new read, a search, Show or Hide merged and an opening")
+{
+	FoundLater found = SquashedFoundLater();
+	MergedByContentSnapshot snapshot;
+	SidebarInputs inputs{.Read = found.Read};
+
+	REQUIRE(Describe(*found.Read, RowsFromSnapshot(inputs, snapshot, found)) == kSquashedListed);
+
+	found.Found = true;
+
+	SUBCASE("a new read of the same branches")
+	{
+		inputs.Read = Core::CreateRef<const LineRead>(*found.Read);
+	}
+
+	SUBCASE("a search typed and cleared")
+	{
+		inputs.Search = "squashed";
+		CHECK(Describe(*found.Read, RowsFromSnapshot(inputs, snapshot, found)) == Lines{"# remote/origin 1/2", "origin/squashed"});
+		inputs.Search.clear();
+	}
+
+	SUBCASE("Show merged and then Hide merged")
+	{
+		++inputs.MergedChoicesVersion;
+		CHECK(Describe(*found.Read, RowsFromSnapshot(inputs, snapshot, found, {"origin"})) ==
+			  Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "~ Hide merged", "# stashes 0", "! No stashes"});
+		++inputs.MergedChoicesVersion;
+	}
+
+	SUBCASE("the window opened again")
+	{
+		++inputs.Openings;
+	}
+
+	CHECK(Describe(*found.Read, RowsFromSnapshot(inputs, snapshot, found)) == kSquashedHidden);
+}
+
 TEST_CASE("Git window: a local branch merged by content stays listed in Yours with its mark")
 {
 	LineReadBuilder builder;

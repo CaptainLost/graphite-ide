@@ -128,6 +128,10 @@ namespace Graphite {
 
 		std::optional<std::size_t> BranchIndexOf(const Core::BranchLine& line) const;
 		std::optional<ContentKey> KeyOf(const Core::BranchLine& line) const;
+
+		// The verdict that counts for the pair now: its own, else, while a moved line's earlier verdict is resolved for the
+		// pair, that one (spec §6 rule 3: a moved line must not make a known row pending). Null for none.
+		const Core::ContentVerdict* StandingVerdictOf(const ContentKey& key) const;
 		bool IsWaiting(const ContentKey& key) const;
 		bool IsWaitingBranch(std::size_t branch) const;
 		std::optional<std::size_t> FirstWaitingBranch(const std::vector<std::size_t>& order) const;

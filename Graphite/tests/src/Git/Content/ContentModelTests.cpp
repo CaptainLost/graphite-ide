@@ -6,6 +6,7 @@
 #include "Git/Content/PatchIdFile.h"
 #include "Git/Lines/LineReadFixtures.h"
 #include "Git/Lines/LineStore.h"
+#include "Git/Sidebar/SidebarRows.h"
 
 #include "DeferredJobs.h"
 #include "TempDirectory.h"
@@ -763,6 +764,101 @@ TEST_CASE("Git window: a verdict found once counts while the line holds its land
 
 	CHECK(port.Checked.size() == 1);
 	CHECK(IsKnownAs(model.KnownMarkOf(movedOn->Model.Branches[0]), SquashLandingAt(kLandingOnLine)));
+}
+
+namespace {
+
+	// origin/topic at kBranchTip compared with origin/main at `lineTip`: a remote branch, which the sidebar hides once
+	// it is merged.
+	Core::Ref<const LineRead> RemoteLandingRead(const Core::Oid& lineTip)
+	{
+		Fixtures::LineReadBuilder builder;
+		builder.AddRemote("origin");
+		const std::size_t line = builder.AddRemoteBranch("origin", "main", {.AgeDays = 0});
+		builder.MakeBase(line);
+		const std::size_t topic = builder.AddRemoteBranch("origin", "topic", {.AgeDays = 1});
+		builder.Compare(topic, line);
+
+		LineRead read = builder.Build();
+		read.Refs[line].Tip = lineTip;
+		read.Refs[topic].Tip = kBranchTip;
+		read.Model.Branches[0].Ahead = 1;
+		read.Graph = LandingGraph();
+		read.Generations = Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*read.Graph));
+		return Shared(std::move(read));
+	}
+
+	// The snapshot the sidebar takes of what the model knows when a read lands.
+	MergedByContentSnapshot SnapshotAtRead(const ContentModel& model, const Core::Ref<const LineRead>& read)
+	{
+		const std::function<bool(std::size_t)> mergedNow = [&model, &read](std::size_t branch) {
+			return IsMergedByContent(model.KnownMarkOf(read->Model.Branches[branch]));
+		};
+
+		MergedByContentSnapshot snapshot;
+		snapshot.Follow(SidebarInputs{.Read = read}, mergedNow);
+		return snapshot;
+	}
+}
+
+TEST_CASE("Git window: a remembered verdict stands for the line's new tip before its recheck runs, so the snapshot then taken hides the branch")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	port.Verdicts[ContentKey{kBranchTip, kLandingOnLine}] = SquashLandingAt(kLandingOnLine);
+	const Core::Ref<const LineRead> found = RemoteLandingRead(kLandingOnLine);
+	model.Follow(found);
+	Settle(jobs, model);
+	REQUIRE(IsKnownAs(model.KnownMarkOf(found->Model.Branches[0]), SquashLandingAt(kLandingOnLine)));
+
+	// A fetch moves the line past the landing; the read lands, and the sidebar is built in the same frame.
+	const Core::Ref<const LineRead> movedOn = RemoteLandingRead(kAfterLanding);
+	model.Follow(movedOn);
+	REQUIRE(jobs.Count() == 0);
+
+	const Core::BranchLine& topic = movedOn->Model.Branches[0];
+	CHECK(IsKnownAs(model.KnownMarkOf(topic), SquashLandingAt(kLandingOnLine)));
+	CHECK(SnapshotAtRead(model, movedOn).IsMerged(0));
+	CHECK(model.SourceOf(kLandingOnLine).has_value());
+
+	// The header and the banner do not wait for the recheck either.
+	CHECK_FALSE(ContentCheckWaits(model.MarkOfShown(topic), true));
+
+	// Asked while its recheck runs, the verdict still stands; once the recheck lands it is the new pair's own.
+	model.OnUpdate(Core::Timestep{});
+	REQUIRE(jobs.Count() == 1);
+	CHECK(IsKnownAs(model.KnownMarkOf(topic), SquashLandingAt(kLandingOnLine)));
+
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{});
+	CHECK(IsKnownAs(model.KnownMarkOf(topic), SquashLandingAt(kLandingOnLine)));
+	CHECK(port.Checked.size() == 1);
+}
+
+TEST_CASE("Git window: a remembered verdict the line no longer holds turns pending in place once its recheck lands")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	port.Verdicts[ContentKey{kBranchTip, kLandingOnLine}] = SquashLandingAt(kLandingOnLine);
+	model.Follow(RemoteLandingRead(kLandingOnLine));
+	Settle(jobs, model);
+
+	const Core::Ref<const LineRead> reset = RemoteLandingRead(kReset);
+	model.Follow(reset);
+	const Core::BranchLine& topic = reset->Model.Branches[0];
+	CHECK(IsKnownAs(model.KnownMarkOf(topic), SquashLandingAt(kLandingOnLine)));
+
+	// The recheck finds the landing gone: the pair waits for a check of its own.
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{});
+	CHECK(model.KnownMarkOf(topic).State == ContentMark::State::Pending);
 }
 
 TEST_CASE("Git window: a verdict found once is checked again when the line no longer holds its landing")

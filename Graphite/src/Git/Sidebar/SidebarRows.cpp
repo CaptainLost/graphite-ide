@@ -600,6 +600,39 @@ namespace Graphite {
 		return m_Held;
 	}
 
+	void MergedByContentSnapshot::Follow(const SidebarInputs& inputs, const std::function<bool(std::size_t branch)>& mergedNow)
+	{
+		Moment moment{.Read = inputs.Read,
+					  .Search = inputs.Search,
+					  .MergedChoicesVersion = inputs.MergedChoicesVersion,
+					  .Openings = inputs.Openings};
+
+		if (m_TakenAt == moment)
+		{
+			return;
+		}
+
+		m_TakenAt = std::move(moment);
+		m_Merged.clear();
+
+		if (!inputs.Read)
+		{
+			return;
+		}
+
+		m_Merged.reserve(inputs.Read->Model.Branches.size());
+
+		for (std::size_t branch = 0; branch < inputs.Read->Model.Branches.size(); ++branch)
+		{
+			m_Merged.push_back(mergedNow(branch));
+		}
+	}
+
+	bool MergedByContentSnapshot::IsMerged(std::size_t branch) const
+	{
+		return branch < m_Merged.size() && m_Merged[branch];
+	}
+
 	std::optional<std::size_t> RefOpenedBy(const SidebarRow& row, const LineRead& read, const BranchLines& lines)
 	{
 		if (row.Kind != SidebarRowKind::Branch && row.Kind != SidebarRowKind::Base)

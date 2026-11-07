@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
@@ -108,6 +109,59 @@ namespace Graphite {
 	private:
 		Core::Ref<const BranchAuthors> m_Held;
 		bool m_Searching = false;
+	};
+
+	// What the Git window's sidebar rows are built from: they are built again whenever any of it changes.
+	struct SidebarInputs
+	{
+		Core::Ref<const LineRead> Read;
+		Core::Ref<const std::vector<Core::StashEntry>> Stashes;
+		std::optional<std::string> StashesError; // a failed read keeps the list it last had, so it is compared apart
+		Core::Ref<const BranchAuthors> Authors;
+		std::string Search;
+
+		// Moved by every section or group opened or closed.
+		std::uint64_t ChoicesVersion = 0;
+
+		// Moved by every remote's merged branches shown or hidden.
+		std::uint64_t MergedChoicesVersion = 0;
+
+		// Moved every time the window is drawn after a frame it was not.
+		std::uint64_t Openings = 0;
+
+		std::string ShownRef;
+
+		friend bool operator==(const SidebarInputs&, const SidebarInputs&) = default;
+	};
+
+	// The branches the sidebar hides as merged by content: those the content checks had found at the last of the moments
+	// spec §6 rule 3 names, a new read, a change of the search, Show or Hide merged, and the window opened again. Rows
+	// built for any other reason (a branch selected, a section or group opened or closed, the authors read landing) hide
+	// the same branches, so no row goes from under the mouse; a verdict found since shows as the row's mark alone until the
+	// next such moment.
+	class MergedByContentSnapshot
+	{
+	public:
+		// At such a moment since the last snapshot, asks `mergedNow` of every branch of the read again; otherwise keeps what
+		// it has. `mergedNow` takes an index into inputs.Read->Model.Branches.
+		void Follow(const SidebarInputs& inputs, const std::function<bool(std::size_t branch)>& mergedNow);
+
+		// For an index into the Model.Branches of the read the snapshot was taken of; false for one it does not know.
+		bool IsMerged(std::size_t branch) const;
+
+	private:
+		struct Moment
+		{
+			Core::Ref<const LineRead> Read;
+			std::string Search;
+			std::uint64_t MergedChoicesVersion = 0;
+			std::uint64_t Openings = 0;
+
+			friend bool operator==(const Moment&, const Moment&) = default;
+		};
+
+		std::optional<Moment> m_TakenAt;
+		std::vector<bool> m_Merged;
 	};
 
 	// The rows that need no line model, for while the lines are read: the Stashes section alone, as BuildSidebarRows

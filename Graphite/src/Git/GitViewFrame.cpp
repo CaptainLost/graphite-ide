@@ -251,6 +251,15 @@ namespace Graphite {
 
 	void GitView::RenderSidebar()
 	{
+		const int frame = ImGui::GetFrameCount();
+
+		if (frame != m_SidebarDrawnOnFrame + 1)
+		{
+			++m_SidebarOpenings;
+		}
+
+		m_SidebarDrawnOnFrame = frame;
+
 		RebuildSidebarWhenOutOfDate();
 
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
@@ -278,6 +287,8 @@ namespace Graphite {
 							 .Authors = m_SearchedAuthors.Follow(m_Model.GetBranchAuthors(), m_Sidebar.GetSearch()),
 							 .Search = m_Sidebar.GetSearch(),
 							 .ChoicesVersion = m_SidebarChoicesVersion,
+							 .MergedChoicesVersion = m_SidebarMergedChoicesVersion,
+							 .Openings = m_SidebarOpenings,
 							 .ShownRef = SidebarShownRef()};
 
 		if (m_SidebarBuiltFrom == inputs)
@@ -304,13 +315,16 @@ namespace Graphite {
 
 		if (inputs.Read)
 		{
-			// What content checks found so far, read now and only now: a verdict that lands later changes no row until this
-			// runs again for another reason.
+			// What content checks found so far, read only at the moments the snapshot is taken: a verdict that lands later
+			// fills its row's mark in place and hides no row until the next such moment.
 			const LineRead& read = *inputs.Read;
-			const std::function<bool(std::size_t)> mergedByContent = [this, &read](std::size_t branch) {
-				const ContentMark mark = m_Content.KnownMarkOf(read.Model.Branches[branch]);
-				return mark.State == ContentMark::State::Known && mark.Verdict.has_value() &&
-					   mark.Verdict->Outcome == Core::ContentOutcome::Merged;
+			const std::function<bool(std::size_t)> mergedNow = [this, &read](std::size_t branch) {
+				return IsMergedByContent(m_Content.KnownMarkOf(read.Model.Branches[branch]));
+			};
+			m_HiddenByContent.Follow(inputs, mergedNow);
+
+			const std::function<bool(std::size_t)> mergedByContent = [this](std::size_t branch) {
+				return m_HiddenByContent.IsMerged(branch);
 			};
 
 			m_SidebarRows = BuildSidebarRows(SidebarInput{.Read = *inputs.Read,
@@ -497,11 +511,11 @@ namespace Graphite {
 			return;
 		case SidebarLink::ShowMerged:
 			m_ShowingMerged.insert(remote);
-			++m_SidebarChoicesVersion;
+			++m_SidebarMergedChoicesVersion;
 			return;
 		case SidebarLink::HideMerged:
 			m_ShowingMerged.erase(remote);
-			++m_SidebarChoicesVersion;
+			++m_SidebarMergedChoicesVersion;
 			return;
 		case SidebarLink::WhyBases:
 			OpenVsPicker(ImGui::GetMousePos());

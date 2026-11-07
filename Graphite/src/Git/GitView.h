@@ -527,22 +527,6 @@ namespace Graphite {
 
 		SidebarView m_Sidebar;
 
-		struct SidebarInputs
-		{
-			Core::Ref<const LineRead> Read;
-			Core::Ref<const std::vector<Core::StashEntry>> Stashes;
-			std::optional<std::string> StashesError; // a failed read keeps the list it last had, so it is compared apart
-			Core::Ref<const BranchAuthors> Authors;
-			std::string Search;
-
-			// Moved by every section or group opened or closed and every remote's merged branches shown or hidden.
-			std::uint64_t ChoicesVersion = 0;
-
-			std::string ShownRef;
-
-			friend bool operator==(const SidebarInputs&, const SidebarInputs&) = default;
-		};
-
 		// WARNING: The inputs are held, not only compared: the rows' indices point into the read and the stashes held
 		// here, m_SidebarLines views into the read, and a snapshot freed and another made at its address must never
 		// pass for the one the rows were built from. Without a read the rows are the stashes alone.
@@ -550,6 +534,13 @@ namespace Graphite {
 		std::vector<SidebarRow> m_SidebarRows;
 		SearchedAuthors m_SearchedAuthors;
 		std::optional<BranchLines> m_SidebarLines;
+
+		// The remote branches the rows hide as merged by content, found again only at the moments spec §6 rule 3 names.
+		MergedByContentSnapshot m_HiddenByContent;
+
+		// The frame the sidebar was last drawn on: drawn on any later one than the next, the window was opened again.
+		int m_SidebarDrawnOnFrame = -1;
+		std::uint64_t m_SidebarOpenings = 0;
 
 		// The header's vs label and banner as last drawn with their distance known, kept while it is measured again.
 		std::optional<DrawnHeaderWords> m_DrawnHeaderWords;
@@ -564,7 +555,8 @@ namespace Graphite {
 
 		std::map<std::string, bool> m_OpenByUser;
 		std::set<std::string> m_ShowingMerged;
-		std::uint64_t m_SidebarChoicesVersion = 0;
+		std::uint64_t m_SidebarChoicesVersion = 0;       // sections and groups opened or closed
+		std::uint64_t m_SidebarMergedChoicesVersion = 0; // remotes' merged branches shown or hidden
 
 		// The full name of the branch, or the id of the stash, the open row menu was opened for.
 		std::string m_SidebarMenuFor;
