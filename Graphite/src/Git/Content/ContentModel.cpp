@@ -6,7 +6,9 @@
 #include "Core/Base/Log.h"
 
 #include <algorithm>
+#include <exception>
 #include <format>
+#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -42,6 +44,93 @@ namespace Graphite {
 		ContentMark KnownMark(const Core::ContentVerdict& verdict)
 		{
 			return ContentMark{.State = ContentMark::State::Known, .Verdict = verdict};
+		}
+
+		// WARNING: A job that throws is abandoned by the queue with nothing delivered, and the model would wait for it for
+		// the rest of the session: each job's work answers a throw, a std::bad_alloc say, as a failure instead.
+		Core::Error StoppedBy(std::string_view what)
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, std::format("it stopped on an error: {}", what)};
+		}
+
+		struct CheckAnswer
+		{
+			Core::Result<Core::ContentVerdict> Verdict;
+			bool PatchIdsGrew = false;
+		};
+
+		CheckAnswer CheckOnWorker(ContentPort& port, std::uint64_t repository, const ContentKey& key, PatchIdStore& patchIds)
+		{
+			try
+			{
+				LoadPatchIdsOnce(patchIds);
+				const std::size_t idsBefore = patchIds.Ids.GetSize();
+				Core::Result<Core::ContentVerdict> verdict = port.CheckContent(repository, key.BranchTip, key.LineTip, patchIds.Ids);
+
+				return CheckAnswer{.Verdict = std::move(verdict), .PatchIdsGrew = patchIds.Ids.GetSize() > idsBefore};
+			}
+			catch (const std::exception& error)
+			{
+				return CheckAnswer{.Verdict = StoppedBy(error.what()), .PatchIdsGrew = false};
+			}
+			catch (...)
+			{
+				return CheckAnswer{.Verdict = StoppedBy("not an exception"), .PatchIdsGrew = false};
+			}
+		}
+
+		struct TwinAnswer
+		{
+			Core::Result<Core::PatchTwinSearch> Twin;
+			bool PatchIdsGrew = false;
+		};
+
+		TwinAnswer SearchOnWorker(ContentPort& port, std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
+								  std::size_t budget, PatchIdStore& patchIds)
+		{
+			try
+			{
+				LoadPatchIdsOnce(patchIds);
+				const std::size_t idsBefore = patchIds.Ids.GetSize();
+				Core::Result<Core::PatchTwinSearch> twin = port.FindTwin(repository, commit, lineTip, budget, patchIds.Ids);
+
+				return TwinAnswer{.Twin = std::move(twin), .PatchIdsGrew = patchIds.Ids.GetSize() > idsBefore};
+			}
+			catch (const std::exception& error)
+			{
+				return TwinAnswer{.Twin = StoppedBy(error.what()), .PatchIdsGrew = false};
+			}
+			catch (...)
+			{
+				return TwinAnswer{.Twin = StoppedBy("not an exception"), .PatchIdsGrew = false};
+			}
+		}
+
+		// Nothing held or carried when it throws: every pair goes to the checks.
+		struct ResolveAnswer
+		{
+			ResolvedVerdicts Resolved;
+			std::optional<Core::Error> Failure;
+		};
+
+		ResolveAnswer ResolveOnWorker(const Core::Ref<const Core::AncestryGraph>& graph,
+									  const Core::Ref<const std::vector<std::uint32_t>>& generations, ContentPort& port,
+									  std::uint64_t repository, const std::vector<RememberedVerdict>& remembered,
+									  const std::vector<CarryAsk>& carries)
+		{
+			try
+			{
+				return ResolveAnswer{.Resolved = ResolveVerdicts(graph, generations, port, repository, remembered, carries),
+									 .Failure = std::nullopt};
+			}
+			catch (const std::exception& error)
+			{
+				return ResolveAnswer{.Resolved = ResolvedVerdicts{}, .Failure = StoppedBy(error.what())};
+			}
+			catch (...)
+			{
+				return ResolveAnswer{.Resolved = ResolvedVerdicts{}, .Failure = StoppedBy("not an exception")};
+			}
 		}
 
 		// A merged verdict is remembered by its branch tip and rechecked against a moved line instead.
@@ -598,22 +687,27 @@ namespace Graphite {
 				return;
 			}
 
-			ResolvedVerdicts resolved = ResolveVerdicts(graph, generations, m_Port, repository, remembered, carries);
+			ResolveAnswer answer = ResolveOnWorker(graph, generations, m_Port, repository, remembered, carries);
 
-			Deliver([this, folder, resolved = std::move(resolved)]() {
+			Deliver([this, folder, answer = std::move(answer)]() {
 				if (IsSameFolder(folder))
 				{
-					LandResolve(resolved);
+					LandResolve(answer.Resolved, answer.Failure);
 				}
 			});
 		});
 	}
 
-	void ContentModel::LandResolve(const ResolvedVerdicts& resolved)
+	void ContentModel::LandResolve(const ResolvedVerdicts& resolved, const std::optional<Core::Error>& failure)
 	{
 		m_Running = false;
 		m_RecheckRunning.clear();
 		m_CarryRunning.clear();
+
+		if (failure.has_value())
+		{
+			ReportFailure("Could not tell which verdicts a moved line keeps: " + failure->Message);
+		}
 
 		// Those neither held nor carried stand no longer: they wait for a check of their own.
 		m_EveryCandidateAsked = false;
@@ -654,16 +748,12 @@ namespace Graphite {
 				return;
 			}
 
-			LoadPatchIdsOnce(*patchIds);
-			const std::size_t idsBefore = patchIds->Ids.GetSize();
+			CheckAnswer answer = CheckOnWorker(m_Port, repository, key, *patchIds);
 
-			Core::Result<Core::ContentVerdict> verdict = m_Port.CheckContent(repository, key.BranchTip, key.LineTip, patchIds->Ids);
-			const bool patchIdsGrew = patchIds->Ids.GetSize() > idsBefore;
-
-			Deliver([this, folder, key, verdict = std::move(verdict), patchIdsGrew]() {
+			Deliver([this, folder, key, answer = std::move(answer)]() {
 				if (IsSameFolder(folder))
 				{
-					LandCheck(key, verdict, patchIdsGrew);
+					LandCheck(key, answer.Verdict, answer.PatchIdsGrew);
 				}
 			});
 		});
@@ -721,16 +811,12 @@ namespace Graphite {
 				return;
 			}
 
-			LoadPatchIdsOnce(*patchIds);
-			const std::size_t idsBefore = patchIds->Ids.GetSize();
+			TwinAnswer answer = SearchOnWorker(m_Port, repository, key.Commit, key.LineTip, budget, *patchIds);
 
-			Core::Result<Core::PatchTwinSearch> twin = m_Port.FindTwin(repository, key.Commit, key.LineTip, budget, patchIds->Ids);
-			const bool patchIdsGrew = patchIds->Ids.GetSize() > idsBefore;
-
-			Deliver([this, folder, key, budget, twin = std::move(twin), patchIdsGrew]() {
+			Deliver([this, folder, key, budget, answer = std::move(answer)]() {
 				if (IsSameFolder(folder))
 				{
-					LandTwin(key, budget, twin, patchIdsGrew);
+					LandTwin(key, budget, answer.Twin, answer.PatchIdsGrew);
 				}
 			});
 		});

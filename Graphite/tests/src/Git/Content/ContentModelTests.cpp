@@ -22,6 +22,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -116,6 +117,11 @@ namespace {
 				return Refused();
 			}
 
+			if (ThrowOn.contains(key))
+			{
+				throw std::runtime_error{"the check ran out of memory"};
+			}
+
 			patchIds.Store(PatchedCommitOf(repository), PatchIdOf(repository));
 
 			const std::map<ContentKey, Core::Error>::const_iterator failure = Failures.find(key);
@@ -144,6 +150,11 @@ namespace {
 			if (RefuseTwinOnce.erase(commit) > 0)
 			{
 				return Refused();
+			}
+
+			if (ThrowTwinOf.contains(commit))
+			{
+				throw std::runtime_error{"the search ran out of memory"};
 			}
 
 			patchIds.Store(PatchedCommitOf(repository), PatchIdOf(repository));
@@ -181,6 +192,11 @@ namespace {
 				return Refused();
 			}
 
+			if (ThrowOnMove.contains(move))
+			{
+				throw std::runtime_error{"the carry ran out of memory"};
+			}
+
 			const std::map<LineMove, std::vector<std::string>>::const_iterator paths = LinePaths.find(move);
 			return paths != LinePaths.end() ? paths->second : std::vector<std::string>{};
 		}
@@ -216,6 +232,9 @@ namespace {
 		std::map<LineMove, std::vector<std::string>> LinePaths;   // where the line's trees differ, from the older tip to the newer
 		std::map<ContentKey, std::set<std::string>> BranchPaths; // where a branch's trees differ, from its fork to its tip
 		std::set<LineMove> RefuseMoveOnce;
+		std::set<LineMove> ThrowOnMove;
+		std::set<ContentKey> ThrowOn;
+		std::set<Core::Oid> ThrowTwinOf;
 		std::vector<LineMove> LineMovesDiffed;
 		std::vector<ContentKey> BranchesDiffed;
 
@@ -1315,6 +1334,134 @@ TEST_CASE("Git window: an unknown answer is saved and known in the next opening 
 	Settle(jobs, next);
 	CHECK(port.Checked.size() == 4);
 	CHECK(reported.Messages.size() == 2);
+}
+
+namespace {
+
+	// Holds submitted jobs and runs them as the shared queue does: a job that throws is abandoned, and whatever it would
+	// have delivered never comes.
+	class JobsAbandonedWhenThrowing
+	{
+	public:
+		Core::JobSubmitter Submitter()
+		{
+			return [this](std::function<void()> job) { m_Jobs.push_back(std::move(job)); };
+		}
+
+		void RunAll()
+		{
+			while (!m_Jobs.empty())
+			{
+				std::vector<std::function<void()>> waiting;
+				waiting.swap(m_Jobs);
+
+				for (const std::function<void()>& job : waiting)
+				{
+					RunAbandoningWhenThrowing(job);
+				}
+			}
+		}
+
+		std::size_t Count() const { return m_Jobs.size(); }
+
+		std::size_t Abandoned = 0;
+
+	private:
+		void RunAbandoningWhenThrowing(const std::function<void()>& job)
+		{
+			try
+			{
+				job();
+			}
+			catch (const std::exception&)
+			{
+				++Abandoned;
+			}
+		}
+
+		std::vector<std::function<void()>> m_Jobs;
+	};
+
+	void Settle(JobsAbandonedWhenThrowing& jobs, ContentModel& model)
+	{
+		model.OnUpdate(Core::Timestep{});
+
+		while (jobs.Count() > 0)
+		{
+			jobs.RunAll();
+			model.OnUpdate(Core::Timestep{});
+		}
+	}
+}
+
+TEST_CASE("Git window: a check that throws answers as a failed check, and the checks go on")
+{
+	FakeContentPort port;
+	JobsAbandonedWhenThrowing jobs;
+	ContentModel model{port, jobs.Submitter()};
+	ReportedFailures reported;
+	model.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
+	model.SetOnScreen(true);
+
+	const Core::Ref<const LineRead> read = Shared(CandidatesRead(2));
+	port.ThrowOn.insert(KeyOfBranch(*read, 0));
+	port.Verdicts[KeyOfBranch(*read, 1)] = SquashLandingAt(kLanding);
+	model.Follow(read);
+	Settle(jobs, model);
+
+	CHECK(jobs.Abandoned == 0);
+	CHECK(model.KnownMarkOf(read->Model.Branches[0]).State == ContentMark::State::Unknown);
+	CHECK(IsKnownAs(model.KnownMarkOf(read->Model.Branches[1]), SquashLandingAt(kLanding)));
+	REQUIRE(reported.Messages.size() == 1);
+	CHECK(reported.Messages[0].find("the check ran out of memory") != std::string::npos);
+}
+
+TEST_CASE("Git window: a copy search that throws answers unknown, and the checks go on")
+{
+	FakeContentPort port;
+	JobsAbandonedWhenThrowing jobs;
+	ContentModel model{port, jobs.Submitter()};
+	ReportedFailures reported;
+	model.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
+	model.SetOnScreen(true);
+
+	const Core::Ref<const LineRead> read = Shared(CandidatesRead(1));
+	model.Follow(read);
+	port.ThrowTwinOf.insert(kOwn);
+
+	static_cast<void>(model.TwinIn(kOwn, TipOfRef(0)));
+	Settle(jobs, model);
+
+	CHECK(jobs.Abandoned == 0);
+	CHECK(model.TwinIn(kOwn, TipOfRef(0)).State == ContentMark::State::Unknown);
+	CHECK(IsKnownAs(model.KnownMarkOf(read->Model.Branches[0]), Core::ContentVerdict{}));
+	REQUIRE(reported.Messages.size() == 1);
+	CHECK(reported.Messages[0].find("the search ran out of memory") != std::string::npos);
+}
+
+TEST_CASE("Git window: a moved line's carry job that throws sends its verdicts to the checks")
+{
+	FakeContentPort port;
+	JobsAbandonedWhenThrowing jobs;
+	ContentModel model{port, jobs.Submitter()};
+	ReportedFailures reported;
+	model.LogFailure = [&reported](const std::string& message) { reported.Report(message); };
+	model.SetOnScreen(true);
+
+	model.Follow(LandingRead(kLandingOnLine));
+	Settle(jobs, model);
+	REQUIRE(port.Checked.size() == 1);
+
+	port.ThrowOnMove.insert(FakeContentPort::LineMove{kLandingOnLine, kAfterLanding});
+	const Core::Ref<const LineRead> movedOn = LandingRead(kAfterLanding);
+	model.Follow(movedOn);
+	Settle(jobs, model);
+
+	CHECK(jobs.Abandoned == 0);
+	REQUIRE(port.Checked.size() == 2);
+	CHECK(port.Checked[1] == ContentKey{kBranchTip, kAfterLanding});
+	REQUIRE(reported.Messages.size() == 1);
+	CHECK(reported.Messages[0].find("the carry ran out of memory") != std::string::npos);
 }
 
 TEST_CASE("Git window: a branch found merged into a line whose ref name is not UTF-8 is saved")

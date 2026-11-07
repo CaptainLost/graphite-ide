@@ -157,7 +157,8 @@ namespace Graphite {
 		void StartCheck(std::size_t branch);
 		void StartTwin(const TwinKey& key);
 
-		void LandResolve(const ResolvedVerdicts& resolved);
+		// With a failure, the job threw and holds or carries nothing.
+		void LandResolve(const ResolvedVerdicts& resolved, const std::optional<Core::Error>& failure);
 		void LandCheck(const ContentKey& key, const Core::Result<Core::ContentVerdict>& verdict, bool patchIdsGrew);
 		void LandTwin(const TwinKey& key, std::size_t budget, const Core::Result<Core::PatchTwinSearch>& twin, bool patchIdsGrew);
 
