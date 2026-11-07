@@ -1382,12 +1382,14 @@ namespace Graphite {
 				m_Graph = Core::LayoutCommits(page->Commits, parents);
 			}
 
-			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+			const CommitRefsSource source{.Branches = m_Model.GetBranches(), .Tags = m_Model.GetTags()};
 
-			if (branches != m_RefsOf)
+			// WARNING: Built again only when a listing changes, the tags' too: thousands of refs are walked.
+			if (source != m_CommitRefsOf)
 			{
-				m_RefsOf = branches;
-				m_CommitRefs = BuildCommitRefs(branches ? *branches : std::vector<Core::Branch>{});
+				m_CommitRefs = BuildCommitRefs(source.Branches ? *source.Branches : std::vector<Core::Branch>{},
+											   source.Tags ? *source.Tags : std::vector<Core::Tag>{});
+				m_CommitRefsOf = source;
 			}
 
 			// Kept rows are drawn as they were shown, with no line's marks, until the page asked with the line lands.

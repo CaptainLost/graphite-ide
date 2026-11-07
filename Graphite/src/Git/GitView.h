@@ -648,7 +648,16 @@ namespace Graphite {
 
 		BranchDeletion m_Deletion;
 
-		Core::Ref<const std::vector<Core::Branch>> m_RefsOf;
+		// The listings the pills on history rows and in the details were built from: a fetch can change the tags alone.
+		struct CommitRefsSource
+		{
+			Core::Ref<const std::vector<Core::Branch>> Branches;
+			Core::Ref<const std::vector<Core::Tag>> Tags;
+
+			friend bool operator==(const CommitRefsSource&, const CommitRefsSource&) = default;
+		};
+
+		CommitRefsSource m_CommitRefsOf;
 		CommitRefMap m_CommitRefs;
 
 		ModalQuestion<DetachPayload> m_DetachQuestion;

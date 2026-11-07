@@ -52,7 +52,7 @@ namespace Graphite {
 		}
 	}
 
-	CommitRefMap BuildCommitRefs(const std::vector<Core::Branch>& branches)
+	CommitRefMap BuildCommitRefs(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>& tags)
 	{
 		CommitRefMap refs;
 
@@ -80,6 +80,12 @@ namespace Graphite {
 		for (auto& [tip, commitRefs] : refs)
 		{
 			std::ranges::sort(commitRefs, ListsBefore);
+		}
+
+		// After the branches, and not sorted again: the listing's order is newest first.
+		for (const Core::Tag& tag : tags)
+		{
+			refs[tag.Target].push_back(CommitRef{.Name = tag.Name, .Kind = CommitRefKind::Tag});
 		}
 
 		return refs;

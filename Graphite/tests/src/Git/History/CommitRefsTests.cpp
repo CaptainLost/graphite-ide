@@ -26,14 +26,70 @@ namespace {
 		branch.IsHead = isHead;
 		return branch;
 	}
+
+	Core::Tag TagAt(std::string name, Core::Oid target)
+	{
+		Core::Tag tag;
+		tag.FullName = "refs/tags/" + name;
+		tag.Name = std::move(name);
+		tag.Target = target;
+		return tag;
+	}
+
+	const std::vector<Core::Tag> kNoTags;
+}
+
+TEST_CASE("Commit refs: tags follow the branches on their commit, newest first, as tag pills")
+{
+	// Listed newest first, as the model lists them: release-b is newer than release-a.
+	const Graphite::CommitRefMap refs = Graphite::BuildCommitRefs(
+		{
+			BranchAt("origin/main", OidWithFirstByte(1), Core::RefKind::Remote),
+			BranchAt("main", OidWithFirstByte(1), Core::RefKind::Local, kIsHead),
+			BranchAt("zeta", OidWithFirstByte(1)),
+		},
+		{TagAt("release-b", OidWithFirstByte(1)), TagAt("only-tag", OidWithFirstByte(2)), TagAt("release-a", OidWithFirstByte(1))});
+
+	REQUIRE(refs.contains(OidWithFirstByte(1)));
+	const std::vector<Graphite::CommitRef>& onFirst = refs.at(OidWithFirstByte(1));
+	REQUIRE(onFirst.size() == 5);
+
+	CHECK(onFirst[0].Kind == CommitRefKind::Head);
+	CHECK(onFirst[1].Name == "zeta");
+	CHECK(onFirst[2].Name == "origin/main");
+	CHECK(onFirst[3].Name == "release-b");
+	CHECK(onFirst[3].Kind == CommitRefKind::Tag);
+	CHECK(onFirst[4].Name == "release-a");
+	CHECK(onFirst[4].Kind == CommitRefKind::Tag);
+
+	// A commit only a tag points at has its pill alone.
+	REQUIRE(refs.contains(OidWithFirstByte(2)));
+	REQUIRE(refs.at(OidWithFirstByte(2)).size() == 1);
+	CHECK(refs.at(OidWithFirstByte(2))[0].Name == "only-tag");
+	CHECK(refs.at(OidWithFirstByte(2))[0].Kind == CommitRefKind::Tag);
+}
+
+TEST_CASE("Commit refs: a tag and a branch with the same short name are two pills of two kinds")
+{
+	const Graphite::CommitRefMap refs =
+		Graphite::BuildCommitRefs({BranchAt("x", OidWithFirstByte(1))}, {TagAt("x", OidWithFirstByte(1))});
+
+	REQUIRE(refs.contains(OidWithFirstByte(1)));
+	const std::vector<Graphite::CommitRef>& onCommit = refs.at(OidWithFirstByte(1));
+	REQUIRE(onCommit.size() == 2);
+
+	CHECK(onCommit[0].Name == "x");
+	CHECK(onCommit[0].Kind == CommitRefKind::Local);
+	CHECK(onCommit[1].Name == "x");
+	CHECK(onCommit[1].Kind == CommitRefKind::Tag);
 }
 
 TEST_CASE("A commit no branch points at has no refs")
 {
-	const Graphite::CommitRefMap refs = Graphite::BuildCommitRefs({BranchAt("main", OidWithFirstByte(1))});
+	const Graphite::CommitRefMap refs = Graphite::BuildCommitRefs({BranchAt("main", OidWithFirstByte(1))}, kNoTags);
 
 	CHECK(refs.find(OidWithFirstByte(2)) == refs.end());
-	CHECK(Graphite::BuildCommitRefs({}).empty());
+	CHECK(Graphite::BuildCommitRefs({}, kNoTags).empty());
 }
 
 TEST_CASE("Branches on one commit are grouped by commit and ordered head, local, remote, each group by name")
@@ -44,7 +100,7 @@ TEST_CASE("Branches on one commit are grouped by commit and ordered head, local,
 		BranchAt("main", OidWithFirstByte(1), Core::RefKind::Local, kIsHead),
 		BranchAt("alpha", OidWithFirstByte(1)),
 		BranchAt("other", OidWithFirstByte(2)),
-	});
+	}, kNoTags);
 
 	REQUIRE(refs.contains(OidWithFirstByte(1)));
 	const std::vector<Graphite::CommitRef>& refsOnFirstCommit = refs.at(OidWithFirstByte(1));
@@ -98,7 +154,7 @@ TEST_CASE("A remote's symbolic HEAD is not a label because the branch it points 
 	const Graphite::CommitRefMap refs = Graphite::BuildCommitRefs({
 		BranchAt("origin/HEAD", OidWithFirstByte(1), Core::RefKind::Remote),
 		BranchAt("origin/main", OidWithFirstByte(1), Core::RefKind::Remote),
-	});
+	}, kNoTags);
 
 	REQUIRE(refs.contains(OidWithFirstByte(1)));
 	const std::vector<Graphite::CommitRef>& refsOnCommit = refs.at(OidWithFirstByte(1));

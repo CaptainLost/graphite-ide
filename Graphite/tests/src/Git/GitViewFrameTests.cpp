@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "DeferredJobs.h"
+#include "DrawnColours.h"
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
@@ -22,6 +23,7 @@
 #include "Git/Worktrees/WorktreePort.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Theme/ActiveScheme.h"
+#include "Theme/GitPalette.h"
 #include "UI/Dialogs/ModalGate.h"
 #include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
@@ -374,6 +376,23 @@ namespace {
 			{
 				if (std::strstr(window->Name, WindowName) != nullptr && std::strstr(window->Name, "changes.lists") != nullptr &&
 					window->LastFrameActive == context.FrameCount)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// Whether a window named `child` inside this one, or one inside it, drew in `colour` last frame.
+		bool DrawsInColourIn(const char* child, ImU32 colour) const
+		{
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			for (const ImGuiWindow* window : context.Windows)
+			{
+				if (std::strstr(window->Name, WindowName) != nullptr && std::strstr(window->Name, child) != nullptr &&
+					window->LastFrameActive == context.FrameCount && DrawsInColour(*window->DrawList, colour))
 				{
 					return true;
 				}
@@ -754,4 +773,27 @@ TEST_CASE("Git view: a tag's history does not wait for the line read, and has no
 	window.View.RestoreWindowState(Graphite::GitWindowState{});
 	window.Settle();
 	CHECK(window.DrawsLocalChanges());
+}
+
+TEST_CASE("Git view: a tag a fetch adds is drawn as a tag pill on its commit's row and in its details")
+{
+	GitWindow window("TagPillWindow");
+	window.Settle();
+
+	// feature's history opens on its tip, whose details are shown beside the list.
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+	window.Settle();
+
+	const Graphite::GitPalette palette = Graphite::ReadGitPalette(window.Scheme.Get());
+	REQUIRE(window.DrawsInColourIn("##gitCommits", palette.RefLocalFill));
+	REQUIRE(window.DrawsInColourIn("##gitDiff", palette.RefLocalFill));
+	REQUIRE_FALSE(window.DrawsInColourIn("##gitCommits", palette.RefTagFill));
+	REQUIRE_FALSE(window.DrawsInColourIn("##gitDiff", palette.RefTagFill));
+
+	// The fetch brings a tag on feature's tip and moves no branch.
+	window.Port.Tags = {TagAt("v1", OidWithFirstByte(2))};
+	window.Refresh();
+
+	CHECK(window.DrawsInColourIn("##gitCommits", palette.RefTagFill));
+	CHECK(window.DrawsInColourIn("##gitDiff", palette.RefTagFill));
 }

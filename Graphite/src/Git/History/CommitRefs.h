@@ -4,6 +4,7 @@
 
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
+#include "Core/Git/Tag.h"
 
 #include <cstddef>
 #include <string>
@@ -26,10 +27,11 @@ namespace Graphite {
 		CommitRefKind Kind = CommitRefKind::Local;
 	};
 
-	// WARNING: tags are not in this map because the model does not list them.
 	using CommitRefMap = std::unordered_map<Core::Oid, std::vector<CommitRef>>;
 
-	CommitRefMap BuildCommitRefs(const std::vector<Core::Branch>& branches);
+	// The refs on each commit: its branches, the checked-out one, then the local and the remote ones each by name, a
+	// remote's symbolic HEAD left out; then its tags in the order `tags` lists them, newest first as the model does.
+	CommitRefMap BuildCommitRefs(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>& tags);
 
 	struct RefPillColours
 	{
