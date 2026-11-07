@@ -195,7 +195,7 @@ TEST_CASE("Git window: a recompute saves the change and recomputes on the last g
 	CHECK(LoadLineAnswers(paths.Answers) == expected);
 }
 
-TEST_CASE("Git window: a recompute keeps the read's tags")
+TEST_CASE("Git window: a recompute keeps the read's tags and the first tag of every commit")
 {
 	GitFixture fixture;
 	fixture.Write("a.txt", "1");
@@ -223,11 +223,14 @@ TEST_CASE("Git window: a recompute keeps the read's tags")
 	REQUIRE(read.HasValue());
 	const LineRead& last = read.GetValue();
 	REQUIRE(last.Tags != nullptr);
+	REQUIRE(last.FirstTag.size() == last.Graph->Size());
+	CHECK(last.FirstTag[last.Graph->Find(*Core::Oid::FromHex(master))] == 0);
 
 	const Core::Result<LineRead> recomputed = RecomputeLines(last, paths, ChangeOf(LineAnswerChange::Kind::UseAsBase, "refs/heads/feature"), kNow);
 	REQUIRE(recomputed.HasValue());
 
 	CHECK(recomputed.GetValue().Tags == last.Tags);
+	CHECK(recomputed.GetValue().FirstTag == last.FirstTag);
 }
 
 TEST_CASE("Git window: a change made on another repository's read is not saved in this one's store")

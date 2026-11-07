@@ -36,6 +36,10 @@ namespace Graphite {
 		// Core::GenerationsOf(*Graph), computed once for each graph and handed on with it.
 		Core::Ref<const std::vector<std::uint32_t>> Generations;
 
+		// One per commit of Graph: the index into *Tags of the oldest tag whose commit reaches it, or Core::kNoTag. Every
+		// kNoTag without tags. FirstTagOf reads it.
+		std::vector<std::uint32_t> FirstTag;
+
 		Core::LineModel Model;
 
 		// The answers as this read leaves them: what the file holds with this read's own changes merged in, or, when
@@ -56,8 +60,8 @@ namespace Graphite {
 	{
 		Core::Ref<const std::vector<Core::Branch>> Branches;
 
-		// GitModel's tag snapshot, newest first, or null for no tags. Its commits are read into the graph; they never
-		// become refs.
+		// GitModel's tag snapshot, newest first, or null for no tags. Its commits are read into the graph and answer
+		// LineRead::FirstTag; they never become refs.
 		Core::Ref<const std::vector<Core::Tag>> Tags;
 
 		Core::Ref<const Core::AncestryGraph> Graph; // the previous read's, or null to load graph.bin
@@ -72,8 +76,9 @@ namespace Graphite {
 	// and comparisons that name refs no longer there and the BaseOrder names no longer added or kept, and saves the
 	// graph and the answers when they changed. A ref whose tip git cannot read as a commit is not read and is
 	// TipMissing in the model. The tags' commits are read into the graph beside the branch tips, so the history only a tag
-	// reaches is there too, but the model is computed on the branches alone. The graph given is never changed: a read
-	// that appends to it appends to a copy, and one that appends nothing hands back the same pointer.
+	// reaches is there too, but the model is computed on the branches alone; once the graph is final the read answers
+	// the oldest tag holding each of its commits. The graph given is never changed: a read that appends to it appends to
+	// a copy, and one that appends nothing hands back the same pointer.
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, const LineReadInput& input);
 
 	// The same read of the branches the repository lists now, starting from the cached graph.

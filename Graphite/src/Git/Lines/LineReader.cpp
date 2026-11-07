@@ -1,6 +1,7 @@
 #include "Git/Lines/LineReader.h"
 
 #include "Git/Lines/GraphFile.h"
+#include "Git/Tags/FirstTag.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Git/Lines/LineQuestions.h"
@@ -432,6 +433,9 @@ namespace Graphite {
 
 		read.Answers = computed == loaded ? loaded : SaveAnswerChanges(store.Answers, loaded, computed);
 		read.Graph = std::move(graph).Share();
+
+		// Once the graph is final, so every listed tag's history is in it.
+		read.FirstTag = read.Tags != nullptr ? FirstTagsIn(*read.Graph, *read.Tags) : std::vector<std::uint32_t>(read.Graph->Size(), Core::kNoTag);
 
 		const bool generationsHeld = read.Graph == input.Graph && input.Generations != nullptr;
 		read.Generations = generationsHeld ? input.Generations : Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*read.Graph));

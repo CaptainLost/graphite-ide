@@ -4,6 +4,7 @@
 
 #include "Git/Lines/GraphFile.h"
 #include "Git/Lines/LineStore.h"
+#include "Git/Tags/FirstTag.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Tag.h"
@@ -266,6 +267,11 @@ namespace {
 		Core::Result<std::vector<Core::Tag>> tags = repository.QueryTags(cache);
 		REQUIRE(tags.HasValue());
 		return Core::CreateRef<const std::vector<Core::Tag>>(std::move(tags).GetValue());
+	}
+
+	const Core::Tag* FirstTagOfHex(const LineRead& read, const std::string& hex)
+	{
+		return FirstTagOf(read, *Core::Oid::FromHex(hex));
 	}
 
 	// Every field of the two models, ref for ref, so a difference names what differs.
@@ -1002,4 +1008,37 @@ TEST_CASE("Line read: the model is the same with and without tags")
 	REQUIRE(with.GetValue().Graph->Size() > without.GetValue().Graph->Size());
 
 	CheckSameModel(without.GetValue(), with.GetValue());
+}
+
+TEST_CASE("Line read: the first tag of a commit is the oldest tag holding it")
+{
+	GitFixture fixture;
+	const TaggedGitflow built = BuildTaggedGitflow(fixture);
+	TempDirectory store;
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Core::Result<LineRead> tagged =
+		ReadLines(repository, StoreIn(store), LineReadInput{.Branches = BranchesOf(repository), .Tags = TagsOf(repository), .Now = kGitflowNow});
+	REQUIRE(tagged.HasValue());
+	const LineRead& read = tagged.GetValue();
+	REQUIRE(read.FirstTag.size() == read.Graph->Size());
+
+	const Core::Tag* firstRelease = FirstTagOfHex(read, built.FirstRelease);
+	REQUIRE(firstRelease != nullptr);
+	CHECK(firstRelease->Name == "v1.0");
+
+	// v2.0 holds it too, but release/2's own tag was made before it.
+	const Core::Tag* secondRelease = FirstTagOfHex(read, built.SecondRelease);
+	REQUIRE(secondRelease != nullptr);
+	CHECK(secondRelease->Name == "v2.0-rc");
+
+	const Core::Tag* merge = FirstTagOfHex(read, built.Merge);
+	REQUIRE(merge != nullptr);
+	CHECK(merge->Name == "v2.0");
+
+	const Core::Tag* hotfix = FirstTagOfHex(read, built.Hotfix);
+	REQUIRE(hotfix != nullptr);
+	CHECK(hotfix->Name == "v2.0.1");
+
+	CHECK(FirstTagOfHex(read, built.DevelopTip) == nullptr);
 }

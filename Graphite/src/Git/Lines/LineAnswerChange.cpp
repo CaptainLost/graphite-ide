@@ -106,6 +106,7 @@ namespace Graphite {
 		read.Refs = last.Refs;
 		read.Graph = last.Graph;
 		read.Generations = last.Generations;
+		read.FirstTag = last.FirstTag;
 		read.Model = Core::ComputeLines(Core::LineModelInput{*read.Graph, read.Refs, *answers, now});
 		read.Now = now;
 		read.Store = store;
