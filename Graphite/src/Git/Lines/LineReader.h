@@ -76,9 +76,10 @@ namespace Graphite {
 	// and comparisons that name refs no longer there and the BaseOrder names no longer added or kept, and saves the
 	// graph and the answers when they changed. A ref whose tip git cannot read as a commit is not read and is
 	// TipMissing in the model. The tags' commits are read into the graph beside the branch tips, so the history only a tag
-	// reaches is there too, but the model is computed on the branches alone; once the graph is final the read answers
-	// the oldest tag holding each of its commits. The graph given is never changed: a read that appends to it appends to
-	// a copy, and one that appends nothing hands back the same pointer.
+	// reaches is there too, but the model is computed on the branches alone; a tag whose commit git no longer holds, pruned
+	// since the listing, is passed over as such a branch tip is. Once the graph is final the read answers the oldest tag
+	// holding each of its commits. The graph given is never changed: a read that appends to it appends to a copy, and one
+	// that appends nothing hands back the same pointer.
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, const LineReadInput& input);
 
 	// The same read of the branches the repository lists now, starting from the cached graph.

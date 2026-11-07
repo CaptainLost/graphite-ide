@@ -1042,3 +1042,44 @@ TEST_CASE("Line read: the first tag of a commit is the oldest tag holding it")
 
 	CHECK(FirstTagOfHex(read, built.DevelopTip) == nullptr);
 }
+
+TEST_CASE("Line read: a tag whose commit is gone since the listing is passed over and the other tags still answer")
+{
+	GitFixture fixture;
+	const TaggedGitflow built = BuildTaggedGitflow(fixture);
+	const Core::Ref<const std::vector<Core::Tag>> tags = TagsOf(OpenRepositoryAt(fixture.GetPath()));
+
+	std::size_t gone = tags->size();
+	for (std::size_t index = 0; index < tags->size(); ++index)
+	{
+		if ((*tags)[index].Name == "v2.0.1")
+		{
+			gone = index;
+		}
+	}
+	REQUIRE(gone < tags->size());
+
+	// Pruned between the listing and the read: only that tag reached the hotfix commit.
+	fixture.RemoveObject(built.Hotfix);
+
+	TempDirectory store;
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Result<LineRead> tagged =
+		ReadLines(repository, StoreIn(store), LineReadInput{.Branches = BranchesOf(repository), .Tags = tags, .Now = kGitflowNow});
+
+	INFO((tagged.HasValue() ? std::string{} : tagged.GetError().Message));
+	REQUIRE(tagged.HasValue());
+	const LineRead& read = tagged.GetValue();
+
+	CHECK(read.Tags == tags);
+	CHECK(read.Graph->Find(*Core::Oid::FromHex(built.Hotfix)) == Core::AncestryGraph::kNoCommit);
+	CHECK(std::ranges::find(read.FirstTag, static_cast<std::uint32_t>(gone)) == read.FirstTag.end());
+
+	const Core::Tag* firstRelease = FirstTagOfHex(read, built.FirstRelease);
+	REQUIRE(firstRelease != nullptr);
+	CHECK(firstRelease->Name == "v1.0");
+
+	const Core::Tag* merge = FirstTagOfHex(read, built.Merge);
+	REQUIRE(merge != nullptr);
+	CHECK(merge->Name == "v2.0");
+}

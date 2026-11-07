@@ -133,18 +133,26 @@ namespace Graphite {
 			std::optional<Core::AncestryGraph> m_Owned;
 		};
 
-		// Each tip of the graph walk once: the branches' and the tags' commits. A branch whose tip git cannot read as a
-		// commit (a missing object, or one that is no commit) is left out: asking git to walk from it would fail the whole
-		// read, and the model reports it as TipMissing. A tag is listed only when it ends at a commit git has, so every
-		// tag's commit is readable. `tags` may be null.
-		std::vector<Core::Oid> ReadableTips(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags)
+		bool IsInGraph(const Core::AncestryGraph& graph, const Core::Oid& commit)
+		{
+			return graph.Find(commit) != Core::AncestryGraph::kNoCommit;
+		}
+
+		// The tips of the graph walk the graph lacks, each once: the branches' and the tags' commits. A branch whose tip
+		// git could not read as a commit when it was listed (a missing object, or one that is no commit) is left out:
+		// asking git to walk from it would fail the whole read, and the model reports it as TipMissing. A tag's commit is
+		// asked of git here, since it can be pruned after the listing, with its tag deleted meanwhile: one git no longer
+		// holds is left out the same way, and that tag then holds no commit of the read. Only a commit the graph lacks is
+		// asked, so a read of a warm graph asks git nothing. `tags` may be null.
+		Core::Result<std::vector<Core::Oid>> TipsToRead(const Core::Repository& repository, const Core::AncestryGraph& graph,
+														const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags)
 		{
 			std::vector<Core::Oid> tips;
 			std::unordered_set<Core::Oid> seen;
 
 			for (const Core::Branch& branch : branches)
 			{
-				if (branch.TipCommit.has_value() && seen.insert(branch.Tip).second)
+				if (branch.TipCommit.has_value() && seen.insert(branch.Tip).second && !IsInGraph(graph, branch.Tip))
 				{
 					tips.push_back(branch.Tip);
 				}
@@ -157,7 +165,19 @@ namespace Graphite {
 
 			for (const Core::Tag& tag : *tags)
 			{
-				if (seen.insert(tag.Target).second)
+				if (!seen.insert(tag.Target).second || IsInGraph(graph, tag.Target))
+				{
+					continue;
+				}
+
+				const Core::Result<bool> held = repository.HoldsCommit(tag.Target);
+
+				if (!held.HasValue())
+				{
+					return held.GetError();
+				}
+
+				if (held.GetValue())
 				{
 					tips.push_back(tag.Target);
 				}
@@ -372,16 +392,14 @@ namespace Graphite {
 		}
 
 		// WARNING: The tags' commits are tips of the walk and never refs: the model is computed on read.Refs, the branches.
-		const std::vector<Core::Oid> readableTips = ReadableTips(*read.Branches, read.Tags.get());
-		Core::GraphReadRequest request;
-
-		for (const Core::Oid& tip : readableTips)
+		Core::Result<std::vector<Core::Oid>> tipsToRead = TipsToRead(repository, graph.Get(), *read.Branches, read.Tags.get());
+		if (!tipsToRead.HasValue())
 		{
-			if (graph.Get().Find(tip) == Core::AncestryGraph::kNoCommit)
-			{
-				request.Tips.push_back(tip);
-			}
+			return tipsToRead.GetError();
 		}
+
+		Core::GraphReadRequest request;
+		request.Tips = std::move(tipsToRead).GetValue();
 
 		if (!request.Tips.empty())
 		{
@@ -395,7 +413,15 @@ namespace Graphite {
 				graph.StartAfresh();
 				graphChanged = true;
 				request.Known.clear();
-				request.Tips = readableTips;
+
+				// Every tip again, the graph being empty now.
+				Core::Result<std::vector<Core::Oid>> everyTip = TipsToRead(repository, graph.Get(), *read.Branches, read.Tags.get());
+				if (!everyTip.HasValue())
+				{
+					return everyTip.GetError();
+				}
+
+				request.Tips = std::move(everyTip).GetValue();
 				commits = repository.ReadGraphCommits(request);
 			}
 
