@@ -38,7 +38,7 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   A search field above them matches every word against a branch's name and its authors.
 - **Rows** are rebuilt only when what they are built from changes: the line read, the stash list, the authors (held as
   they were when a search began, for as long as it runs), the search text, a section, group or merged-branches choice,
-  or the shown branch. Remote branches are grouped by activity against the read's time, never the clock's, so a row
+  the shown branch, or the window drawn again after a frame it was not. Remote branches are grouped by activity against the read's time, never the clock's, so a row
   moves to an older group only with a new read. Only the rows in view are described and drawn. A branch row shows its
   history, a stash row the stash's; a base row its local copy's when the copy is checked out or has commits of its
   own, else the base's, and its menu is the local copy's whenever there is one, its lines items acting on the base. A
@@ -51,9 +51,17 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   nothing when it is not merged, unknown or failed. The second line is one line cut to the row, so the mark never
   changes a row's height. The tooltip says `Merged into <line> by a squash in <hash>.` (without the hash when no
   landing was found) or `Merged into <line> by a rebase.` in place of the ahead sentence, and adds `Whether <line>
-  holds its changes is unknown.` to it for an unknown check. A verdict that lands never rebuilds the rows: a branch
-  found merged keeps its row, with the mark, until the rows are next rebuilt for one of the reasons above; then a
-  remote branch with no local copy goes behind "N merged hidden" and the count grows. Yours and Bases hide no branch.
+  holds its changes is unknown.` to it for an unknown check. A verdict that lands never rebuilds the rows, and the rows
+  hide by content only the branches a snapshot of the verdicts holds (`MergedByContentSnapshot`). The snapshot is taken
+  at the moments spec §6 rule 3 names and at no other: a new read, a change of the search, Show or Hide merged, and the
+  window opened again (or a folder opened, which brings a new read). Rows rebuilt for any other reason (a branch
+  selected, a section or group opened or closed, the authors read landing) hide the same branches as before, so no row
+  goes from under the mouse. A branch found merged since keeps its row, with the mark, until the next such moment; then
+  a remote branch with no local copy goes behind "N merged hidden" and the count grows. Yours and Bases hide no
+  branch. After a fetch moves a line, the verdicts found against its earlier tip stand for the new one until the one job
+  that resolves them lands ([0676](0676-find-branches-merged-by-content-in-the-background-and-keep-the-verdicts-per-repository.md)),
+  so the snapshot taken at the new read hides what it hid before, no hidden row comes back and no mark turns `…`; a
+  verdict the job does not keep turns pending in place, and the row goes or comes back only at the next such moment.
 - **The shown branch stays listed**: its row is listed even when merged, and the group or quiet bases holding it open
   unless the user closed them, so clearing a search or a fetch never hides the branch on screen.
 - **Waiting.** Until the first read of the lines lands, one waiting row stands in for the sections that need it:
