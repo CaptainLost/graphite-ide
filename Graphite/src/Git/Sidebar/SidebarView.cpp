@@ -635,9 +635,40 @@ namespace Graphite {
 
 		std::optional<SidebarRow> clicked;
 
+		const float listTop = waiting.has_value() ? ListRowPitch() : 0.0f;
+		float top = listTop;
+
+		if (rows != nullptr)
+		{
+			m_RowTops.resize(rows->size() + 1);
+
+			for (std::size_t index = 0; index < rows->size(); ++index)
+			{
+				m_RowTops[index] = top;
+				top += HeightOf((*rows)[index]);
+			}
+
+			m_RowTops[rows->size()] = top;
+		}
+
 		// WARNING: Taken by this Draw whether or not its rows show the row, so rows that come later never scroll the list
 		// (spec §6 rule 6).
 		const std::optional<std::size_t> scrollToRef = std::exchange(m_ScrollToRef, std::nullopt);
+		const std::optional<std::size_t> shownRow =
+			rows != nullptr && scrollToRef.has_value() ? RowShowingRef(*rows, *scrollToRef) : std::nullopt;
+
+		// WARNING: Set before the child begins, so the row is in view in this frame, with whatever else the same click
+		// changed; a scroll asked inside the child would land a frame later. The content's height is given too, because
+		// rows opened by the same click are not yet in the height ImGui measured last frame, and it would stop the scroll
+		// short of them. The child has no border and so no padding: its content starts at its top.
+		if (shownRow.has_value())
+		{
+			const float rowMiddle = (m_RowTops[*shownRow] + m_RowTops[*shownRow + 1]) * kHalf;
+			const float visibleHeight = ImGui::GetContentRegionAvail().y;
+
+			ImGui::SetNextWindowContentSize(ImVec2(0.0f, top));
+			ImGui::SetNextWindowScroll(ImVec2(-1.0f, std::max(0.0f, rowMiddle - visibleHeight * kHalf)));
+		}
 
 		if (ImGui::BeginChild("##SidebarRows", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
@@ -653,37 +684,15 @@ namespace Graphite {
 			// as the cursor before any row, not as GetCursorStartPos: that one has the scroll taken off already, and
 			// SetCursorPos takes it off again.
 			const ImVec2 contentStart = ImGui::GetCursorPos();
-			float listTop = 0.0f;
 
 			if (waiting.has_value())
 			{
 				DrawWaitingRow(*waiting, contentStart);
-				listTop = ListRowPitch();
 			}
 
 			if (rows != nullptr)
 			{
 				const std::vector<std::string> searchWords = LoweredWordsOf(m_Search);
-				m_RowTops.resize(rows->size() + 1);
-				float top = listTop;
-
-				for (std::size_t index = 0; index < rows->size(); ++index)
-				{
-					m_RowTops[index] = top;
-					top += HeightOf((*rows)[index]);
-				}
-
-				m_RowTops[rows->size()] = top;
-
-				const std::optional<std::size_t> shownRow =
-					scrollToRef.has_value() ? RowShowingRef(*rows, *scrollToRef) : std::nullopt;
-
-				if (shownRow.has_value())
-				{
-					const float rowMiddle = contentStart.y + (m_RowTops[*shownRow] + m_RowTops[*shownRow + 1]) * kHalf;
-					ImGui::SetScrollFromPosY(rowMiddle - ImGui::GetScrollY(), kHalf);
-				}
-
 				const float scrolled = ImGui::GetScrollY();
 				const float visibleBottom = scrolled + ImGui::GetWindowHeight();
 				const auto firstAfter = std::upper_bound(m_RowTops.begin(), m_RowTops.begin() + rows->size(), scrolled);

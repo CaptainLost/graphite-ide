@@ -444,7 +444,7 @@ TEST_CASE("Git window: a search word is drawn in the match colour in a row's nam
 	CHECK(matched == 3);
 }
 
-TEST_CASE("Git window: a request to show a branch's row scrolls the list to it once, centred")
+TEST_CASE("Git window: a request to show a branch's row scrolls the list to it once, centred, in the Draw that takes it")
 {
 	Harness harness("SidebarScrollToRef");
 
@@ -467,7 +467,7 @@ TEST_CASE("Git window: a request to show a branch's row scrolls the list to it o
 	REQUIRE(list->Scroll.y == 0.0f);
 
 	harness.View.ScrollToRef(kShownRef);
-	harness.Settle();
+	harness.Next();
 
 	const float rowHeight = SidebarTwoLineRowHeight();
 	const float rowMiddle = ListRowPitch() + rowHeight * static_cast<float>(kShownRef) + rowHeight * 0.5f;
@@ -482,6 +482,39 @@ TEST_CASE("Git window: a request to show a branch's row scrolls the list to it o
 	harness.Settle();
 
 	CHECK(list->Scroll.y == 0.0f);
+}
+
+TEST_CASE("Git window: a request reaches a row that comes with the rows of the same Draw")
+{
+	Harness harness("SidebarScrollToOpenedRef");
+
+	constexpr std::size_t kShownRef = 40;
+	constexpr float kTruncation = 1.0f;
+
+	std::vector<SidebarRow> opened = {Section("yours")};
+
+	for (std::size_t ref = 0; ref < 60; ++ref)
+	{
+		opened.push_back(BranchRow(ref));
+	}
+
+	// The section closed, as a reader left it: the list has nothing to scroll.
+	const std::vector<SidebarRow> closed = {Section("yours")};
+	harness.Rows = &closed;
+	harness.Settle();
+
+	// The chip opens the section and asks for the row in one go, so the rows that hold it are new in that Draw.
+	harness.Rows = &opened;
+	harness.View.ScrollToRef(kShownRef);
+	harness.Next();
+
+	ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	const float rowHeight = SidebarTwoLineRowHeight();
+	const float rowMiddle = ListRowPitch() + rowHeight * static_cast<float>(kShownRef) + rowHeight * 0.5f;
+
+	CHECK(std::abs(list->Scroll.y + list->Size.y * 0.5f - rowMiddle) <= kTruncation);
 }
 
 TEST_CASE("Git window: a request to show a row the list does not hold is dropped")

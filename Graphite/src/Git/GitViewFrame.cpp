@@ -223,7 +223,7 @@ namespace Graphite {
 										   .Bleed = ImGui::GetStyle().WindowPadding,
 										   .Problem = problem}))
 		{
-			ShowHeadInSidebar();
+			AnswerHeadChip();
 		}
 
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
@@ -353,8 +353,12 @@ namespace Graphite {
 							.MergedByContent = &mergedByContent};
 	}
 
-	void GitView::ShowHeadInSidebar()
+	void GitView::AnswerHeadChip()
 	{
+		// WARNING: HEAD's history first, so the rows are built with HEAD's branch as the shown one: its row is selected in
+		// the same frame the sidebar scrolls to it, and the reveal reads the groups that showing it opens.
+		SelectRef(std::nullopt);
+
 		// The rows as the sidebar will draw them next, so the reveal reads what the reader is about to see.
 		RebuildSidebarWhenOutOfDate();
 
