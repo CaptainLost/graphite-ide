@@ -2,6 +2,7 @@
 
 #include "DeferredJobs.h"
 #include "DrawnColours.h"
+#include "DrawnText.h"
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
@@ -30,6 +31,7 @@
 
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Lines/AncestryGraph.h"
+#include "Core/Git/Stash.h"
 #include "Core/Git/Tag.h"
 
 #include <imgui.h>
@@ -98,8 +100,8 @@ namespace {
 		return tag;
 	}
 
-	// The repository as git answers it: the read's branches, the HEAD and the tags given, no remotes. A history is one
-	// commit, the tip of the reference it is asked for.
+	// The repository as git answers it: the read's branches, the HEAD, the tags and the stashes given, no remotes. A
+	// history is one commit: the stash asked for, or the tip of the reference it is asked for.
 	class FixedHeadPort final : public EmptyGitPort
 	{
 	public:
@@ -116,12 +118,14 @@ namespace {
 
 		Core::Result<Core::HeadState> QueryHead() override { return m_Head; }
 
+		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override { return Stashes; }
+
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
 		{
 			Core::LogPage page;
 			page.Complete = true;
 
-			if (const std::optional<Core::Oid> tip = TipOf(request.Ref))
+			if (const std::optional<Core::Oid> tip = request.Stash.has_value() ? request.Stash : TipOf(request.Ref))
 			{
 				Core::CommitSummary commit;
 				commit.Id = *tip;
@@ -134,6 +138,8 @@ namespace {
 		// What a fetch changes.
 		std::vector<Core::Branch> Branches;
 		std::vector<Core::Tag> Tags;
+
+		std::vector<Core::StashEntry> Stashes;
 
 	private:
 		std::optional<Core::Oid> TipOf(const std::optional<std::string>& ref) const
@@ -274,6 +280,7 @@ namespace {
 				ImGui::SetNextWindowSize(kWindowSize);
 				ImGui::Begin(WindowName, nullptr, ImGuiWindowFlags_NoSavedSettings);
 				BarTop = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().WindowPadding.y;
+				Font = ImGui::GetFontBaked();
 				View.OnImGuiRender();
 				ChipId = ImGui::GetID("##headChip");
 				ImGui::End();
@@ -423,6 +430,63 @@ namespace {
 			ClickAt(InSidebarRows(tagsTop + pitch * 1.5f));
 		}
 
+		// Shows the one stash's commit as the reader does: the list scrolled to its end, the stash's row clicked under the
+		// open Stashes section, which follows the closed Tags section when the repository has tags, then the stash's one
+		// commit clicked in its history.
+		void ClickTheOneStashCommit(bool tagsAbove)
+		{
+			ImGuiWindow* rows = SidebarRows();
+			ImGui::SetScrollY(rows, rows->ScrollMax.y);
+			Step();
+
+			const float pitch = Graphite::ListRowPitch();
+			const float stashesTop = YoursRowTop(kBranchCount) + (tagsAbove ? pitch : 0.0f);
+			ClickAt(InSidebarRows(stashesTop + pitch * 1.5f));
+			Settle();
+
+			const ImGuiWindow* history = WindowNamed("##history");
+			REQUIRE(history != nullptr);
+			ClickAt(ImVec2(history->Pos.x + 60.0f, history->DC.CursorStartPos.y + pitch * 0.5f));
+			Settle();
+		}
+
+		// The window drawn last frame whose name, inside this one's, holds `child`.
+		const ImGuiWindow* WindowNamed(const char* child) const
+		{
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			for (const ImGuiWindow* window : context.Windows)
+			{
+				if (std::strstr(window->Name, WindowName) != nullptr && std::strstr(window->Name, child) != nullptr &&
+					window->LastFrameActive == context.FrameCount)
+				{
+					return window;
+				}
+			}
+
+			return nullptr;
+		}
+
+		// The text the commit details drew last frame, line by line and without spaces, in the window's own face.
+		std::vector<DrawnLine> DetailsText() const
+		{
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+			std::vector<DrawnLine> lines;
+
+			for (const ImGuiWindow* window : context.Windows)
+			{
+				if (std::strstr(window->Name, WindowName) != nullptr && std::strstr(window->Name, "##gitDiff") != nullptr &&
+					window->LastFrameActive == context.FrameCount)
+				{
+					const std::vector<DrawnLine> drawn = DrawnTextLines(*window->DrawList, *Font);
+					lines.insert(lines.end(), drawn.begin(), drawn.end());
+				}
+			}
+
+			std::ranges::stable_sort(lines, {}, &DrawnLine::Top);
+			return lines;
+		}
+
 		// The line reads asked while they were held are made and land.
 		void ReleaseLineReads()
 		{
@@ -545,6 +609,7 @@ namespace {
 
 		float BarTop = 0.0f;
 		ImGuiID ChipId = 0;
+		ImFontBaked* Font = nullptr; // the window's face, as its text is drawn in
 	};
 
 	// Whether `middle` lies in the row that starts `top` down the sidebar's list and is `height` high.
@@ -795,4 +860,39 @@ TEST_CASE("Git view: a tag a fetch adds is drawn as a tag pill on its commit's r
 
 	CHECK(window.DrawsInColourIn("##gitCommits", palette.RefTagFill));
 	CHECK(window.DrawsInColourIn("##gitDiff", palette.RefTagFill));
+}
+
+namespace {
+
+	// What the details of a stash's commit draw, the stash shown in a window of its own whose repository has `tags`.
+	std::vector<DrawnLine> StashDetailsText(const char* windowName, std::vector<Core::Tag> tags)
+	{
+		const Core::Oid stash = OidWithFirstByte(60);
+
+		GitWindow window(windowName, HeadOnMain(), std::move(tags));
+		window.Port.Stashes = {Core::StashEntry{.Index = 0, .Message = "On main: wip", .Id = stash}};
+		window.Model.RequestStashes();
+		window.Settle();
+		window.ClickTheOneStashCommit(!window.Port.Tags.empty());
+
+		REQUIRE(window.Model.GetShownLogRequest().has_value());
+		REQUIRE(window.Model.GetShownLogRequest()->Stash == std::optional<Core::Oid>{stash});
+		return window.DetailsText();
+	}
+}
+
+TEST_CASE("Git view: a stash's details draw First tag right under In bases, as every commit's details do")
+{
+	// The stash's commit is outside the read: in no base, and held by no tag.
+	const std::vector<DrawnLine> lines = StashDetailsText("StashFirstTagWindow", {TagAt("v1", OidWithFirstByte(2))});
+	const std::optional<std::size_t> inBases = LineStartingWith(lines, "Inbases");
+	REQUIRE(inBases.has_value());
+	CHECK(lines[*inBases].Text == "Inbasesinnobaseyet");
+	REQUIRE(*inBases + 1 < lines.size());
+	CHECK(lines[*inBases + 1].Text == "Firsttagnotagholdsityet");
+
+	// Without tags the same stash's details have In bases alone.
+	const std::vector<DrawnLine> withoutTags = StashDetailsText("StashNoTagsWindow", {});
+	CHECK(LineStartingWith(withoutTags, "Inbasesinnobaseyet").has_value());
+	CHECK_FALSE(LineStartingWith(withoutTags, "Firsttag").has_value());
 }

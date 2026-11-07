@@ -645,3 +645,24 @@ TEST_CASE("Commit details: a commit outside the read says no tag holds it yet")
 	CHECK_FALSE(line.Pending);
 	CHECK_FALSE(line.Name.has_value());
 }
+
+TEST_CASE("Commit details: before the tags are listed, a read that has them draws First tag from the read")
+{
+	const std::vector<Core::Tag> tags{TagOnCommit("v1", kTaggedCommit, 500)};
+	const Graphite::LineRead read = ReadHoldingTags(tags);
+
+	const Graphite::FirstTagLine line = Graphite::DescribeFirstTag(&read, nullptr, kTaggedCommit);
+
+	CHECK(line.Shown);
+	CHECK_FALSE(line.Pending);
+	CHECK(line.Name == std::optional<std::string>{"v1"});
+}
+
+TEST_CASE("Commit details: a listing without tags takes First tag away though the read still has them")
+{
+	// A fetch deleted every tag: the listing says so before the next read does, and applies at once.
+	const std::vector<Core::Tag> tags{TagOnCommit("v1", kTaggedCommit, 500)};
+	const Graphite::LineRead read = ReadHoldingTags(tags);
+
+	CHECK_FALSE(Graphite::DescribeFirstTag(&read, Listed({}), kTaggedCommit).Shown);
+}

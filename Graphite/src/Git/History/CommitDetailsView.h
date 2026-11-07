@@ -30,7 +30,8 @@ namespace Graphite {
 		// of its commits and the branch is in the read.
 		std::optional<std::string> Source;
 
-		// Under the source sentence; drawn whenever the repository has tags, and one line high in every state.
+		// Under the source sentence and so with In bases, for every commit the details show, a stash's too, whenever the
+		// repository has tags; one line high in every state.
 		FirstTagLine FirstTag;
 		std::vector<CommitRef> Refs;
 		std::optional<BroughtDetails> Brought; // only for a merge

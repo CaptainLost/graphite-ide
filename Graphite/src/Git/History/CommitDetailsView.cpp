@@ -6,8 +6,8 @@
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/LoadingState.h"
 
-#include "Git/History/CommitLabels.h"
 #include "Git/Branches/BranchAge.h"
+#include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
 #include "Git/Window/WindowBar.h"
 #include "UI/SplitResults.h"
@@ -247,6 +247,21 @@ namespace Graphite {
 			}
 		}
 
+		// Where the commit stands: the bases holding it, the source sentence, and the oldest tag holding it.
+		// WARNING: First tag follows In bases, so it is drawn wherever In bases is: a commit outside the read, such as a
+		// stash's, is in no base and held by no tag yet. Only a repository without tags leaves it out.
+		void StandingLines(const CommitDetailsContent& content, std::chrono::sys_seconds now, const GitPalette& palette)
+		{
+			InBasesLine(content.Bases, palette);
+
+			if (content.Source.has_value())
+			{
+				ImGui::TextDisabled("%s", content.Source->c_str());
+			}
+
+			FirstTagLineView(content.FirstTag, now, palette);
+		}
+
 		void RefsLine(const std::vector<CommitRef>& refs, const GitPalette& palette)
 		{
 			if (refs.empty())
@@ -367,14 +382,7 @@ namespace Graphite {
 			SignatureRow("committed by", commit.Committer, now, zone);
 		}
 
-		InBasesLine(content.Bases, palette);
-
-		if (content.Source.has_value())
-		{
-			ImGui::TextDisabled("%s", content.Source->c_str());
-		}
-
-		FirstTagLineView(content.FirstTag, now, palette);
+		StandingLines(content, now, palette);
 
 		RefsLine(content.Refs, palette);
 
