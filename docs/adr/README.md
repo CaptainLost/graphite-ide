@@ -705,4 +705,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0673](0673-name-the-repository-its-remotes-and-head-in-a-window-bar-that-also-asks-for-the-main-line.md) | Name the repository, its remotes and HEAD in a window bar that also asks for the main line | proposed | 2026-11-05 |
 | [0674](0674-mark-a-branch-checked-out-in-another-worktree-and-poll-that-worktree-s-changes-only-while-its-row-is-in-view.md) | Mark a branch checked out in another worktree and poll that worktree's changes only while its row is in view | proposed | 2026-11-05 |
 | [0675](0675-count-a-line-s-own-work-committed-by-someone-else-toward-a-base-and-ask-merged-lines-for-two-people-or-a-week.md) | Count a line's own work committed by someone else toward a base, and ask merged lines for two people or a week | proposed | 2026-11-06 |
+| [0676](0676-find-branches-merged-by-content-in-the-background-and-keep-the-verdicts-per-repository.md) | Find branches merged by content in the background and keep the verdicts per repository | proposed | 2026-11-06 |
 <!-- /adr-index -->

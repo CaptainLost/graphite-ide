@@ -31,7 +31,8 @@ Draw the Git window as a sidebar of every reference and stash beside the history
     base's row, not here.
   - **Bases**: the active bases, then a group "Quiet for 90 days", then "Why these, and how to change them".
   - **One section per remote**, "not on this computer": its branches except the bases and those that are one row with
-    a local branch, merged ones behind "N merged hidden · Show", grouped by activity past 15.
+    a local branch, merged ones (by history, or by content once a check found it) behind "N merged hidden · Show",
+    grouped by activity past 15.
   - **Stashes**.
 
   A search field above them matches every word against a branch's name and its authors.
@@ -44,6 +45,15 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   section or group row opens or closes; "in Yours" opens Yours and scrolls to it. A right-click opens the ref menu
   ([0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md)) or the stash menu. A menu whose
   row comes to stand for another reference when the rows are rebuilt closes rather than act on that one.
+- **Merged by content** ([0676](0676-find-branches-merged-by-content-in-the-background-and-keep-the-verdicts-per-repository.md)).
+  A row whose branch history does not show merged but its line can (a candidate) ends its second line with a dim `…`
+  until the branch's check lands, then with `merged · squash` or `merged · rebase` in the merged tone, or with
+  nothing when it is not merged, unknown or failed. The second line is one line cut to the row, so the mark never
+  changes a row's height. The tooltip says `Merged into <line> by a squash in <hash>.` (without the hash when no
+  landing was found) or `Merged into <line> by a rebase.` in place of the ahead sentence, and adds `Whether <line>
+  holds its changes is unknown.` to it for an unknown check. A verdict that lands never rebuilds the rows: a branch
+  found merged keeps its row, with the mark, until the rows are next rebuilt for one of the reasons above; then a
+  remote branch with no local copy goes behind "N merged hidden" and the count grows. Yours and Bases hide no branch.
 - **The shown branch stays listed**: its row is listed even when merged, and the group or quiet bases holding it open
   unless the user closed them, so clearing a search or a fetch never hides the branch on screen.
 - **Waiting.** Until the first read of the lines lands, one waiting row stands in for the sections that need it:
