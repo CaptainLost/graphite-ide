@@ -381,6 +381,17 @@ TEST_CASE("Lines: two tags on one commit give the earlier position")
 	CHECK(answers == std::vector<std::uint32_t>{0, 0, Core::kNoTag});
 }
 
+TEST_CASE("Lines: a later tag on a commit an earlier tag holds leaves every commit to the earlier one")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 6, std::nullopt, 0, {});
+
+	// Position 1 is made after position 0, on a commit position 0 already holds: it holds nothing first.
+	const std::vector<std::uint32_t> answers = OldestTagsOf(builder, {"c5", "c3"}, {"c1", "c2", "c3", "c4", "c5", "c6"});
+
+	CHECK(answers == std::vector<std::uint32_t>{0, 0, 0, 0, 0, Core::kNoTag});
+}
+
 TEST_CASE("Lines: a tag listed as no commit is passed over")
 {
 	GraphBuilder builder;

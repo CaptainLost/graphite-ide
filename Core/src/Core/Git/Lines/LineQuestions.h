@@ -63,5 +63,6 @@ namespace Core {
 	// Per commit, the smallest position in `tagCommitsOldestFirst` whose commit reaches it (a tag's commit reaches
 	// itself), or kNoTag. One pass answers every commit: a commit already marked was reached from an older position, and
 	// so were all its ancestors, so each commit is entered once. A tag commit the graph lacks (kNoCommit) is passed over.
+	// WARNING: Every other entry must be an index of `graph`: one at or past its size is undefined behaviour, never passed over.
 	std::vector<std::uint32_t> OldestTagHolding(const AncestryGraph& graph, std::span<const AncestryGraph::Index> tagCommitsOldestFirst);
 }
