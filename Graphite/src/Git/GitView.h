@@ -197,7 +197,7 @@ namespace Graphite {
 		SidebarInput SidebarInputFor(const SidebarInputs& inputs,
 									 const std::function<bool(std::size_t)>& mergedByContent) const;
 
-		// The window bar's HEAD chip clicked, while HEAD is on a branch: HEAD's history is shown, and the sidebar scrolls
+		// The window bar's HEAD chip clicked: HEAD's history is shown, and while HEAD is on a branch the sidebar scrolls
 		// once to that branch's row, clearing a search that hides it and opening the section or group holding it.
 		void AnswerHeadChip();
 

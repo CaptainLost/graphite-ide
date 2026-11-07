@@ -388,7 +388,7 @@ TEST_CASE("Git window: a head chip on a branch offers to show the branch in the 
 	CHECK(Graphite::HeadChipTooltip(text) == "main tracks origin/main\nClick to show it in the list");
 }
 
-TEST_CASE("Git window: a detached or unborn head's chip offers nothing to click")
+TEST_CASE("Git window: a detached or unborn head's chip says nothing about the list")
 {
 	const std::vector<Core::Branch> branches;
 	const std::vector<Core::Remote> remotes;
@@ -488,7 +488,7 @@ namespace {
 	};
 }
 
-TEST_CASE("Git window: only a head chip on a branch shows a hover look and answers a click")
+TEST_CASE("Git window: a head chip shows a hover look and answers a click whether or not HEAD is on a branch")
 {
 	const std::vector<Core::Branch> branches = {HeadBranch("main")};
 	const std::vector<Core::Remote> remotes;
@@ -513,9 +513,10 @@ TEST_CASE("Git window: only a head chip on a branch shows a hover look and answe
 		BarHarness detached("DetachedChipHarness", Describe(&detachedHead, &branches, &remotes));
 
 		REQUIRE(detached.PointAtChip());
-		CHECK_FALSE(detached.DrawsHoveredFill());
+		CHECK(detached.DrawsHoveredFill());
+		CHECK_FALSE(detached.TakeClick());
 
 		detached.Frames.Click(detached.ChipPoint, [&] { detached.Draw(); });
-		CHECK_FALSE(detached.TakeClick());
+		CHECK(detached.TakeClick());
 	}
 }

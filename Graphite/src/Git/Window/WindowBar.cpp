@@ -245,11 +245,9 @@ namespace Graphite {
 			const std::string name = FitToWidth(text.Head, maxWidth - 2.0f * side - dot - gap - stateWidth);
 			const float width = 2.0f * side + dot + gap + WidthOf(name) + stateWidth;
 
-			// A detached or unborn HEAD names no branch to show, so its chip keeps the tooltip and nothing else.
 			ImGui::SetCursorScreenPos(topLeft);
-			const bool pressed = ImGui::InvisibleButton("##headChip", ImVec2(width, height));
-			const bool clicked = pressed && text.OnBranch;
-			const bool hovered = ImGui::IsItemHovered() && text.OnBranch;
+			const bool clicked = ImGui::InvisibleButton("##headChip", ImVec2(width, height));
+			const bool hovered = ImGui::IsItemHovered();
 			ShowTooltipOfLastItem(HeadChipTooltip(text));
 
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();

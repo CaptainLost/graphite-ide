@@ -26,9 +26,11 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -38,11 +40,29 @@ namespace {
 	constexpr int kTopicCount = 30;
 	constexpr ImVec2 kWindowSize(1200.0f, 700.0f);
 
-	// The read the window's sidebar is built from: HEAD on main, then a feature branch and enough topics to scroll past.
-	Graphite::LineRead MakeRead()
+	Core::HeadState HeadOnMain()
+	{
+		Core::HeadState head;
+		head.Kind = Core::HeadKind::Branch;
+		head.BranchName = "main";
+		head.Commit = OidWithFirstByte(1);
+		return head;
+	}
+
+	Core::HeadState DetachedHead()
+	{
+		Core::HeadState head;
+		head.Kind = Core::HeadKind::Detached;
+		head.Commit = OidWithFirstByte(1);
+		return head;
+	}
+
+	// The read the window's sidebar is built from: main (checked out when HEAD is on it), then a feature branch and
+	// enough topics to scroll past.
+	Graphite::LineRead MakeRead(const Core::HeadState& head)
 	{
 		LineReadBuilder builder;
-		builder.AddLocal("main", {.Head = true, .AgeDays = 40});
+		builder.AddLocal("main", {.Head = head.Kind == Core::HeadKind::Branch, .AgeDays = 40});
 		builder.AddLocal("feature", {.AgeDays = 2});
 
 		for (int topic = 0; topic < kTopicCount; ++topic)
@@ -53,25 +73,23 @@ namespace {
 		return builder.Build();
 	}
 
-	// The repository as git answers it: the read's branches, HEAD on main, no remotes.
-	class HeadOnMainPort final : public EmptyGitPort
+	// The repository as git answers it: the read's branches, the HEAD given, no remotes.
+	class FixedHeadPort final : public EmptyGitPort
 	{
 	public:
-		explicit HeadOnMainPort(std::vector<Core::Branch> branches) : m_Branches(std::move(branches)) {}
+		FixedHeadPort(std::vector<Core::Branch> branches, Core::HeadState head)
+			: m_Branches(std::move(branches))
+			, m_Head(std::move(head))
+		{
+		}
 
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return m_Branches; }
 
-		Core::Result<Core::HeadState> QueryHead() override
-		{
-			Core::HeadState head;
-			head.Kind = Core::HeadKind::Branch;
-			head.BranchName = "main";
-			head.Commit = OidWithFirstByte(1);
-			return head;
-		}
+		Core::Result<Core::HeadState> QueryHead() override { return m_Head; }
 
 	private:
 		std::vector<Core::Branch> m_Branches;
+		Core::HeadState m_Head;
 	};
 
 	class OneReadLinesPort final : public Graphite::LinesPort
@@ -141,7 +159,9 @@ namespace {
 	// The Git window drawn alone, its models fed by the ports above and answered at once.
 	struct GitWindow
 	{
-		explicit GitWindow(const char* windowName) : WindowName(windowName)
+		explicit GitWindow(const char* windowName, Core::HeadState head = HeadOnMain())
+			: WindowName(windowName)
+			, Head(std::move(head))
 		{
 			Model.SetRoot("C:/repo");
 			Model.RequestStatus();
@@ -225,10 +245,11 @@ namespace {
 		}
 
 		const char* WindowName;
+		Core::HeadState Head;
 		ImGuiFrames Frames;
 
-		Graphite::LineRead Read = MakeRead();
-		HeadOnMainPort Port{*Read.Branches};
+		Graphite::LineRead Read = MakeRead(Head);
+		FixedHeadPort Port{*Read.Branches, Head};
 		OneReadLinesPort LinesPort{Read};
 		NoWorktreesPort WorktreePort;
 		NoContentPort ContentPort;
@@ -286,4 +307,33 @@ TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row 
 	window.Settle();
 
 	CHECK(rows->Scroll.y == doctest::Approx(rows->ScrollMax.y));
+}
+
+TEST_CASE("Git window: clicking a detached head's chip shows HEAD's history and leaves the sidebar where it was")
+{
+	GitWindow window("DetachedChipWindow", DetachedHead());
+	window.Settle();
+
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+	window.Settle();
+	REQUIRE(window.View.CaptureWindowState().Ref == "refs/heads/feature");
+
+	ImGuiWindow* rows = window.SidebarRows();
+	REQUIRE(rows != nullptr);
+	REQUIRE(rows->ScrollMax.y > 0.0f);
+
+	const float scrolled = std::floor(rows->ScrollMax.y * 0.5f);
+	ImGui::SetScrollY(rows, scrolled);
+	window.Step();
+	REQUIRE(rows->Scroll.y == doctest::Approx(scrolled));
+
+	REQUIRE(window.PointAtChip());
+	window.Click();
+
+	CHECK(window.View.CaptureWindowState().Ref.empty());
+	CHECK(rows->Scroll.y == doctest::Approx(scrolled));
+
+	window.Settle();
+
+	CHECK(rows->Scroll.y == doctest::Approx(scrolled));
 }
