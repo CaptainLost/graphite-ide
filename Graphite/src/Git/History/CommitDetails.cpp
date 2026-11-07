@@ -1,6 +1,7 @@
 #include "Git/History/CommitDetails.h"
 
 #include "Git/Compare/VsLabel.h"
+#include "Git/Tags/FirstTag.h"
 
 #include "Core/Base/Count.h"
 #include "Core/Time/TimeZone.h"
@@ -117,6 +118,32 @@ namespace Graphite {
 		}
 
 		return "and " + Core::FormatCount(total - shown) + " more";
+	}
+
+	FirstTagLine DescribeFirstTag(const LineRead* read, const Core::Ref<const std::vector<Core::Tag>>& listed,
+								  const Core::Oid& commit)
+	{
+		FirstTagLine line;
+		line.Shown = RepositoryHasTags(read, listed);
+
+		if (!line.Shown)
+		{
+			return line;
+		}
+
+		if (read == nullptr)
+		{
+			line.Pending = true;
+			return line;
+		}
+
+		if (const Core::Tag* tag = FirstTagOf(*read, commit))
+		{
+			line.Name = tag->Name;
+			line.When = tag->When;
+		}
+
+		return line;
 	}
 
 	InBases InBasesOutsideRead(bool reading, const std::optional<Core::Error>& linesError)

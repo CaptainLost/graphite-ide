@@ -29,6 +29,9 @@ namespace Graphite {
 		// "Squash of feature/x." under the bases line when the commit is the landing of a branch's squash or the copy of one
 		// of its commits and the branch is in the read.
 		std::optional<std::string> Source;
+
+		// Under the source sentence; drawn whenever the repository has tags, and one line high in every state.
+		FirstTagLine FirstTag;
 		std::vector<CommitRef> Refs;
 		std::optional<BroughtDetails> Brought; // only for a merge
 

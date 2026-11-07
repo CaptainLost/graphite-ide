@@ -3,8 +3,10 @@
 #include "Git/Content/ContentMark.h"
 #include "Git/Lines/LineReader.h"
 
+#include "Core/Base/Base.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Tag.h"
 
 #include <chrono>
 #include <cstddef>
@@ -69,6 +71,21 @@ namespace Graphite {
 	// The line for a commit the read's graph does not hold, as a detached HEAD's own commit or a stash: in no base, since
 	// a base's history is in the graph; waiting while a newer read may hold it, but not for one asked again after a failure.
 	InBases InBasesOutsideRead(bool reading, const std::optional<Core::Error>& linesError);
+
+	// The "First tag" line of a commit's details: drawn whenever the repository has tags, in one of three states, and
+	// always one line high.
+	struct FirstTagLine
+	{
+		bool Shown = false;
+		bool Pending = false;                           // there is no read yet to say which tag holds the commit
+		std::optional<std::string> Name;                // the oldest tag holding the commit; empty when no tag holds it
+		std::optional<std::chrono::sys_seconds> When;   // when that tag was made
+	};
+
+	// `listed` is GitModel's tag listing: with `read` it decides whether the line is drawn at all. Without a read the line
+	// waits; a commit outside the read's graph, like a commit no tag reaches, is held by no tag yet.
+	FirstTagLine DescribeFirstTag(const LineRead* read, const Core::Ref<const std::vector<Core::Tag>>& listed,
+								  const Core::Oid& commit);
 
 	// How many of the "In bases" chips go on the line, which never wraps: as many, in order, as fit in `room` with `gap`
 	// between them and, when some are left over, the words for the rest after them, at most `moreWidth` wide.

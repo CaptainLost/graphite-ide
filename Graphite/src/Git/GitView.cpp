@@ -1822,6 +1822,9 @@ namespace Graphite {
 		// every branch above, so a commit selected outside the read still counts as another selection.
 		content.Source = m_KeptSource.Keep(commit.Id, sentence);
 
+		// From the read itself, never a job of its own, so it follows each new read.
+		content.FirstTag = DescribeFirstTag(read.get(), m_Model.GetTags(), commit.Id);
+
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
 		{
 			content.Refs = refs->second;

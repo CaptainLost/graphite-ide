@@ -2,13 +2,20 @@
 
 #include "Git/History/CommitDetails.h"
 #include "Git/Lines/LineReadFixtures.h"
+#include "Git/Tags/FirstTag.h"
+
+#include "GitFixtures.h"
 
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Lines/AncestryGraph.h"
+#include "Core/Git/Tag.h"
 #include "Core/Git/Signature.h"
 
 #include <chrono>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -543,4 +550,98 @@ TEST_CASE("Git window: a commit outside the read selected in between decides the
 
 	// Back on the first commit, whose sentence changed meanwhile: not the one kept before.
 	CHECK(kept.Keep(commit, after) == after);
+}
+
+namespace {
+	const Core::Oid kTaggedCommit = OidWithFirstByte(1);
+	const Core::Oid kUntaggedCommit = OidWithFirstByte(2);
+	const Core::Oid kOutsideCommit = OidWithFirstByte(99);
+
+	Core::Tag TagOnCommit(const std::string& name, const Core::Oid& commit, long long when)
+	{
+		return Core::Tag{.Name = name, .FullName = "refs/tags/" + name, .Target = commit, .When = At(when)};
+	}
+
+	// A history of the tagged commit and the untagged one above it, read with the tags given newest first.
+	Graphite::LineRead ReadHoldingTags(std::vector<Core::Tag> tagsNewestFirst)
+	{
+		Core::AncestryGraph graph;
+		graph.Append({Core::GraphCommit{.Id = kTaggedCommit, .Time = 100, .AuthorKey = "ann"},
+					  Core::GraphCommit{.Id = kUntaggedCommit, .Parents = {kTaggedCommit}, .Time = 200, .AuthorKey = "ann"}});
+
+		Graphite::LineRead read;
+		read.Graph = Core::CreateRef<const Core::AncestryGraph>(std::move(graph));
+		read.Tags = Core::CreateRef<const std::vector<Core::Tag>>(std::move(tagsNewestFirst));
+		read.FirstTag = Graphite::FirstTagsIn(*read.Graph, *read.Tags);
+		return read;
+	}
+
+	Core::Ref<const std::vector<Core::Tag>> Listed(std::vector<Core::Tag> tags)
+	{
+		return Core::CreateRef<const std::vector<Core::Tag>>(std::move(tags));
+	}
+}
+
+TEST_CASE("Commit details: no First tag line in a repository without tags")
+{
+	const Graphite::LineRead read = ReadHoldingTags({});
+
+	CHECK_FALSE(Graphite::DescribeFirstTag(&read, Listed({}), kTaggedCommit).Shown);
+	CHECK_FALSE(Graphite::DescribeFirstTag(nullptr, Listed({}), kTaggedCommit).Shown);
+
+	// Neither the listing nor a read is known yet: nothing is said of tags, so none is drawn.
+	CHECK_FALSE(Graphite::DescribeFirstTag(nullptr, nullptr, kTaggedCommit).Shown);
+}
+
+TEST_CASE("Commit details: First tag is pending while there is no read")
+{
+	const Graphite::FirstTagLine line =
+		Graphite::DescribeFirstTag(nullptr, Listed({TagOnCommit("v1", kTaggedCommit, 500)}), kTaggedCommit);
+
+	CHECK(line.Shown);
+	CHECK(line.Pending);
+	CHECK_FALSE(line.Name.has_value());
+	CHECK_FALSE(line.When.has_value());
+}
+
+TEST_CASE("Commit details: First tag names the oldest tag holding the commit and when it was made")
+{
+	// Newest first, as the listing gives them: v2 is on the later commit, v1 on the first, so v1 is the first to hold it.
+	const std::vector<Core::Tag> tags{TagOnCommit("v2", kUntaggedCommit, 900), TagOnCommit("v1", kTaggedCommit, 500)};
+	const Graphite::LineRead read = ReadHoldingTags(tags);
+
+	const Graphite::FirstTagLine line = Graphite::DescribeFirstTag(&read, Listed(tags), kTaggedCommit);
+
+	CHECK(line.Shown);
+	CHECK_FALSE(line.Pending);
+	CHECK(line.Name == std::optional<std::string>{"v1"});
+	CHECK(line.When == std::optional<std::chrono::sys_seconds>{At(500)});
+
+	// The commit above it is held by v2 alone.
+	CHECK(Graphite::DescribeFirstTag(&read, Listed(tags), kUntaggedCommit).Name == std::optional<std::string>{"v2"});
+}
+
+TEST_CASE("Commit details: a commit no tag holds says no tag holds it yet")
+{
+	const std::vector<Core::Tag> tags{TagOnCommit("v1", kTaggedCommit, 500)};
+	const Graphite::LineRead read = ReadHoldingTags(tags);
+
+	const Graphite::FirstTagLine line = Graphite::DescribeFirstTag(&read, Listed(tags), kUntaggedCommit);
+
+	CHECK(line.Shown);
+	CHECK_FALSE(line.Pending);
+	CHECK_FALSE(line.Name.has_value());
+	CHECK_FALSE(line.When.has_value());
+}
+
+TEST_CASE("Commit details: a commit outside the read says no tag holds it yet")
+{
+	const std::vector<Core::Tag> tags{TagOnCommit("v1", kTaggedCommit, 500)};
+	const Graphite::LineRead read = ReadHoldingTags(tags);
+
+	const Graphite::FirstTagLine line = Graphite::DescribeFirstTag(&read, Listed(tags), kOutsideCommit);
+
+	CHECK(line.Shown);
+	CHECK_FALSE(line.Pending);
+	CHECK_FALSE(line.Name.has_value());
 }

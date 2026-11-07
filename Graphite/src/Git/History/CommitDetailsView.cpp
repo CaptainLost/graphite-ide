@@ -7,6 +7,7 @@
 #include "Core/ImGui/LoadingState.h"
 
 #include "Git/History/CommitLabels.h"
+#include "Git/Branches/BranchAge.h"
 #include "Git/History/CommitRows.h"
 #include "Git/Window/WindowBar.h"
 #include "UI/SplitResults.h"
@@ -207,6 +208,45 @@ namespace Graphite {
 			}
 		}
 
+		// WARNING: One line high pending, named and empty, so the answer landing does not move what is under it.
+		void FirstTagLineView(const FirstTagLine& line, std::chrono::sys_seconds now, const GitPalette& palette)
+		{
+			if (!line.Shown)
+			{
+				return;
+			}
+
+			const float labelStartX = ImGui::GetCursorPosX();
+
+			ImGui::TextDisabled("First tag");
+			ImGui::SameLine(labelStartX + WindowBarEm(kLabelWidthPixels));
+
+			if (line.Pending)
+			{
+				ImGui::TextDisabled("%s", kPendingText);
+				return;
+			}
+
+			if (!line.Name.has_value())
+			{
+				ImGui::TextDisabled("no tag holds it yet");
+				return;
+			}
+
+			const RefPill pill = MeasureRefPill(CommitRef{.Name = *line.Name, .Kind = CommitRefKind::Tag});
+
+			DrawRefPill(pill, palette);
+
+			if (line.When.has_value())
+			{
+				const std::string age = FormatBranchAge(*line.When, now);
+				const std::string made = age == "now" ? "made just now" : "made " + age + " ago";
+
+				ImGui::SameLine(0.0f, WindowBarEm(kChipGapPixels));
+				ImGui::TextDisabled("%s", made.c_str());
+			}
+		}
+
 		void RefsLine(const std::vector<CommitRef>& refs, const GitPalette& palette)
 		{
 			if (refs.empty())
@@ -333,6 +373,8 @@ namespace Graphite {
 		{
 			ImGui::TextDisabled("%s", content.Source->c_str());
 		}
+
+		FirstTagLineView(content.FirstTag, now, palette);
 
 		RefsLine(content.Refs, palette);
 
