@@ -23,6 +23,7 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
+#include "Git/Tags/TagLookup.h"
 #include "UI/SplitResults.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
@@ -160,13 +161,16 @@ namespace Graphite {
 	void GitView::FollowSelectedRef()
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const Core::Ref<const std::vector<Core::Tag>> tags = m_Model.GetTags();
 
-		if (branches == m_LastSeenBranches)
+		// WARNING: The tags too, which a fetch can change alone: the branches then keep their snapshot.
+		if (branches == m_LastSeenBranches && tags == m_LastSeenTags)
 		{
 			return;
 		}
 
 		m_LastSeenBranches = branches;
+		m_LastSeenTags = tags;
 
 		if (!branches)
 		{
@@ -177,7 +181,7 @@ namespace Graphite {
 								  BranchWithFullName(*branches, m_PendingRename->From) == nullptr &&
 								  BranchWithFullName(*branches, m_PendingRename->To) != nullptr;
 
-		FollowHistoryRef(*branches, renameLanded);
+		FollowHistoryRef(*branches, tags.get(), renameLanded);
 
 		if (renameLanded)
 		{
@@ -185,9 +189,20 @@ namespace Graphite {
 		}
 	}
 
-	void GitView::FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded)
+	void GitView::FollowHistoryRef(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags,
+								   bool renameLanded)
 	{
-		if (!m_SelectedRef.has_value() || BranchWithFullName(branches, *m_SelectedRef) != nullptr)
+		if (!m_SelectedRef.has_value())
+		{
+			return;
+		}
+
+		// A tag is looked up among the tags, and stays while they are not listed: a listing that failed says nothing of
+		// it. One that moved stays too; the refresh that listed it asks its history again.
+		const bool isListed = ShowsTag() ? tags == nullptr || TagWithFullName(*tags, *m_SelectedRef) != nullptr
+										 : BranchWithFullName(branches, *m_SelectedRef) != nullptr;
+
+		if (isListed)
 		{
 			return;
 		}
@@ -195,7 +210,7 @@ namespace Graphite {
 		const bool isFollowingRename = renameLanded && m_PendingRename->From == *m_SelectedRef;
 
 		// A rename keeps the history it names, so the reach the reader asked for stays with it; a
-		// branch that is gone falls back to HEAD and starts over.
+		// branch or a tag that is gone falls back to HEAD and starts over.
 		const HistoryReach reach = isFollowingRename ? m_Reach : HistoryReach{};
 
 		if (isFollowingRename)
@@ -478,6 +493,7 @@ namespace Graphite {
 		m_SelectedRef.reset();
 		m_SelectedStash.reset();
 		m_LastSeenBranches.reset();
+		m_LastSeenTags.reset();
 		m_PendingRename.reset();
 		m_LineAsked.reset();
 		m_LineAskedGeneration = 0;
@@ -938,7 +954,8 @@ namespace Graphite {
 
 	bool GitView::WaitsForLines() const
 	{
-		if (m_SelectedStash.has_value() || IsFileHistory())
+		// A tag's history is read from its commit alone: the read has no line for it to wait for.
+		if (m_SelectedStash.has_value() || IsFileHistory() || ShowsTag())
 		{
 			return false;
 		}

@@ -9,6 +9,9 @@
 
 namespace Graphite {
 
+	// Whether the full name is a tag's: one under refs/tags/. A branch of the same short name is not.
+	bool IsTagName(std::string_view fullName);
+
 	// The place in `tags` of the tag whose full name ("refs/tags/x") is `fullName`; empty when none is listed.
 	std::optional<std::size_t> IndexOfTag(const std::vector<Core::Tag>& tags, std::string_view fullName);
 

@@ -46,6 +46,25 @@ namespace {
 	}
 }
 
+TEST_CASE("Git window: a tag has no vs label and no banner, even beside a branch of the same short name that has both")
+{
+	Scene scene = MakeScene();
+	scene.Line().State = Core::BranchState::MergedByHistory;
+
+	const BranchLines lines(scene.Read);
+	const VsInput branch{scene.Read, lines, "refs/heads/feature", std::nullopt};
+	const VsInput tag{scene.Read, lines, "refs/tags/feature", std::nullopt};
+	const VsInput tagOfBase{scene.Read, lines, "refs/tags/develop", std::nullopt};
+
+	REQUIRE_FALSE(Graphite::DescribeVs(branch).Lead.empty());
+	REQUIRE(HistoryBannerFor(branch).has_value());
+
+	CHECK(Graphite::DescribeVs(tag).Lead.empty());
+	CHECK_FALSE(HistoryBannerFor(tag).has_value());
+	CHECK(Graphite::DescribeVs(tagOfBase).Lead.empty());
+	CHECK_FALSE(HistoryBannerFor(tagOfBase).has_value());
+}
+
 TEST_CASE("Git window: a merged branch gets the merged banner")
 {
 	Scene scene = MakeScene();

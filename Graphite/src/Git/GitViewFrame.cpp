@@ -51,6 +51,12 @@ namespace Graphite {
 			return branches ? *branches : kNoBranches;
 		}
 
+		const std::vector<Core::Tag>& TagsOrNone(const Core::Ref<const std::vector<Core::Tag>>& tags)
+		{
+			static const std::vector<Core::Tag> kNoTags;
+			return tags ? *tags : kNoTags;
+		}
+
 		std::chrono::sys_seconds NowInSeconds()
 		{
 			return std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
@@ -102,6 +108,17 @@ namespace Graphite {
 		{
 			return error.has_value() ? &*error : nullptr;
 		}
+
+		// The icon the history's name follows, for a history that names a ref or a stash.
+		const char* HistoryIcon(bool stash, bool tag)
+		{
+			if (stash)
+			{
+				return ICON_LC_ARCHIVE;
+			}
+
+			return tag ? ICON_LC_TAG : ICON_LC_GIT_BRANCH;
+		}
 	}
 
 	void GitView::ConnectViews()
@@ -148,10 +165,12 @@ namespace Graphite {
 		}
 
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-		const BranchListing listing{.Listed = branches != nullptr,
-									.Failed = !branches && m_Model.GetBranchesError().has_value()};
+		const Core::Ref<const std::vector<Core::Tag>> tags = m_Model.GetTags();
+		const RefListing branchListing{.Listed = branches != nullptr,
+									   .Failed = !branches && m_Model.GetBranchesError().has_value()};
+		const RefListing tagListing{.Listed = tags != nullptr, .Failed = !tags && m_Model.GetTagsError().has_value()};
 
-		if (RestoreWaitsForBranches(*m_PendingRestore, listing))
+		if (RestoreWaitsForListing(*m_PendingRestore, branchListing, tagListing))
 		{
 			return;
 		}
@@ -159,7 +178,7 @@ namespace Graphite {
 		const GitWindowState state = *m_PendingRestore;
 		m_PendingRestore.reset();
 
-		const std::optional<std::string> ref = RefToRestore(state, BranchesOrNone(branches));
+		const std::optional<std::string> ref = RefToRestore(state, BranchesOrNone(branches), TagsOrNone(tags));
 
 		// HEAD's history, already what the window shows, is asked for once the history is first drawn.
 		if (ref == m_SelectedRef && !m_SelectedStash.has_value())
@@ -498,7 +517,7 @@ namespace Graphite {
 	{
 		const Core::Ref<const std::vector<Core::Tag>>& tags = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Tags : nullptr;
 
-		if (!tags || !m_SelectedRef.has_value() || !m_SelectedRef->starts_with(Core::kTagPrefix))
+		if (!tags || !ShowsTag())
 		{
 			return std::nullopt;
 		}
@@ -767,6 +786,14 @@ namespace Graphite {
 			return "Stash";
 		}
 
+		if (ShowsTag())
+		{
+			const Core::Ref<const std::vector<Core::Tag>> tags = m_Model.GetTags();
+			const Core::Tag* tag = TagWithFullName(TagsOrNone(tags), *m_SelectedRef);
+
+			return tag != nullptr ? tag->Name : m_SelectedRef->substr(Core::kTagPrefix.size());
+		}
+
 		if (m_SelectedRef.has_value())
 		{
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
@@ -856,7 +883,8 @@ namespace Graphite {
 			}
 		}
 
-		// A branch's history is named after the branch icon, a stash's after the archive's, HEAD's after its dot.
+		// A branch's history is named after the branch icon, a stash's after the archive's, a tag's after the tag's, HEAD's
+		// after its dot.
 		ImGui::AlignTextToFramePadding();
 		ImGui::BeginGroup();
 
@@ -878,7 +906,7 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::TextUnformatted(m_SelectedStash.has_value() ? ICON_LC_ARCHIVE : ICON_LC_GIT_BRANCH);
+			ImGui::TextUnformatted(HistoryIcon(m_SelectedStash.has_value(), ShowsTag()));
 		}
 
 		ImGui::SameLine();

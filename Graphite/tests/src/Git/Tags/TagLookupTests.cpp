@@ -33,3 +33,15 @@ TEST_CASE("Tag lookup: a tag is found by its full name, at its place in the list
 	CHECK(TagWithFullName(tags, "refs/heads/v1") == nullptr);
 	CHECK_FALSE(IndexOfTag({}, "refs/tags/v1").has_value());
 }
+
+TEST_CASE("Tag lookup: a full name under refs/tags names a tag, whatever else it says")
+{
+	CHECK(IsTagName("refs/tags/v1"));
+	CHECK(IsTagName("refs/tags/release/1.0"));
+	CHECK(IsTagName("refs/tags/refs/heads/main"));
+
+	CHECK_FALSE(IsTagName("refs/heads/v1"));
+	CHECK_FALSE(IsTagName("refs/remotes/origin/tags/v1"));
+	CHECK_FALSE(IsTagName("v1"));
+	CHECK_FALSE(IsTagName(""));
+}

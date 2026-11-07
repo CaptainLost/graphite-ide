@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DeferredJobs.h"
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
@@ -37,6 +38,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -226,12 +228,24 @@ namespace {
 		static Core::Error Unanswered() { return Core::Error{Core::ErrorCode::IoFailure, "not asked in this test"}; }
 	};
 
-	// The Git window drawn alone, its models fed by the ports above and answered at once.
+	// Yours lists main, feature and the topics, each two lines high, under its one-line header.
+	constexpr int kBranchCount = 2 + kTopicCount;
+
+	// The slot of the branch row at `place` in Yours, 0 for its first row.
+	float YoursRowTop(int place)
+	{
+		return Graphite::ListRowPitch() + static_cast<float>(place) * Graphite::SidebarTwoLineRowHeight();
+	}
+
+	// The Git window drawn alone, its models fed by the ports above and answered at once, the line reads unless they
+	// are held. `read` stands for MakeRead's.
 	struct GitWindow
 	{
-		explicit GitWindow(const char* windowName, Core::HeadState head = HeadOnMain(), std::vector<Core::Tag> tags = {})
+		explicit GitWindow(const char* windowName, Core::HeadState head = HeadOnMain(), std::vector<Core::Tag> tags = {},
+						   std::optional<Graphite::LineRead> read = std::nullopt)
 			: WindowName(windowName)
 			, Head(std::move(head))
+			, Read(read.has_value() ? std::move(*read) : MakeRead(Head))
 			, Port{*Read.Branches, Head, std::move(tags)}
 		{
 			Model.SetRoot("C:/repo");
@@ -376,6 +390,82 @@ namespace {
 			Settle();
 		}
 
+		// Shows the history of MakeRead's repository's one tag as the reader does: the list scrolled to its end, the Tags
+		// section opened, its one row clicked.
+		void ClickTheOneTagRow()
+		{
+			ImGuiWindow* rows = SidebarRows();
+			ImGui::SetScrollY(rows, rows->ScrollMax.y);
+			Step();
+
+			const float pitch = Graphite::ListRowPitch();
+			const float tagsTop = YoursRowTop(kBranchCount);
+			ClickAt(InSidebarRows(tagsTop + pitch * 0.5f));
+			ClickAt(InSidebarRows(tagsTop + pitch * 1.5f));
+		}
+
+		// The line reads asked while they were held are made and land.
+		void ReleaseLineReads()
+		{
+			HoldsLineReads = false;
+			HeldLineReads.RunAll();
+			Settle();
+		}
+
+		// How many rows the history's list drew last frame: its commits and the Local changes, banner and fold rows.
+		int HistoryRowCount() const
+		{
+			ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			for (int index = 0; index < context.Tables.GetMapSize(); ++index)
+			{
+				const ImGuiTable* table = context.Tables.TryGetMapData(index);
+
+				if (table != nullptr && table->LastFrameActive == context.FrameCount && table->OuterWindow != nullptr &&
+					std::strstr(table->OuterWindow->Name, WindowName) != nullptr &&
+					std::strstr(table->OuterWindow->Name, "##gitCommits") != nullptr)
+				{
+					return table->CurrentRow + 1;
+				}
+			}
+
+			return 0;
+		}
+
+		// Whether the history's header draws its vs button: the pointer goes along the header row until it is over it.
+		bool HeaderShowsVsButton()
+		{
+			constexpr int kHistoryColumn = 1;
+			constexpr float kStep = 4.0f;
+
+			const ImGuiWindow* window = ImGui::FindWindowByName(WindowName);
+			const ImGuiTable* table = ImGui::TableFindByID(ImGui::GetIDWithSeed("gitWindowA", nullptr, window->ID));
+
+			if (table == nullptr)
+			{
+				return false;
+			}
+
+			// The header is the first line of the history's cell, the vs button as high as a frame.
+			const ImGuiID vsButton = ImGui::GetIDWithSeed("##vsButton", nullptr, table->ID);
+			const float middle = table->RowPosY1 + table->RowCellPaddingY + ImGui::GetFrameHeight() * 0.5f;
+			const float left = table->Columns[kHistoryColumn].MinX;
+			const float right = table->Columns[kHistoryColumn].MaxX;
+
+			for (float x = left; x < right; x += kStep)
+			{
+				ImGui::GetIO().AddMousePosEvent(x, middle);
+				Step();
+
+				if (ImGui::GetCurrentContext()->HoveredId == vsButton)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		ImGuiWindow* SidebarRows() const
 		{
 			for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
@@ -393,14 +483,31 @@ namespace {
 		Core::HeadState Head;
 		ImGuiFrames Frames;
 
-		Graphite::LineRead Read = MakeRead(Head);
+		Graphite::LineRead Read;
 		FixedHeadPort Port;
 		OneReadLinesPort LinesPort{Read};
 		NoWorktreesPort WorktreePort;
 		NoContentPort ContentPort;
 
+		// While held, a line read asked waits here unmade, as one still being made does.
+		bool HoldsLineReads = false;
+		DeferredJobs HeldLineReads;
+
+		Core::JobSubmitter LineReadJobs()
+		{
+			return [this](std::function<void()> job) {
+				if (HoldsLineReads)
+				{
+					HeldLineReads.Submitter()(std::move(job));
+					return;
+				}
+
+				job();
+			};
+		}
+
 		Graphite::GitModel Model{Port, RunJobsInline()};
-		Graphite::LinesModel Lines{LinesPort, RunJobsInline(), [] { return LineReadBuilder::Now().time_since_epoch().count(); }};
+		Graphite::LinesModel Lines{LinesPort, LineReadJobs(), [] { return LineReadBuilder::Now().time_since_epoch().count(); }};
 		Graphite::WorktreesModel Worktrees{WorktreePort, RunJobsInline()};
 		Graphite::ContentModel Content{ContentPort, RunJobsInline()};
 
@@ -421,19 +528,25 @@ namespace {
 		ImGuiID ChipId = 0;
 	};
 
-	// Yours lists main, feature and the topics, each two lines high, under its one-line header.
-	constexpr int kBranchCount = 2 + kTopicCount;
-
 	// Whether `middle` lies in the row that starts `top` down the sidebar's list and is `height` high.
 	bool InSlot(std::optional<float> middle, float top, float height)
 	{
 		return middle.has_value() && *middle > top && *middle < top + height;
 	}
 
-	// The slot of the branch row at `place` in Yours, 0 for its first row.
-	float YoursRowTop(int place)
+	// main at its tip and beside it x, merged into main, with a tag of x's short name at x's tip.
+	Graphite::LineRead MergedBranchRead()
 	{
-		return Graphite::ListRowPitch() + static_cast<float>(place) * Graphite::SidebarTwoLineRowHeight();
+		LineReadBuilder builder;
+		const std::size_t main = builder.AddLocal("main", {.Head = true});
+		builder.MakeBase(main);
+		const std::size_t merged = builder.AddLocal("x", {.State = Core::BranchState::MergedByHistory});
+		builder.Compare(merged, main);
+
+		Graphite::LineRead read = builder.Build();
+		read.Model.Branches.front().Kind = Core::ComparedKind::Base;
+		read.Graph = Core::CreateRef<const Core::AncestryGraph>();
+		return read;
 	}
 }
 
@@ -544,20 +657,101 @@ TEST_CASE("Git window: clicking a tag row shows the tag's history with the row s
 	GitWindow window("TagRowWindow", HeadOnMain(), {TagAt("v1", OidWithFirstByte(2))});
 	window.Settle();
 
-	ImGuiWindow* rows = window.SidebarRows();
-	REQUIRE(rows != nullptr);
-	ImGui::SetScrollY(rows, rows->ScrollMax.y);
-	window.Step();
-
 	// The Tags section comes closed, after Yours; opened, it lists the tag's row under its header.
-	const float pitch = Graphite::ListRowPitch();
-	const float tagsTop = YoursRowTop(kBranchCount);
-	window.ClickAt(window.InSidebarRows(tagsTop + pitch * 0.5f));
-	window.ClickAt(window.InSidebarRows(tagsTop + pitch * 1.5f));
+	window.ClickTheOneTagRow();
 
+	const float pitch = Graphite::ListRowPitch();
 	CHECK(window.View.CaptureWindowState().Ref == "refs/tags/v1");
-	CHECK(InSlot(window.SelectedRowMiddle(), tagsTop + pitch, pitch));
+	CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(kBranchCount) + pitch, pitch));
 
 	REQUIRE(window.Model.GetShownLogRequest().has_value());
 	CHECK(window.Model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/tags/v1"});
+}
+
+TEST_CASE("Git view: a shown tag deleted by a fetch falls back to HEAD")
+{
+	GitWindow window("TagDeletedWindow", HeadOnMain(), {TagAt("v1", OidWithFirstByte(2))});
+	window.Settle();
+	window.ClickTheOneTagRow();
+	REQUIRE(window.View.CaptureWindowState().Ref == "refs/tags/v1");
+
+	// The fetch moves no branch: only the tags are listed anew.
+	window.Port.Tags.clear();
+	window.Refresh();
+
+	CHECK(window.View.CaptureWindowState().Ref.empty());
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK_FALSE(window.Model.GetShownLogRequest()->Ref.has_value());
+	REQUIRE(window.Model.GetLog() != nullptr);
+	REQUIRE_FALSE(window.Model.GetLog()->Commits.empty());
+	CHECK(window.Model.GetLog()->Commits.front().Id == OidWithFirstByte(1));
+}
+
+TEST_CASE("Git view: a shown tag moved by a fetch shows its new commit's history")
+{
+	GitWindow window("TagMovedWindow", HeadOnMain(), {TagAt("v1", OidWithFirstByte(2))});
+	window.Settle();
+	window.ClickTheOneTagRow();
+	REQUIRE(window.View.CaptureWindowState().Ref == "refs/tags/v1");
+	REQUIRE(window.Model.GetLog() != nullptr);
+	REQUIRE_FALSE(window.Model.GetLog()->Commits.empty());
+	REQUIRE(window.Model.GetLog()->Commits.front().Id == OidWithFirstByte(2));
+
+	// The fetch moves the tag, and a branch with it.
+	window.Port.Tags = {TagAt("v1", OidWithFirstByte(40))};
+	window.Port.Branches[1].Tip = OidWithFirstByte(41);
+	window.Refresh();
+
+	CHECK(window.View.CaptureWindowState().Ref == "refs/tags/v1");
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK(window.Model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/tags/v1"});
+	REQUIRE(window.Model.GetLog() != nullptr);
+	REQUIRE_FALSE(window.Model.GetLog()->Commits.empty());
+	CHECK(window.Model.GetLog()->Commits.front().Id == OidWithFirstByte(40));
+}
+
+TEST_CASE("Git view: a tag's history does not wait for the line read, and has no fold row, vs button, banner or Local changes row")
+{
+	// The tag has the short name of x, a branch merged into main whose history shows main's newer commits beside it.
+	GitWindow window("TagHistoryWindow", HeadOnMain(), {TagAt("x", OidWithFirstByte(2))}, MergedBranchRead());
+	window.HoldsLineReads = true;
+	window.Settle();
+	REQUIRE(window.Lines.GetRead() == nullptr);
+
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/tags/x"});
+	window.Settle();
+
+	// Asked and shown while the read is still being made.
+	REQUIRE(window.Lines.GetRead() == nullptr);
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK(window.Model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/tags/x"});
+	REQUIRE(window.Model.GetLog() != nullptr);
+	CHECK(window.HistoryRowCount() == 1);
+	CHECK_FALSE(window.DrawsLocalChanges());
+
+	// With the read in, the tag still has no line: its commit is its one row, under a header with no vs button.
+	window.ReleaseLineReads();
+	REQUIRE(window.Lines.GetRead() != nullptr);
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK(window.Model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/tags/x"});
+	CHECK(window.Model.GetShownLogRequest()->AlsoFrom.empty());
+	CHECK_FALSE(window.Model.GetMarkedKind().has_value());
+	CHECK(window.HistoryRowCount() == 1);
+	CHECK_FALSE(window.DrawsLocalChanges());
+	CHECK_FALSE(window.HeaderShowsVsButton());
+
+	// The branch of the same short name has all of them but Local changes: its line beside it, the banner over its commit.
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/x"});
+	window.Settle();
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK(window.Model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/heads/x"});
+	CHECK_FALSE(window.Model.GetShownLogRequest()->AlsoFrom.empty());
+	CHECK(window.Model.GetMarkedKind() == std::optional<Graphite::GitModel::MarkedKind>{Graphite::GitModel::MarkedKind::Newer});
+	CHECK(window.HistoryRowCount() == 2);
+	CHECK(window.HeaderShowsVsButton());
+
+	// And HEAD's history opens on its Local changes.
+	window.View.RestoreWindowState(Graphite::GitWindowState{});
+	window.Settle();
+	CHECK(window.DrawsLocalChanges());
 }

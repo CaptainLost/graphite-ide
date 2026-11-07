@@ -6,6 +6,7 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/Theme.h"
 
+#include "Git/Tags/TagLookup.h"
 #include "Git/Window/WindowBar.h"
 #include "UI/FittedText.h"
 
@@ -203,7 +204,8 @@ namespace Graphite {
 
 	std::string GitView::ShownRefName() const
 	{
-		if (m_SelectedStash.has_value() || RestoreWaits())
+		// A tag's history is its commit's, combined: no fold row, no vs button, no banner.
+		if (m_SelectedStash.has_value() || RestoreWaits() || ShowsTag())
 		{
 			return {};
 		}
@@ -226,6 +228,11 @@ namespace Graphite {
 		}
 
 		return m_SidebarBuiltFrom->Read->Refs[*m_HeadRef].FullName;
+	}
+
+	bool GitView::ShowsTag() const
+	{
+		return m_SelectedRef.has_value() && IsTagName(*m_SelectedRef);
 	}
 
 	HeadInRead GitView::HeadPlacement() const

@@ -83,6 +83,19 @@ namespace {
 	}
 }
 
+TEST_CASE("Git window: a tag's history has no line, even beside a branch of the same short name that has one")
+{
+	for (const Core::BranchState state : {Core::BranchState::NotMerged, Core::BranchState::MergedByHistory, Core::BranchState::NoOwnCommits})
+	{
+		const Scene scene = MakeScene(state);
+
+		CHECK(scene.LineOf("refs/heads/feature/x").Fold != LineFold::None);
+		CHECK(scene.LineOf("refs/tags/feature/x") == HistoryLine{});
+		CHECK(scene.LineOf("refs/tags/feature/x", true) == HistoryLine{});
+		CHECK(scene.LineOf("refs/tags/develop") == HistoryLine{});
+	}
+}
+
 TEST_CASE("Git window: the fold row sits before the first commit that is not the branch's own")
 {
 	const Core::LogPage page = PageOf({1, 2, 3, 4});

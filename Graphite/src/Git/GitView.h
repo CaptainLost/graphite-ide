@@ -102,7 +102,7 @@ namespace Graphite {
 
 		GitWindowState CaptureWindowState() const;
 
-		// Applied through RefToRestore once the branches are known.
+		// Applied through RefToRestore once the branches, or for a tag the tags, are known.
 		void RestoreWindowState(const GitWindowState& state);
 
 	private:
@@ -184,7 +184,8 @@ namespace Graphite {
 
 		void ApplyPendingRestore();
 
-		// A restored state still waits for the branches: the history names no reference and shows one waiting row.
+		// A restored state still waits for the listing that holds its ref: the history names no reference and shows one
+		// waiting row.
 		bool RestoreWaits() const { return m_PendingRestore.has_value(); }
 
 		// The repository, its remotes and the checked-out branch, and the question for the main line when it is asked.
@@ -232,9 +233,12 @@ namespace Graphite {
 		std::string HistoryTitle() const;
 
 		// The full name of the branch whose history is shown: the selected ref, or the checked-out branch for HEAD's.
-		// Empty for a stash, a detached or unborn HEAD, while no read is held, and for HEAD's history while the read
-		// names another branch checked out than HEAD does.
+		// Empty for a stash, a tag, a detached or unborn HEAD, while no read is held, and for HEAD's history while the read
+		// names another branch checked out than HEAD does: none of them has a line to compare it with.
 		std::string ShownRefName() const;
+
+		// The selected ref is a tag's.
+		bool ShowsTag() const;
 
 		// How HEAD's history stands against the read the sidebar's lines view.
 		HeadInRead HeadPlacement() const;
@@ -284,7 +288,9 @@ namespace Graphite {
 		KeptSourceSentence m_KeptSource;
 
 		void FollowSelectedRef();
-		void FollowHistoryRef(const std::vector<Core::Branch>& branches, bool renameLanded);
+
+		// `tags` is null while the tags are not listed.
+		void FollowHistoryRef(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags, bool renameLanded);
 		void FollowSelectedStash();
 
 		// Opens the menu on a right-click of the last item.
@@ -412,7 +418,7 @@ namespace Graphite {
 		bool IsFileHistory() const;
 
 		// A branch's or HEAD's history waits for the line read that holds it, and HEAD's for the one that names its branch
-		// checked out; a stash and a file's history do not, and neither does a history whose read failed.
+		// checked out; a stash, a tag and a file's history do not, and neither does a history whose read failed.
 		bool WaitsForLines() const;
 
 		// HEAD's or the checked-out branch's history of the whole tree, whose first row is Local changes.
@@ -586,6 +592,7 @@ namespace Graphite {
 		std::optional<Core::Oid> m_SelectedStash;
 
 		Core::Ref<const std::vector<Core::Branch>> m_LastSeenBranches;
+		Core::Ref<const std::vector<Core::Tag>> m_LastSeenTags;
 		std::optional<BranchRenameSent> m_PendingRename;
 
 		std::array<char, 256> m_FilterBuffer{};
