@@ -716,9 +716,8 @@ TEST_CASE("Git view: a shown tag moved by a fetch shows its new commit's history
 	REQUIRE_FALSE(window.Model.GetLog()->Commits.empty());
 	REQUIRE(window.Model.GetLog()->Commits.front().Id == OidWithFirstByte(2));
 
-	// The fetch moves the tag, and a branch with it.
+	// The fetch moves the tag alone: the branches keep their snapshot, so only the tags' own listing can tell the view.
 	window.Port.Tags = {TagAt("v1", OidWithFirstByte(40))};
-	window.Port.Branches[1].Tip = OidWithFirstByte(41);
 	window.Refresh();
 
 	CHECK(window.View.CaptureWindowState().Ref == "refs/tags/v1");
