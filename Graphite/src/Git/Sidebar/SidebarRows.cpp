@@ -2,6 +2,7 @@
 
 #include "Git/Branches/BranchListFilter.h"
 #include "Git/Lines/BranchLines.h"
+#include "Git/Tags/TagFolders.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Count.h"
@@ -76,12 +77,14 @@ namespace Graphite {
 					AddRemote(remote.Name);
 				}
 
+				AddTags();
 				AddStashes();
 				return std::move(m_Rows);
 			}
 
 			std::vector<SidebarRow> BuildStashes()
 			{
+				AddTags();
 				AddStashes();
 				return std::move(m_Rows);
 			}
@@ -181,12 +184,12 @@ namespace Graphite {
 
 			// Whether the section's rows follow.
 			bool AddSection(SidebarSection section, std::string key, std::string label, std::size_t count, std::size_t total,
-							std::string remote = {}, std::string note = {})
+							std::string remote = {}, std::string note = {}, bool openByDefault = true)
 			{
 				SidebarRow row;
 				row.Kind = SidebarRowKind::Section;
 				row.Section = section;
-				row.Open = OpenOf(key, true);
+				row.Open = OpenOf(key, openByDefault);
 				row.Key = std::move(key);
 				row.Label = std::move(label);
 				row.Note = std::move(note);
@@ -550,6 +553,107 @@ namespace Graphite {
 				}
 			}
 
+			void AddTags()
+			{
+				const std::vector<Core::Tag>* const tags = m_Input.Tags;
+				std::vector<std::size_t> shown;
+				std::size_t total = 0;
+
+				if (tags != nullptr)
+				{
+					total = tags->size();
+					shown.reserve(total);
+
+					for (std::size_t index = 0; index < total; ++index)
+					{
+						if (TagMatches((*tags)[index]))
+						{
+							shown.push_back(index);
+						}
+					}
+				}
+
+				// A repository without tags has no section; one whose list is not in hand yet has the section, so the place
+				// is held.
+				const bool hasNone = tags != nullptr && tags->empty() && m_Input.TagsError == nullptr;
+
+				if (hasNone || (m_Searching && shown.empty()))
+				{
+					return;
+				}
+
+				const bool open = AddSection(SidebarSection::Tags, "tags", "Tags", shown.size(), total, {}, {}, false);
+				m_Rows.back().Counted = tags != nullptr;
+				m_Rows.back().CountFailed = tags == nullptr && m_Input.TagsError != nullptr;
+
+				if (!open)
+				{
+					return;
+				}
+
+				if (m_Input.TagsError != nullptr)
+				{
+					AddNotice(SidebarSection::Tags, "couldn't read tags: " + m_Input.TagsError->Message, kNothingOnItsWay);
+				}
+				else if (tags == nullptr)
+				{
+					AddNotice(SidebarSection::Tags, "Reading tags…", kOnItsWay);
+				}
+
+				if (tags == nullptr)
+				{
+					return;
+				}
+
+				for (const TagFolderItem& item : FoldTags(*tags, shown))
+				{
+					if (item.Tag.has_value())
+					{
+						AddTagRow(*item.Tag, (*tags)[*item.Tag].Name, 0);
+						continue;
+					}
+
+					const std::string key = "tags/" + item.Folder;
+					const bool folderOpen = OpenOf(key, false);
+					AddGroup(SidebarSection::Tags, key, item.Folder + "/", item.Tags.size(), folderOpen, {});
+
+					if (!folderOpen)
+					{
+						continue;
+					}
+
+					for (const std::size_t index : item.Tags)
+					{
+						const std::string& name = (*tags)[index].Name;
+						AddTagRow(index, name.substr(item.Folder.size() + 1), 1);
+					}
+				}
+			}
+
+			void AddTagRow(std::size_t tag, std::string label, std::size_t depth)
+			{
+				SidebarRow row;
+				row.Kind = SidebarRowKind::Tag;
+				row.Section = SidebarSection::Tags;
+				row.Label = std::move(label);
+				row.Tag = tag;
+				row.Depth = depth;
+				m_Rows.push_back(std::move(row));
+			}
+
+			bool TagMatches(const Core::Tag& tag) const
+			{
+				for (const std::string& word : m_Words)
+				{
+					if (!Core::LoweredTextContains(tag.Name, word))
+					{
+						return false;
+					}
+				}
+
+				return true;
+			}
+
 			void AddNotice(SidebarSection section, std::string text, bool waiting)
 			{
 				SidebarRow row;
@@ -792,6 +896,7 @@ namespace Graphite {
 	}
 
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
+										   const std::vector<Core::Tag>* tags, const Core::Error* tagsError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser)
 	{
 		static const LineRead kNoLines;
@@ -803,7 +908,9 @@ namespace Graphite {
 								 .Search = search,
 								 .OpenByUser = openByUser,
 								 .ShowingMerged = kNoneShowingMerged,
-								 .StashesError = stashesError};
+								 .StashesError = stashesError,
+								 .Tags = tags,
+								 .TagsError = tagsError};
 		return Builder{input}.BuildStashes();
 	}
 }

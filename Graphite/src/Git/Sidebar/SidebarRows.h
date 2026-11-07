@@ -8,6 +8,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Stash.h"
+#include "Core/Git/Tag.h"
 
 #include <chrono>
 #include <cstddef>
@@ -29,6 +30,7 @@ namespace Graphite {
 		Branch,
 		Base,
 		Stash,
+		Tag,
 		Link,
 		Notice // one dim line in a section: its list is being read, its read failed, or it is empty
 	};
@@ -38,6 +40,7 @@ namespace Graphite {
 		Yours,
 		Bases,
 		Remote,
+		Tags,
 		Stashes
 	};
 
@@ -54,10 +57,10 @@ namespace Graphite {
 		SidebarRowKind Kind = SidebarRowKind::Section;
 		SidebarSection Section = SidebarSection::Yours;
 
-		// The open-state key: "yours", "bases", "bases/quiet", "remote/<name>", "remote/<name>/<0|1|2>", "stashes".
+		// The open-state key: "yours", "bases", "bases/quiet", "remote/<name>", "remote/<name>/<0|1|2>", "tags", "tags/<folder>", "stashes".
 		std::string Key;
 
-		std::string Label; // section title, group label, link text or notice text
+		std::string Label; // section title, group label, link text or notice text; a tag row's name without its folder
 		std::string Note;  // a remote section's "not on this computer"
 		std::size_t Count = 0;
 		std::optional<std::size_t> Total; // while searching: "n of total"
@@ -69,6 +72,7 @@ namespace Graphite {
 		std::optional<std::size_t> Ref;       // Branch, Base: index into LineRead::Refs
 		std::optional<std::size_t> LocalCopy; // Base: the local branch that is one row with it
 		std::optional<std::size_t> Stash;     // index into the stash list
+		std::optional<std::size_t> Tag;       // index into the tag list
 		std::optional<SidebarLink> Link;
 		std::string Remote; // Remote section, its groups and links
 	};
@@ -91,6 +95,11 @@ namespace Graphite {
 		// Whether the branch at this index of read.Model.Branches is known merged by content. Asked only while the rows are
 		// built, never between builds, so a verdict that lands later changes no row until the next build. Null for none.
 		const std::function<bool(std::size_t branch)>* MergedByContent = nullptr;
+
+		// The tags, newest first; null while unread, and a failed read keeps the list it last had. A repository whose list
+		// is empty has no Tags section.
+		const std::vector<Core::Tag>* Tags = nullptr;
+		const Core::Error* TagsError = nullptr; // the last read of the tag list failed
 	};
 
 	inline constexpr std::size_t kFlatGroupMost = 15;
@@ -118,6 +127,8 @@ namespace Graphite {
 		Core::Ref<const LineRead> Read;
 		Core::Ref<const std::vector<Core::StashEntry>> Stashes;
 		std::optional<std::string> StashesError; // a failed read keeps the list it last had, so it is compared apart
+		Core::Ref<const std::vector<Core::Tag>> Tags;
+		std::optional<std::string> TagsError; // compared apart for the same reason
 		Core::Ref<const BranchAuthors> Authors;
 		std::string Search;
 
@@ -165,8 +176,6 @@ namespace Graphite {
 		std::vector<bool> m_Merged;
 	};
 
-	// The rows that need no line model, for while the lines are read: the Stashes section alone, as BuildSidebarRows
-	// lists it.
 	// The ref a branch or base row opens, into LineRead::Refs: a base's local copy while the copy is checked out or has
 	// commits of its own, so the history holds what it adds; else the row's own ref, so a base shows its newest commits.
 	// Empty for another kind of row.
@@ -201,6 +210,9 @@ namespace Graphite {
 	// Empty when HEAD is unread, detached or has no commits yet, or when no row of the sidebar would show its branch.
 	std::optional<HeadRowReveal> RevealHeadRow(const Core::HeadState* head, const SidebarInput& input);
 
+	// The rows that need no line model, for while the lines are read: the Tags and Stashes sections, as BuildSidebarRows
+	// lists them.
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
+										   const std::vector<Core::Tag>* tags, const Core::Error* tagsError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser);
 }

@@ -567,3 +567,39 @@ TEST_CASE("Git window: a cleared search is gone from the field")
 
 	CHECK(harness.View.GetSearch().empty());
 }
+
+TEST_CASE("Git window: a tag row draws in a folder and answers a click")
+{
+	Harness harness("SidebarTagRows");
+
+	SidebarRow folder;
+	folder.Kind = SidebarRowKind::Group;
+	folder.Section = SidebarSection::Tags;
+	folder.Key = "tags/rel";
+	folder.Label = "rel/";
+	folder.Count = 1;
+	folder.Open = true;
+
+	SidebarRow tag;
+	tag.Kind = SidebarRowKind::Tag;
+	tag.Section = SidebarSection::Tags;
+	tag.Label = "1.0";
+	tag.Tag = 4;
+	tag.Depth = 1;
+
+	const std::vector<SidebarRow> rows = {folder, tag};
+	harness.Rows = &rows;
+
+	std::vector<SidebarRow> clicked;
+	harness.View.OnClick = [&](const SidebarRow& row) { clicked.push_back(row); };
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	harness.Click(InRows(*list, ListRowPitch() * 1.5f));
+
+	REQUIRE(clicked.size() == 1);
+	CHECK(clicked[0].Kind == SidebarRowKind::Tag);
+	CHECK(clicked[0].Tag == std::optional<std::size_t>{4});
+}

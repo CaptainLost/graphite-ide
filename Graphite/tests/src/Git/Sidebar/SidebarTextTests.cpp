@@ -596,6 +596,28 @@ TEST_CASE("Git window: a stash row reads its message and its age")
 	CHECK_FALSE(text.IsHead);
 }
 
+TEST_CASE("Git window: a tag row carries its age and a tooltip with the full name, date, subject and short hash")
+{
+	Core::Tag tag;
+	tag.Name = "rel/1.2";
+	tag.FullName = "refs/tags/rel/1.2";
+	tag.Target = *Core::Oid::FromHex("0123456789abcdef0123456789abcdef01234567");
+	tag.When = LineReadBuilder::Now() - std::chrono::hours{2 * 24};
+	tag.Annotated = true;
+	tag.Subject = "Release 1.2";
+
+	const SidebarRowText annotated = DescribeTagRow(tag, LineReadBuilder::Now(), nullptr);
+	CHECK(annotated.Right == "2d");
+	CHECK(annotated.Tooltip.starts_with("refs/tags/rel/1.2\n"));
+	CHECK(annotated.Tooltip.ends_with("\nRelease 1.2\n0123456"));
+
+	tag.Annotated = false;
+	tag.Subject.clear();
+	const SidebarRowText lightweight = DescribeTagRow(tag, LineReadBuilder::Now(), nullptr);
+	CHECK(lightweight.Tooltip.ends_with("\n0123456"));
+	CHECK(lightweight.Tooltip.find("Release") == std::string::npos);
+}
+
 TEST_CASE("Git window: a row with a worktree carries its path")
 {
 	LineReadBuilder builder;

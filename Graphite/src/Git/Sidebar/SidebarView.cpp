@@ -147,7 +147,7 @@ namespace Graphite {
 		// Rows whose line 1 and line 2 come from `textOf`.
 		bool HasText(const SidebarRow& row)
 		{
-			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash;
+			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash || row.Kind == SidebarRowKind::Tag;
 		}
 
 		char LowerOf(char character)
@@ -210,6 +210,11 @@ namespace Graphite {
 				return row.Ref.has_value() && (selected.Ref == row.Ref || isLocalCopy);
 			}
 
+			if (row.Kind == SidebarRowKind::Tag)
+			{
+				return row.Tag.has_value() && selected.Tag == row.Tag;
+			}
+
 			return row.Kind == SidebarRowKind::Stash && row.Stash.has_value() && selected.Stash == row.Stash;
 		}
 
@@ -256,6 +261,10 @@ namespace Graphite {
 			else if (row.Stash.has_value())
 			{
 				ImGui::PushID(static_cast<int>(*row.Stash));
+			}
+			else if (row.Tag.has_value())
+			{
+				ImGui::PushID(static_cast<int>(*row.Tag));
 			}
 			else if (row.Link.has_value())
 			{
@@ -352,7 +361,7 @@ namespace Graphite {
 			DrawChevronAt(left, box, row.Open, dim);
 			left += Em(kChevronSize) + Em(kGap);
 
-			DrawIconAt(left, box, ICON_LC_CLOCK, dim);
+			DrawIconAt(left, box, row.Section == SidebarSection::Tags ? ICON_LC_FOLDER : ICON_LC_CLOCK, dim);
 			left += Em(kIconSize) + Em(kGap);
 
 			float labelRight = box.Right;
@@ -385,13 +394,15 @@ namespace Graphite {
 			}
 		}
 
-		void DrawStashRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
-						  const SidebarColours& colours, const std::vector<std::string>& searchWords)
+		// A one-line row of a list: an icon, the name and the age at the right.
+		void DrawIconNameAgeRow(const char* icon, const std::string& name, const SidebarRow& row, const RowBox& box,
+								const SidebarRowText& text, bool selected, const SidebarColours& colours,
+								const std::vector<std::string>& searchWords)
 		{
 			const ImU32 dim = colours.Of(SidebarTone::Dim);
 			float left = IndentedLeft(box, row);
 
-			DrawIconAt(left, box, ICON_LC_ARCHIVE, dim);
+			DrawIconAt(left, box, icon, dim);
 			left += Em(kLeadSlot) + Em(kGap);
 
 			float textRight = box.Right;
@@ -405,7 +416,19 @@ namespace Graphite {
 			}
 
 			DrawHighlightedText(ImVec2(left, ListRowTextTop(box.Top)), ListRowNameColour(selected), colours.Link,
-								FitToWidth(text.Head, textRight - left), searchWords);
+								FitToWidth(name, textRight - left), searchWords);
+		}
+
+		void DrawStashRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
+						  const SidebarColours& colours, const std::vector<std::string>& searchWords)
+		{
+			DrawIconNameAgeRow(ICON_LC_ARCHIVE, text.Head, row, box, text, selected, colours, searchWords);
+		}
+
+		void DrawTagRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
+						const SidebarColours& colours, const std::vector<std::string>& searchWords)
+		{
+			DrawIconNameAgeRow(ICON_LC_TAG, row.Label, row, box, text, selected, colours, searchWords);
 		}
 
 		// The spans of line 2 joined by a dim separator; the piece that would pass `right` is cut with an ellipsis.
@@ -759,6 +782,9 @@ namespace Graphite {
 						break;
 					case SidebarRowKind::Stash:
 						DrawStashRow(row, box, text, isSelected, colours, searchWords);
+						break;
+					case SidebarRowKind::Tag:
+						DrawTagRow(row, box, text, isSelected, colours, searchWords);
 						break;
 					case SidebarRowKind::Branch:
 					case SidebarRowKind::Base:

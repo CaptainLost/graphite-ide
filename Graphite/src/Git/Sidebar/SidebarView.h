@@ -20,6 +20,7 @@ namespace Graphite {
 	{
 		std::optional<std::size_t> Ref; // a base's local copy selects the base's row
 		std::optional<std::size_t> Stash;
+		std::optional<std::size_t> Tag; // into the tag list the rows were built from
 	};
 
 	struct SidebarColours
@@ -42,7 +43,7 @@ namespace Graphite {
 	// Mockup 300 px at a 13 px font: the width the owner gives the column.
 	float SidebarColumnWidth();
 
-	// The search field, then the rows. Rows of two heights (a section, group, link or stash is one list row, a branch
+	// The search field, then the rows. Rows of two heights (a section, group, link, stash or tag is one list row, a branch
 	// or base two text lines) are drawn from a prefix sum of their heights, so a list of thousands costs the rows in view.
 	class SidebarView
 	{
@@ -53,7 +54,7 @@ namespace Graphite {
 				  const std::optional<SidebarWaitingRow>& waiting, const SidebarSelection& selected,
 				  const SidebarColours& colours);
 
-		std::function<void(const SidebarRow&)> OnClick;     // Branch, Base, Stash, Group, Section, Link rows
+		std::function<void(const SidebarRow&)> OnClick;     // Branch, Base, Stash, Tag, Group, Section, Link rows
 		std::function<void(const SidebarRow&)> DrawRowMenu; // right-click on Branch, Base and Stash rows; fills an open popup. Runs inside the row loop: the owner must not rebuild rows from it
 
 		const std::string& GetSearch() const { return m_Search; }

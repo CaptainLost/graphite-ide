@@ -117,6 +117,7 @@ namespace Core {
 			ICON_LC_GRID_3X3,
 			ICON_LC_LOCK,
 			ICON_LC_EYE,
+			ICON_LC_TAG,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);

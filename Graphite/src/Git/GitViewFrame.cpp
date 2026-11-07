@@ -279,11 +279,14 @@ namespace Graphite {
 	void GitView::RebuildSidebarWhenOutOfDate()
 	{
 		const std::optional<Core::Error>& stashesError = m_Model.GetStashesError();
+		const std::optional<Core::Error>& tagsError = m_Model.GetTagsError();
 
 		SidebarInputs inputs{.Read = m_Lines.GetRead(),
 							 .Stashes = m_Model.GetStashes(),
 							 .StashesError = stashesError.has_value() ? std::optional<std::string>{stashesError->Message}
 																	  : std::nullopt,
+							 .Tags = m_Model.GetTags(),
+							 .TagsError = tagsError.has_value() ? std::optional<std::string>{tagsError->Message} : std::nullopt,
 							 .Authors = m_SearchedAuthors.Follow(m_Model.GetBranchAuthors(), m_Sidebar.GetSearch()),
 							 .Search = m_Sidebar.GetSearch(),
 							 .ChoicesVersion = m_SidebarChoicesVersion,
@@ -312,6 +315,7 @@ namespace Graphite {
 		}
 
 		const Core::Error* const failedStashRead = stashesError.has_value() ? &*stashesError : nullptr;
+		const Core::Error* const failedTagRead = tagsError.has_value() ? &*tagsError : nullptr;
 
 		if (inputs.Read)
 		{
@@ -331,7 +335,8 @@ namespace Graphite {
 		}
 		else
 		{
-			m_SidebarRows = BuildStashRows(inputs.Stashes.get(), failedStashRead, inputs.Search, m_OpenByUser);
+			m_SidebarRows = BuildStashRows(inputs.Stashes.get(), failedStashRead, inputs.Tags.get(), failedTagRead,
+											  inputs.Search, m_OpenByUser);
 		}
 
 		m_SidebarBuiltFrom = std::move(inputs);
@@ -341,6 +346,7 @@ namespace Graphite {
 										  const std::function<bool(std::size_t)>& mergedByContent) const
 	{
 		const std::optional<Core::Error>& stashesError = m_Model.GetStashesError();
+		const std::optional<Core::Error>& tagsError = m_Model.GetTagsError();
 
 		return SidebarInput{.Read = *inputs.Read,
 							.Stashes = inputs.Stashes.get(),
@@ -350,7 +356,9 @@ namespace Graphite {
 							.ShowingMerged = m_ShowingMerged,
 							.StashesError = stashesError.has_value() ? &*stashesError : nullptr,
 							.ShownRef = inputs.ShownRef,
-							.MergedByContent = &mergedByContent};
+							.MergedByContent = &mergedByContent,
+							.Tags = inputs.Tags.get(),
+							.TagsError = tagsError.has_value() ? &*tagsError : nullptr};
 	}
 
 	void GitView::AnswerHeadChip()
@@ -441,8 +449,26 @@ namespace Graphite {
 		return &(*stashes)[*row.Stash];
 	}
 
+	const Core::Tag* GitView::SidebarTagOf(const SidebarRow& row) const
+	{
+		const Core::Ref<const std::vector<Core::Tag>>& tags = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Tags : nullptr;
+
+		if (!tags || !row.Tag.has_value() || *row.Tag >= tags->size())
+		{
+			return nullptr;
+		}
+
+		return &(*tags)[*row.Tag];
+	}
+
 	SidebarRowText GitView::SidebarTextOf(const SidebarRow& row) const
 	{
+		if (row.Kind == SidebarRowKind::Tag)
+		{
+			const Core::Tag* tag = SidebarTagOf(row);
+			return tag != nullptr ? DescribeTagRow(*tag, NowInSeconds(), ReaderTimeZone()) : SidebarRowText{};
+		}
+
 		if (row.Kind == SidebarRowKind::Stash)
 		{
 			const Core::StashEntry* stash = SidebarStashOf(row);
@@ -467,6 +493,26 @@ namespace Graphite {
 		return DescribeSidebarRow(row, input);
 	}
 
+	std::optional<std::size_t> GitView::SelectedTagIndex() const
+	{
+		const Core::Ref<const std::vector<Core::Tag>>& tags = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Tags : nullptr;
+
+		if (!tags || !m_SelectedRef.has_value() || !m_SelectedRef->starts_with(Core::kTagPrefix))
+		{
+			return std::nullopt;
+		}
+
+		for (std::size_t index = 0; index < tags->size(); ++index)
+		{
+			if ((*tags)[index].FullName == *m_SelectedRef)
+			{
+				return index;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	SidebarSelection GitView::SidebarSelectionNow() const
 	{
 		SidebarSelection selection;
@@ -483,6 +529,8 @@ namespace Graphite {
 
 			return selection;
 		}
+
+		selection.Tag = SelectedTagIndex();
 
 		if (!m_SidebarLines.has_value())
 		{
@@ -535,6 +583,19 @@ namespace Graphite {
 			if (const Core::StashEntry* stash = SidebarStashOf(row))
 			{
 				SelectStash(stash->Id);
+			}
+			return;
+		case SidebarRowKind::Tag:
+			if (const Core::Tag* tag = SidebarTagOf(row))
+			{
+				// WARNING: The rows can be a read behind the tags, so a row clicked may name a tag already gone; its history is
+				// then HEAD's, as for a branch.
+				const Core::Ref<const std::vector<Core::Tag>> listed = m_Model.GetTags();
+				const bool isStillThere = listed && std::ranges::any_of(*listed, [tag](const Core::Tag& other) {
+					return other.FullName == tag->FullName;
+				});
+
+				SelectRef(isStillThere ? std::optional<std::string>{tag->FullName} : std::nullopt);
 			}
 			return;
 		case SidebarRowKind::Section:

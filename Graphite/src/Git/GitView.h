@@ -210,6 +210,9 @@ namespace Graphite {
 		// RowMenuRefsOf.
 		const Core::Branch* SidebarBranchAt(std::optional<std::size_t> ref) const;
 		const Core::StashEntry* SidebarStashOf(const SidebarRow& row) const;
+		const Core::Tag* SidebarTagOf(const SidebarRow& row) const;
+
+		std::optional<std::size_t> SelectedTagIndex() const;
 
 		SidebarRowText SidebarTextOf(const SidebarRow& row) const;
 		SidebarSelection SidebarSelectionNow() const;

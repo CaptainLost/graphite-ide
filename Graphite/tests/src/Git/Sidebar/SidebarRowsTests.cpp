@@ -24,6 +24,7 @@ using Graphite::Fixtures::LineReadBuilder;
 namespace {
 
 	const std::vector<Core::StashEntry> kNoStashes;
+	const std::vector<Core::Tag> kNoTags;
 
 	struct Options
 	{
@@ -31,6 +32,8 @@ namespace {
 		std::map<std::string, bool> OpenByUser;
 		std::set<std::string> ShowingMerged;
 		const std::vector<Core::StashEntry>* Stashes = &kNoStashes;
+		const std::vector<Core::Tag>* Tags = &kNoTags;
+		const Core::Error* TagsError = nullptr;
 		const BranchAuthors* Authors = nullptr;
 		std::string ShownRef;
 	};
@@ -43,7 +46,9 @@ namespace {
 								 .Search = options.Search,
 								 .OpenByUser = options.OpenByUser,
 								 .ShowingMerged = options.ShowingMerged,
-								 .ShownRef = options.ShownRef};
+								 .ShownRef = options.ShownRef,
+								 .Tags = options.Tags,
+								 .TagsError = options.TagsError};
 		return BuildSidebarRows(input);
 	}
 
@@ -82,6 +87,9 @@ namespace {
 				break;
 			case SidebarRowKind::Stash:
 				text += "stash " + std::to_string(*row.Stash);
+				break;
+			case SidebarRowKind::Tag:
+				text += "tag " + row.Label;
 				break;
 			case SidebarRowKind::Link:
 				text += "~ " + row.Label;
@@ -402,11 +410,11 @@ TEST_CASE("Git window: while the lines are read only the stashes are listed")
 	const std::vector<Core::StashEntry> stashes = {{.Index = 0, .Message = "On main: Parser WIP"}, {.Index = 1, .Message = "On a: docs"}};
 	const std::map<std::string, bool> noneClosed;
 
-	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, {}, noneClosed)) == Lines{"# stashes 2", "stash 0", "stash 1"});
-	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, "docs", noneClosed)) == Lines{"# stashes 1/2", "stash 1"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes 2", "stash 0", "stash 1"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, &kNoTags, nullptr, "docs", noneClosed)) == Lines{"# stashes 1/2", "stash 1"});
 
 	const std::map<std::string, bool> closed = {{"stashes", false}};
-	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, {}, closed)) == Lines{"# stashes 2 closed"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, &kNoTags, nullptr, {}, closed)) == Lines{"# stashes 2 closed"});
 }
 
 TEST_CASE("Git window: the stashes section says when its list is read, failed or empty")
@@ -417,16 +425,16 @@ TEST_CASE("Git window: the stashes section says when its list is read, failed or
 	const std::vector<Core::StashEntry> none;
 	const Core::Error failure{Core::ErrorCode::IoFailure, "refs/stash is locked"};
 
-	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, {}, noneClosed)) == Lines{"# stashes", "? Loading stashes"});
-	CHECK(Describe(noLines, BuildStashRows(nullptr, &failure, {}, noneClosed)) == Lines{"# stashes", "! refs/stash is locked"});
-	CHECK(Describe(noLines, BuildStashRows(&stashes, &failure, {}, noneClosed)) ==
+	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes", "? Loading stashes"});
+	CHECK(Describe(noLines, BuildStashRows(nullptr, &failure, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes", "! refs/stash is locked"});
+	CHECK(Describe(noLines, BuildStashRows(&stashes, &failure, &kNoTags, nullptr, {}, noneClosed)) ==
 		  Lines{"# stashes 1", "! refs/stash is locked", "stash 0"});
-	CHECK(Describe(noLines, BuildStashRows(&none, nullptr, {}, noneClosed)) == Lines{"# stashes 0", "! No stashes"});
+	CHECK(Describe(noLines, BuildStashRows(&none, nullptr, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes 0", "! No stashes"});
 
 	// A closed section says nothing, and a search with no stash to match leaves the section out.
 	const std::map<std::string, bool> closed = {{"stashes", false}};
-	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, {}, closed)) == Lines{"# stashes closed"});
-	CHECK(BuildStashRows(nullptr, nullptr, "parser", noneClosed).empty());
+	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, &kNoTags, nullptr, {}, closed)) == Lines{"# stashes closed"});
+	CHECK(BuildStashRows(nullptr, nullptr, &kNoTags, nullptr, "parser", noneClosed).empty());
 }
 
 TEST_CASE("Git window: search finds merged branches that are hidden")
@@ -555,7 +563,7 @@ TEST_CASE("Git window: search with authors read but none for a tip falls back to
 TEST_CASE("Git window: a failed stashes read leaves the count's place empty and the section says what failed")
 {
 	const Core::Error error{.Message = "cannot read stashes"};
-	const std::vector<SidebarRow> rows = BuildStashRows(nullptr, &error, "", {});
+	const std::vector<SidebarRow> rows = BuildStashRows(nullptr, &error, &kNoTags, nullptr, "", {});
 
 	REQUIRE(rows.size() == 2);
 	CHECK(rows[0].Kind == SidebarRowKind::Section);
@@ -807,7 +815,8 @@ namespace {
 								 .Search = {},
 								 .OpenByUser = {},
 								 .ShowingMerged = {},
-								 .MergedByContent = &mergedByContent};
+								 .MergedByContent = &mergedByContent,
+								 .Tags = &kNoTags};
 		return BuildSidebarRows(input);
 	}
 }
@@ -848,7 +857,8 @@ TEST_CASE("Git window: a row found merged by content keeps its place until the r
 							   .Search = {},
 							   .OpenByUser = {},
 							   .ShowingMerged = {"origin"},
-							   .MergedByContent = &mergedByContent};
+							   .MergedByContent = &mergedByContent,
+								 .Tags = &kNoTags};
 	CHECK(Describe(read, BuildSidebarRows(showing)) ==
 		  Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "~ Hide merged", "# stashes 0", "! No stashes"});
 }
@@ -891,7 +901,8 @@ namespace {
 								 .OpenByUser = {},
 								 .ShowingMerged = showingMerged,
 								 .ShownRef = inputs.ShownRef,
-								 .MergedByContent = &hiddenByContent};
+								 .MergedByContent = &hiddenByContent,
+								 .Tags = &kNoTags};
 		return BuildSidebarRows(input);
 	}
 
@@ -978,7 +989,8 @@ TEST_CASE("Git window: a local branch merged by content stays listed in Yours wi
 							 .Search = {},
 							 .OpenByUser = {},
 							 .ShowingMerged = {},
-							 .MergedByContent = &everythingMerged};
+							 .MergedByContent = &everythingMerged,
+								 .Tags = &kNoTags};
 
 	CHECK(Describe(read, BuildSidebarRows(input)) == Lines{"# yours 1", "mine", "# stashes 0", "! No stashes"});
 	CHECK(mine == 0);
@@ -1005,7 +1017,8 @@ TEST_CASE("Git window: a callback for content verdicts is asked only while the r
 							 .Search = {},
 							 .OpenByUser = {},
 							 .ShowingMerged = {},
-							 .MergedByContent = &mergedByContent};
+							 .MergedByContent = &mergedByContent,
+								 .Tags = &kNoTags};
 
 	const std::vector<SidebarRow> rows = BuildSidebarRows(input);
 	const int askedByTheBuild = asked;
@@ -1031,7 +1044,8 @@ TEST_CASE("Git window: a search lists a branch merged by content as it lists one
 							 .Search = "squashed",
 							 .OpenByUser = {},
 							 .ShowingMerged = {},
-							 .MergedByContent = &mergedByContent};
+							 .MergedByContent = &mergedByContent,
+								 .Tags = &kNoTags};
 
 	CHECK(Describe(read, BuildSidebarRows(input)) == Lines{"# remote/origin 1/2", "origin/squashed"});
 }
@@ -1046,7 +1060,8 @@ namespace {
 							.Search = options.Search,
 							.OpenByUser = options.OpenByUser,
 							.ShowingMerged = options.ShowingMerged,
-							.ShownRef = options.ShownRef};
+							.ShownRef = options.ShownRef,
+							.Tags = options.Tags};
 	}
 
 	Core::HeadState HeadOn(const std::string& branch)
@@ -1221,4 +1236,199 @@ TEST_CASE("Git window: the head chip clears a search that hides the checked-out 
 	CHECK(both->ClearsSearch);
 	CHECK(both->Opens == Keys{"yours"});
 	CHECK(RowShowingRef(RowsAfter(read, hidingFolded, *both), checkedOut).has_value());
+}
+
+namespace {
+
+	Core::Tag TagNamed(const std::string& name)
+	{
+		Core::Tag tag;
+		tag.Name = name;
+		tag.FullName = "refs/tags/" + name;
+		return tag;
+	}
+
+	std::vector<std::string> KeysOfSections(const std::vector<SidebarRow>& rows)
+	{
+		std::vector<std::string> keys;
+
+		for (const SidebarRow& row : rows)
+		{
+			if (row.Kind == SidebarRowKind::Section)
+			{
+				keys.push_back(row.Key);
+			}
+		}
+
+		return keys;
+	}
+
+	// The rows from the one that reads `first` on.
+	Lines From(const Lines& described, const std::string& first)
+	{
+		const Lines::const_iterator at = std::find(described.begin(), described.end(), first);
+		return Lines(at, described.end());
+	}
+}
+
+TEST_CASE("Sidebar: a repository without tags has no Tags section")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("a");
+	const LineRead read = builder.Build();
+
+	const std::vector<std::string> keys = KeysOfSections(RowsOf(read));
+	CHECK(std::ranges::find(keys, "tags") == keys.end());
+
+	// Not even when the user had opened it.
+	Options opened;
+	opened.OpenByUser = {{"tags", true}};
+	const std::vector<std::string> openedKeys = KeysOfSections(RowsOf(read, opened));
+	CHECK(std::ranges::find(openedKeys, "tags") == openedKeys.end());
+}
+
+TEST_CASE("Sidebar: the Tags section comes after the remotes and before Stashes, closed by default, with the tag count")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	builder.AddLocal("a");
+	builder.AddRemoteBranch("origin", "feature");
+	const LineRead read = builder.Build();
+
+	const std::vector<Core::Tag> tags = {TagNamed("v3"), TagNamed("rel/2"), TagNamed("v1")};
+	Options options;
+	options.Tags = &tags;
+
+	const std::vector<SidebarRow> rows = RowsOf(read, options);
+	CHECK(KeysOfSections(rows) == std::vector<std::string>{"yours", "remote/origin", "tags", "stashes"});
+	CHECK(From(Describe(read, rows), "# tags 3 closed") == Lines{"# tags 3 closed", "# stashes 0", "! No stashes"});
+}
+
+TEST_CASE("Sidebar: a tag row names the tag without its folder and carries its index")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("a");
+	const LineRead read = builder.Build();
+
+	const std::vector<Core::Tag> tags = {TagNamed("v2"), TagNamed("rel/1.0"), TagNamed("v1"), TagNamed("rel/sub/0.9")};
+	Options options;
+	options.Tags = &tags;
+	options.OpenByUser = {{"tags", true}};
+
+	const Lines folded = From(Describe(read, RowsOf(read, options)), "# tags 4");
+	CHECK(Lines(folded.begin(), folded.begin() + 4) == Lines{"# tags 4", "tag v2", "> rel/ 2 closed", "tag v1"});
+
+	options.OpenByUser["tags/rel"] = true;
+	const std::vector<SidebarRow> rows = RowsOf(read, options);
+	const Lines described = Describe(read, rows);
+	const std::size_t at = static_cast<std::size_t>(std::find(described.begin(), described.end(), "# tags 4") - described.begin());
+
+	CHECK(described[at + 2] == "> rel/ 2");
+	CHECK(described[at + 3] == "  tag 1.0");
+	CHECK(described[at + 4] == "  tag sub/0.9");
+
+	CHECK(rows[at + 1].Tag == 0);
+	CHECK(rows[at + 3].Tag == 1);
+	CHECK(rows[at + 3].Section == SidebarSection::Tags);
+	CHECK(rows[at + 4].Tag == 3);
+	CHECK(rows[at + 2].Key == "tags/rel");
+	CHECK_FALSE(rows[at + 3].Ref.has_value());
+}
+
+TEST_CASE("Sidebar: while tags are read the section shows one waiting row")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("a");
+	const LineRead read = builder.Build();
+
+	Options options;
+	options.Tags = nullptr;
+
+	// Closed by default, so the place is held and says nothing.
+	CHECK(KeysOfSections(RowsOf(read, options)) == std::vector<std::string>{"yours", "tags", "stashes"});
+
+	options.OpenByUser = {{"tags", true}};
+	CHECK(From(Describe(read, RowsOf(read, options)), "# tags") ==
+		  Lines{"# tags", "? Reading tags\xE2\x80\xA6", "# stashes 0", "! No stashes"});
+}
+
+TEST_CASE("Sidebar: a failed tag listing shows its reason in the section")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("a");
+	const LineRead read = builder.Build();
+
+	const Core::Error failure{Core::ErrorCode::IoFailure, "packed-refs is locked"};
+	Options options;
+	options.Tags = nullptr;
+	options.TagsError = &failure;
+	options.OpenByUser = {{"tags", true}};
+
+	const std::vector<SidebarRow> rows = RowsOf(read, options);
+	CHECK(From(Describe(read, rows), "# tags") ==
+		  Lines{"# tags", "! couldn't read tags: packed-refs is locked", "# stashes 0", "! No stashes"});
+
+	const auto section = std::ranges::find_if(rows, [](const SidebarRow& row) { return row.Key == "tags"; });
+	REQUIRE(section != rows.end());
+	CHECK(section->CountFailed);
+}
+
+TEST_CASE("Sidebar: search keeps the tags whose name holds every word, opens the section and their folders, and counts n of total")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("a");
+	const LineRead read = builder.Build();
+
+	const std::vector<Core::Tag> tags = {TagNamed("release/1.2"), TagNamed("v1.2"), TagNamed("v2.0"), TagNamed("docs-1.2")};
+	Options options;
+	options.Tags = &tags;
+	options.Search = "1.2";
+
+	const Lines found = From(Describe(read, RowsOf(read, options)), "# tags 3/4");
+	REQUIRE(found.size() >= 5);
+	CHECK(Lines(found.begin(), found.begin() + 5) == Lines{"# tags 3/4", "> release/ 1", "  tag 1.2", "tag v1.2", "tag docs-1.2"});
+
+	options.Search = "docs 1";
+	const Lines narrowed = From(Describe(read, RowsOf(read, options)), "# tags 1/4");
+	REQUIRE(narrowed.size() >= 2);
+	CHECK(narrowed[1] == "tag docs-1.2");
+
+	options.Search = "nothing like it";
+	CHECK(RowsOf(read, options).empty());
+}
+
+TEST_CASE("Sidebar: a tag and a branch with the same short name are two rows that open two refs")
+{
+	LineReadBuilder builder;
+	const std::size_t branch = builder.AddLocal("x");
+	const LineRead read = builder.Build();
+
+	const std::vector<Core::Tag> tags = {TagNamed("x")};
+	Options options;
+	options.Tags = &tags;
+	options.OpenByUser = {{"tags", true}};
+
+	const std::vector<SidebarRow> rows = RowsOf(read, options);
+	const auto branchRow = std::ranges::find_if(rows, [](const SidebarRow& row) { return row.Kind == SidebarRowKind::Branch; });
+	const auto tagRow = std::ranges::find_if(rows, [](const SidebarRow& row) { return row.Kind == SidebarRowKind::Tag; });
+
+	REQUIRE(branchRow != rows.end());
+	REQUIRE(tagRow != rows.end());
+	CHECK(branchRow->Ref == branch);
+	CHECK(RefOpenedBy(*branchRow, read, BranchLines{read}) == branch);
+	CHECK(tagRow->Tag == 0);
+	CHECK_FALSE(RefOpenedBy(*tagRow, read, BranchLines{read}).has_value());
+	CHECK(tagRow->Label == "x");
+}
+
+TEST_CASE("Sidebar: while the lines are read the tags are listed with the stashes")
+{
+	const LineRead noLines = LineReadBuilder{}.Build();
+	const std::vector<Core::Tag> tags = {TagNamed("v2"), TagNamed("v1")};
+	const std::map<std::string, bool> opened = {{"tags", true}};
+
+	CHECK(Describe(noLines, BuildStashRows(&kNoStashes, nullptr, &tags, nullptr, {}, opened)) ==
+		  Lines{"# tags 2", "tag v2", "tag v1", "# stashes 0", "! No stashes"});
+	CHECK(Describe(noLines, BuildStashRows(&kNoStashes, nullptr, nullptr, nullptr, {}, opened)) ==
+		  Lines{"# tags", "? Reading tags\xE2\x80\xA6", "# stashes 0", "! No stashes"});
 }

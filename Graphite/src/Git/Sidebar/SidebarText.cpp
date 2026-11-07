@@ -617,4 +617,20 @@ namespace Graphite {
 		text.Tooltip = stash.Message + "\n" + FormattedTimestamp(made, zone);
 		return text;
 	}
+
+	SidebarRowText DescribeTagRow(const Core::Tag& tag, std::chrono::sys_seconds now, const std::chrono::time_zone* zone)
+	{
+		SidebarRowText text;
+		text.Head = tag.Name;
+		text.Right = FormatBranchAge(tag.When, now);
+		text.Tooltip = tag.FullName + "\n" + FormattedTimestamp(tag.When, zone);
+
+		if (tag.Annotated && !tag.Subject.empty())
+		{
+			text.Tooltip += "\n" + tag.Subject;
+		}
+
+		text.Tooltip += "\n" + tag.Target.ShortHex();
+		return text;
+	}
 }

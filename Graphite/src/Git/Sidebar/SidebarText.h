@@ -9,6 +9,7 @@
 #include "Core/Git/Lines/LineModel.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Stash.h"
+#include "Core/Git/Tag.h"
 
 #include <chrono>
 #include <filesystem>
@@ -111,4 +112,8 @@ namespace Graphite {
 	// Line 1 the first line of the message, its age at the right, and the message with when it was made in the tooltip.
 	SidebarRowText DescribeStashRow(const Core::StashEntry& stash, std::chrono::sys_seconds now,
 									const std::chrono::time_zone* zone);
+
+	// The age at the right; the tooltip holds the full name, when it was made, an annotated tag's subject and the short
+	// hash of its commit. The name is drawn from the row, which leaves out the folder it stands in.
+	SidebarRowText DescribeTagRow(const Core::Tag& tag, std::chrono::sys_seconds now, const std::chrono::time_zone* zone);
 }
