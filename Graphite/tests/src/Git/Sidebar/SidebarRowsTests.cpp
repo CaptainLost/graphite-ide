@@ -793,6 +793,22 @@ TEST_CASE("Git window: the quiet bases open when the shown branch is one of them
 	}
 }
 
+namespace {
+
+	// The rows with no search, choice or stash, the branches merged by content those `mergedByContent` names.
+	std::vector<SidebarRow> RowsMergedByContent(const LineRead& read, const std::function<bool(std::size_t)>& mergedByContent)
+	{
+		const SidebarInput input{.Read = read,
+								 .Stashes = &kNoStashes,
+								 .Authors = nullptr,
+								 .Search = {},
+								 .OpenByUser = {},
+								 .ShowingMerged = {},
+								 .MergedByContent = &mergedByContent};
+		return BuildSidebarRows(input);
+	}
+}
+
 TEST_CASE("Git window: a row found merged by content keeps its place until the rows are rebuilt")
 {
 	LineReadBuilder builder;
@@ -807,18 +823,8 @@ TEST_CASE("Git window: a row found merged by content keeps its place until the r
 		++asked;
 		return found && branch == squashed;
 	};
-	const auto build = [&]() {
-		const SidebarInput input{.Read = read,
-								 .Stashes = &kNoStashes,
-								 .Authors = nullptr,
-								 .Search = {},
-								 .OpenByUser = {},
-								 .ShowingMerged = {},
-								 .MergedByContent = &mergedByContent};
-		return BuildSidebarRows(input);
-	};
 
-	const std::vector<SidebarRow> before = build();
+	const std::vector<SidebarRow> before = RowsMergedByContent(read, mergedByContent);
 	const int askedAtBuild = asked;
 	CHECK(Describe(read, before) == Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "# stashes 0", "! No stashes"});
 
@@ -829,7 +835,7 @@ TEST_CASE("Git window: a row found merged by content keeps its place until the r
 	CHECK(Describe(read, before) == Lines{"# yours 0", "# remote/origin 2", "origin/squashed", "origin/live", "# stashes 0", "! No stashes"});
 
 	// The next build hides it, and the closing row counts it.
-	const std::vector<SidebarRow> after = build();
+	const std::vector<SidebarRow> after = RowsMergedByContent(read, mergedByContent);
 	CHECK(Describe(read, after) == Lines{"# yours 0", "# remote/origin 1", "origin/live", kOneMergedHidden, "# stashes 0", "! No stashes"});
 
 	// Shown, it is listed again.
