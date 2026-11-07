@@ -92,19 +92,25 @@ and keep the verdicts per repository.
   its landing (a squash) or every copy (a rebase) from that tip; a squash without a landing is never held. Every such
   branch of a new read is answered by one job, one graph walk per distinct line tip; the rest are checked again.
 - **Carried verdicts.** A not-merged or unknown verdict for a branch tip against line tip L1 counts, unchecked, for a
-  new line tip L2 when both hold:
+  new line tip L2 when all three hold:
   - L1 is an ancestor of L2 in the read's graph;
+  - no commit L2 reaches and L1 does not is an ancestor of the branch tip (`Core::HoldsOwnCommitOf`), so the move took
+    none of the branch's own commits in by history and its merge bases with L2 are those with L1;
   - the trees of L1 and L2 differ at none of the paths where the branch's tree differs from its fork with L1.
 
+  The second is asked before the paths. A move that merges part of the branch keeping the line's side (`git merge -s
+  ours`) changes no path of the line's tree, yet a fresh check merges from the moved merge base and can say merged.
   The fork comes from the graph: of the commits L1 reaches that the branch's own commits have for parents, the one of
-  the highest generation (`Core::ForkWith`), with no libgit2 merge base. Merging the branch and walking its patches then
-  meet the same files at both line tips. Only trees are read, so a blobless clone answers, and paths are taken as
-  written (`Repository::PathsChangedBetween` once per line move, `Repository::TreesDifferAt` per verdict). Both walk
-  only into subtrees whose ids differ: libgit2's tree diff reads every tree on its way, about 10 ms on a large tree
-  whatever the move. The earlier tip is the one the read before gave the branch's pair, else any other line tip a
-  verdict is kept for with the same branch tip, as the file of an earlier session holds it. Otherwise (not an ancestor,
-  a path touched, an object missing) the pair is checked again in the usual order. A carried verdict is saved under the
-  new pair, and a save while a carry waits keeps the earlier pair.
+  the highest generation (`Core::ForkWith`), with no libgit2 merge base. With the merge bases unchanged, merging the
+  branch and walking its patches meet the same files at both line tips. Only trees are read, so a blobless clone
+  answers, and paths are taken as written (`Repository::PathsChangedBetween` once per line move,
+  `Repository::TreesDifferAt` per verdict). Both walk only into subtrees whose ids differ: libgit2's tree diff reads
+  every tree on its way, about 10 ms on a large tree whatever the move. The earlier tip is the one the read before
+  gave the branch's pair. Failing that it is a line tip a verdict was kept for with the same branch tip, as the file of
+  an earlier session holds it: of several, the newest that L2 descends from. Two lines' pairs can share a branch tip,
+  as a local branch and its remote copy compared with different lines do. Otherwise (not an ancestor, a branch commit
+  taken in, a path touched, an object missing) the pair is checked again in the usual order. A carried verdict is saved
+  under the new pair, and a save while a carry waits or runs keeps the earlier pair.
 - **One job per line move.** The batch rechecks the remembered verdicts and carries the others of every branch whose
   line moved, in one job. Until it lands, each earlier verdict stands for the new pair: the row's mark, the sidebar's
   snapshot of hidden rows ([0669](0669-show-references-in-a-sidebar-beside-the-history.md)) and the header see the
@@ -151,17 +157,21 @@ rule 3).
   framework, 109 on the code editor, where an old branch's check walks the 100,000-odd commits it lacks. Checks stop
   while the window is off screen, and a later opening asks only what changed.
 - The shown branch's header waits for any job running when it is asked: one check, one slice of a copy search or one
-  recheck batch (see Evidence for how long each takes). A sliced search walks again, for every slice, the headers of
-  the line commits the commit lacks, and its copy is found a little later than in one job.
-- In a blobless clone nearly every check answers *unknown*: the first opening spends minutes finding out what it
-  cannot read, and a pair stays unknown after a git command fetched its objects, until a tip moves.
+  resolve batch (see Evidence for how long each takes). A resolve batch takes up to about 2 s on the code editor, when
+  every line moved 200 commits. A sliced search walks again, for every slice, the headers of the line commits the
+  commit lacks, and its copy is found a little later than in one job.
+- In a blobless clone nearly every check answers *unknown*. The first opening spends minutes finding out what it cannot
+  read. A pair stays unknown after a git command fetched its objects until the branch moves or its line moves through
+  one of the branch's paths: the unknown is carried across every move that misses them.
 - `content.json` is parsed on the UI thread once per store; it holds a verdict per candidate.
-- An unknown kept because the line ran past the patch budget records no budget: a later build that raises
-  `kPatchCommitsPerCheck` does not ask that pair again until either tip moves.
+- An unknown kept because the line ran past the patch budget records no budget. A later build that raises
+  `kPatchCommitsPerCheck` does not ask that pair again until the branch moves or its line moves through one of the
+  branch's paths.
 - A carry compares the line's trees, not its commits. A change the line made and undid within one move is not seen
   until the branch or the line moves again: for example, a cherry-pick of one of the branch's commits, then its revert.
   A carried not-merged verdict may also stand where a check of the new pair would answer unknown, because the line's
-  new commits pushed its patch walk past the budget.
+  new commits pushed its patch walk past the budget. Where the branch and the line have several merge bases (crossed
+  histories), the branch's paths are taken from one of them, the newest by generation.
 - The branches whose paths a move touched are checked again: about half of the code editor's candidates after 200
   line commits.
 - A squash whose landing lies past the chain budget, or behind a candidate that cannot be judged, is merged without a
@@ -188,7 +198,7 @@ rule 3).
 - **Never keep an unknown answer, and ask it again in every session.** Lost: the second opening of a blobless clone
   showed `…` again on nearly every candidate's row (2,755 of 2,807 in the web framework) for the minutes the checks
   take, against spec §6 rule 5. The cost of keeping it: a pair whose missing objects a later git command fetches
-  stays unknown until either tip moves.
+  stays unknown until the branch moves, or its line moves through one of the branch's paths.
 
 ## Related
 
@@ -234,8 +244,18 @@ blobless, so most checks answer *unknown* for a missing blob; a full clone of li
   The code editor's first job reads its trees cold. With libgit2's tree diffs (its whole tree once per move, and the
   diff kept to the paths per verdict) the same jobs took 0.37 s, 1.5 s and 5.0 s on the web framework's main line, and
   11.9 s when every line moved 200 commits. Over the six simulated fetches the tree walks gave libgit2's answer for
-  every verdict: 15,243 answers on the web framework and 9,204 on the chat server. The model's first `Follow`, which loads `content.json` and finds the verdicts to
-  carry, takes 13 to 18 ms on the code editor.
+  every verdict: 15,243 answers on the web framework and 9,204 on the chat server. The model's first `Follow`, which
+  loads `content.json` and finds the verdicts to carry, takes 13 to 18 ms on the code editor.
+- **Carried verdicts against fresh checks** (`GRAPHITE_CONTENT_CARRY_CHECK=1`). Every candidate on the main line was
+  checked against the line's tip set back 20 first-parent commits. The carry was asked of each verdict that was not
+  merged, and every pair it carried was checked again at the tip. No carried verdict differed from its fresh check:
+  - the chat server: 812 of 1,309 carried (22 not merged, 790 unknown);
+  - the web framework: 1,572 of 2,268 carried (38 not merged, 1,534 unknown);
+  - libgit2, a full clone: 44 of 90 carried (18 not merged, 26 unknown).
+
+  The blobless clones answer *unknown* for most pairs, so the full clone is the stronger evidence for not-merged
+  verdicts. The move that merges part of a branch by history, the case the second condition keeps out, is pinned by a
+  model test.
 - **`content.json` on the UI thread**: at a verdict per candidate, 1,749 verdicts and 313 KB parse in 2.7 ms and the
   first `Follow` takes 3.4 ms (chat server); 5,520 verdicts and 947 KB parse in 8.3 ms and the first `Follow` takes
   11.0 ms (code editor): under a frame, so the file stays on the UI thread.
