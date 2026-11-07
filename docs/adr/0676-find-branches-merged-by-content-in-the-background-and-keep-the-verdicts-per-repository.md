@@ -57,7 +57,7 @@ and keep the verdicts per repository.
 - **One check at a time, the shown branch first** (`Graphite::ContentModel`, `Graphite/src/Git/Content`). Owned by the
   layer, beside the lines model and declared before the job queue; driven by the Git window's update. A job starts
   only while the window is on screen and none runs, across a folder switch too. Each pick takes, in order: the batch
-  rechecking remembered verdicts, the shown branch, the first slice of a copy search the details asked for, the rows
+  resolving a moved line's earlier verdicts (rechecking the remembered ones, carrying the others), the shown branch, the first slice of a copy search the details asked for, the rows
   drawn this frame, the next slice of a copy search under way, then every other candidate — not merged, compared with
   a line, with commits of its own — the user's own branches, then remote branches, the newest tip first in each. A row, the shown branch or a copy is asked again every
   frame it is drawn; an ask not repeated is dropped.
@@ -87,6 +87,25 @@ and keep the verdicts per repository.
 - **Remembered verdicts.** A `Found` verdict counts, unchecked, for a new tip of the line while the read's graph holds
   its landing (a squash) or every copy (a rebase) from that tip; a squash without a landing is never held. Every such
   branch of a new read is answered by one job, one graph walk per distinct line tip; the rest are checked again.
+- **Carried verdicts.** A not-merged or unknown verdict for a branch tip against line tip L1 counts, unchecked, for a
+  new line tip L2 when both hold:
+  - L1 is an ancestor of L2 in the read's graph;
+  - the trees of L1 and L2 differ at none of the paths where the branch's tree differs from its fork with L1.
+
+  The fork comes from the graph: of the commits L1 reaches that the branch's own commits have for parents, the one of
+  the highest generation (`Core::ForkWith`), with no libgit2 merge base. Merging the branch and walking its patches then
+  meet the same files at both line tips. Only trees are read, so a blobless clone answers, and paths are taken as
+  written (`Repository::PathsChangedBetween` once per line move, `Repository::TreesDifferAt` per verdict). Both walk
+  only into subtrees whose ids differ: libgit2's tree diff reads every tree on its way, about 10 ms on a large tree
+  whatever the move. The earlier tip is the one the read before gave the branch's pair, else any other line tip a
+  verdict is kept for with the same branch tip, as the file of an earlier session holds it. Otherwise (not an ancestor,
+  a path touched, an object missing) the pair is checked again in the usual order. A carried verdict is saved under the
+  new pair, and a save while a carry waits keeps the earlier pair.
+- **One job per line move.** The batch rechecks the remembered verdicts and carries the others of every branch whose
+  line moved, in one job. Until it lands, each earlier verdict stands for the new pair: the row's mark, the sidebar's
+  snapshot of hidden rows ([0669](0669-show-references-in-a-sidebar-beside-the-history.md)) and the header see the
+  earlier verdict, so a fetch makes no known mark `…` and brings no hidden row back. A pair the job does not keep turns
+  pending in place and is checked in the usual order.
 - **Unknown answers and failures.** A check that cannot answer (*unknown*: a tip or an object it needs is missing, or
   the line ran past the patch budget after the merge said no) reads as unknown: no mark, nothing in the window bar. It
   is kept for its pair like any other verdict, so the second opening knows it in its first frame: the same two tips
@@ -99,7 +118,12 @@ The merge is one bounded operation per branch, while the patch walk grows with t
 the merge runs first and the patch walk only decides the kind. An in-memory object backend is the one way libgit2's
 merge can run without writing into the repository. One check at a time keeps the shared queue free for the lines read
 and the log, the shown branch's place at the head keeps its header waiting no longer than one job, and remembering the
-landing keeps a branch merged after its line moved on.
+landing keeps a branch merged after its line moved on. A fetch moves the main line every time. The merge of a pair
+turns only on the files the branch changed, and a line commit carries a copy of an own commit's patch only by
+changing the same files. So when the line's trees differ at none of them, the earlier answer stands without the
+minutes of checks. Letting every earlier verdict
+stand until that one job lands keeps a fetch from making known marks pending or bringing hidden rows back (spec §6
+rule 3).
 
 ## Consequences
 
@@ -108,8 +132,10 @@ landing keeps a branch merged after its line moved on.
 - Branches squashed, rebased or cherry-picked onto their line are marked and, at the next rebuild, hidden in the remote
   sections like branches merged by history.
 - The repository is never written to; a blobless clone answers *unknown* where it cannot read, and says nothing.
-- The second opening shows every verdict found before in its first frame; a moved line costs one graph job, not the
-  checks again.
+- The second opening shows every verdict found before in its first frame.
+- A moved line costs one job, of graph walks and tree walks. Only the branches whose paths the move touched are checked
+  again. When the code editor's main line moves 20 commits, 4,273 of its 4,959 verdicts carry, in 0.30 s; when it
+  moves 200 commits, 2,621 carry, in 0.65 s.
 
 ### Negative
 
@@ -124,6 +150,12 @@ landing keeps a branch merged after its line moved on.
 - `content.json` is parsed on the UI thread once per store; it holds a verdict per candidate.
 - An unknown kept because the line ran past the patch budget records no budget: a later build that raises
   `kPatchCommitsPerCheck` does not ask that pair again until either tip moves.
+- A carry compares the line's trees, not its commits. A change the line made and undid within one move is not seen
+  until the branch or the line moves again: for example, a cherry-pick of one of the branch's commits, then its revert.
+  A carried not-merged verdict may also stand where a check of the new pair would answer unknown, because the line's
+  new commits pushed its patch walk past the budget.
+- The branches whose paths a move touched are checked again: about half of the code editor's candidates after 200
+  line commits.
 - A squash whose landing lies past the chain budget, or behind a candidate that cannot be judged, is merged without a
   landing: the banner and the details name no commit.
 - A branch whose changes cancel out is not merged by content, although merging it would change nothing.
@@ -181,6 +213,21 @@ blobless, so most checks answer *unknown* for a missing blob; a full clone of li
   a 4 s check: with the merge base, the walks over the commits a branch lacks are most of an old branch's check.
 - **The recheck of remembered verdicts** after a line moves: 0.3 ms for 14 verdicts over 4 line tips, 1.8 ms for 52
   over 34, 16 ms for 43 over 28.
+- **The carry of the other verdicts** (`GRAPHITE_CONTENT_CARRY=1`). A fetch is simulated: the store holds a verdict per
+  candidate against its line tip set back 1, 20 or 200 first-parent commits, and a new model follows the read as it
+  is. The table gives the job's time and the verdicts carried, out of the candidates of the lines that moved:
+
+  | repository | main line moves 1 | 20 | 200 | every line moves 200 |
+  |---|---|---|---|---|
+  | web framework (2,274 on the main line, 2,807 in all) | 110 ms, 2,272 | 201 ms, 1,576 | 229 ms, 702 | 1.86 s, 702 |
+  | team chat server (1,312; 1,762) | 58 ms, 1,310 | 152 ms, 815 | 174 ms, 439 | 0.95 s, 439 |
+  | code editor (4,959; 5,536) | 691 ms, 4,830 | 304 ms, 4,273 | 653 ms, 2,621 | 2.05 s, 2,656 |
+
+  The code editor's first job reads its trees cold. With libgit2's tree diffs (its whole tree once per move, and the
+  diff kept to the paths per verdict) the same jobs took 0.37 s, 1.5 s and 5.0 s on the web framework's main line, and
+  11.9 s when every line moved 200 commits. Over the six simulated fetches the tree walks gave libgit2's answer for
+  every verdict: 15,243 answers on the web framework and 9,204 on the chat server. The model's first `Follow`, which loads `content.json` and finds the verdicts to
+  carry, takes 13 to 18 ms on the code editor.
 - **`content.json` on the UI thread**: at a verdict per candidate, 1,749 verdicts and 313 KB parse in 2.7 ms and the
   first `Follow` takes 3.4 ms (chat server); 5,520 verdicts and 947 KB parse in 8.3 ms and the first `Follow` takes
   11.0 ms (code editor): under a frame, so the file stays on the UI thread.
