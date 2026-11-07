@@ -1,12 +1,16 @@
 #include <doctest/doctest.h>
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 #include "Core/Git/PatchMatch.h"
 #include "Core/Git/Repository.h"
 
 #include "GitFixture.h"
+
+#include <git2.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -310,6 +314,39 @@ TEST_CASE("Content: the landing search reads the branch's paths as written, not 
 	CHECK(verdict.Outcome == Core::ContentOutcome::Merged);
 	CHECK(verdict.Kind == Core::ContentKind::Squash);
 	CHECK(verdict.Landing == std::optional<Core::Oid>{OidOf(squash)});
+}
+
+TEST_CASE("Content: a line commit's diff kept to the branch's paths takes them as written, not as patterns")
+{
+	// As a pattern, "f[ab].txt" names fa.txt; taken as written it names only a file called f[ab].txt.
+	GitFixture fixture;
+	fixture.Write("fa.txt", kBase);
+	fixture.Commit("base");
+	fixture.Write("fa.txt", kLineTwoEdit);
+	const std::string editsFa = fixture.Commit("edit fa.txt");
+
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+
+	std::size_t deltas = 0;
+	bool diffed = false;
+
+	{
+		const Core::Result<Core::CommitHandle> commit = Core::LookupCommit(handle, OidOf(editsFa));
+
+		if (commit.HasValue())
+		{
+			const Core::Result<Core::DiffHandle> diff =
+				Core::DiffWithFirstParentOn(handle, commit.GetValue().get(), std::vector<std::string>{"f[ab].txt"});
+			diffed = diff.HasValue();
+			deltas = diffed ? git_diff_num_deltas(diff.GetValue().get()) : 0;
+		}
+	}
+
+	git_repository_free(handle);
+
+	REQUIRE(diffed);
+	CHECK(deltas == 0);
 }
 
 TEST_CASE("Content: a squash past the landing chain budget is merged without a landing")
