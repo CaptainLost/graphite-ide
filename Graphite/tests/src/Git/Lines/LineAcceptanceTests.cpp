@@ -1000,6 +1000,7 @@ namespace {
 		const CarriedVerdicts carried = CarryVerdicts(*read.Graph, *read.Generations, port, 1, asks);
 
 		std::size_t same = 0;
+		std::size_t sameNotMerged = 0;
 		std::size_t failedFresh = 0;
 		std::vector<std::string> differences;
 
@@ -1014,6 +1015,7 @@ namespace {
 			else if (fresh.GetValue().Outcome == ask.Verdict.Outcome)
 			{
 				++same;
+				sameNotMerged += ask.Verdict.Outcome == Core::ContentOutcome::NotMerged ? 1 : 0;
 			}
 			else
 			{
@@ -1025,7 +1027,8 @@ namespace {
 		MESSAGE("carried against fresh, the main line moved ", steps, " first parents: ", asks.size(), " not-merged or unknown verdicts at the earlier tip (",
 				mergedEarlier, " merged, ", failedEarlier, " failed, left out); ", carried.Carried.size(), " carried, ",
 				asks.size() - carried.Carried.size() - carried.Refused.size(), " back to the checks; of the carried, ", same,
-				" equal to a fresh check, ", differences.size(), " differing, ", failedFresh, " fresh checks failed");
+				" equal to a fresh check (", sameNotMerged, " not merged, ", same - sameNotMerged, " unknown), ", differences.size(),
+				" differing, ", failedFresh, " fresh checks failed");
 
 		for (const std::string& difference : differences)
 		{
