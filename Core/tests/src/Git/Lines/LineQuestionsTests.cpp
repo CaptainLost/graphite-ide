@@ -303,3 +303,90 @@ TEST_CASE("Lines: a later line tip that merged part of a branch by history holds
 	// A branch the earlier tip holds already has no own commits to take in.
 	CHECK_FALSE(LaterTipHoldsOwnCommit(builder, "c1", "c3", "merged"));
 }
+
+namespace {
+
+	// The oldest tag holding each of `commits`, with the tags on `tagCommits` (oldest first); a name the graph lacks is no commit.
+	std::vector<std::uint32_t> OldestTagsOf(const GraphBuilder& builder, const std::vector<std::string_view>& tagCommits,
+											const std::vector<std::string_view>& commits)
+	{
+		const Core::AncestryGraph graph = builder.Graph();
+		std::vector<Index> tags;
+
+		for (const std::string_view name : tagCommits)
+		{
+			tags.push_back(graph.Find(OidOf(name)));
+		}
+
+		const std::vector<std::uint32_t> oldest = Core::OldestTagHolding(graph, tags);
+		REQUIRE(oldest.size() == graph.Size());
+		std::vector<std::uint32_t> answers;
+
+		for (const std::string_view name : commits)
+		{
+			answers.push_back(oldest[graph.Find(OidOf(name))]);
+		}
+
+		return answers;
+	}
+}
+
+TEST_CASE("Lines: the oldest tag holding a commit is the first one made after it")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 6, std::nullopt, 0, {});
+
+	const std::vector<std::uint32_t> answers = OldestTagsOf(builder, {"c3", "c5"}, {"c1", "c2", "c3", "c4", "c5", "c6"});
+
+	CHECK(answers == std::vector<std::uint32_t>{0, 0, 0, 1, 1, Core::kNoTag});
+}
+
+TEST_CASE("Lines: a tag on a merge holds both sides")
+{
+	GraphBuilder builder;
+	builder.Commit("m1", {}, 0);
+	builder.Commit("m2", {"m1"}, 2);
+	builder.Commit("f1", {"m1"}, 1);
+	builder.Commit("f2", {"f1"}, 3);
+	builder.Commit("m3", {"m2", "f2"}, 4);
+	builder.Commit("m4", {"m3"}, 5);
+
+	const std::vector<std::uint32_t> answers = OldestTagsOf(builder, {"m3"}, {"m1", "m2", "f1", "f2", "m3", "m4"});
+
+	CHECK(answers == std::vector<std::uint32_t>{0, 0, 0, 0, 0, Core::kNoTag});
+}
+
+TEST_CASE("Lines: an older tag on a side line wins over a newer one on the main line")
+{
+	GraphBuilder builder;
+	builder.Commit("m1", {}, 0);
+	builder.Commit("m2", {"m1"}, 1);
+	builder.Commit("m3", {"m2"}, 2);
+	builder.Commit("f1", {"m1"}, 3);
+	builder.Commit("f2", {"f1"}, 4);
+
+	// Position 0 is on the side line although the main line's commit is the older one: rank decides, not the graph.
+	const std::vector<std::uint32_t> answers = OldestTagsOf(builder, {"f2", "m3"}, {"m1", "m2", "m3", "f1", "f2"});
+
+	CHECK(answers == std::vector<std::uint32_t>{0, 1, 1, 0, 0});
+}
+
+TEST_CASE("Lines: two tags on one commit give the earlier position")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 3, std::nullopt, 0, {});
+
+	const std::vector<std::uint32_t> answers = OldestTagsOf(builder, {"c2", "c2"}, {"c1", "c2", "c3"});
+
+	CHECK(answers == std::vector<std::uint32_t>{0, 0, Core::kNoTag});
+}
+
+TEST_CASE("Lines: a tag listed as no commit is passed over")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 3, std::nullopt, 0, {});
+
+	const std::vector<std::uint32_t> answers = OldestTagsOf(builder, {"missing", "c2"}, {"c1", "c2", "c3"});
+
+	CHECK(answers == std::vector<std::uint32_t>{1, 1, Core::kNoTag});
+}

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <vector>
@@ -55,4 +56,12 @@ namespace Core {
 	std::vector<bool> TipsHolding(const AncestryGraph& graph, std::span<const std::uint32_t> generations, AncestryGraph::Index commit,
 								  std::span<const AncestryGraph::Index> tips);
 	std::vector<bool> TipsHolding(const AncestryGraph& graph, AncestryGraph::Index commit, std::span<const AncestryGraph::Index> tips);
+
+	// The value for a commit no tag holds.
+	inline constexpr std::uint32_t kNoTag = std::numeric_limits<std::uint32_t>::max();
+
+	// Per commit, the smallest position in `tagCommitsOldestFirst` whose commit reaches it (a tag's commit reaches
+	// itself), or kNoTag. One pass answers every commit: a commit already marked was reached from an older position, and
+	// so were all its ancestors, so each commit is entered once. A tag commit the graph lacks (kNoCommit) is passed over.
+	std::vector<std::uint32_t> OldestTagHolding(const AncestryGraph& graph, std::span<const AncestryGraph::Index> tagCommitsOldestFirst);
 }

@@ -401,4 +401,40 @@ namespace Core {
 	{
 		return TipsHolding(graph, GenerationsOf(graph), commit, tips);
 	}
+
+	std::vector<std::uint32_t> OldestTagHolding(const AncestryGraph& graph, std::span<const Index> tagCommitsOldestFirst)
+	{
+		std::vector<std::uint32_t> oldest(graph.Size(), kNoTag);
+		std::vector<Index> pending;
+
+		for (std::size_t position = 0; position < tagCommitsOldestFirst.size(); ++position)
+		{
+			const Index tagCommit = tagCommitsOldestFirst[position];
+
+			if (tagCommit == AncestryGraph::kNoCommit || oldest[tagCommit] != kNoTag)
+			{
+				continue;
+			}
+
+			oldest[tagCommit] = static_cast<std::uint32_t>(position);
+			pending.push_back(tagCommit);
+
+			while (!pending.empty())
+			{
+				const Index commit = pending.back();
+				pending.pop_back();
+
+				for (const Index parent : graph.ParentsOf(commit))
+				{
+					if (oldest[parent] == kNoTag)
+					{
+						oldest[parent] = static_cast<std::uint32_t>(position);
+						pending.push_back(parent);
+					}
+				}
+			}
+		}
+
+		return oldest;
+	}
 }
