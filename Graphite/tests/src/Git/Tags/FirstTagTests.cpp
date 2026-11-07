@@ -98,10 +98,12 @@ TEST_CASE("First tag: of two tags made in the same second the one whose name com
 
 TEST_CASE("First tag: a tag whose commit the graph lacks is passed over")
 {
-	const LineRead read = ReadWith({TagOn("lost", kNotInGraph, kOlder), TagOn("v1", kMiddle, kNewer)});
+	// Newest first, as the listing gives them: the lost tag is the oldest, so it comes first in the pass and v1 after it.
+	const LineRead read = ReadWith({TagOn("v1", kMiddle, kNewer), TagOn("lost", kNotInGraph, kOlder)});
 
 	REQUIRE(read.FirstTag.size() == 3);
 	CHECK(FirstTagNameOf(read, kRoot) == "v1");
+	CHECK(read.FirstTag[read.Graph->Find(kMiddle)] == 0);
 	CHECK(FirstTagOf(read, kTip) == nullptr);
 	CHECK(read.FirstTag[read.Graph->Find(kTip)] == Core::kNoTag);
 }

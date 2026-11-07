@@ -2980,6 +2980,42 @@ TEST_CASE("Git model: a fetch that adds a tag lists it at the next refresh")
 	CHECK(port.TagCacheSizes == std::vector<std::size_t>{0, 1, 2});
 }
 
+TEST_CASE("Git model: a tag listing in flight when the folder changes never lands in the next folder")
+{
+	FakePort port;
+	port.Tags = {TagOn("old", kMainTipByte, kOlderTagTime)};
+
+	DeferredJobs jobs;
+	Graphite::GitModel model{port, jobs.Submitter()};
+	Core::EventBus events;
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/repo"});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+	REQUIRE(jobs.Count() > 0);
+
+	// The folder changes while the first folder's listing waits for a worker; the port answers for the next folder by
+	// the time it runs.
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+	port.Tags = {TagOn("other", kFeatureTipByte, kNewerTagTime)};
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	CHECK(port.TagCacheSizes.size() == 1);
+	CHECK(model.GetTags() == nullptr);
+	CHECK_FALSE(model.GetTagsError().has_value());
+
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	REQUIRE(model.GetTags() != nullptr);
+	CHECK(*model.GetTags() == port.Tags);
+
+	// The stale listing filled the first folder's cache; the next folder's listing started from an empty one.
+	CHECK(port.TagCacheSizes == std::vector<std::size_t>{0, 0});
+}
+
 TEST_CASE("Git model: another folder starts a fresh tag cache and a closed one has no tags")
 {
 	FakePort port;
