@@ -1335,7 +1335,7 @@ TEST_CASE("Sidebar: a tag row names the tag without its folder and carries its i
 	CHECK_FALSE(rows[at + 3].Ref.has_value());
 }
 
-TEST_CASE("Sidebar: while tags are read the section shows one waiting row")
+TEST_CASE("Sidebar: no Tags section while the tags are unread")
 {
 	LineReadBuilder builder;
 	builder.AddLocal("a");
@@ -1343,13 +1343,39 @@ TEST_CASE("Sidebar: while tags are read the section shows one waiting row")
 
 	Options options;
 	options.Tags = nullptr;
+	CHECK(KeysOfSections(RowsOf(read, options)) == std::vector<std::string>{"yours", "stashes"});
 
-	// Closed by default, so the place is held and says nothing.
-	CHECK(KeysOfSections(RowsOf(read, options)) == std::vector<std::string>{"yours", "tags", "stashes"});
-
+	// Not even when the user had opened it.
 	options.OpenByUser = {{"tags", true}};
-	CHECK(From(Describe(read, RowsOf(read, options)), "# tags") ==
-		  Lines{"# tags", "? Reading tags\xE2\x80\xA6", "# stashes 0", "! No stashes"});
+	CHECK(KeysOfSections(RowsOf(read, options)) == std::vector<std::string>{"yours", "stashes"});
+}
+
+TEST_CASE("Sidebar: the folder holding the shown tag is open")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("a");
+	const LineRead read = builder.Build();
+
+	const std::vector<Core::Tag> tags = {TagNamed("v2"), TagNamed("release/1.0"), TagNamed("other/3")};
+	Options options;
+	options.Tags = &tags;
+	options.ShownRef = "refs/tags/release/1.0";
+
+	const Lines described = From(Describe(read, RowsOf(read, options)), "# tags 3");
+	REQUIRE(described.size() >= 6);
+	CHECK(Lines(described.begin(), described.begin() + 6) ==
+		  Lines{"# tags 3", "tag v2", "> release/ 1", "  tag 1.0", "> other/ 1 closed", "# stashes 0"});
+
+	// The user's own choice stands.
+	options.OpenByUser = {{"tags/release", false}};
+	CHECK(From(Describe(read, RowsOf(read, options)), "# tags 3")[2] == "> release/ 1 closed");
+	options.OpenByUser = {{"tags", false}};
+	CHECK(From(Describe(read, RowsOf(read, options)), "# tags 3 closed").size() == 3);
+
+	// A shown branch does not open it.
+	options.OpenByUser.clear();
+	options.ShownRef = "refs/heads/a";
+	CHECK(From(Describe(read, RowsOf(read, options)), "# tags 3 closed").size() == 3);
 }
 
 TEST_CASE("Sidebar: a failed tag listing shows its reason in the section")
@@ -1430,5 +1456,5 @@ TEST_CASE("Sidebar: while the lines are read the tags are listed with the stashe
 	CHECK(Describe(noLines, BuildStashRows(&kNoStashes, nullptr, &tags, nullptr, {}, opened)) ==
 		  Lines{"# tags 2", "tag v2", "tag v1", "# stashes 0", "! No stashes"});
 	CHECK(Describe(noLines, BuildStashRows(&kNoStashes, nullptr, nullptr, nullptr, {}, opened)) ==
-		  Lines{"# tags", "? Reading tags\xE2\x80\xA6", "# stashes 0", "! No stashes"});
+		  Lines{"# stashes 0", "! No stashes"});
 }

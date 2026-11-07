@@ -18,6 +18,7 @@
 #include "Git/Compare/HistoryBanner.h"
 #include "Git/GitStatusText.h"
 #include "Git/History/CommitLabels.h"
+#include "Git/Tags/TagLookup.h"
 #include "Git/Window/MainLineQuestion.h"
 #include "Git/Window/GitWindowRestore.h"
 #include "Git/Window/WindowBar.h"
@@ -591,9 +592,7 @@ namespace Graphite {
 				// WARNING: The rows can be a read behind the tags, so a row clicked may name a tag already gone; its history is
 				// then HEAD's, as for a branch.
 				const Core::Ref<const std::vector<Core::Tag>> listed = m_Model.GetTags();
-				const bool isStillThere = listed && std::ranges::any_of(*listed, [tag](const Core::Tag& other) {
-					return other.FullName == tag->FullName;
-				});
+				const bool isStillThere = listed && TagWithFullName(*listed, tag->FullName) != nullptr;
 
 				SelectRef(isStillThere ? std::optional<std::string>{tag->FullName} : std::nullopt);
 			}

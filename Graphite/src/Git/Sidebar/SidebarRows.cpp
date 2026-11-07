@@ -3,6 +3,7 @@
 #include "Git/Branches/BranchListFilter.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Tags/TagFolders.h"
+#include "Git/Tags/TagLookup.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Count.h"
@@ -573,16 +574,24 @@ namespace Graphite {
 					}
 				}
 
-				// A repository without tags has no section; one whose list is not in hand yet has the section, so the place
-				// is held.
+				// A repository without tags has no section, and one whose list is not in hand yet has none either: the section
+				// arrives with the listing, which lands with the branches. A failed listing has it, to say why.
+				const bool unread = tags == nullptr && m_Input.TagsError == nullptr;
 				const bool hasNone = tags != nullptr && tags->empty() && m_Input.TagsError == nullptr;
 
-				if (hasNone || (m_Searching && shown.empty()))
+				if (unread || hasNone || (m_Searching && shown.empty()))
 				{
 					return;
 				}
 
-				const bool open = AddSection(SidebarSection::Tags, "tags", "Tags", shown.size(), total, {}, {}, false);
+				// The section and the folder holding the shown tag open unless the user closed them, so a tag the user looks
+				// at is never out of sight.
+				const Core::Tag* const shownTag = tags != nullptr && m_Input.ShownRef.starts_with(Core::kTagPrefix)
+													  ? TagWithFullName(*tags, m_Input.ShownRef)
+													  : nullptr;
+				const std::string_view shownFolder = shownTag != nullptr ? FolderOfTagName(shownTag->Name) : std::string_view{};
+
+				const bool open = AddSection(SidebarSection::Tags, "tags", "Tags", shown.size(), total, {}, {}, shownTag != nullptr);
 				m_Rows.back().Counted = tags != nullptr;
 				m_Rows.back().CountFailed = tags == nullptr && m_Input.TagsError != nullptr;
 
@@ -594,10 +603,6 @@ namespace Graphite {
 				if (m_Input.TagsError != nullptr)
 				{
 					AddNotice(SidebarSection::Tags, "couldn't read tags: " + m_Input.TagsError->Message, kNothingOnItsWay);
-				}
-				else if (tags == nullptr)
-				{
-					AddNotice(SidebarSection::Tags, "Reading tags…", kOnItsWay);
 				}
 
 				if (tags == nullptr)
@@ -614,7 +619,7 @@ namespace Graphite {
 					}
 
 					const std::string key = "tags/" + item.Folder;
-					const bool folderOpen = OpenOf(key, false);
+					const bool folderOpen = OpenOf(key, item.Folder == shownFolder);
 					AddGroup(SidebarSection::Tags, key, item.Folder + "/", item.Tags.size(), folderOpen, {});
 
 					if (!folderOpen)
