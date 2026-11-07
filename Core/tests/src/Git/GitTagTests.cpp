@@ -209,3 +209,66 @@ TEST_CASE("Tags: a repository without tags lists none")
 
 	CHECK(ListTags(fixture).empty());
 }
+
+TEST_CASE("Tags: a symbolic ref under refs/tags is not listed")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string commit = fixture.Commit("first");
+	fixture.TagLightweight("real", commit);
+
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+	git_reference* alias = nullptr;
+	REQUIRE(git_reference_symbolic_create(&alias, handle, "refs/tags/alias", "refs/tags/real", 1, nullptr) == 0);
+	git_reference_free(alias);
+	git_repository_free(handle);
+
+	const std::vector<Core::Tag> tags = ListTags(fixture);
+
+	REQUIRE(tags.size() == 1);
+	CHECK(tags[0].Name == "real");
+}
+
+TEST_CASE("Tags: a tag of a tag whose inner tag is missing is not listed and is no failure")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string commit = fixture.Commit("first");
+	const std::string inner = fixture.TagAnnotated("inner", commit, 1500000000, "Inner\n");
+	fixture.TagAnnotated("outer", inner, 1600000000, "Outer\n");
+	fixture.TagLightweight("kept", commit);
+	fixture.RemoveObject(inner);
+
+	const std::vector<Core::Tag> tags = ListTags(fixture);
+
+	REQUIRE(tags.size() == 1);
+	CHECK(tags[0].Name == "kept");
+}
+
+TEST_CASE("Tags: an annotated tag with no tagger is dated by its commit")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string commit = fixture.Commit("first");
+
+	// libgit2 writes a tag object only with a tagger, so the object is written from its raw text.
+	const std::string raw = "object " + commit + "\ntype commit\ntag untagged\n\nNo tagger\n";
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+	git_odb* odb = nullptr;
+	REQUIRE(git_repository_odb(&odb, handle) == 0);
+	git_oid tagId{};
+	REQUIRE(git_odb_write(&tagId, odb, raw.data(), raw.size(), GIT_OBJECT_TAG) == 0);
+	git_odb_free(odb);
+	git_repository_free(handle);
+	fixture.TagObject("untagged", HexTextOf(tagId));
+
+	const std::vector<Core::Tag> tags = ListTags(fixture);
+
+	REQUIRE(tags.size() == 1);
+	CHECK(tags[0].Annotated);
+	CHECK(tags[0].Target == OidOf(commit));
+	CHECK(tags[0].When == At(kFirstCommitTime));
+	CHECK(tags[0].Subject == "No tagger");
+}
