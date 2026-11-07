@@ -125,6 +125,10 @@ namespace Graphite {
 		void FindVerdictsToResolve(const PairsByName& before);
 		std::optional<CarryAsk> EarlierVerdictOf(const ContentKey& key, const std::optional<ContentKey>& before) const;
 
+		// Of several kept pairs of one branch tip, the one whose line tip is the newest the pair's line tip descends from in
+		// the followed read's graph; the first when none is.
+		std::optional<CarryAsk> NewestEarlierTipOf(const std::vector<CarryAsk>& kept) const;
+
 		void RebuildSources();
 		void AddSourcesOf(const std::string& branch, const Core::ContentVerdict& verdict);
 

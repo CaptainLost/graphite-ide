@@ -402,10 +402,14 @@ namespace {
 	const Core::Oid kAfterCopy = IdOf(0x07);
 	const Core::Oid kOtherBranchTip = IdOf(0x08);
 
+	// root - another line's tip, whose id sorts before every other.
+	const Core::Oid kOtherLineTip = IdOf(0x00, 0x09);
+
 	Core::Ref<const Core::AncestryGraph> LandingGraph()
 	{
 		Core::AncestryGraph graph;
 		graph.Append({Core::GraphCommit{.Id = kRoot, .Time = 100},
+					  Core::GraphCommit{.Id = kOtherLineTip, .Parents = {kRoot}, .Time = 120},
 					  Core::GraphCommit{.Id = kBranchTip, .Parents = {kRoot}, .Time = 150},
 					  Core::GraphCommit{.Id = kOtherBranchTip, .Parents = {kRoot}, .Time = 160},
 					  Core::GraphCommit{.Id = kLandingOnLine, .Parents = {kRoot}, .Time = 200},
@@ -1206,6 +1210,37 @@ TEST_CASE("Git window: a verdict an earlier session kept carries to the line's n
 	next.Clear();
 	jobs.RunAll();
 	CHECK(LoadContentCache(store.Content).Verdicts.contains(ContentKey{kBranchTip, kAfterLanding}));
+}
+
+TEST_CASE("Git window: the next opening carries from the newest kept line tip the new one descends from")
+{
+	TempDirectory directory;
+	const LineStorePaths store = StoreIn(directory.GetPath());
+
+	// The branch tip has verdicts kept against three line tips: another line's, which sorts first, the line's root and
+	// its last tip before the window closed.
+	ContentCache kept;
+	kept.Verdicts[ContentKey{kBranchTip, kOtherLineTip}] = Core::ContentVerdict{};
+	kept.Verdicts[ContentKey{kBranchTip, kRoot}] = Core::ContentVerdict{};
+	kept.Verdicts[ContentKey{kBranchTip, kLandingOnLine}] = UnknownVerdict();
+	REQUIRE(SaveContentCache(store.Content, kept).HasValue());
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	port.BranchPaths[ContentKey{kRoot, kBranchTip}] = {kBranchPath};
+	port.LinePaths[FakeContentPort::LineMove{kLandingOnLine, kAfterLanding}] = {"other.txt"};
+
+	ContentModel model{port, jobs.Submitter()};
+	const Core::Ref<const LineRead> movedOn = LandingReadIn(kAfterLanding, store);
+	model.Follow(movedOn);
+	CHECK(model.KnownMarkOf(movedOn->Model.Branches[0]).State == ContentMark::State::Unknown);
+
+	model.SetOnScreen(true);
+	Settle(jobs, model);
+
+	CHECK(port.Checked.empty());
+	CHECK(port.LineMovesDiffed == std::vector<FakeContentPort::LineMove>{{kLandingOnLine, kAfterLanding}});
+	CHECK(model.KnownMarkOf(movedOn->Model.Branches[0]).State == ContentMark::State::Unknown);
 }
 
 TEST_CASE("Git window: a carry the port refuses for a repository it no longer opens is asked again")

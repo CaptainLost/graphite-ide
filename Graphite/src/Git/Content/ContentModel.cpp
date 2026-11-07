@@ -4,11 +4,13 @@
 #include "Workspace/Workspace.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Git/Lines/LineQuestions.h"
 
 #include <algorithm>
 #include <exception>
 #include <format>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -434,6 +436,7 @@ namespace Graphite {
 		}
 
 		// Else one kept for the branch tip against another line tip, as the file of an earlier session holds it.
+		std::vector<CarryAsk> kept;
 		const ContentKey first{.BranchTip = key.BranchTip, .LineTip = Core::Oid{}};
 
 		for (std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.lower_bound(first);
@@ -441,11 +444,56 @@ namespace Graphite {
 		{
 			if (verdict->first.LineTip != key.LineTip && CanCarry(verdict->second))
 			{
-				return CarryAsk{.Key = key, .EarlierLineTip = verdict->first.LineTip, .Verdict = verdict->second};
+				kept.push_back(CarryAsk{.Key = key, .EarlierLineTip = verdict->first.LineTip, .Verdict = verdict->second});
 			}
 		}
 
-		return std::nullopt;
+		if (kept.size() <= 1)
+		{
+			return kept.empty() ? std::nullopt : std::optional<CarryAsk>{kept.front()};
+		}
+
+		// Two lines' pairs can share a branch tip (a local branch and its remote copy compared with different lines): the
+		// line's own earlier tip is one the new tip descends from, and the newest of those changed the least since.
+		return NewestEarlierTipOf(kept);
+	}
+
+	std::optional<CarryAsk> ContentModel::NewestEarlierTipOf(const std::vector<CarryAsk>& kept) const
+	{
+		const Core::AncestryGraph::Index lineTip =
+			m_Read->Graph != nullptr ? m_Read->Graph->Find(kept.front().Key.LineTip) : Core::AncestryGraph::kNoCommit;
+
+		if (lineTip == Core::AncestryGraph::kNoCommit || m_Read->Generations == nullptr)
+		{
+			return kept.front();
+		}
+
+		std::optional<CarryAsk> newest;
+		std::uint32_t newestGeneration = 0;
+
+		for (const CarryAsk& ask : kept)
+		{
+			const Core::AncestryGraph::Index earlier = m_Read->Graph->Find(ask.EarlierLineTip);
+
+			if (earlier == Core::AncestryGraph::kNoCommit)
+			{
+				continue;
+			}
+
+			const std::uint32_t generation = (*m_Read->Generations)[earlier];
+			const bool newer = !newest.has_value() || generation > newestGeneration;
+
+			if (newer && Core::TipsHolding(*m_Read->Graph, *m_Read->Generations, earlier,
+										   std::span<const Core::AncestryGraph::Index>{&lineTip, 1})
+							 .front())
+			{
+				newest = ask;
+				newestGeneration = generation;
+			}
+		}
+
+		// With none the new tip descends from, the pair goes to its check when the batch finds that too.
+		return newest.has_value() ? newest : std::optional<CarryAsk>{kept.front()};
 	}
 
 	void ContentModel::RebuildSources()
