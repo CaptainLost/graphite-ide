@@ -888,3 +888,145 @@ TEST_CASE("Content: the walk of two trees finds what libgit2's diff of them find
 
 	git_repository_free(handle);
 }
+
+namespace {
+
+	struct EntryToWrite
+	{
+		std::string Name;
+		git_oid Id{};
+		git_filemode_t Mode = GIT_FILEMODE_BLOB;
+	};
+
+	git_oid WriteBlob(git_repository* handle, std::string_view text)
+	{
+		git_oid id{};
+		REQUIRE(git_blob_create_from_buffer(&id, handle, text.data(), text.size()) == 0);
+		return id;
+	}
+
+	git_oid WriteTree(git_repository* handle, const std::vector<EntryToWrite>& entries)
+	{
+		git_treebuilder* builder = nullptr;
+		REQUIRE(git_treebuilder_new(&builder, handle, nullptr) == 0);
+
+		for (const EntryToWrite& entry : entries)
+		{
+			REQUIRE(git_treebuilder_insert(nullptr, builder, entry.Name.c_str(), &entry.Id, entry.Mode) == 0);
+		}
+
+		git_oid id{};
+		const int written = git_treebuilder_write(&id, builder);
+		git_treebuilder_free(builder);
+		REQUIRE(written == 0);
+		return id;
+	}
+
+	// A commit with no parent holding the tree; its id in hex.
+	std::string WriteCommitOf(git_repository* handle, const git_oid& treeId)
+	{
+		git_tree* tree = nullptr;
+		REQUIRE(git_tree_lookup(&tree, handle, &treeId) == 0);
+		git_signature* signature = nullptr;
+		REQUIRE(git_signature_new(&signature, "Test Author", "test@example.com", 1700000000, 0) == 0);
+
+		git_oid id{};
+		const int written = git_commit_create(&id, handle, nullptr, signature, signature, nullptr, "trees", tree, 0, nullptr);
+		git_signature_free(signature);
+		git_tree_free(tree);
+		REQUIRE(written == 0);
+		return HexTextOf(id);
+	}
+
+	// Two trees and the paths, and the near misses of them, to ask about.
+	struct TreePair
+	{
+		const char* Name;
+		std::vector<EntryToWrite> Older;
+		std::vector<EntryToWrite> Newer;
+		std::vector<std::string> Probes;
+	};
+
+	void CheckOneDirection(git_repository* handle, const Core::Repository& repository, const TreePair& pair, const std::string& from,
+						   const std::string& to)
+	{
+		const ReferenceDiff whole = DiffOfLibgit2(handle, from, to, {});
+		const Core::Result<std::vector<std::string>> walked = repository.PathsChangedBetween(OidOf(from), OidOf(to));
+		REQUIRE(whole.Diffed);
+		REQUIRE(walked.HasValue());
+		CHECK(std::set<std::string>{walked.GetValue().begin(), walked.GetValue().end()} == whole.Paths);
+
+		for (const std::string& probe : pair.Probes)
+		{
+			INFO(probe);
+			const ReferenceDiff kept = DiffOfLibgit2(handle, from, to, {probe});
+			REQUIRE(kept.Diffed);
+			CHECK(TreesDifferAt(repository, from, to, {probe}) == !kept.Paths.empty());
+		}
+	}
+
+	void CheckWalkAgainstLibgit2(git_repository* handle, const Core::Repository& repository, const TreePair& pair)
+	{
+		INFO(pair.Name);
+		const std::string older = WriteCommitOf(handle, WriteTree(handle, pair.Older));
+		const std::string newer = WriteCommitOf(handle, WriteTree(handle, pair.Newer));
+
+		CheckOneDirection(handle, repository, pair, older, newer);
+		CheckOneDirection(handle, repository, pair, newer, older);
+	}
+}
+
+TEST_CASE("Content: the walk of two trees finds what libgit2's diff finds for modes, links, submodules, case and kinds")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", kBase);
+	const std::string firstCommit = fixture.Commit("first");
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string secondCommit = fixture.Commit("second");
+
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+
+	const Core::Result<Core::Repository> opened = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(opened.HasValue());
+
+	const git_oid text = WriteBlob(handle, kBase);
+	const git_oid target = WriteBlob(handle, "a.txt");
+	const git_oid otherTarget = WriteBlob(handle, "b.txt");
+	const git_oid first = Core::ToGitOid(OidOf(firstCommit));
+	const git_oid second = Core::ToGitOid(OidOf(secondCommit));
+	const git_oid textFolder = WriteTree(handle, {{"x", text, GIT_FILEMODE_BLOB}});
+	const git_oid execFolder = WriteTree(handle, {{"x", text, GIT_FILEMODE_BLOB_EXECUTABLE}});
+
+	const std::vector<TreePair> pairs{
+		{.Name = "an exec bit on the same blob, at the root and in a folder",
+		 .Older = {{"bin", textFolder, GIT_FILEMODE_TREE}, {"run.sh", text, GIT_FILEMODE_BLOB}},
+		 .Newer = {{"bin", execFolder, GIT_FILEMODE_TREE}, {"run.sh", text, GIT_FILEMODE_BLOB_EXECUTABLE}},
+		 .Probes = {"run.sh", "bin", "bin/x", "run", "bin/y"}},
+		{.Name = "a file turned into a link to the same text, and a link retargeted",
+		 .Older = {{"link", target, GIT_FILEMODE_BLOB}, {"pointer", target, GIT_FILEMODE_LINK}},
+		 .Newer = {{"link", target, GIT_FILEMODE_LINK}, {"pointer", otherTarget, GIT_FILEMODE_LINK}},
+		 .Probes = {"link", "pointer", "lin", "link/below"}},
+		{.Name = "submodules moved, kept, added, and turned into a folder and a file",
+		 .Older = {{"gone", first, GIT_FILEMODE_COMMIT}, {"infile", first, GIT_FILEMODE_COMMIT}, {"intree", first, GIT_FILEMODE_COMMIT},
+				   {"kept", first, GIT_FILEMODE_COMMIT}, {"moved", first, GIT_FILEMODE_COMMIT}},
+		 .Newer = {{"added", second, GIT_FILEMODE_COMMIT}, {"infile", text, GIT_FILEMODE_BLOB}, {"intree", textFolder, GIT_FILEMODE_TREE},
+				   {"kept", first, GIT_FILEMODE_COMMIT}, {"moved", second, GIT_FILEMODE_COMMIT}},
+		 .Probes = {"gone", "infile", "intree", "intree/x", "kept", "moved", "added", "moved/below"}},
+		{.Name = "names that differ by case alone",
+		 .Older = {{"README", text, GIT_FILEMODE_BLOB}, {"Src", textFolder, GIT_FILEMODE_TREE}},
+		 .Newer = {{"readme", text, GIT_FILEMODE_BLOB}, {"src", textFolder, GIT_FILEMODE_TREE}},
+		 .Probes = {"README", "readme", "Src", "src", "Src/x", "src/x"}},
+		{.Name = "a file turned into a folder of the same name",
+		 .Older = {{"x", text, GIT_FILEMODE_BLOB}, {"y", text, GIT_FILEMODE_BLOB}},
+		 .Newer = {{"x", textFolder, GIT_FILEMODE_TREE}, {"y", text, GIT_FILEMODE_BLOB}},
+		 .Probes = {"x", "x/x", "y", "x/"}},
+	};
+
+	for (const TreePair& pair : pairs)
+	{
+		CheckWalkAgainstLibgit2(handle, opened.GetValue(), pair);
+	}
+
+	git_repository_free(handle);
+}
