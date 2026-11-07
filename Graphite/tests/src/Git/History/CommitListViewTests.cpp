@@ -32,10 +32,14 @@ namespace {
 		constexpr float kHistoryWidth = 900.0f;
 	constexpr float kHistoryHeight = 600.0f;
 
+	// The number's decimal digits, padded with zeros to the 40 hex digits of an id, so each number has an id of its own.
 	Core::CommitSummary CommitNumbered(int number)
 	{
+		constexpr std::size_t kHexDigits = 40;
+		const std::string digits = std::to_string(number);
+
 		Core::CommitSummary commit;
-		commit.Id = *Core::Oid::FromHex(std::string(39, '0') + std::to_string(number));
+		commit.Id = *Core::Oid::FromHex(std::string(kHexDigits - digits.size(), '0') + digits);
 		commit.Summary = "commit " + std::to_string(number);
 		return commit;
 	}
@@ -402,7 +406,7 @@ namespace {
 
 TEST_CASE("Git window: dragging the separator between the message and the author widens the author's column for good")
 {
-	constexpr int kCommitCount = 9;
+	constexpr int kCommitCount = 30;
 	constexpr float kDragLeft = 40.0f;
 	constexpr int kHoverFrames = 6; // past ImGui's delay before a separator shows it is under the pointer
 	constexpr float kTruncation = 1.0f;
