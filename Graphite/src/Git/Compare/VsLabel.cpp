@@ -106,11 +106,6 @@ namespace Graphite {
 		}
 	}
 
-	bool IsMergedByContent(const std::optional<Core::ContentVerdict>& verdict)
-	{
-		return verdict.has_value() && verdict->Outcome == Core::ContentOutcome::Merged;
-	}
-
 	std::string LineNameOf(const LineRead& read, std::size_t index)
 	{
 		const Core::LineRef& ref = read.Refs[index];

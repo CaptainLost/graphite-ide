@@ -182,12 +182,6 @@ namespace Graphite {
 				   (verdict.Landing.has_value() ? " in " + verdict.Landing->ShortHex() : std::string()) + ".";
 		}
 
-		bool IsMergedByContent(const std::optional<ContentMark>& content)
-		{
-			return content.has_value() && content->State == ContentMark::State::Known && content->Verdict.has_value() &&
-				   content->Verdict->Outcome == Core::ContentOutcome::Merged;
-		}
-
 		// What is known of a merge by content; empty for a row it does not concern or a window that checks nothing.
 		std::optional<ContentMark> ContentMarkOf(const Core::BranchLine* line, const Core::OldCopy* copy, const SidebarTextInput& input)
 		{
@@ -219,7 +213,7 @@ namespace Graphite {
 				return "Merged into " + name;
 			}
 
-			if (IsMergedByContent(content))
+			if (content.has_value() && IsMergedByContent(*content))
 			{
 				return ContentSentence(*content->Verdict, name);
 			}
@@ -320,7 +314,7 @@ namespace Graphite {
 			{
 				meta.push_back({.Text = kEllipsis, .Tone = SidebarTone::Dim});
 			}
-			else if (IsMergedByContent(content))
+			else if (IsMergedByContent(*content))
 			{
 				meta.push_back({.Text = std::string("merged") + kSeparator +
 										  (content->Verdict->Kind == Core::ContentKind::Rebase ? "rebase" : "squash"),

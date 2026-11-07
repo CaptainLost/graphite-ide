@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Content/ContentMark.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LineReader.h"
 
@@ -39,9 +40,6 @@ namespace Graphite {
 		// merged, by a squash or a rebase. Empty while it is asked, and when it found nothing or could not tell.
 		std::optional<Core::ContentVerdict> Content;
 	};
-
-	// Whether the verdict says the shown branch's changes are in its line.
-	bool IsMergedByContent(const std::optional<Core::ContentVerdict>& verdict);
 
 	// The short name of the ref at `index` of the read; a remote branch keeps its remote in front.
 	std::string LineNameOf(const LineRead& read, std::size_t index);

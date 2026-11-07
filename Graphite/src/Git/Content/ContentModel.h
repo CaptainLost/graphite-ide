@@ -38,17 +38,6 @@
 
 namespace Graphite {
 
-	// The branch a commit's change came from: the commit is the landing of the branch's squash, or the copy of one of the
-	// branch's own commits.
-	struct ContentSource
-	{
-		std::string Branch;                                 // full name
-		Core::ContentKind Kind = Core::ContentKind::Squash; // Squash for a landing, Rebase for a copy
-		std::optional<Core::Oid> Own;                       // the branch's commit a copy is of; empty for a landing
-
-		friend bool operator==(const ContentSource&, const ContentSource&) = default;
-	};
-
 	// Checks every branch of the followed read that history does not show merged into its line for a merge by content:
 	// one check at a time on the shared queue, only while the Git window is on screen, the shown branch and the rows in
 	// view first. A branch found merged against an earlier line tip stays merged, unchecked, while the line still holds the
