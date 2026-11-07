@@ -573,11 +573,29 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	std::optional<ContentModel::TwinKey> ContentModel::FirstTwinWaiting(const std::vector<TwinKey>& asked, bool started) const
+	bool ContentModel::IsSearchWaiting(const TwinKey& key) const
+	{
+		return !m_Twins.contains(key) && m_TwinChecking != key;
+	}
+
+	std::optional<ContentModel::TwinKey> ContentModel::FirstUnstartedSearch(const std::vector<TwinKey>& asked) const
 	{
 		for (const TwinKey& key : asked)
 		{
-			if (!m_Twins.contains(key) && m_TwinChecking != key && m_TwinsReadSoFar.contains(key) == started)
+			if (IsSearchWaiting(key) && !m_TwinsReadSoFar.contains(key))
+			{
+				return key;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	std::optional<ContentModel::TwinKey> ContentModel::FirstSearchUnderWay(const std::vector<TwinKey>& asked) const
+	{
+		for (const TwinKey& key : asked)
+		{
+			if (IsSearchWaiting(key) && m_TwinsReadSoFar.contains(key))
 			{
 				return key;
 			}
@@ -622,7 +640,7 @@ namespace Graphite {
 			return;
 		}
 
-		if (const std::optional<TwinKey> twin = FirstTwinWaiting(twinsAsked, false); twin.has_value())
+		if (const std::optional<TwinKey> twin = FirstUnstartedSearch(twinsAsked); twin.has_value())
 		{
 			StartTwin(*twin);
 			return;
@@ -644,7 +662,7 @@ namespace Graphite {
 			return;
 		}
 
-		if (const std::optional<TwinKey> twin = FirstTwinWaiting(twinsAsked, true); twin.has_value())
+		if (const std::optional<TwinKey> twin = FirstSearchUnderWay(twinsAsked); twin.has_value())
 		{
 			StartTwin(*twin);
 			return;

@@ -137,8 +137,10 @@ namespace Graphite {
 		bool IsWaiting(const ContentKey& key) const;
 		bool IsWaitingBranch(std::size_t branch) const;
 		std::optional<std::size_t> FirstWaitingBranch(const std::vector<std::size_t>& order) const;
-		// The first asked search not answered and not running: one not started yet, or one with slices already read.
-		std::optional<TwinKey> FirstTwinWaiting(const std::vector<TwinKey>& asked, bool started) const;
+		// Of the asked searches not answered and not running, the first not started yet, and the first with slices read.
+		std::optional<TwinKey> FirstUnstartedSearch(const std::vector<TwinKey>& asked) const;
+		std::optional<TwinKey> FirstSearchUnderWay(const std::vector<TwinKey>& asked) const;
+		bool IsSearchWaiting(const TwinKey& key) const;
 		bool IsTwinAsked(const TwinKey& key) const;
 
 		void StartNext(const std::set<std::size_t>& inView, std::optional<std::size_t> shown, const std::vector<TwinKey>& twinsAsked);
