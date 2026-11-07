@@ -14,9 +14,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <map>
 #include <optional>
 #include <queue>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -81,21 +83,6 @@ namespace Core {
 			return false;
 		}
 
-		std::unordered_set<std::string> PathsIn(git_diff* diff)
-		{
-			std::unordered_set<std::string> paths;
-			const std::size_t deltaCount = git_diff_num_deltas(diff);
-
-			for (std::size_t deltaIndex = 0; deltaIndex < deltaCount; ++deltaIndex)
-			{
-				const git_diff_delta* const delta = git_diff_get_delta(diff, deltaIndex);
-				paths.insert(TextOrEmpty(delta->old_file.path));
-				paths.insert(TextOrEmpty(delta->new_file.path));
-			}
-
-			return paths;
-		}
-
 		Result<TreeHandle> TreeOf(git_repository* handle, const Oid& commitId)
 		{
 			Result<CommitHandle> commit = LookupCommit(handle, commitId);
@@ -116,8 +103,264 @@ namespace Core {
 			return tree;
 		}
 
-		Result<std::unordered_set<std::string>> PathsChangedBetween(git_repository* handle, const Oid& older,
-																	const Oid& newer)
+		bool IsTreeEntry(const git_tree_entry* entry)
+		{
+			return git_tree_entry_type(entry) == GIT_OBJECT_TREE;
+		}
+
+		// Valid for as long as the tree holding the entry.
+		std::string_view NameOf(const git_tree_entry* entry)
+		{
+			const char* const name = git_tree_entry_name(entry);
+			return name != nullptr ? std::string_view{name} : std::string_view{};
+		}
+
+		// The same object at the same mode: nothing under the name differs, so a tree's subtree is not read.
+		bool IsSameEntry(const git_tree_entry* one, const git_tree_entry* other)
+		{
+			return git_tree_entry_filemode(one) == git_tree_entry_filemode(other) &&
+				   git_oid_equal(git_tree_entry_id(one), git_tree_entry_id(other)) != 0;
+		}
+
+		Result<TreeHandle> SubtreeOf(git_repository* handle, const git_tree_entry* entry)
+		{
+			TreeHandle tree;
+			git_error_clear();
+
+			if (const int treeResult = git_tree_lookup(Out(tree), handle, git_tree_entry_id(entry)); treeResult != 0)
+			{
+				return ObjectReadFailure(treeResult, std::format("cannot read the tree of {}", NameOf(entry)));
+			}
+
+			return tree;
+		}
+
+		// The tree an entry names; null for no entry and for one that names a file.
+		Result<TreeHandle> FolderOf(git_repository* handle, const git_tree_entry* entry)
+		{
+			if (entry == nullptr || !IsTreeEntry(entry))
+			{
+				return TreeHandle{};
+			}
+
+			return SubtreeOf(handle, entry);
+		}
+
+		// Null when the tree is null or has no entry of that name.
+		const git_tree_entry* EntryNamed(git_tree* tree, std::string_view name)
+		{
+			return tree != nullptr ? git_tree_entry_byname(tree, std::string{name}.c_str()) : nullptr;
+		}
+
+		std::string PathIn(const std::string& folder, std::string_view name)
+		{
+			return folder.empty() ? std::string{name} : folder + "/" + std::string{name};
+		}
+
+		// Every file an entry stands for at `path`, a diff's way: the entry itself, or every file its tree holds.
+		Result<void> AddFilesOf(git_repository* handle, const git_tree_entry* entry, const std::string& path,
+								std::unordered_set<std::string>& paths)
+		{
+			if (!IsTreeEntry(entry))
+			{
+				paths.insert(path);
+				return Result<void>{};
+			}
+
+			Result<TreeHandle> tree = SubtreeOf(handle, entry);
+
+			if (!tree.HasValue())
+			{
+				return std::move(tree).GetError();
+			}
+
+			const std::size_t count = git_tree_entrycount(tree.GetValue().get());
+
+			for (std::size_t index = 0; index < count; ++index)
+			{
+				const git_tree_entry* child = git_tree_entry_byindex(tree.GetValue().get(), index);
+
+				if (Result<void> added = AddFilesOf(handle, child, PathIn(path, NameOf(child)), paths);
+					!added.HasValue())
+				{
+					return added;
+				}
+			}
+
+			return Result<void>{};
+		}
+
+		// The files at which the two trees of a folder differ, as a diff of them lists them. Walks only into subtrees whose
+		// ids differ: a whole diff reads every tree of both. Either tree may be null, a folder only the other side has.
+		Result<void> AddPathsChanged(git_repository* handle, git_tree* older, git_tree* newer, const std::string& folder,
+									 std::unordered_set<std::string>& paths)
+		{
+			const std::size_t olderCount = older != nullptr ? git_tree_entrycount(older) : 0;
+
+			for (std::size_t index = 0; index < olderCount; ++index)
+			{
+				const git_tree_entry* const before = git_tree_entry_byindex(older, index);
+				const std::string_view name = NameOf(before);
+				const git_tree_entry* const after = EntryNamed(newer, name);
+
+				if (after != nullptr && IsSameEntry(before, after))
+				{
+					continue;
+				}
+
+				const std::string path = PathIn(folder, name);
+				Result<void> added = Result<void>{};
+
+				if (after != nullptr && IsTreeEntry(before) && IsTreeEntry(after))
+				{
+					Result<TreeHandle> beforeTree = SubtreeOf(handle, before);
+
+					if (!beforeTree.HasValue())
+					{
+						return std::move(beforeTree).GetError();
+					}
+
+					Result<TreeHandle> afterTree = SubtreeOf(handle, after);
+
+					if (!afterTree.HasValue())
+					{
+						return std::move(afterTree).GetError();
+					}
+
+					added = AddPathsChanged(handle, beforeTree.GetValue().get(), afterTree.GetValue().get(), path, paths);
+				}
+				else
+				{
+					// Gone, changed in place, or a file and a folder of one name: what either side holds there counts.
+					added = AddFilesOf(handle, before, path, paths);
+
+					if (added.HasValue() && after != nullptr)
+					{
+						added = AddFilesOf(handle, after, path, paths);
+					}
+				}
+
+				if (!added.HasValue())
+				{
+					return added;
+				}
+			}
+
+			const std::size_t newerCount = newer != nullptr ? git_tree_entrycount(newer) : 0;
+
+			for (std::size_t index = 0; index < newerCount; ++index)
+			{
+				const git_tree_entry* const after = git_tree_entry_byindex(newer, index);
+				const std::string_view name = NameOf(after);
+
+				if (EntryNamed(older, name) != nullptr)
+				{
+					continue;
+				}
+
+				if (Result<void> added = AddFilesOf(handle, after, PathIn(folder, name), paths); !added.HasValue())
+				{
+					return added;
+				}
+			}
+
+			return Result<void>{};
+		}
+
+		// The paths that name one entry of a folder, or lie under it, as the rest of each path below that entry.
+		struct PathsAtName
+		{
+			bool NamesTheEntry = false;
+			std::vector<std::string_view> Under;
+		};
+
+		std::map<std::string_view, PathsAtName> PathsByFirstName(const std::vector<std::string_view>& paths)
+		{
+			std::map<std::string_view, PathsAtName> byName;
+
+			for (const std::string_view path : paths)
+			{
+				const std::size_t slash = path.find('/');
+
+				if (slash == std::string_view::npos)
+				{
+					byName[path].NamesTheEntry = true;
+				}
+				else if (slash + 1 < path.size())
+				{
+					byName[path.substr(0, slash)].Under.push_back(path.substr(slash + 1));
+				}
+				else
+				{
+					byName[path.substr(0, slash)].NamesTheEntry = true;
+				}
+			}
+
+			return byName;
+		}
+
+		// Whether the two trees of a folder differ at any of `paths`, relative to it: each names an entry and what lies
+		// under it, as written. Walks only into subtrees whose ids differ and which some path lies in. Either tree may be
+		// null, a folder only the other side has.
+		Result<bool> DifferAt(git_repository* handle, git_tree* one, git_tree* other, const std::vector<std::string_view>& paths)
+		{
+			if (one != nullptr && other != nullptr && git_oid_equal(git_tree_id(one), git_tree_id(other)) != 0)
+			{
+				return false;
+			}
+
+			for (const auto& [name, atName] : PathsByFirstName(paths))
+			{
+				const git_tree_entry* const oneEntry = EntryNamed(one, name);
+				const git_tree_entry* const otherEntry = EntryNamed(other, name);
+
+				if (oneEntry == nullptr && otherEntry == nullptr)
+				{
+					continue;
+				}
+
+				if (oneEntry != nullptr && otherEntry != nullptr && IsSameEntry(oneEntry, otherEntry))
+				{
+					continue;
+				}
+
+				if (atName.NamesTheEntry)
+				{
+					return true;
+				}
+
+				// Only what lies under the name: nothing does under a file.
+				Result<TreeHandle> oneFolder = FolderOf(handle, oneEntry);
+
+				if (!oneFolder.HasValue())
+				{
+					return std::move(oneFolder).GetError();
+				}
+
+				Result<TreeHandle> otherFolder = FolderOf(handle, otherEntry);
+
+				if (!otherFolder.HasValue())
+				{
+					return std::move(otherFolder).GetError();
+				}
+
+				if (oneFolder.GetValue() == nullptr && otherFolder.GetValue() == nullptr)
+				{
+					continue;
+				}
+
+				const Result<bool> differ = DifferAt(handle, oneFolder.GetValue().get(), otherFolder.GetValue().get(), atName.Under);
+
+				if (!differ.HasValue() || differ.GetValue())
+				{
+					return differ;
+				}
+			}
+
+			return false;
+		}
+
+		Result<std::unordered_set<std::string>> ChangedPathSet(git_repository* handle, const Oid& older, const Oid& newer)
 		{
 			Result<TreeHandle> olderTree = TreeOf(handle, older);
 
@@ -133,17 +376,33 @@ namespace Core {
 				return std::move(newerTree).GetError();
 			}
 
-			DiffHandle diff;
-			git_error_clear();
+			std::unordered_set<std::string> paths;
+			const std::string root;
 
-			if (const int diffResult =
-					git_diff_tree_to_tree(Out(diff), handle, olderTree.GetValue().get(), newerTree.GetValue().get(), nullptr);
-				diffResult != 0)
+			if (Result<void> added = AddPathsChanged(handle, olderTree.GetValue().get(), newerTree.GetValue().get(), root, paths);
+				!added.HasValue())
 			{
-				return ObjectReadFailure(diffResult, std::format("cannot compare {} with {}", older.ShortHex(), newer.ShortHex()));
+				return std::move(added).GetError();
 			}
 
-			return PathsIn(diff.get());
+			return paths;
+		}
+
+		// The paths a walk of two trees is kept to, as views: an empty path would name the whole tree.
+		std::vector<std::string_view> NonEmptyViewsOf(const std::vector<std::string>& paths)
+		{
+			std::vector<std::string_view> views;
+			views.reserve(paths.size());
+
+			for (const std::string& path : paths)
+			{
+				if (!path.empty())
+				{
+					views.push_back(path);
+				}
+			}
+
+			return views;
 		}
 
 		// The branch's paths as the diff of each line commit is kept to: never empty, since an empty list keeps every path.
@@ -496,7 +755,7 @@ namespace Core {
 			return RepositoryNotOpen();
 		}
 
-		Result<std::unordered_set<std::string>> branchPaths = PathsChangedBetween(m_Handle.get(), since, branchTip);
+		Result<std::unordered_set<std::string>> branchPaths = ChangedPathSet(m_Handle.get(), since, branchTip);
 
 		if (!branchPaths.HasValue())
 		{
@@ -547,5 +806,56 @@ namespace Core {
 		}
 
 		return touching;
+	}
+
+	Result<std::vector<std::string>> Repository::PathsChangedBetween(const Oid& older, const Oid& newer) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return RepositoryNotOpen();
+		}
+
+		Result<std::unordered_set<std::string>> changed = ChangedPathSet(m_Handle.get(), older, newer);
+
+		if (!changed.HasValue())
+		{
+			return std::move(changed).GetError();
+		}
+
+		// In order, so libgit2's own sort of a path list made from it has nothing to move.
+		std::vector<std::string> paths = PathListOf(changed.GetValue());
+		std::sort(paths.begin(), paths.end());
+		return paths;
+	}
+
+	Result<bool> Repository::TreesDifferAt(const Oid& from, const Oid& to, const std::vector<std::string>& paths) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return RepositoryNotOpen();
+		}
+
+		const std::vector<std::string_view> pathList = NonEmptyViewsOf(paths);
+
+		if (pathList.empty())
+		{
+			return false;
+		}
+
+		Result<TreeHandle> fromTree = TreeOf(m_Handle.get(), from);
+
+		if (!fromTree.HasValue())
+		{
+			return std::move(fromTree).GetError();
+		}
+
+		Result<TreeHandle> toTree = TreeOf(m_Handle.get(), to);
+
+		if (!toTree.HasValue())
+		{
+			return std::move(toTree).GetError();
+		}
+
+		return DifferAt(m_Handle.get(), fromTree.GetValue().get(), toTree.GetValue().get(), pathList);
 	}
 }

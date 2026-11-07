@@ -37,6 +37,13 @@ namespace Core {
 								 AncestryGraph::Index to);
 	LineDistance MeasureDistance(const AncestryGraph& graph, AncestryGraph::Index from, AncestryGraph::Index to);
 
+	// Where `tip` forked from the history `reached` marks (CommitsReachableFrom a line's tip): of the commits that history
+	// holds and that tip's own commits, those it does not hold, have for a parent, the one of the highest generation. No
+	// commit both reach descends from it, so it is a merge base of the two, the only one unless their histories cross.
+	// Empty when that history holds tip itself, and when tip's history never meets it.
+	std::optional<AncestryGraph::Index> ForkWith(const AncestryGraph& graph, std::span<const std::uint32_t> generations,
+												 const std::vector<bool>& reached, AncestryGraph::Index tip);
+
 	// For each tip, whether it reaches `commit` (a tip reaches itself). A tip's walk skips commits whose
 	// generation is below the commit's, and commits an earlier tip's walk already found not to lead to it.
 	std::vector<bool> TipsHolding(const AncestryGraph& graph, std::span<const std::uint32_t> generations, AncestryGraph::Index commit,

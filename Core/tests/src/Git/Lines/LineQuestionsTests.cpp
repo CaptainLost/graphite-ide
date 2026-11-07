@@ -7,6 +7,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -201,4 +203,70 @@ TEST_CASE("Lines: a branch merged through a second parent on a long line is not 
 	CHECK(distance.Behind == static_cast<std::size_t>(kLineLength - 10 + 1));
 	CHECK(distance.ForkTime == GraphBuilder::Seconds(kLineLength + 1));
 	CHECK_FALSE(distance.ForkOnLine);
+}
+
+namespace {
+
+	// The name of the commit where `tip` forked from the history `lineTip` reaches; empty for none.
+	std::optional<std::string_view> ForkName(const GraphBuilder& builder, std::string_view tip, std::string_view lineTip,
+											 const std::vector<std::string_view>& names)
+	{
+		const Core::AncestryGraph graph = builder.Graph();
+		const Index line = graph.Find(OidOf(lineTip));
+		const std::vector<bool> reached = Core::CommitsReachableFrom(graph, std::span<const Index>{&line, 1});
+		const std::optional<Index> fork = Core::ForkWith(graph, Core::GenerationsOf(graph), reached, graph.Find(OidOf(tip)));
+
+		if (!fork.has_value())
+		{
+			return std::nullopt;
+		}
+
+		for (const std::string_view name : names)
+		{
+			if (graph.IdOf(*fork) == OidOf(name))
+			{
+				return name;
+			}
+		}
+
+		return std::string_view{"a commit not named"};
+	}
+}
+
+TEST_CASE("Lines: a branch forks where its own commits meet the line")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 5, std::nullopt, 0, {});
+	builder.Commit("b1", {"c2"}, 10);
+	builder.Commit("b2", {"b1"}, 11);
+
+	const std::vector<std::string_view> names{"c1", "c2", "c3", "c4", "c5", "b1", "b2"};
+	CHECK(ForkName(builder, "b2", "c5", names) == std::optional<std::string_view>{"c2"});
+	CHECK(ForkName(builder, "b2", "c2", names) == std::optional<std::string_view>{"c2"});
+}
+
+TEST_CASE("Lines: a branch that merged its line in forks at the newest line commit it merged")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 5, std::nullopt, 0, {});
+	builder.Commit("b1", {"c2"}, 10);
+	builder.Commit("merge", {"b1", "c4"}, 11);
+	builder.Commit("b3", {"merge"}, 12);
+
+	const std::vector<std::string_view> names{"c1", "c2", "c3", "c4", "c5", "b1", "merge", "b3"};
+	CHECK(ForkName(builder, "b3", "c5", names) == std::optional<std::string_view>{"c4"});
+
+	// Against an older tip of the line, the merge's line commits past it are the branch's own.
+	CHECK(ForkName(builder, "b3", "c3", names) == std::optional<std::string_view>{"c3"});
+}
+
+TEST_CASE("Lines: a branch the line holds, and one with no common history, fork nowhere")
+{
+	GraphBuilder builder;
+	builder.Chain("c", 3, std::nullopt, 0, {});
+	builder.Chain("o", 2, std::nullopt, 0, {});
+
+	const std::vector<std::string_view> names{"c1", "c2", "c3", "o1", "o2"};
+	CHECK_FALSE(ForkName(builder, "c2", "c3", names).has_value());
+	CHECK_FALSE(ForkName(builder, "o2", "c3", names).has_value());
 }

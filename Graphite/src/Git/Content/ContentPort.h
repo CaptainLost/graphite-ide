@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -33,5 +35,15 @@ namespace Graphite {
 		virtual Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t repository, const Core::Oid& commit,
 															 const Core::Oid& lineTip, std::size_t budget,
 															 Core::PatchIdCache& patchIds) = 0;
+
+		// The paths at which two commits' trees differ, in order (Repository::PathsChangedBetween): from trees alone, so a
+		// blobless clone answers. Refused like CheckContent.
+		virtual Core::Result<std::vector<std::string>> PathsChangedBetween(std::uint64_t repository, const Core::Oid& older,
+																		   const Core::Oid& newer) = 0;
+
+		// Whether two commits' trees differ at any of `paths`, taken as written (Repository::TreesDifferAt). Refused like
+		// CheckContent.
+		virtual Core::Result<bool> TreesDifferAt(std::uint64_t repository, const Core::Oid& from, const Core::Oid& to,
+												 const std::vector<std::string>& paths) = 0;
 	};
 }

@@ -32,6 +32,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -52,8 +53,11 @@ namespace Graphite {
 	// one check at a time on the shared queue, only while the Git window is on screen, the shown branch and the rows in
 	// view first. A branch found merged against an earlier line tip stays merged, unchecked, while the line still holds the
 	// squash's landing or every copy of the rebase: the line's later edits to the same lines would make a new check say
-	// no. The verdicts and the patch ids the checks read are kept in the cache files of the read's line store, written at
-	// most once every kSecondsBetweenSaves. UI thread only, but for the jobs it submits.
+	// no. A verdict of not merged or unknown carries to the line's new tip when that tip descends from the earlier one and
+	// the move changed none of the branch's paths. Until one job has resolved them, every such earlier verdict stands for
+	// the new tip, so a fetch makes no known mark pending. The verdicts and the patch ids the checks read are kept in the
+	// cache files of the read's line store, written at most once every kSecondsBetweenSaves. UI thread only, but for the
+	// jobs it submits.
 	// WARNING: Every job captures `this`; the owner declares this before the queue behind the submitter.
 	class ContentModel : Core::NonCopyable
 	{
@@ -122,7 +126,16 @@ namespace Graphite {
 
 		void LoadStore(const LineStorePaths& store);
 		void IndexBranches();
-		void FindVerdictsToRecheck();
+
+		// The pair each branch of the followed read had in `before`, by its full name.
+		using PairsByName = std::unordered_map<std::string_view, ContentKey>;
+		PairsByName PairsOf(const LineRead& before) const;
+
+		// Every candidate pair with no verdict whose branch has one against an earlier tip of its line: a merged one to
+		// recheck, any other to carry. `before` holds the pairs of the read followed until now.
+		void FindVerdictsToResolve(const PairsByName& before);
+		std::optional<CarryAsk> EarlierVerdictOf(const ContentKey& key, const std::optional<ContentKey>& before) const;
+
 		void RebuildSources();
 		void AddSourcesOf(const std::string& branch, const Core::ContentVerdict& verdict);
 
@@ -140,11 +153,11 @@ namespace Graphite {
 		bool IsTwinAsked(const TwinKey& key) const;
 
 		void StartNext(const std::set<std::size_t>& inView, std::optional<std::size_t> shown, const std::vector<TwinKey>& twinsAsked);
-		void StartRecheck();
+		void StartResolve();
 		void StartCheck(std::size_t branch);
 		void StartTwin(const TwinKey& key);
 
-		void LandRecheck(const std::vector<RememberedVerdict>& held);
+		void LandResolve(const ResolvedVerdicts& resolved);
 		void LandCheck(const ContentKey& key, const std::string& lineName, const Core::Result<Core::ContentVerdict>& verdict,
 					   bool patchIdsGrew);
 		void LandTwin(const TwinKey& key, std::size_t budget, const Core::Result<Core::PatchTwinSearch>& twin, bool patchIdsGrew);
@@ -174,6 +187,10 @@ namespace Graphite {
 		std::set<ContentKey> m_Failed;          // the check failed: not saved, asked again in the next session
 		std::set<ContentKey> m_RecheckWaiting;  // found merged against another line tip; does this one hold it?
 		std::set<ContentKey> m_RecheckRunning;
+
+		// Not merged or unknown against an earlier tip of the line; did the line's move leave the branch's paths alone?
+		std::map<ContentKey, CarryAsk> m_CarryWaiting;
+		std::map<ContentKey, CarryAsk> m_CarryRunning;
 		bool m_EveryCandidateAsked = false;     // of the followed read
 
 		std::map<TwinKey, TwinMark> m_Twins;    // answered

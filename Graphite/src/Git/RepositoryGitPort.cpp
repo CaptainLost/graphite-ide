@@ -1396,4 +1396,31 @@ namespace Graphite {
 
 		return opened.GetValue()->FindPatchTwin(commit, lineTip, budget, patchIds);
 	}
+
+	// On the handle the checks use, which the worker holds already; trees are only read.
+	Core::Result<std::vector<std::string>> RepositoryGitPort::PathsChangedBetween(std::uint64_t repository, const Core::Oid& older,
+																				  const Core::Oid& newer)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return opened.GetValue()->PathsChangedBetween(older, newer);
+	}
+
+	Core::Result<bool> RepositoryGitPort::TreesDifferAt(std::uint64_t repository, const Core::Oid& from, const Core::Oid& to,
+														const std::vector<std::string>& paths)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return opened.GetValue()->TreesDifferAt(from, to, paths);
+	}
 }

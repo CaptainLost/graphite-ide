@@ -15,6 +15,7 @@
 #include "Core/Git/Lines/LineQuestions.h"
 #include "Core/Git/Repository.h"
 
+#include "DeferredJobs.h"
 #include "TempDirectory.h"
 
 #include <algorithm>
@@ -23,10 +24,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -299,6 +303,16 @@ namespace {
 		}
 
 		Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t, const Core::Oid&, const Core::Oid&, std::size_t, Core::PatchIdCache&) override
+		{
+			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
+		}
+
+		Core::Result<std::vector<std::string>> PathsChangedBetween(std::uint64_t, const Core::Oid&, const Core::Oid&) override
+		{
+			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
+		}
+
+		Core::Result<bool> TreesDifferAt(std::uint64_t, const Core::Oid&, const Core::Oid&, const std::vector<std::string>&) override
 		{
 			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
 		}
@@ -678,6 +692,253 @@ namespace {
 				"); landing merges ", landingTime, " ms (", tried, " tried)");
 	}
 
+	// The trees questions of a carry, asked of one handle, with the time each kind takes; nothing else is asked.
+	class TimedTreesPort final : public ContentPort
+	{
+	public:
+		explicit TimedTreesPort(const Core::Repository& repository) : m_Repository(repository) {}
+
+		std::uint64_t RepositoryNow() override { return 1; }
+
+		Core::Result<Core::ContentVerdict> CheckContent(std::uint64_t, const Core::Oid&, const Core::Oid&, Core::PatchIdCache&) override
+		{
+			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
+		}
+
+		Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t, const Core::Oid&, const Core::Oid&, std::size_t, Core::PatchIdCache&) override
+		{
+			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
+		}
+
+		Core::Result<std::vector<std::string>> PathsChangedBetween(std::uint64_t, const Core::Oid& older, const Core::Oid& newer) override
+		{
+			const auto start = std::chrono::steady_clock::now();
+			Core::Result<std::vector<std::string>> paths = m_Repository.PathsChangedBetween(older, newer);
+			LineMilliseconds += Milliseconds(std::chrono::steady_clock::now() - start);
+			++LineDiffs;
+			LinePaths += paths.HasValue() ? paths.GetValue().size() : 0;
+			return paths;
+		}
+
+		Core::Result<bool> TreesDifferAt(std::uint64_t, const Core::Oid& from, const Core::Oid& to, const std::vector<std::string>& paths) override
+		{
+			const auto start = std::chrono::steady_clock::now();
+			Core::Result<bool> differ = m_Repository.TreesDifferAt(from, to, paths);
+			BranchMilliseconds += Milliseconds(std::chrono::steady_clock::now() - start);
+			++BranchDiffs;
+			BranchFailures += differ.HasValue() ? 0 : 1;
+			return differ;
+		}
+
+		double LineMilliseconds = 0.0;
+		std::size_t LineDiffs = 0;
+		std::size_t LinePaths = 0;
+		double BranchMilliseconds = 0.0;
+		std::size_t BranchDiffs = 0;
+		std::size_t BranchFailures = 0;
+
+	private:
+		const Core::Repository& m_Repository;
+	};
+
+	// The commit `steps` first parents below `tip`; empty when its chain is shorter.
+	std::optional<Core::Oid> FirstParentsBelow(const Core::AncestryGraph& graph, const Core::Oid& tip, std::size_t steps)
+	{
+		Core::AncestryGraph::Index commit = graph.Find(tip);
+
+		for (std::size_t step = 0; step < steps && commit != Core::AncestryGraph::kNoCommit; ++step)
+		{
+			const std::span<const Core::AncestryGraph::Index> parents = graph.ParentsOf(commit);
+			commit = parents.empty() ? Core::AncestryGraph::kNoCommit : parents.front();
+		}
+
+		if (commit == Core::AncestryGraph::kNoCommit)
+		{
+			return std::nullopt;
+		}
+
+		return graph.IdOf(commit);
+	}
+
+	struct MarkCounts
+	{
+		std::size_t Known = 0;
+		std::size_t Pending = 0;
+	};
+
+	// One line per candidate compared with one of `lineTips`: its pair and whether its verdict is known.
+	void WriteMarks(std::ofstream& out, const std::string& run, const ContentModel& model, const LineRead& read,
+					const std::set<Core::Oid>& lineTips)
+	{
+		for (const Core::BranchLine& line : read.Model.Branches)
+		{
+			const std::optional<ContentKey> key = ContentKeyOf(read, line);
+
+			if (IsContentCandidate(line) && key.has_value() && lineTips.contains(key->LineTip))
+			{
+				const bool pending = model.KnownMarkOf(line).State == ContentMark::State::Pending;
+				out << run << '\t' << key->BranchTip.ToHex() << '\t' << key->LineTip.ToHex() << '\t' << (pending ? "checked" : "carried")
+					<< '\n';
+			}
+		}
+	}
+
+	// Of the candidates compared with one of `lineTips`.
+	MarkCounts CountMarks(const ContentModel& model, const LineRead& read, const std::set<Core::Oid>& lineTips)
+	{
+		MarkCounts counts;
+
+		for (const Core::BranchLine& line : read.Model.Branches)
+		{
+			const std::optional<ContentKey> key = ContentKeyOf(read, line);
+
+			if (!IsContentCandidate(line) || !key.has_value() || !lineTips.contains(key->LineTip))
+			{
+				continue;
+			}
+
+			if (model.KnownMarkOf(line).State == ContentMark::State::Pending)
+			{
+				++counts.Pending;
+			}
+			else
+			{
+				++counts.Known;
+			}
+		}
+
+		return counts;
+	}
+
+	// The line tip the most candidates are compared with.
+	Core::Oid MostComparedLineTip(const LineRead& read)
+	{
+		std::map<Core::Oid, std::size_t> candidatesByLineTip;
+		Core::Oid most;
+		std::size_t mostCount = 0;
+
+		for (const Core::BranchLine& line : read.Model.Branches)
+		{
+			const std::optional<ContentKey> key = ContentKeyOf(read, line);
+
+			if (!IsContentCandidate(line) || !key.has_value())
+			{
+				continue;
+			}
+
+			const std::size_t count = ++candidatesByLineTip[key->LineTip];
+
+			if (count > mostCount)
+			{
+				mostCount = count;
+				most = key->LineTip;
+			}
+		}
+
+		return most;
+	}
+
+	// A fetch, simulated: the store holds a not-merged verdict for every candidate against its line tip set back `steps`
+	// first parents, as a read made before the fetch left it; a new model then follows the read as it is. Every line
+	// moves, or only the one the most candidates are compared with (`mainLineOnly`), the others' verdicts being their
+	// current pair's. Times the model's Follow on the UI thread and the one job that carries the verdicts, and counts
+	// what carries and what goes back to the checks. The verdicts' outcome plays no part in whether they carry.
+	void TimeCarry(const Core::Repository& repository, const LineRead& read, std::size_t steps, bool mainLineOnly, std::ofstream* out)
+	{
+		ContentCache earlier;
+		std::set<Core::Oid> lineTips;
+		std::size_t chainTooShort = 0;
+		const Core::Oid mainLineTip = MostComparedLineTip(read);
+
+		for (const std::size_t branch : OrderCandidates(read, {}, std::nullopt))
+		{
+			const std::optional<ContentKey> key = ContentKeyOf(read, read.Model.Branches[branch]);
+
+			if (!key.has_value())
+			{
+				continue;
+			}
+
+			if (mainLineOnly && key->LineTip != mainLineTip)
+			{
+				earlier.Verdicts[*key] = Core::ContentVerdict{};
+				continue;
+			}
+
+			const std::optional<Core::Oid> before = FirstParentsBelow(*read.Graph, key->LineTip, steps);
+
+			if (!before.has_value())
+			{
+				++chainTooShort;
+				continue;
+			}
+
+			earlier.Verdicts[ContentKey{key->BranchTip, *before}] = Core::ContentVerdict{};
+			lineTips.insert(key->LineTip);
+		}
+
+		REQUIRE(SaveContentCache(read.Store.Content, earlier).HasValue());
+
+		TimedTreesPort port{repository};
+		DeferredJobs jobs;
+		ContentModel model{port, jobs.Submitter()};
+		const Core::Ref<const LineRead> followed = Core::CreateRef<const LineRead>(read);
+
+		const auto followStart = std::chrono::steady_clock::now();
+		model.Follow(followed);
+		const double follow = Milliseconds(std::chrono::steady_clock::now() - followStart);
+		const MarkCounts beforeTheJob = CountMarks(model, *followed, lineTips);
+
+		model.SetOnScreen(true);
+		model.OnUpdate(Core::Timestep{});
+		REQUIRE(jobs.Count() == 1);
+
+		const auto jobStart = std::chrono::steady_clock::now();
+		jobs.RunAll();
+		const double job = Milliseconds(std::chrono::steady_clock::now() - jobStart);
+
+		// Landing it starts the first check, which is not run.
+		model.OnUpdate(Core::Timestep{});
+		const MarkCounts afterTheJob = CountMarks(model, *followed, lineTips);
+
+		if (out != nullptr)
+		{
+			WriteMarks(*out, std::format("{}-{}", mainLineOnly ? "main" : "every", steps), model, *followed, lineTips);
+		}
+
+		MESSAGE("carry, ", std::string{mainLineOnly ? "the main line" : "every line"}, " set back ", steps, " first parents: ",
+				beforeTheJob.Known + beforeTheJob.Pending,
+				" verdicts over ", lineTips.size(),
+				" line tips (", chainTooShort, " candidates on a shorter chain left out); Follow ", follow, " ms with ", beforeTheJob.Pending,
+				" pending; the job ", job, " ms: ", port.LineDiffs, " line diffs ", port.LineMilliseconds, " ms (", port.LinePaths,
+				" paths), ", port.BranchDiffs, " branch diffs ", port.BranchMilliseconds, " ms (", port.BranchFailures, " failed); ",
+				afterTheJob.Known, " carried, ", afterTheJob.Pending, " back to the checks");
+	}
+
+	// With GRAPHITE_CONTENT_CARRY=1: TimeCarry for the lines moved by 1, 20 and 200 first-parent commits, no check run.
+	// GRAPHITE_CONTENT_CARRY_OUT=<tsv file>: every verdict's answer, carried or checked again.
+	void RunCarryTimings(const std::string& repositoryPath, const LineRead& read)
+	{
+		const Core::Result<Core::Repository> repository = Core::Repository::Open(Core::FromUtf8(repositoryPath), Core::ObjectWrites::InMemory);
+		REQUIRE(repository.HasValue());
+
+		std::ofstream out;
+
+		if (const std::string outPath = EnvironmentText("GRAPHITE_CONTENT_CARRY_OUT"); !outPath.empty())
+		{
+			out.open(Core::FromUtf8(outPath), std::ios::binary | std::ios::trunc);
+			REQUIRE(out.is_open());
+		}
+
+		for (const bool mainLineOnly : {true, false})
+		{
+			for (const std::size_t steps : {std::size_t{1}, std::size_t{20}, std::size_t{200}})
+			{
+				TimeCarry(repository.GetValue(), read, steps, mainLineOnly, out.is_open() ? &out : nullptr);
+			}
+		}
+	}
+
 	// With GRAPHITE_CONTENT=1: every candidate's check, then what the parked timings of the content model ask.
 	// GRAPHITE_CONTENT_PROFILE=<full name>[;<full name>…] times the steps of those branches' checks alone instead.
 	void RunContentAcceptance(const std::string& repositoryPath, const LineRead& read)
@@ -728,8 +989,9 @@ namespace {
 // Skipped by default: it needs a real repository. Run with
 //   GRAPHITE_LINES_REPO=<repository> [GRAPHITE_LINES_OUT=<tsv file>] GraphiteTests -tc="Lines: acceptance*" --no-skip
 // With GRAPHITE_CONTENT=1 it also checks every candidate for a merge by content and times what the content model asks
-// (GRAPHITE_CONTENT_OUT=<tsv file>: one line per check, written as it ends). The repository is opened to keep the
-// checks' objects in memory, so nothing is written into it.
+// (GRAPHITE_CONTENT_OUT=<tsv file>: one line per check, written as it ends). With GRAPHITE_CONTENT_CARRY=1 it times the
+// carry of the verdicts after a fetch moves the lines by 1, 20 and 200 commits, checking nothing. The repository is
+// opened to keep the checks' objects in memory, so nothing is written into it.
 TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest::skip())
 {
 	const std::string repositoryPath = EnvironmentText("GRAPHITE_LINES_REPO");
@@ -812,5 +1074,10 @@ TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest
 	if (EnvironmentText("GRAPHITE_CONTENT") == "1")
 	{
 		RunContentAcceptance(repositoryPath, read);
+	}
+
+	if (EnvironmentText("GRAPHITE_CONTENT_CARRY") == "1")
+	{
+		RunCarryTimings(repositoryPath, read);
 	}
 }

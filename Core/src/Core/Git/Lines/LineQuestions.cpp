@@ -277,6 +277,43 @@ namespace Core {
 		return MeasureDistance(graph, GenerationsOf(graph), from, to);
 	}
 
+	// Walks tip's own commits alone: a branch's own history is short beside its line's.
+	std::optional<Index> ForkWith(const AncestryGraph& graph, std::span<const std::uint32_t> generations, const std::vector<bool>& reached,
+								  Index tip)
+	{
+		if (tip >= reached.size() || reached[tip])
+		{
+			return std::nullopt;
+		}
+
+		std::optional<Index> fork;
+		std::unordered_set<Index> seen{tip};
+		std::vector<Index> pending{tip};
+
+		while (!pending.empty())
+		{
+			const Index commit = pending.back();
+			pending.pop_back();
+
+			for (const Index parent : graph.ParentsOf(commit))
+			{
+				if (!reached[parent])
+				{
+					if (seen.insert(parent).second)
+					{
+						pending.push_back(parent);
+					}
+				}
+				else if (!fork.has_value() || generations[parent] > generations[*fork])
+				{
+					fork = parent;
+				}
+			}
+		}
+
+		return fork;
+	}
+
 	std::vector<bool> TipsHolding(const AncestryGraph& graph, std::span<const std::uint32_t> generations, Index commit,
 								  std::span<const Index> tips)
 	{

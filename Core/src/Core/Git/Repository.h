@@ -284,6 +284,15 @@ namespace Core {
 		Result<std::vector<Oid>> LineCommitsTouchingBranch(const Oid& lineTip, const Oid& since, const Oid& branchTip,
 														   std::size_t chainBudget, std::size_t mostCommits) const;
 
+		// The paths at which the two commits' trees differ, sorted: a renamed file counts at both its paths, since no
+		// rename is detected. Reads trees only, never a file's contents. NotFound when a commit or a tree is missing.
+		Result<std::vector<std::string>> PathsChangedBetween(const Oid& older, const Oid& newer) const;
+
+		// Whether the two commits' trees differ at any of `paths`, each a file's or a directory's path taken as written (no
+		// pattern is expanded), so only the trees those paths lie in are read. False for no paths. Reads trees only.
+		// NotFound when a commit or a tree is missing.
+		Result<bool> TreesDifferAt(const Oid& from, const Oid& to, const std::vector<std::string>& paths) const;
+
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
 			return m_WorkingDirectory;

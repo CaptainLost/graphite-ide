@@ -44,6 +44,22 @@ namespace Graphite {
 			return ContentMark{.State = ContentMark::State::Known, .Verdict = verdict};
 		}
 
+		// A merged verdict is remembered by its branch tip and rechecked against a moved line instead.
+		bool CanCarry(const Core::ContentVerdict& verdict)
+		{
+			return verdict.Outcome != Core::ContentOutcome::Merged;
+		}
+
+		// The earlier pairs of the verdicts a moved line has not resolved yet: a session that ends first carries them in the
+		// next.
+		void KeepEarlierPairsOf(const std::map<ContentKey, CarryAsk>& asks, ContentCache& kept)
+		{
+			for (const auto& [key, ask] : asks)
+			{
+				kept.Verdicts[ContentKey{.BranchTip = key.BranchTip, .LineTip = ask.EarlierLineTip}] = ask.Verdict;
+			}
+		}
+
 		std::unordered_map<std::string_view, std::size_t> BranchesByName(const LineRead& read)
 		{
 			std::unordered_map<std::string_view, std::size_t> branches;
@@ -154,6 +170,8 @@ namespace Graphite {
 		m_Failed.clear();
 		m_RecheckWaiting.clear();
 		m_RecheckRunning.clear();
+		m_CarryWaiting.clear();
+		m_CarryRunning.clear();
 		m_EveryCandidateAsked = false;
 		m_Twins.clear();
 		m_TwinsReadSoFar.clear();
@@ -186,13 +204,34 @@ namespace Graphite {
 			LoadStore(read->Store);
 		}
 
+		// WARNING: The pairs view into the names of the read before, held here until they are used.
+		const Core::Ref<const LineRead> before = m_Read;
+		const PairsByName pairsBefore = before != nullptr && read != nullptr ? PairsOf(*before) : PairsByName{};
+
 		CarryAsksTo(read);
 		m_Read = std::move(read);
 
 		m_EveryCandidateAsked = false;
 		IndexBranches();
-		FindVerdictsToRecheck();
+		FindVerdictsToResolve(pairsBefore);
 		RebuildSources();
+	}
+
+	ContentModel::PairsByName ContentModel::PairsOf(const LineRead& before) const
+	{
+		PairsByName pairs;
+
+		for (const Core::BranchLine& line : before.Model.Branches)
+		{
+			const std::optional<ContentKey> key = ContentKeyOf(before, line);
+
+			if (IsContentCandidate(line) && key.has_value())
+			{
+				pairs.emplace(before.Refs[line.Ref].FullName, *key);
+			}
+		}
+
+		return pairs;
 	}
 
 	void ContentModel::CarryAsksTo(const Core::Ref<const LineRead>& next)
@@ -256,9 +295,10 @@ namespace Graphite {
 		}
 	}
 
-	void ContentModel::FindVerdictsToRecheck()
+	void ContentModel::FindVerdictsToResolve(const PairsByName& before)
 	{
 		m_RecheckWaiting.clear();
+		m_CarryWaiting.clear();
 
 		if (m_Read == nullptr)
 		{
@@ -269,11 +309,54 @@ namespace Graphite {
 		{
 			const std::optional<ContentKey> key = KeyOf(line);
 
-			if (IsContentCandidate(line) && key.has_value() && IsWaiting(*key) && m_Cache.Found.contains(key->BranchTip))
+			if (!IsContentCandidate(line) || !key.has_value() || !IsWaiting(*key))
+			{
+				continue;
+			}
+
+			if (m_Cache.Found.contains(key->BranchTip))
 			{
 				m_RecheckWaiting.insert(*key);
+				continue;
+			}
+
+			const PairsByName::const_iterator pairBefore = before.find(m_Read->Refs[line.Ref].FullName);
+			const std::optional<ContentKey> keyBefore =
+				pairBefore != before.end() ? std::optional<ContentKey>{pairBefore->second} : std::nullopt;
+
+			if (std::optional<CarryAsk> ask = EarlierVerdictOf(*key, keyBefore); ask.has_value())
+			{
+				m_CarryWaiting.emplace(*key, std::move(*ask));
 			}
 		}
+	}
+
+	std::optional<CarryAsk> ContentModel::EarlierVerdictOf(const ContentKey& key, const std::optional<ContentKey>& before) const
+	{
+		// The read before's pair first: the tip the line had until now.
+		if (before.has_value() && before->BranchTip == key.BranchTip && before->LineTip != key.LineTip)
+		{
+			const std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.find(*before);
+
+			if (verdict != m_Cache.Verdicts.end() && CanCarry(verdict->second))
+			{
+				return CarryAsk{.Key = key, .EarlierLineTip = before->LineTip, .Verdict = verdict->second};
+			}
+		}
+
+		// Else one kept for the branch tip against another line tip, as the file of an earlier session holds it.
+		const ContentKey first{.BranchTip = key.BranchTip, .LineTip = Core::Oid{}};
+
+		for (std::map<ContentKey, Core::ContentVerdict>::const_iterator verdict = m_Cache.Verdicts.lower_bound(first);
+			 verdict != m_Cache.Verdicts.end() && verdict->first.BranchTip == key.BranchTip; ++verdict)
+		{
+			if (verdict->first.LineTip != key.LineTip && CanCarry(verdict->second))
+			{
+				return CarryAsk{.Key = key, .EarlierLineTip = verdict->first.LineTip, .Verdict = verdict->second};
+			}
+		}
+
+		return std::nullopt;
 	}
 
 	void ContentModel::RebuildSources()
@@ -320,6 +403,16 @@ namespace Graphite {
 			return found != m_Cache.Found.end() ? &found->second.Verdict : nullptr;
 		}
 
+		for (const std::map<ContentKey, CarryAsk>* carries : {&m_CarryWaiting, &m_CarryRunning})
+		{
+			const std::map<ContentKey, CarryAsk>::const_iterator carry = carries->find(key);
+
+			if (carry != carries->end())
+			{
+				return &carry->second.Verdict;
+			}
+		}
+
 		return nullptr;
 	}
 
@@ -360,8 +453,9 @@ namespace Graphite {
 	{
 		const bool answered = m_Cache.Verdicts.contains(key) || m_Failed.contains(key);
 		const bool rechecking = m_RecheckWaiting.contains(key) || m_RecheckRunning.contains(key);
+		const bool carrying = m_CarryWaiting.contains(key) || m_CarryRunning.contains(key);
 
-		return !answered && !rechecking && m_Checking != key;
+		return !answered && !rechecking && !carrying && m_Checking != key;
 	}
 
 	bool ContentModel::IsWaitingBranch(std::size_t branch) const
@@ -427,9 +521,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (!m_RecheckWaiting.empty())
+		if (!m_RecheckWaiting.empty() || !m_CarryWaiting.empty())
 		{
-			StartRecheck();
+			StartResolve();
 			return;
 		}
 
@@ -473,7 +567,7 @@ namespace Graphite {
 		}
 	}
 
-	void ContentModel::StartRecheck()
+	void ContentModel::StartResolve()
 	{
 		std::vector<RememberedVerdict> remembered;
 		remembered.reserve(m_RecheckWaiting.size());
@@ -483,10 +577,20 @@ namespace Graphite {
 			remembered.push_back(RememberedVerdict{.Key = key, .Verdict = m_Cache.Found.at(key.BranchTip).Verdict});
 		}
 
+		std::vector<CarryAsk> carries;
+		carries.reserve(m_CarryWaiting.size());
+
+		for (const auto& [key, ask] : m_CarryWaiting)
+		{
+			carries.push_back(ask);
+		}
+
 		m_RecheckRunning = std::exchange(m_RecheckWaiting, {});
+		m_CarryRunning = std::exchange(m_CarryWaiting, {});
 		m_Running = true;
 
-		Submit([this, folder = m_Folder.load(), graph = m_Read->Graph, remembered = std::move(remembered)]() {
+		Submit([this, folder = m_Folder.load(), repository = m_Port.RepositoryNow(), graph = m_Read->Graph,
+				generations = m_Read->Generations, remembered = std::move(remembered), carries = std::move(carries)]() {
 			const UnfinishedJob finishing{m_UnfinishedJobs};
 
 			if (!IsSameFolder(folder))
@@ -494,36 +598,43 @@ namespace Graphite {
 				return;
 			}
 
-			std::vector<RememberedVerdict> held;
+			ResolvedVerdicts resolved = ResolveVerdicts(graph, generations, m_Port, repository, remembered, carries);
 
-			if (graph != nullptr)
-			{
-				held = VerdictsStillHeld(*graph, remembered);
-			}
-
-			Deliver([this, folder, held = std::move(held)]() {
+			Deliver([this, folder, resolved = std::move(resolved)]() {
 				if (IsSameFolder(folder))
 				{
-					LandRecheck(held);
+					LandResolve(resolved);
 				}
 			});
 		});
 	}
 
-	void ContentModel::LandRecheck(const std::vector<RememberedVerdict>& held)
+	void ContentModel::LandResolve(const ResolvedVerdicts& resolved)
 	{
 		m_Running = false;
 		m_RecheckRunning.clear();
+		m_CarryRunning.clear();
 
-		// Those the line no longer holds wait for a check of their own, and stand no longer.
+		// Those neither held nor carried stand no longer: they wait for a check of their own.
 		m_EveryCandidateAsked = false;
 
-		for (const RememberedVerdict& remembered : held)
+		for (const RememberedVerdict& remembered : resolved.Held)
 		{
 			m_Cache.Verdicts[remembered.Key] = remembered.Verdict;
 		}
 
-		m_VerdictsChanged = m_VerdictsChanged || !held.empty();
+		for (const CarryAsk& carried : resolved.Carry.Carried)
+		{
+			m_Cache.Verdicts[carried.Key] = carried.Verdict;
+		}
+
+		// Asked again, of the repository open now.
+		for (const CarryAsk& refused : resolved.Carry.Refused)
+		{
+			m_CarryWaiting.emplace(refused.Key, refused);
+		}
+
+		m_VerdictsChanged = m_VerdictsChanged || !resolved.Held.empty() || !resolved.Carry.Carried.empty();
 		RebuildSources();
 	}
 
@@ -773,7 +884,10 @@ namespace Graphite {
 
 		if (m_VerdictsChanged)
 		{
-			write.Verdicts = m_Read != nullptr ? VerdictsUsedBy(*m_Read, m_Cache) : m_Cache;
+			ContentCache kept = m_Read != nullptr ? VerdictsUsedBy(*m_Read, m_Cache) : m_Cache;
+			KeepEarlierPairsOf(m_CarryWaiting, kept);
+			KeepEarlierPairsOf(m_CarryRunning, kept);
+			write.Verdicts = std::move(kept);
 		}
 
 		if (m_PatchIdsChanged)

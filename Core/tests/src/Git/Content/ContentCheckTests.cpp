@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,6 +103,14 @@ namespace {
 
 		REQUIRE(match.HasValue());
 		REQUIRE(match.GetValue().Complete);
+	}
+
+	bool TreesDifferAt(const Core::Repository& repository, const std::string& from, const std::string& to,
+					   const std::vector<std::string>& paths)
+	{
+		const Core::Result<bool> differ = repository.TreesDifferAt(OidOf(from), OidOf(to), paths);
+		REQUIRE(differ.HasValue());
+		return differ.GetValue();
 	}
 
 	struct SquashedTopic
@@ -610,4 +619,199 @@ TEST_CASE("Content: a search that reads every line commit without a copy has not
 
 	REQUIRE(search.HasValue());
 	CHECK(search.GetValue() == Core::PatchTwinSearch{});
+}
+
+TEST_CASE("Content: the paths two commits' trees differ at are listed in order, from trees alone")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", kBase);
+	fixture.Write("dir/b.txt", kBase);
+	fixture.Write("c.txt", kBase);
+	const std::string older = fixture.Commit("base");
+
+	// An edit in a folder, a deletion, an addition and a rename, which counts at both its paths.
+	fixture.Write("dir/b.txt", kLineTwoEdit);
+	fixture.Remove("c.txt");
+	fixture.Write("d.txt", "new\n");
+	fixture.Rename("a.txt", "e.txt");
+	const std::string newer = fixture.Commit("changes");
+
+	// No blob is read: the clone may lack the new ones.
+	fixture.RemoveObject(BlobHexOf(kLineTwoEdit));
+	fixture.RemoveObject(BlobHexOf("new\n"));
+
+	const Core::Result<Core::Repository> repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	const Core::Result<std::vector<std::string>> paths = repository.GetValue().PathsChangedBetween(OidOf(older), OidOf(newer));
+	REQUIRE(paths.HasValue());
+	CHECK(paths.GetValue() == std::vector<std::string>{"a.txt", "c.txt", "d.txt", "dir/b.txt", "e.txt"});
+
+	const Core::Result<std::vector<std::string>> same = repository.GetValue().PathsChangedBetween(OidOf(newer), OidOf(newer));
+	REQUIRE(same.HasValue());
+	CHECK(same.GetValue().empty());
+
+	const Core::Result<std::vector<std::string>> missing =
+		repository.GetValue().PathsChangedBetween(OidOf(older), OidOf(MissingCommitHex(newer)));
+	REQUIRE_FALSE(missing.HasValue());
+	CHECK(missing.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("Content: two commits' trees differ at a path only where it changed, the path taken as written")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", kBase);
+	fixture.Write("dir/b.txt", kBase);
+	fixture.Write("fa.txt", kBase);
+	const std::string fork = fixture.Commit("base");
+	fixture.Write("dir/b.txt", kLineTwoEdit);
+	fixture.Write("fa.txt", kLineEightEdit);
+	const std::string tip = fixture.Commit("edits dir/b.txt and fa.txt");
+
+	fixture.RemoveObject(BlobHexOf(kLineTwoEdit));
+	fixture.RemoveObject(BlobHexOf(kLineEightEdit));
+
+	const Core::Result<Core::Repository> opened = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(opened.HasValue());
+	const Core::Repository& repository = opened.GetValue();
+
+	CHECK(TreesDifferAt(repository, fork, tip, {"dir/b.txt"}));
+	CHECK(TreesDifferAt(repository, fork, tip, {"a.txt", "fa.txt"}));
+	CHECK(TreesDifferAt(repository, fork, tip, {"dir"}));
+
+	CHECK_FALSE(TreesDifferAt(repository, fork, tip, {"a.txt"}));
+	CHECK_FALSE(TreesDifferAt(repository, fork, tip, {}));
+
+	// A pattern would name fa.txt, and a name's beginning would name dir/b.txt or dir: taken as written, they name
+	// nothing that changed.
+	CHECK_FALSE(TreesDifferAt(repository, fork, tip, {"f[ab].txt"}));
+	CHECK_FALSE(TreesDifferAt(repository, fork, tip, {"dir/b"}));
+	CHECK_FALSE(TreesDifferAt(repository, fork, tip, {"di"}));
+
+	const Core::Result<bool> missing = repository.TreesDifferAt(OidOf(MissingCommitHex(fork)), OidOf(tip), {"a.txt"});
+	REQUIRE_FALSE(missing.HasValue());
+	CHECK(missing.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+namespace {
+
+	// libgit2's own diff of two commits' trees, kept to `paths` taken as written when there are any: the reference the
+	// repository's walk of the trees must agree with.
+	struct ReferenceDiff
+	{
+		std::set<std::string> Paths;
+		bool Diffed = false;
+	};
+
+	ReferenceDiff DiffOfLibgit2(git_repository* handle, const std::string& olderHex, const std::string& newerHex,
+								const std::vector<std::string>& paths)
+	{
+		ReferenceDiff reference;
+		const Core::Result<Core::CommitHandle> older = Core::LookupCommit(handle, OidOf(olderHex));
+		const Core::Result<Core::CommitHandle> newer = Core::LookupCommit(handle, OidOf(newerHex));
+		Core::TreeHandle olderTree;
+		Core::TreeHandle newerTree;
+
+		if (!older.HasValue() || !newer.HasValue() || git_commit_tree(Core::Out(olderTree), older.GetValue().get()) != 0 ||
+			git_commit_tree(Core::Out(newerTree), newer.GetValue().get()) != 0)
+		{
+			return reference;
+		}
+
+		std::vector<std::string> copies = paths;
+		std::vector<char*> pathspec;
+
+		for (std::string& path : copies)
+		{
+			pathspec.push_back(path.data());
+		}
+
+		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
+		options.flags |= GIT_DIFF_DISABLE_PATHSPEC_MATCH;
+		options.pathspec.strings = pathspec.data();
+		options.pathspec.count = pathspec.size();
+
+		Core::DiffHandle diff;
+
+		if (git_diff_tree_to_tree(Core::Out(diff), handle, olderTree.get(), newerTree.get(), &options) != 0)
+		{
+			return reference;
+		}
+
+		for (std::size_t index = 0; index < git_diff_num_deltas(diff.get()); ++index)
+		{
+			const git_diff_delta* delta = git_diff_get_delta(diff.get(), index);
+			reference.Paths.insert(delta->old_file.path);
+			reference.Paths.insert(delta->new_file.path);
+		}
+
+		reference.Diffed = true;
+		return reference;
+	}
+}
+
+TEST_CASE("Content: the walk of two trees finds what libgit2's diff of them finds")
+{
+	GitFixture fixture;
+	fixture.Write("top.txt", kBase);
+	fixture.Write("src/a/x.txt", kBase);
+	fixture.Write("src/a/y.txt", kBase);
+	fixture.Write("src/a-b.txt", kBase);
+	fixture.Write("src/b/z.txt", kBase);
+	fixture.Write("src/b/deep/w.txt", kBase);
+	fixture.Write("docs/r.md", kBase);
+	fixture.Write("kept/k.txt", kBase);
+	const std::string older = fixture.Commit("base");
+
+	// An edit, a folder gone, a folder new, a file turned into a folder, a rename, and the name sorting between a folder's
+	// name and its entries edited too.
+	fixture.Write("src/a/x.txt", kLineTwoEdit);
+	fixture.Remove("src/b/z.txt");
+	fixture.Remove("src/b/deep/w.txt");
+	fixture.Write("src/c/new.txt", "new\n");
+	fixture.Remove("top.txt");
+	fixture.Write("top.txt/inner.txt", kBase);
+	fixture.Rename("docs/r.md", "docs/s.md");
+	fixture.Write("src/a-b.txt", kLineEightEdit);
+	const std::string newer = fixture.Commit("changes");
+
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+
+	const Core::Result<Core::Repository> opened = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(opened.HasValue());
+	const Core::Repository& repository = opened.GetValue();
+
+	const ReferenceDiff whole = DiffOfLibgit2(handle, older, newer, {});
+	const Core::Result<std::vector<std::string>> walked = repository.PathsChangedBetween(OidOf(older), OidOf(newer));
+	REQUIRE(walked.HasValue());
+	CHECK(whole.Diffed);
+	CHECK(std::set<std::string>{walked.GetValue().begin(), walked.GetValue().end()} == whole.Paths);
+
+	// Every file, folder and near name of either side, alone and in a few lists: the walk and the diff kept to them agree.
+	const std::vector<std::string> names{"top.txt", "top.txt/inner.txt", "src", "src/a", "src/a/x.txt", "src/a/y.txt", "src/a-b.txt",
+										 "src/a-", "src/b", "src/b/z.txt", "src/b/deep", "src/b/deep/w.txt", "src/c", "src/c/new.txt",
+										 "docs", "docs/r.md", "docs/s.md", "kept", "kept/k.txt", "src/a/x", "nowhere", "src/b/",
+										 "top.txt/", "src/b/deep/w.txt/below"};
+	std::vector<std::vector<std::string>> lists;
+
+	for (const std::string& name : names)
+	{
+		lists.push_back({name});
+	}
+
+	lists.push_back({"kept", "src/a/y.txt", "src/a-"});
+	lists.push_back({"kept/k.txt", "src/b/deep"});
+	lists.push_back({"docs/s.md", "nowhere"});
+
+	for (const std::vector<std::string>& paths : lists)
+	{
+		INFO(paths.front(), " and ", paths.size() - 1, " more");
+		const ReferenceDiff kept = DiffOfLibgit2(handle, older, newer, paths);
+		REQUIRE(kept.Diffed);
+		CHECK(TreesDifferAt(repository, older, newer, paths) == !kept.Paths.empty());
+		CHECK(TreesDifferAt(repository, newer, older, paths) == !kept.Paths.empty());
+	}
+
+	git_repository_free(handle);
 }

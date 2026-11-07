@@ -170,10 +170,54 @@ namespace {
 			return Core::PatchTwinSearch{};
 		}
 
+		// The paths LinePaths names for the move, none otherwise.
+		Core::Result<std::vector<std::string>> PathsChangedBetween(std::uint64_t, const Core::Oid& older, const Core::Oid& newer) override
+		{
+			const LineMove move{older, newer};
+			LineMovesDiffed.push_back(move);
+
+			if (RefuseMoveOnce.erase(move) > 0)
+			{
+				return Refused();
+			}
+
+			const std::map<LineMove, std::vector<std::string>>::const_iterator paths = LinePaths.find(move);
+			return paths != LinePaths.end() ? paths->second : std::vector<std::string>{};
+		}
+
+		// Whether BranchPaths names one of `paths` for the two commits.
+		Core::Result<bool> TreesDifferAt(std::uint64_t, const Core::Oid& from, const Core::Oid& to, const std::vector<std::string>& paths) override
+		{
+			BranchesDiffed.push_back(ContentKey{from, to});
+			const std::map<ContentKey, std::set<std::string>>::const_iterator changed = BranchPaths.find(ContentKey{from, to});
+
+			if (changed == BranchPaths.end())
+			{
+				return false;
+			}
+
+			for (const std::string& path : paths)
+			{
+				if (changed->second.contains(path))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		static Core::Error Refused()
 		{
 			return Core::Error{Core::ErrorCode::Cancelled, "the folder changed since this was asked"};
 		}
+
+		using LineMove = std::pair<Core::Oid, Core::Oid>;
+		std::map<LineMove, std::vector<std::string>> LinePaths;   // where the line's trees differ, from the older tip to the newer
+		std::map<ContentKey, std::set<std::string>> BranchPaths; // where a branch's trees differ, from its fork to its tip
+		std::set<LineMove> RefuseMoveOnce;
+		std::vector<LineMove> LineMovesDiffed;
+		std::vector<ContentKey> BranchesDiffed;
 
 		std::uint64_t Repository = 1;
 		std::map<ContentKey, Core::ContentVerdict> Verdicts;
@@ -731,9 +775,10 @@ TEST_CASE("Git window: rows in view are checked before the branches out of view"
 	CHECK(port.Checked[1] == KeyOfBranch(*read, 70));
 	CHECK(port.Checked[2] == KeyOfBranch(*read, 0));
 
-	// A row drawn in the frame before a new read is followed is still checked first.
+	// A row drawn in the frame before a new read is followed is still checked first. The read moves a branch not checked
+	// yet: a moved line would first resolve the three verdicts found against its earlier tip.
 	LineRead movedOn = CandidatesRead(100);
-	movedOn.Refs[0].Tip = IdOf(0xEF);
+	movedOn.Refs[read->Model.Branches[99].Ref].Tip = IdOf(0xEF);
 	const Core::Ref<const LineRead> next = Shared(std::move(movedOn));
 
 	static_cast<void>(model.MarkOf(read->Model.Branches[80]));
@@ -859,6 +904,248 @@ TEST_CASE("Git window: a remembered verdict the line no longer holds turns pendi
 	jobs.RunAll();
 	model.OnUpdate(Core::Timestep{});
 	CHECK(model.KnownMarkOf(topic).State == ContentMark::State::Pending);
+}
+
+namespace {
+
+	// The branch at kBranchTip, forked at kRoot, changes branch.txt.
+	const std::string kBranchPath = "branch.txt";
+
+	// What a check found for the branch against `earlierTip`, the port to answer it, and the line then moved to kAfterLanding
+	// with its trees differing at `changedPaths`.
+	struct LineMoveCase
+	{
+		Core::ContentVerdict Earlier;
+		Core::Oid EarlierTip = kLandingOnLine;
+		std::vector<std::string> ChangedPaths;
+	};
+
+	void FindAndMove(FakeContentPort& port, DeferredJobs& jobs, ContentModel& model, const LineMoveCase& moveCase,
+					 const Core::Ref<const LineRead>& movedOn)
+	{
+		port.Verdicts[ContentKey{kBranchTip, moveCase.EarlierTip}] = moveCase.Earlier;
+		port.BranchPaths[ContentKey{kRoot, kBranchTip}] = {kBranchPath};
+		port.LinePaths[FakeContentPort::LineMove{moveCase.EarlierTip, kAfterLanding}] = moveCase.ChangedPaths;
+
+		model.Follow(LandingRead(moveCase.EarlierTip));
+		Settle(jobs, model);
+		REQUIRE(port.Checked.size() == 1);
+
+		model.Follow(movedOn);
+	}
+
+	// The mark a branch's earlier verdict gives.
+	ContentMark MarkOfVerdict(const Core::ContentVerdict& verdict)
+	{
+		if (verdict.Outcome == Core::ContentOutcome::Unknown)
+		{
+			return ContentMark{.State = ContentMark::State::Unknown, .Verdict = std::nullopt};
+		}
+
+		return ContentMark{.State = ContentMark::State::Known, .Verdict = verdict};
+	}
+
+	bool IsMark(const ContentMark& mark, const ContentMark& expected)
+	{
+		return mark.State == expected.State && mark.Verdict == expected.Verdict;
+	}
+
+	Core::ContentVerdict EarlierVerdictOfCase(bool unknown)
+	{
+		return unknown ? UnknownVerdict() : Core::ContentVerdict{};
+	}
+
+	// LandingRead, its cache files in `store`.
+	Core::Ref<const LineRead> LandingReadIn(const Core::Oid& lineTip, const LineStorePaths& store)
+	{
+		LineRead read = *LandingRead(lineTip);
+		read.Store = store;
+		return Shared(std::move(read));
+	}
+}
+
+TEST_CASE("Git window: a not-merged or unknown verdict carries to the line's new tip when the move changes none of the branch's paths")
+{
+	bool unknown = false;
+
+	SUBCASE("not merged")
+	{
+		unknown = false;
+	}
+
+	SUBCASE("unknown")
+	{
+		unknown = true;
+	}
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	const LineMoveCase moveCase{.Earlier = EarlierVerdictOfCase(unknown), .ChangedPaths = {"other.txt"}};
+	const Core::Ref<const LineRead> movedOn = LandingRead(kAfterLanding);
+	FindAndMove(port, jobs, model, moveCase, movedOn);
+	Settle(jobs, model);
+
+	CHECK(port.Checked.size() == 1);
+	CHECK(IsMark(model.KnownMarkOf(movedOn->Model.Branches[0]), MarkOfVerdict(moveCase.Earlier)));
+
+	// One diff of the line's trees, and one of the branch's from the fork the graph gives.
+	CHECK(port.LineMovesDiffed == std::vector<FakeContentPort::LineMove>{{kLandingOnLine, kAfterLanding}});
+	CHECK(port.BranchesDiffed == std::vector<ContentKey>{{kRoot, kBranchTip}});
+}
+
+TEST_CASE("Git window: a not-merged or unknown verdict is checked again when the line's move changes one of the branch's paths")
+{
+	bool unknown = false;
+
+	SUBCASE("not merged")
+	{
+		unknown = false;
+	}
+
+	SUBCASE("unknown")
+	{
+		unknown = true;
+	}
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	const LineMoveCase moveCase{.Earlier = EarlierVerdictOfCase(unknown), .ChangedPaths = {"other.txt", kBranchPath}};
+	const Core::Ref<const LineRead> movedOn = LandingRead(kAfterLanding);
+	port.Verdicts[ContentKey{kBranchTip, kAfterLanding}] = SquashLandingAt(kAfterLanding);
+	FindAndMove(port, jobs, model, moveCase, movedOn);
+	Settle(jobs, model);
+
+	REQUIRE(port.Checked.size() == 2);
+	CHECK(port.Checked[1] == ContentKey{kBranchTip, kAfterLanding});
+	CHECK(IsKnownAs(model.KnownMarkOf(movedOn->Model.Branches[0]), SquashLandingAt(kAfterLanding)));
+}
+
+TEST_CASE("Git window: a not-merged or unknown verdict is checked again when the earlier line tip is not an ancestor of the new one")
+{
+	bool unknown = false;
+
+	SUBCASE("not merged")
+	{
+		unknown = false;
+	}
+
+	SUBCASE("unknown")
+	{
+		unknown = true;
+	}
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	// main was at kReset, then at kAfterLanding, which does not descend from it: a reset or a force-push.
+	const LineMoveCase moveCase{.Earlier = EarlierVerdictOfCase(unknown), .EarlierTip = kReset, .ChangedPaths = {"other.txt"}};
+	const Core::Ref<const LineRead> movedOn = LandingRead(kAfterLanding);
+	FindAndMove(port, jobs, model, moveCase, movedOn);
+	Settle(jobs, model);
+
+	REQUIRE(port.Checked.size() == 2);
+	CHECK(port.Checked[1] == ContentKey{kBranchTip, kAfterLanding});
+	CHECK(port.LineMovesDiffed.empty());
+}
+
+TEST_CASE("Git window: while a moved line's carry job waits or runs the branch keeps its earlier mark, and turns pending once it is to be checked")
+{
+	bool unknown = false;
+
+	SUBCASE("not merged")
+	{
+		unknown = false;
+	}
+
+	SUBCASE("unknown")
+	{
+		unknown = true;
+	}
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	const LineMoveCase moveCase{.Earlier = EarlierVerdictOfCase(unknown), .ChangedPaths = {kBranchPath}};
+	const Core::Ref<const LineRead> movedOn = LandingRead(kAfterLanding);
+	FindAndMove(port, jobs, model, moveCase, movedOn);
+	const Core::BranchLine& topic = movedOn->Model.Branches[0];
+
+	CHECK(IsMark(model.KnownMarkOf(topic), MarkOfVerdict(moveCase.Earlier)));
+	CHECK_FALSE(ContentCheckWaits(model.MarkOfShown(topic), true));
+
+	model.OnUpdate(Core::Timestep{});
+	REQUIRE(jobs.Count() == 1);
+	CHECK(IsMark(model.KnownMarkOf(topic), MarkOfVerdict(moveCase.Earlier)));
+
+	// The move changed the branch's path: the verdict stands no longer, and the pair waits for its check.
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{});
+	CHECK(model.KnownMarkOf(topic).State == ContentMark::State::Pending);
+	CHECK(port.Checked.size() == 1);
+}
+
+TEST_CASE("Git window: a verdict an earlier session kept carries to the line's new tip in the next opening")
+{
+	TempDirectory directory;
+	const LineStorePaths store = StoreIn(directory.GetPath());
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	port.BranchPaths[ContentKey{kRoot, kBranchTip}] = {kBranchPath};
+	port.LinePaths[FakeContentPort::LineMove{kLandingOnLine, kAfterLanding}] = {"other.txt"};
+
+	{
+		ContentModel model{port, jobs.Submitter()};
+		model.SetOnScreen(true);
+		model.Follow(LandingReadIn(kLandingOnLine, store));
+		Settle(jobs, model);
+		model.Clear();
+		jobs.RunAll();
+	}
+
+	// The line moved while the window was closed.
+	ContentModel next{port, jobs.Submitter()};
+	const Core::Ref<const LineRead> movedOn = LandingReadIn(kAfterLanding, store);
+	next.Follow(movedOn);
+	CHECK(IsKnownAs(next.KnownMarkOf(movedOn->Model.Branches[0]), Core::ContentVerdict{}));
+
+	next.SetOnScreen(true);
+	Settle(jobs, next);
+	CHECK(port.Checked.size() == 1);
+	CHECK(IsKnownAs(next.KnownMarkOf(movedOn->Model.Branches[0]), Core::ContentVerdict{}));
+
+	// The carried verdict is saved under the new pair.
+	next.Clear();
+	jobs.RunAll();
+	CHECK(LoadContentCache(store.Content).Verdicts.contains(ContentKey{kBranchTip, kAfterLanding}));
+}
+
+TEST_CASE("Git window: a carry the port refuses for a repository it no longer opens is asked again")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	const LineMoveCase moveCase{.Earlier = Core::ContentVerdict{}, .ChangedPaths = {"other.txt"}};
+	port.RefuseMoveOnce.insert(FakeContentPort::LineMove{kLandingOnLine, kAfterLanding});
+	const Core::Ref<const LineRead> movedOn = LandingRead(kAfterLanding);
+	FindAndMove(port, jobs, model, moveCase, movedOn);
+	Settle(jobs, model);
+
+	CHECK(port.LineMovesDiffed.size() == 2);
+	CHECK(port.Checked.size() == 1);
+	CHECK(IsKnownAs(model.KnownMarkOf(movedOn->Model.Branches[0]), Core::ContentVerdict{}));
 }
 
 TEST_CASE("Git window: a verdict found once is checked again when the line no longer holds its landing")

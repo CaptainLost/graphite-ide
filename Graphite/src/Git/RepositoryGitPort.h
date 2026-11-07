@@ -100,6 +100,10 @@ namespace Graphite {
 														Core::PatchIdCache& patchIds) override;
 		Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
 													 std::size_t budget, Core::PatchIdCache& patchIds) override;
+		Core::Result<std::vector<std::string>> PathsChangedBetween(std::uint64_t repository, const Core::Oid& older,
+																   const Core::Oid& newer) override;
+		Core::Result<bool> TreesDifferAt(std::uint64_t repository, const Core::Oid& from, const Core::Oid& to,
+										 const std::vector<std::string>& paths) override;
 
 		void SetRoot(std::filesystem::path root);
 
