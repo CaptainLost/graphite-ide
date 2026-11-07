@@ -57,9 +57,9 @@ and keep the verdicts per repository.
 - **One check at a time, the shown branch first** (`Graphite::ContentModel`, `Graphite/src/Git/Content`). Owned by the
   layer, beside the lines model and declared before the job queue; driven by the Git window's update. A job starts
   only while the window is on screen and none runs, across a folder switch too. Each pick takes, in order: the batch
-  rechecking remembered verdicts, the shown branch, the copies the details asked for, then every candidate — not
-  merged, compared with a line, with commits of its own — the rows drawn this frame first, then the user's own
-  branches, then remote branches, the newest tip first in each. A row, the shown branch or a copy is asked again every
+  rechecking remembered verdicts, the shown branch, the first slice of a copy search the details asked for, the rows
+  drawn this frame, the next slice of a copy search under way, then every other candidate — not merged, compared with
+  a line, with commits of its own — the user's own branches, then remote branches, the newest tip first in each. A row, the shown branch or a copy is asked again every
   frame it is drawn; an ask not repeated is dropped.
 - **The folder guard.** Every job and delivery carries the folder it was asked for and is dropped once the folder has
   changed; the port refuses a call for a repository generation it no longer opens (`Cancelled`), which is asked again
@@ -71,7 +71,10 @@ and keep the verdicts per repository.
   its copy is a dim chip `<base> ≈ copy`, the shown branch's squash `<base> ≈ in squash <hash>`, with `…` at the end of
   the line while a copy is still searched for; a landing or a copy says `Squash of <branch>.` / `Copy of <hash> from
   <branch>.` under the line, decided when the commit is selected. Copies are searched per selected commit, lazily, in
-  each base that does not hold it.
+  each base that does not hold it, in slices: each job reads at most `kPatchCommitsPerCopySlice` = 100 more line
+  commits (budgets 100, 200, … up to `kPatchCommitsPerCheck`), the patch ids read before coming from the cache, until
+  a copy, the end of the line or the whole budget. A sliced search answers as one search over the whole budget would,
+  and the `…` stays until its last slice.
 - **The cache** (spec §7), beside `answers.json` in the repository's store
   ([0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md)):
   - `content.json` (`"version": 1`): the verdicts by (branch tip, line tip), merged, not merged or unknown, and per
@@ -113,11 +116,14 @@ landing keeps a branch merged after its line moved on.
 - A first opening checks every candidate, the marks filling in as they land: 6 minutes of background work on the web
   framework, 109 on the code editor, where an old branch's check walks the 100,000-odd commits it lacks. Checks stop
   while the window is off screen, and a later opening asks only what changed.
-- The shown branch's header waits for any job running when it is asked: one check, one copy search or one recheck
-  batch (see Evidence for how long each takes).
+- The shown branch's header waits for any job running when it is asked: one check, one slice of a copy search or one
+  recheck batch (see Evidence for how long each takes). A sliced search walks again, for every slice, the headers of
+  the line commits the commit lacks, and its copy is found a little later than in one job.
 - In a blobless clone nearly every check answers *unknown*: the first opening spends minutes finding out what it
   cannot read, and a pair stays unknown after a git command fetched its objects, until a tip moves.
 - `content.json` is parsed on the UI thread once per store; it holds a verdict per candidate.
+- An unknown kept because the line ran past the patch budget records no budget: a later build that raises
+  `kPatchCommitsPerCheck` does not ask that pair again until either tip moves.
 - A squash whose landing lies past the chain budget, or behind a candidate that cannot be judged, is merged without a
   landing: the banner and the details name no commit.
 - A branch whose changes cancel out is not merged by content, although merging it would change nothing.
@@ -178,9 +184,11 @@ blobless, so most checks answer *unknown* for a missing blob; a full clone of li
 - **`content.json` on the UI thread**: at a verdict per candidate, 1,749 verdicts and 313 KB parse in 2.7 ms and the
   first `Follow` takes 3.4 ms (chat server); 5,520 verdicts and 947 KB parse in 8.3 ms and the first `Follow` takes
   11.0 ms (code editor): under a frame, so the file stays on the UI thread.
-- **A copy search** on the full clone takes up to 12.9 s with no patch id known and 8.1 s with the run's: an old
-  release line's commit searched for in a newer one reads the patch ids of 3,000 line commits, each a diff with its
-  files. The shown branch's header waits for such a search when one is running.
+- **A copy search** on the full clone took up to 12.9 s in one job with no patch id known (8.1 s with the run's): an
+  old release line's commit searched for in a newer one reads the patch ids of 3,000 line commits, each a diff with
+  its files, and the shown branch's header waited for the whole search. In slices the longest single job is 1.73 s
+  (about 0.33 s on average: 10.0 s over 30 slices), so the header waits for one slice; the 40 sliced searches answered
+  as the unsliced ones did.
 - On the full clone 39 of 109 checks answer *unknown*: old branches whose merge says no and whose line ran past the
   patch budget.
 - **The two spike branches the in-memory merge called merged by content** in the web framework (`update/react/…`)
