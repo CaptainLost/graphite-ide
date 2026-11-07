@@ -223,7 +223,7 @@ namespace Graphite {
 										   .Bleed = ImGui::GetStyle().WindowPadding,
 										   .Problem = problem}))
 		{
-			SelectRef(std::nullopt);
+			ShowHeadInSidebar();
 		}
 
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
@@ -327,15 +327,7 @@ namespace Graphite {
 				return m_HiddenByContent.IsMerged(branch);
 			};
 
-			m_SidebarRows = BuildSidebarRows(SidebarInput{.Read = *inputs.Read,
-														  .Stashes = inputs.Stashes.get(),
-														  .Authors = inputs.Authors.get(),
-														  .Search = inputs.Search,
-														  .OpenByUser = m_OpenByUser,
-														  .ShowingMerged = m_ShowingMerged,
-														  .StashesError = failedStashRead,
-														  .ShownRef = inputs.ShownRef,
-														  .MergedByContent = &mergedByContent});
+			m_SidebarRows = BuildSidebarRows(SidebarInputFor(inputs, mergedByContent));
 		}
 		else
 		{
@@ -343,6 +335,64 @@ namespace Graphite {
 		}
 
 		m_SidebarBuiltFrom = std::move(inputs);
+	}
+
+	SidebarInput GitView::SidebarInputFor(const SidebarInputs& inputs,
+										  const std::function<bool(std::size_t)>& mergedByContent) const
+	{
+		const std::optional<Core::Error>& stashesError = m_Model.GetStashesError();
+
+		return SidebarInput{.Read = *inputs.Read,
+							.Stashes = inputs.Stashes.get(),
+							.Authors = inputs.Authors.get(),
+							.Search = inputs.Search,
+							.OpenByUser = m_OpenByUser,
+							.ShowingMerged = m_ShowingMerged,
+							.StashesError = stashesError.has_value() ? &*stashesError : nullptr,
+							.ShownRef = inputs.ShownRef,
+							.MergedByContent = &mergedByContent};
+	}
+
+	void GitView::ShowHeadInSidebar()
+	{
+		// The rows as the sidebar will draw them next, so the reveal reads what the reader is about to see.
+		RebuildSidebarWhenOutOfDate();
+
+		if (!m_SidebarBuiltFrom.has_value() || !m_SidebarBuiltFrom->Read)
+		{
+			return;
+		}
+
+		const std::function<bool(std::size_t)> mergedByContent = [this](std::size_t branch) {
+			return m_HiddenByContent.IsMerged(branch);
+		};
+
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
+		const std::optional<HeadRowReveal> reveal =
+			RevealHeadRow(head.get(), SidebarInputFor(*m_SidebarBuiltFrom, mergedByContent));
+
+		if (!reveal.has_value())
+		{
+			return;
+		}
+
+		if (reveal->ClearsSearch)
+		{
+			m_Sidebar.ClearSearch();
+		}
+
+		for (const std::string& key : reveal->Opens)
+		{
+			m_OpenByUser[key] = true;
+		}
+
+		if (!reveal->Opens.empty())
+		{
+			++m_SidebarChoicesVersion;
+		}
+
+		// The rows are built again before the sidebar is drawn, from the search and the open sections changed here.
+		m_Sidebar.ScrollToRef(reveal->Ref);
 	}
 
 	std::string GitView::SidebarShownRef() const

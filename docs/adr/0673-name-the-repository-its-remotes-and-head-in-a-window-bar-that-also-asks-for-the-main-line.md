@@ -18,8 +18,11 @@ branches are read on workers and land at different moments.
 - **One bar across the top of the window, one bar high**: the repository's folder name, its remotes ("origin · fork";
   "no remotes" only once a read said so, "…" while they are read, the read's message when it failed), and a chip for
   HEAD: the checked-out branch's name with "2 to push · 3 to pull" in words (thousands with a comma), "detached at
-  <hash>", or an unborn branch's name. Clicking the chip shows HEAD's history. While a checkout runs the chip shows the
-  loader and the branch being checked out; a HEAD that cannot be read says so in the chip's place.
+  <hash>", or an unborn branch's name. While HEAD is on a branch, clicking the chip scrolls the sidebar once to that
+  branch's row (its own row in Yours, or the base row holding its local copy), clearing a search that hides it and
+  opening the section or group holding it; it changes neither the selection nor the shown history. A detached or unborn
+  HEAD's chip has no hover look and answers no click. While a checkout runs the chip shows the loader and the branch
+  being checked out; a HEAD that cannot be read says so in the chip's place.
 - **It settles in one step** (`SettleWindowBar`): until the folder, HEAD (or its failure) and the remotes (or their
   failure) are all known, the bar holds the previous complete bar of this folder, or its waiting text when there is
   none, so it never fills in piece by piece.

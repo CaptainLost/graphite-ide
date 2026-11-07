@@ -5,6 +5,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Count.h"
+#include "Core/Git/Ref.h"
 
 #include <algorithm>
 #include <array>
@@ -52,11 +53,14 @@ namespace Graphite {
 		class Builder
 		{
 		public:
-			explicit Builder(const SidebarInput& input)
+			// With `opensEverything` every section and group is listed open, as a search lists them, for finding where a row
+			// would stand.
+			explicit Builder(const SidebarInput& input, bool opensEverything = false)
 				: m_Input(input)
 				, m_Lines(input.Read)
 				, m_Words(LoweredWordsOf(input.Search))
 				, m_Searching(!m_Words.empty())
+				, m_OpensEverything(opensEverything)
 				, m_Shown(input.ShownRef.empty() ? std::nullopt : m_Lines.IndexOf(input.ShownRef))
 			{
 				IndexCopies();
@@ -166,7 +170,7 @@ namespace Graphite {
 
 			bool OpenOf(const std::string& key, bool byDefault) const
 			{
-				if (m_Searching)
+				if (m_Searching || m_OpensEverything)
 				{
 					return true;
 				}
@@ -573,6 +577,7 @@ namespace Graphite {
 			BranchLines m_Lines;
 			std::vector<std::string> m_Words;
 			bool m_Searching;
+			bool m_OpensEverything;
 			std::optional<std::size_t> m_Shown; // into the read's refs
 
 			std::vector<bool> m_IsBase;
@@ -580,6 +585,47 @@ namespace Graphite {
 			std::vector<bool> m_BaseOwnsRow;                       // per ref: a local base is one row with this remote branch
 			std::vector<SidebarRow> m_Rows;
 		};
+
+		// The keys of the section and the group listing the row at `index`, the section first: what must be open for the
+		// row to be listed. A group's rows stand one deeper than it; a row at the section's depth is in no group.
+		std::vector<std::string> KeysHolding(const std::vector<SidebarRow>& rows, std::size_t index)
+		{
+			std::vector<std::string> keys;
+			bool groupPassed = rows[index].Depth == 0;
+
+			for (std::size_t above = index; above-- > 0;)
+			{
+				const SidebarRow& row = rows[above];
+
+				if (row.Kind == SidebarRowKind::Section)
+				{
+					keys.insert(keys.begin(), row.Key);
+					break;
+				}
+
+				if (!groupPassed && row.Kind == SidebarRowKind::Group)
+				{
+					keys.push_back(row.Key);
+					groupPassed = true;
+				}
+			}
+
+			return keys;
+		}
+
+		// Whether `rows` list the section or group of `key` open; one they do not list is not.
+		bool IsListedOpen(const std::vector<SidebarRow>& rows, const std::string& key)
+		{
+			for (const SidebarRow& row : rows)
+			{
+				if ((row.Kind == SidebarRowKind::Section || row.Kind == SidebarRowKind::Group) && row.Key == key)
+				{
+					return row.Open;
+				}
+			}
+
+			return false;
+		}
 	}
 
 	std::vector<SidebarRow> BuildSidebarRows(const SidebarInput& input)
@@ -679,6 +725,70 @@ namespace Graphite {
 		}
 
 		return RowMenuRefs{.Menu = RefOfRowMenu(row), .Lines = row.Ref, .Compared = RefOpenedBy(row, read, lines)};
+	}
+
+	std::optional<std::size_t> RowShowingRef(const std::vector<SidebarRow>& rows, std::size_t ref)
+	{
+		for (std::size_t index = 0; index < rows.size(); ++index)
+		{
+			const SidebarRow& row = rows[index];
+			const bool isBranchRow = row.Kind == SidebarRowKind::Branch && row.Ref == ref;
+			const bool isBaseRow = row.Kind == SidebarRowKind::Base && (row.Ref == ref || row.LocalCopy == ref);
+
+			if (isBranchRow || isBaseRow)
+			{
+				return index;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	std::optional<HeadRowReveal> RevealHeadRow(const Core::HeadState* head, const SidebarInput& input)
+	{
+		if (head == nullptr || head->Kind != Core::HeadKind::Branch || !input.Read.Branches)
+		{
+			return std::nullopt;
+		}
+
+		const std::optional<std::size_t> ref = BranchLines{input.Read}.IndexOf(Core::LocalBranchReference(head->BranchName));
+
+		if (!ref.has_value())
+		{
+			return std::nullopt;
+		}
+
+		HeadRowReveal reveal{.Ref = *ref};
+
+		if (RowShowingRef(BuildSidebarRows(input), *ref).has_value())
+		{
+			return reveal;
+		}
+
+		SidebarInput unsearched = input;
+		unsearched.Search = {};
+
+		const std::vector<SidebarRow> everything = Builder{unsearched, true}.Build();
+		const std::optional<std::size_t> place = RowShowingRef(everything, *ref);
+
+		if (!place.has_value())
+		{
+			return std::nullopt;
+		}
+
+		// A search lists every section and group open, so what the row needs opened is read from the rows without it.
+		reveal.ClearsSearch = !LoweredWordsOf(input.Search).empty();
+		const std::vector<SidebarRow> listed = BuildSidebarRows(unsearched);
+
+		for (const std::string& key : KeysHolding(everything, *place))
+		{
+			if (!IsListedOpen(listed, key))
+			{
+				reveal.Opens.push_back(key);
+			}
+		}
+
+		return reveal;
 	}
 
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,

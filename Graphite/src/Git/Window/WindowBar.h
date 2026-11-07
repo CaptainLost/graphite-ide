@@ -36,9 +36,16 @@ namespace Graphite {
 		std::string HeadState; // "2 to push", "3 to pull", both joined; drawn in the match colour
 		std::string HeadTooltip;
 		bool Busy = false; // a checkout is under way: the chip shows the loader, saying what Head holds
+
+		// HEAD is on a branch: the chip shows a hover look and a click on it shows the branch in the sidebar. Not while
+		// HEAD is detached or has no commits yet.
+		bool OnBranch = false;
 	};
 
 	WindowBarText DescribeWindowBar(const WindowBarInput& input);
+
+	// The chip's tooltip: HeadTooltip, and on a branch a second line saying what a click does.
+	std::string HeadChipTooltip(const WindowBarText& text);
 
 	struct SettledWindowBar
 	{
@@ -104,6 +111,7 @@ namespace Graphite {
 		std::string_view Problem;
 	};
 
-	// One bar high across the available width, ending on an item. True when the HEAD chip was clicked.
+	// One bar high across the available width, ending on an item. True when the HEAD chip was clicked while it names a
+	// branch (WindowBarText::OnBranch).
 	bool DrawWindowBar(const WindowBarDrawing& drawing);
 }

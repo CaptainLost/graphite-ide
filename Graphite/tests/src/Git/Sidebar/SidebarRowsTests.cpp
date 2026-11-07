@@ -5,11 +5,14 @@
 
 #include "Git/Lines/LineReadFixtures.h"
 
+#include "Core/Git/Head.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -1031,4 +1034,191 @@ TEST_CASE("Git window: a search lists a branch merged by content as it lists one
 							 .MergedByContent = &mergedByContent};
 
 	CHECK(Describe(read, BuildSidebarRows(input)) == Lines{"# remote/origin 1/2", "origin/squashed"});
+}
+
+namespace {
+
+	SidebarInput InputFor(const LineRead& read, const Options& options)
+	{
+		return SidebarInput{.Read = read,
+							.Stashes = options.Stashes,
+							.Authors = options.Authors,
+							.Search = options.Search,
+							.OpenByUser = options.OpenByUser,
+							.ShowingMerged = options.ShowingMerged,
+							.ShownRef = options.ShownRef};
+	}
+
+	Core::HeadState HeadOn(const std::string& branch)
+	{
+		Core::HeadState head;
+		head.Kind = Core::HeadKind::Branch;
+		head.BranchName = branch;
+		return head;
+	}
+
+	// The rows once the reveal is applied: its search cleared, and its sections and groups opened by the user.
+	std::vector<SidebarRow> RowsAfter(const LineRead& read, Options options, const HeadRowReveal& reveal)
+	{
+		if (reveal.ClearsSearch)
+		{
+			options.Search.clear();
+		}
+
+		for (const std::string& key : reveal.Opens)
+		{
+			options.OpenByUser[key] = true;
+		}
+
+		return RowsOf(read, options);
+	}
+
+	using Keys = std::vector<std::string>;
+}
+
+TEST_CASE("Git window: the head chip shows the checked-out branch's row in yours, opening yours when it is closed")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("older", {.AgeDays = 10});
+	const std::size_t checkedOut = builder.AddLocal("checked-out", {.Head = true, .AgeDays = 50});
+	const LineRead read = builder.Build();
+	const Core::HeadState head = HeadOn("checked-out");
+
+	const Options open;
+	const std::optional<HeadRowReveal> listed = RevealHeadRow(&head, InputFor(read, open));
+
+	REQUIRE(listed.has_value());
+	CHECK(listed->Ref == checkedOut);
+	CHECK_FALSE(listed->ClearsSearch);
+	CHECK(listed->Opens.empty());
+	CHECK(RowShowingRef(RowsOf(read, open), checkedOut) == std::optional<std::size_t>{1});
+
+	Options closed;
+	closed.OpenByUser = {{"yours", false}};
+	const std::optional<HeadRowReveal> folded = RevealHeadRow(&head, InputFor(read, closed));
+
+	REQUIRE(folded.has_value());
+	CHECK(folded->Opens == Keys{"yours"});
+	CHECK_FALSE(RowShowingRef(RowsOf(read, closed), checkedOut).has_value());
+	CHECK(RowShowingRef(RowsAfter(read, closed, *folded), checkedOut) == std::optional<std::size_t>{1});
+}
+
+TEST_CASE("Git window: the head chip shows a checked-out local copy of a base in the base's row")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	const std::size_t main = builder.AddLocal("main", {.Head = true});
+	const std::size_t originMain = builder.AddRemoteBranch("origin", "main");
+	builder.AddLocal("feature", {.AgeDays = 1});
+	builder.MakeBase(originMain);
+	builder.SameRow(main, originMain);
+	const LineRead read = builder.Build();
+	const Core::HeadState head = HeadOn("main");
+
+	const Options options;
+	const std::optional<HeadRowReveal> reveal = RevealHeadRow(&head, InputFor(read, options));
+
+	REQUIRE(reveal.has_value());
+	CHECK(reveal->Ref == main);
+	CHECK(reveal->Opens.empty());
+
+	const std::vector<SidebarRow> rows = RowsOf(read, options);
+	const std::optional<std::size_t> row = RowShowingRef(rows, main);
+
+	REQUIRE(row.has_value());
+	CHECK(rows[*row].Kind == SidebarRowKind::Base);
+	CHECK(rows[*row].Ref == std::optional<std::size_t>{originMain});
+}
+
+TEST_CASE("Git window: the head chip opens the quiet group holding a checked-out base, and the bases when they are closed")
+{
+	LineReadBuilder builder;
+	builder.AddRemote("origin");
+	const std::size_t main = builder.AddLocal("main", {.Head = true});
+	const std::size_t originMain = builder.AddRemoteBranch("origin", "main");
+	builder.MakeBase(originMain, false);
+	builder.SameRow(main, originMain);
+	const LineRead read = builder.Build();
+	const Core::HeadState head = HeadOn("main");
+
+	const Options options;
+	const std::optional<HeadRowReveal> reveal = RevealHeadRow(&head, InputFor(read, options));
+
+	REQUIRE(reveal.has_value());
+	CHECK(reveal->Opens == Keys{"bases/quiet"});
+
+	const std::vector<SidebarRow> rows = RowsAfter(read, options, *reveal);
+	const std::optional<std::size_t> row = RowShowingRef(rows, main);
+
+	REQUIRE(row.has_value());
+	CHECK(rows[*row].Kind == SidebarRowKind::Base);
+	CHECK(rows[*row].Depth == 1);
+
+	Options closed;
+	closed.OpenByUser = {{"bases", false}};
+	const std::optional<HeadRowReveal> bothClosed = RevealHeadRow(&head, InputFor(read, closed));
+
+	REQUIRE(bothClosed.has_value());
+	CHECK(bothClosed->Opens == Keys{"bases", "bases/quiet"});
+	CHECK(RowShowingRef(RowsAfter(read, closed, *bothClosed), main).has_value());
+}
+
+TEST_CASE("Git window: the head chip shows no row while HEAD is detached, has no commits yet or is unread")
+{
+	LineReadBuilder builder;
+	builder.AddLocal("main", {.Head = true});
+	const LineRead read = builder.Build();
+	const Options options;
+
+	Core::HeadState detached;
+	detached.Kind = Core::HeadKind::Detached;
+	CHECK_FALSE(RevealHeadRow(&detached, InputFor(read, options)).has_value());
+
+	Core::HeadState unborn;
+	unborn.Kind = Core::HeadKind::Unborn;
+	unborn.BranchName = "main";
+	CHECK_FALSE(RevealHeadRow(&unborn, InputFor(read, options)).has_value());
+
+	CHECK_FALSE(RevealHeadRow(nullptr, InputFor(read, options)).has_value());
+
+	const Core::HeadState unlisted = HeadOn("made-after-the-read");
+	CHECK_FALSE(RevealHeadRow(&unlisted, InputFor(read, options)).has_value());
+}
+
+TEST_CASE("Git window: the head chip clears a search that hides the checked-out branch and keeps one that lists it")
+{
+	LineReadBuilder builder;
+	const std::size_t checkedOut = builder.AddLocal("checked-out", {.Head = true});
+	builder.AddLocal("feature");
+	const LineRead read = builder.Build();
+	const Core::HeadState head = HeadOn("checked-out");
+
+	Options hiding;
+	hiding.Search = "feature";
+	const std::optional<HeadRowReveal> cleared = RevealHeadRow(&head, InputFor(read, hiding));
+
+	REQUIRE(cleared.has_value());
+	CHECK_FALSE(RowShowingRef(RowsOf(read, hiding), checkedOut).has_value());
+	CHECK(cleared->ClearsSearch);
+	CHECK(cleared->Opens.empty());
+	CHECK(RowShowingRef(RowsAfter(read, hiding, *cleared), checkedOut).has_value());
+
+	Options listing;
+	listing.Search = "checked";
+	const std::optional<HeadRowReveal> kept = RevealHeadRow(&head, InputFor(read, listing));
+
+	REQUIRE(kept.has_value());
+	CHECK_FALSE(kept->ClearsSearch);
+	CHECK(kept->Opens.empty());
+
+	// A search lists every section open, so the yours the reader closed is opened once the search is cleared.
+	Options hidingFolded;
+	hidingFolded.Search = "feature";
+	hidingFolded.OpenByUser = {{"yours", false}};
+	const std::optional<HeadRowReveal> both = RevealHeadRow(&head, InputFor(read, hidingFolded));
+
+	REQUIRE(both.has_value());
+	CHECK(both->ClearsSearch);
+	CHECK(both->Opens == Keys{"yours"});
+	CHECK(RowShowingRef(RowsAfter(read, hidingFolded, *both), checkedOut).has_value());
 }

@@ -635,6 +635,10 @@ namespace Graphite {
 
 		std::optional<SidebarRow> clicked;
 
+		// WARNING: Taken by this Draw whether or not its rows show the row, so rows that come later never scroll the list
+		// (spec §6 rule 6).
+		const std::optional<std::size_t> scrollToRef = std::exchange(m_ScrollToRef, std::nullopt);
+
 		if (ImGui::BeginChild("##SidebarRows", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
 			const ListBodyScope body;
@@ -670,6 +674,15 @@ namespace Graphite {
 				}
 
 				m_RowTops[rows->size()] = top;
+
+				const std::optional<std::size_t> shownRow =
+					scrollToRef.has_value() ? RowShowingRef(*rows, *scrollToRef) : std::nullopt;
+
+				if (shownRow.has_value())
+				{
+					const float rowMiddle = contentStart.y + (m_RowTops[*shownRow] + m_RowTops[*shownRow + 1]) * kHalf;
+					ImGui::SetScrollFromPosY(rowMiddle - ImGui::GetScrollY(), kHalf);
+				}
 
 				const float scrolled = ImGui::GetScrollY();
 				const float visibleBottom = scrolled + ImGui::GetWindowHeight();

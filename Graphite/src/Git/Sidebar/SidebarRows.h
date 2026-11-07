@@ -6,6 +6,7 @@
 
 #include "Core/Base/Base.h"
 #include "Core/Base/Result.h"
+#include "Core/Git/Head.h"
 #include "Core/Git/Stash.h"
 
 #include <chrono>
@@ -184,6 +185,21 @@ namespace Graphite {
 	};
 
 	RowMenuRefs RowMenuRefsOf(const SidebarRow& row, const LineRead& read, const BranchLines& lines);
+
+	// The row that shows `ref`, into LineRead::Refs: a branch row of it, or the base row of it or of its local copy. Empty
+	// when none of `rows` shows it.
+	std::optional<std::size_t> RowShowingRef(const std::vector<SidebarRow>& rows, std::size_t ref);
+
+	// What a click on the window bar's HEAD chip does to the sidebar for the checked-out branch's row to be listed.
+	struct HeadRowReveal
+	{
+		std::size_t Ref = 0;            // the checked-out branch, into LineRead::Refs
+		bool ClearsSearch = false;      // the search hides the row
+		std::vector<std::string> Opens; // the keys of the section and the group holding the row that are closed, section first
+	};
+
+	// Empty when HEAD is unread, detached or has no commits yet, or when no row of the sidebar would show its branch.
+	std::optional<HeadRowReveal> RevealHeadRow(const Core::HeadState* head, const SidebarInput& input);
 
 	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   std::string_view search, const std::map<std::string, bool>& openByUser);

@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -373,4 +374,148 @@ TEST_CASE("Git window: the bar's end says the status then the branches then the 
 
 	CHECK(Graphite::WindowBarProblem(Graphite::WindowBarFailures{.Status = &status, .Branches = &branches, .Log = &log, .Lines = &lines}) ==
 		  "status failed \xC2\xB7 branches failed \xC2\xB7 log failed \xC2\xB7 lines failed");
+}
+
+TEST_CASE("Git window: a head chip on a branch offers to show the branch in the list")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 2, 0)};
+	const std::vector<Core::Remote> remotes;
+
+	const Graphite::WindowBarText text = Describe(&head, &branches, &remotes);
+
+	CHECK(text.OnBranch);
+	CHECK(Graphite::HeadChipTooltip(text) == "main tracks origin/main\nClick to show it in the list");
+}
+
+TEST_CASE("Git window: a detached or unborn head's chip offers nothing to click")
+{
+	const std::vector<Core::Branch> branches;
+	const std::vector<Core::Remote> remotes;
+
+	Core::HeadState detached;
+	detached.Kind = Core::HeadKind::Detached;
+	detached.Commit = OidWithFirstByte(0xAB);
+	const Graphite::WindowBarText detachedText = Describe(&detached, &branches, &remotes);
+
+	CHECK_FALSE(detachedText.OnBranch);
+	CHECK(Graphite::HeadChipTooltip(detachedText) == "HEAD is detached at " + detached.Commit->ToHex());
+
+	Core::HeadState unborn;
+	unborn.Kind = Core::HeadKind::Unborn;
+	unborn.BranchName = "main";
+	const Graphite::WindowBarText unbornText = Describe(&unborn, &branches, &remotes);
+
+	CHECK_FALSE(unbornText.OnBranch);
+	CHECK(Graphite::HeadChipTooltip(unbornText) == "No commits yet on main");
+}
+
+namespace {
+
+	// The bar alone in a window, and whether any frame since the last ask said the chip was clicked.
+	struct BarHarness
+	{
+		explicit BarHarness(const char* windowName, Graphite::WindowBarText text)
+			: WindowName(windowName)
+			, Text(std::move(text))
+		{
+		}
+
+		void Draw()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(900.0f, 200.0f));
+			ImGui::Begin(WindowName, nullptr,
+						 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+
+			BarTop = ImGui::GetCursorScreenPos().y;
+			Clicked = Graphite::DrawWindowBar(Graphite::WindowBarDrawing{.Text = Text, .WorkingDirectory = kFolder, .Colours = Colours}) ||
+					  Clicked;
+			ChipId = ImGui::GetID("##headChip");
+
+			ImGui::End();
+		}
+
+		// Moves the pointer along the bar's middle until the chip is under it; false when it never is.
+		bool PointAtChip()
+		{
+			constexpr float kStep = 4.0f;
+			const auto draw = [this] { Draw(); };
+
+			Frames.Next(draw);
+			const float middle = BarTop + Graphite::WindowBarEm(36.0f) * 0.5f;
+
+			for (float x = 0.0f; x < 900.0f; x += kStep)
+			{
+				ImGui::GetIO().AddMousePosEvent(x, middle);
+				Frames.Next(draw);
+
+				if (ImGui::GetCurrentContext()->HoveredId == ChipId)
+				{
+					ChipPoint = ImVec2(x, middle);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		bool DrawsHoveredFill() const
+		{
+			const ImGuiWindow* window = ImGui::FindWindowByName(WindowName);
+
+			for (const ImDrawVert& vertex : window->DrawList->VtxBuffer)
+			{
+				if (vertex.col == Colours.ChipHoveredFill)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		bool TakeClick() { return std::exchange(Clicked, false); }
+
+		ImGuiFrames Frames;
+		const char* WindowName;
+		Graphite::WindowBarText Text;
+		Graphite::WindowBarColours Colours = Graphite::ReadWindowBarColours(Graphite::DarkScheme());
+		float BarTop = 0.0f;
+		ImGuiID ChipId = 0;
+		ImVec2 ChipPoint;
+		bool Clicked = false;
+	};
+}
+
+TEST_CASE("Git window: only a head chip on a branch shows a hover look and answers a click")
+{
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+	const std::vector<Core::Remote> remotes;
+
+	// One harness at a time: each holds an ImGui context of its own.
+	{
+		const Core::HeadState onBranch = OnBranch("main");
+		BarHarness branch("BranchChipHarness", Describe(&onBranch, &branches, &remotes));
+
+		REQUIRE(branch.PointAtChip());
+		CHECK(branch.DrawsHoveredFill());
+		CHECK_FALSE(branch.TakeClick());
+
+		branch.Frames.Click(branch.ChipPoint, [&] { branch.Draw(); });
+		CHECK(branch.TakeClick());
+	}
+
+	{
+		Core::HeadState detachedHead;
+		detachedHead.Kind = Core::HeadKind::Detached;
+		detachedHead.Commit = OidWithFirstByte(0xAB);
+		BarHarness detached("DetachedChipHarness", Describe(&detachedHead, &branches, &remotes));
+
+		REQUIRE(detached.PointAtChip());
+		CHECK_FALSE(detached.DrawsHoveredFill());
+
+		detached.Frames.Click(detached.ChipPoint, [&] { detached.Draw(); });
+		CHECK_FALSE(detached.TakeClick());
+	}
 }

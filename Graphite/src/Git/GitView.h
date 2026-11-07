@@ -193,6 +193,14 @@ namespace Graphite {
 		void RenderSidebar();
 		void RebuildSidebarWhenOutOfDate();
 
+		// What BuildSidebarRows is given for `inputs`; `mergedByContent` is held by pointer and must outlive the input.
+		SidebarInput SidebarInputFor(const SidebarInputs& inputs,
+									 const std::function<bool(std::size_t)>& mergedByContent) const;
+
+		// The window bar's HEAD chip clicked: the sidebar scrolls once to the checked-out branch's row, clearing a search
+		// that hides it and opening the section or group holding it. The selection and the shown history stay.
+		void ShowHeadInSidebar();
+
 		// The full name of the branch the sidebar keeps listed: the selected one, or the checked-out one for HEAD's
 		// history; empty for a stash's.
 		std::string SidebarShownRef() const;

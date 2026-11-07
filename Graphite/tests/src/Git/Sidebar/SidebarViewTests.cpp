@@ -10,6 +10,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <functional>
@@ -441,4 +442,95 @@ TEST_CASE("Git window: a search word is drawn in the match colour in a row's nam
 	}
 
 	CHECK(matched == 3);
+}
+
+TEST_CASE("Git window: a request to show a branch's row scrolls the list to it once, centred")
+{
+	Harness harness("SidebarScrollToRef");
+
+	constexpr std::size_t kBranchCount = 60;
+	constexpr std::size_t kShownRef = 40;
+	constexpr float kTruncation = 1.0f;
+
+	std::vector<SidebarRow> rows = {Section("yours")};
+
+	for (std::size_t ref = 0; ref < kBranchCount; ++ref)
+	{
+		rows.push_back(BranchRow(ref));
+	}
+
+	harness.Rows = &rows;
+	harness.Settle();
+
+	ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+	REQUIRE(list->Scroll.y == 0.0f);
+
+	harness.View.ScrollToRef(kShownRef);
+	harness.Settle();
+
+	const float rowHeight = SidebarTwoLineRowHeight();
+	const float rowMiddle = ListRowPitch() + rowHeight * static_cast<float>(kShownRef) + rowHeight * 0.5f;
+
+	CHECK(list->Scroll.y > 0.0f);
+	CHECK(std::abs(list->Scroll.y + list->Size.y * 0.5f - rowMiddle) <= kTruncation);
+
+	// The reader scrolls back up, and rows built again later do not scroll the list a second time.
+	ImGui::SetScrollY(list, 0.0f);
+	const std::vector<SidebarRow> rebuilt = rows;
+	harness.Rows = &rebuilt;
+	harness.Settle();
+
+	CHECK(list->Scroll.y == 0.0f);
+}
+
+TEST_CASE("Git window: a request to show a row the list does not hold is dropped")
+{
+	Harness harness("SidebarScrollToMissingRef");
+
+	std::vector<SidebarRow> rows = {Section("yours")};
+
+	for (std::size_t ref = 0; ref < 60; ++ref)
+	{
+		rows.push_back(BranchRow(ref));
+	}
+
+	const std::vector<SidebarRow> withoutTheRow(rows.begin(), rows.begin() + 10);
+	harness.Rows = &withoutTheRow;
+	harness.Settle();
+
+	harness.View.ScrollToRef(40);
+	harness.Settle();
+
+	// The row comes with a later build: by then the request is gone, so the list stays where the reader left it.
+	harness.Rows = &rows;
+	harness.Settle();
+
+	ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+	CHECK(list->Scroll.y == 0.0f);
+}
+
+TEST_CASE("Git window: a cleared search is gone from the field")
+{
+	Harness harness("SidebarClearedSearch");
+	const std::vector<SidebarRow> rows = {Section("yours"), BranchRow(0)};
+	harness.Rows = &rows;
+
+	harness.Settle();
+	harness.Click(ImVec2(100.0f, 20.0f));
+	ImGui::GetIO().AddInputCharactersUTF8("fix");
+	harness.Next();
+	harness.Next();
+	REQUIRE(harness.View.GetSearch() == "fix");
+
+	// The reader's click lands elsewhere first, as on the window bar's chip.
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+	harness.Click(InRows(*list, ListRowPitch() + SidebarTwoLineRowHeight() * 0.5f));
+
+	harness.View.ClearSearch();
+	harness.Settle();
+
+	CHECK(harness.View.GetSearch().empty());
 }

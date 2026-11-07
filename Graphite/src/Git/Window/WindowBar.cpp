@@ -46,6 +46,7 @@ namespace Graphite {
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kUnreadRemotes = "\xE2\x80\xA6";
+		constexpr const char* kChipClickHint = "Click to show it in the list";
 
 		ImU32 PackedColour(const Core::Color& colour)
 		{
@@ -97,6 +98,7 @@ namespace Graphite {
 			case Core::HeadKind::Branch:
 			{
 				text.Head = head.BranchName;
+				text.OnBranch = true;
 
 				// WARNING: Looked up by HEAD's name, not as the listing's checked-out branch: after a checkout HEAD is read at once
 				// while the branches wait for the refresh, and the listing's checked-out branch is the one checked out before.
@@ -243,10 +245,12 @@ namespace Graphite {
 			const std::string name = FitToWidth(text.Head, maxWidth - 2.0f * side - dot - gap - stateWidth);
 			const float width = 2.0f * side + dot + gap + WidthOf(name) + stateWidth;
 
+			// A detached or unborn HEAD names no branch to show, so its chip keeps the tooltip and nothing else.
 			ImGui::SetCursorScreenPos(topLeft);
-			const bool clicked = ImGui::InvisibleButton("##headChip", ImVec2(width, height));
-			const bool hovered = ImGui::IsItemHovered();
-			ShowTooltipOfLastItem(text.HeadTooltip);
+			const bool pressed = ImGui::InvisibleButton("##headChip", ImVec2(width, height));
+			const bool clicked = pressed && text.OnBranch;
+			const bool hovered = ImGui::IsItemHovered() && text.OnBranch;
+			ShowTooltipOfLastItem(HeadChipTooltip(text));
 
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
 			const ImVec2 bottomRight(topLeft.x + width, topLeft.y + height);
@@ -352,6 +356,11 @@ namespace Graphite {
 		}
 
 		return text;
+	}
+
+	std::string HeadChipTooltip(const WindowBarText& text)
+	{
+		return text.OnBranch ? text.HeadTooltip + "\n" + kChipClickHint : text.HeadTooltip;
 	}
 
 	std::string WindowBarProblem(const WindowBarFailures& failures)

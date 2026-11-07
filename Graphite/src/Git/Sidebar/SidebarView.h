@@ -58,12 +58,19 @@ namespace Graphite {
 
 		const std::string& GetSearch() const { return m_Search; }
 
-		// The one programmatic scroll: applied by the next Draw. A rebuild of the rows keeps the scroll position.
+		// The programmatic scrolls, each applied once by the next Draw. A rebuild of the rows keeps the scroll position.
 		void ScrollToTop() { m_ScrollToTop = true; }
+
+		// Brings the row showing `ref`, into LineRead::Refs (RowShowingRef), into view, centred where the list lets it. A
+		// next Draw whose rows do not show it drops the request, so rows built later never scroll the list.
+		void ScrollToRef(std::size_t ref) { m_ScrollToRef = ref; }
+
+		void ClearSearch() { m_Search.clear(); }
 
 	private:
 		std::string m_Search;
 		bool m_ScrollToTop = false;
+		std::optional<std::size_t> m_ScrollToRef;
 		std::vector<float> m_RowTops; // reused every frame: row i starts at m_RowTops[i], the list ends at the last
 	};
 }
