@@ -42,9 +42,11 @@ namespace Graphite {
 	};
 
 	// Those a check of the new pair would answer as the earlier one did: the earlier line tip is an ancestor of the new
-	// one, and the trees from one to the other differ at none of the paths the branch changed since its fork with the
-	// earlier tip, so merging the branch and walking its patches meet the same files. The rest go back to the checks: an
-	// earlier tip that is not an ancestor, a path the line changed, or an object the diffs need missing.
+	// one, the new tip holds none of the branch's own commits against the earlier one (so the merge bases are the same),
+	// and the trees from one to the other differ at none of the paths the branch changed since its fork with the earlier
+	// tip, so merging the branch and walking its patches meet the same files. The rest go back to the checks: an earlier
+	// tip that is not an ancestor, a move that took some of the branch in by history, a path the line changed, or an object
+	// the diffs need missing.
 	//
 	// Reads trees only, so a blobless clone answers: one diff of the line's two trees per line move, and per verdict one
 	// diff from the branch's fork, which the graph gives, to its tip, kept to the paths that move changed.

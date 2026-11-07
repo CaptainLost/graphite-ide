@@ -1075,6 +1075,65 @@ TEST_CASE("Git window: a not-merged or unknown verdict is checked again when the
 	CHECK(port.LineMovesDiffed.empty());
 }
 
+namespace {
+
+	// topic: fork - b1 - b2. The line: fork - its own commit - a squash of b2 (L1), then a merge of b1 that keeps the
+	// line's side (`git merge -s ours b1`, L2): the move changes no path of the line's tree, but takes b1 in by history.
+	const Core::Oid kTopicFork = IdOf(0x31);
+	const Core::Oid kTopicFirst = IdOf(0x32);
+	const Core::Oid kTopicTip = IdOf(0x33);
+	const Core::Oid kLineOwn = IdOf(0x34);
+	const Core::Oid kSquashOfSecond = IdOf(0x35);
+	const Core::Oid kMergesFirst = IdOf(0x36);
+
+	Core::Ref<const Core::AncestryGraph> MergedInPartGraph()
+	{
+		Core::AncestryGraph graph;
+		graph.Append({Core::GraphCommit{.Id = kTopicFork, .Time = 100},
+					  Core::GraphCommit{.Id = kTopicFirst, .Parents = {kTopicFork}, .Time = 110},
+					  Core::GraphCommit{.Id = kTopicTip, .Parents = {kTopicFirst}, .Time = 120},
+					  Core::GraphCommit{.Id = kLineOwn, .Parents = {kTopicFork}, .Time = 130},
+					  Core::GraphCommit{.Id = kSquashOfSecond, .Parents = {kLineOwn}, .Time = 140},
+					  Core::GraphCommit{.Id = kMergesFirst, .Parents = {kSquashOfSecond, kTopicFirst}, .Time = 150}});
+		return Core::CreateRef<const Core::AncestryGraph>(std::move(graph));
+	}
+
+	Core::Ref<const LineRead> MergedInPartRead(const Core::Oid& lineTip)
+	{
+		LineRead read = CandidatesRead(1);
+		read.Refs[0].Tip = lineTip;
+		read.Refs[1].Tip = kTopicTip;
+		read.Graph = MergedInPartGraph();
+		read.Generations = Core::CreateRef<const std::vector<std::uint32_t>>(Core::GenerationsOf(*read.Graph));
+		return Shared(std::move(read));
+	}
+}
+
+TEST_CASE("Git window: a verdict is checked again when the line's move takes part of the branch in by history, however few paths it changed")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	// Against the squash alone, b1's change is not on the line; with b1 merged in, the line holds both.
+	port.Verdicts[ContentKey{kTopicTip, kSquashOfSecond}] = Core::ContentVerdict{};
+	port.Verdicts[ContentKey{kTopicTip, kMergesFirst}] = SquashLandingAt(kSquashOfSecond);
+	port.LinePaths[FakeContentPort::LineMove{kSquashOfSecond, kMergesFirst}] = {};
+
+	model.Follow(MergedInPartRead(kSquashOfSecond));
+	Settle(jobs, model);
+	REQUIRE(port.Checked.size() == 1);
+
+	const Core::Ref<const LineRead> merged = MergedInPartRead(kMergesFirst);
+	model.Follow(merged);
+	Settle(jobs, model);
+
+	REQUIRE(port.Checked.size() == 2);
+	CHECK(port.Checked[1] == ContentKey{kTopicTip, kMergesFirst});
+	CHECK(IsKnownAs(model.KnownMarkOf(merged->Model.Branches[0]), SquashLandingAt(kSquashOfSecond)));
+}
+
 TEST_CASE("Git window: while a moved line's carry job waits or runs the branch keeps its earlier mark, and turns pending once it is to be checked")
 {
 	bool unknown = false;

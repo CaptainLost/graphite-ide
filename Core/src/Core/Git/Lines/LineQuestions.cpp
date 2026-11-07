@@ -314,6 +314,40 @@ namespace Core {
 		return fork;
 	}
 
+	// Every commit tip reaches outside `reachedBefore` is reached through others outside it, so a walk of those finds them all.
+	bool HoldsOwnCommitOf(const AncestryGraph& graph, const std::vector<bool>& reachedBefore, const std::vector<bool>& reachedNow,
+						  Index tip)
+	{
+		if (tip >= reachedBefore.size() || tip >= reachedNow.size() || reachedBefore[tip])
+		{
+			return false;
+		}
+
+		std::unordered_set<Index> seen{tip};
+		std::vector<Index> pending{tip};
+
+		while (!pending.empty())
+		{
+			const Index commit = pending.back();
+			pending.pop_back();
+
+			if (reachedNow[commit])
+			{
+				return true;
+			}
+
+			for (const Index parent : graph.ParentsOf(commit))
+			{
+				if (!reachedBefore[parent] && seen.insert(parent).second)
+				{
+					pending.push_back(parent);
+				}
+			}
+		}
+
+		return false;
+	}
+
 	std::vector<bool> TipsHolding(const AncestryGraph& graph, std::span<const std::uint32_t> generations, Index commit,
 								  std::span<const Index> tips)
 	{

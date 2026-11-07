@@ -179,17 +179,31 @@ namespace Graphite {
 			const LineMove move{.From = ask.EarlierLineTip, .To = ask.Key.LineTip};
 			const MoveAnswer& moved = MoveAnswerOf(context.Graph, context.Generations, context.Port, context.Repository, move, context.Moves);
 
-			if (moved.Outcome != CarryOutcome::Carried || moved.Paths.empty())
+			if (moved.Outcome != CarryOutcome::Carried)
 			{
 				return moved.Outcome;
 			}
 
 			const Core::AncestryGraph::Index tip = context.Graph.Find(ask.Key.BranchTip);
 			const Reach& reach = ReachOf(context.Graph, ask.EarlierLineTip, context.ReachByLineTip);
+			const Reach& reachNow = ReachOf(context.Graph, ask.Key.LineTip, context.ReachByLineTip);
 
-			if (tip == Core::AncestryGraph::kNoCommit || reach.empty())
+			if (tip == Core::AncestryGraph::kNoCommit || reach.empty() || reachNow.empty())
 			{
 				return CarryOutcome::CheckedAgain;
+			}
+
+			// WARNING: Asked before the paths. A move that takes some of the branch's own commits in by history moves its
+			// merge bases, and the check of the new pair merges from those, however few paths the line's trees changed:
+			// a merge keeping the line's side changes none.
+			if (Core::HoldsOwnCommitOf(context.Graph, reach, reachNow, tip))
+			{
+				return CarryOutcome::CheckedAgain;
+			}
+
+			if (moved.Paths.empty())
+			{
+				return CarryOutcome::Carried;
 			}
 
 			const std::optional<Core::AncestryGraph::Index> fork = Core::ForkWith(context.Graph, context.Generations, reach, tip);

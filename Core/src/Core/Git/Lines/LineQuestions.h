@@ -44,6 +44,12 @@ namespace Core {
 	std::optional<AncestryGraph::Index> ForkWith(const AncestryGraph& graph, std::span<const std::uint32_t> generations,
 												 const std::vector<bool>& reached, AncestryGraph::Index tip);
 
+	// Whether `reachedNow` holds one of tip's own commits against `reachedBefore` (those it does not hold): a later tip of
+	// the line that took part of tip's history in, so that tip's merge bases with it are not those with the earlier one.
+	// False when tip's own commits are all outside `reachedNow`, and when `reachedBefore` holds tip itself.
+	bool HoldsOwnCommitOf(const AncestryGraph& graph, const std::vector<bool>& reachedBefore, const std::vector<bool>& reachedNow,
+						  AncestryGraph::Index tip);
+
 	// For each tip, whether it reaches `commit` (a tip reaches itself). A tip's walk skips commits whose
 	// generation is below the commit's, and commits an earlier tip's walk already found not to lead to it.
 	std::vector<bool> TipsHolding(const AncestryGraph& graph, std::span<const std::uint32_t> generations, AncestryGraph::Index commit,

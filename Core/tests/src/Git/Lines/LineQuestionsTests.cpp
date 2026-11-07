@@ -270,3 +270,36 @@ TEST_CASE("Lines: a branch the line holds, and one with no common history, fork 
 	CHECK_FALSE(ForkName(builder, "c2", "c3", names).has_value());
 	CHECK_FALSE(ForkName(builder, "o2", "c3", names).has_value());
 }
+
+namespace {
+
+	// Whether the history `nowTip` reaches holds one of `tip`'s own commits against the history `beforeTip` reaches.
+	bool LaterTipHoldsOwnCommit(const GraphBuilder& builder, std::string_view tip, std::string_view beforeTip, std::string_view nowTip)
+	{
+		const Core::AncestryGraph graph = builder.Graph();
+		const Index before = graph.Find(OidOf(beforeTip));
+		const Index now = graph.Find(OidOf(nowTip));
+
+		return Core::HoldsOwnCommitOf(graph, Core::CommitsReachableFrom(graph, std::span<const Index>{&before, 1}),
+									  Core::CommitsReachableFrom(graph, std::span<const Index>{&now, 1}), graph.Find(OidOf(tip)));
+	}
+}
+
+TEST_CASE("Lines: a later line tip that merged part of a branch by history holds one of its own commits")
+{
+	// b1 - b2 forked at c2; the line goes on to c5, then merges b1 alone.
+	GraphBuilder builder;
+	builder.Chain("c", 5, std::nullopt, 0, {});
+	builder.Commit("b1", {"c2"}, 10);
+	builder.Commit("b2", {"b1"}, 11);
+	builder.Commit("merged", {"c5", "b1"}, 12);
+
+	CHECK(LaterTipHoldsOwnCommit(builder, "b2", "c5", "merged"));
+	CHECK(LaterTipHoldsOwnCommit(builder, "b2", "c3", "merged"));
+
+	// Moving on without the branch's commits leaves its own history alone.
+	CHECK_FALSE(LaterTipHoldsOwnCommit(builder, "b2", "c3", "c5"));
+
+	// A branch the earlier tip holds already has no own commits to take in.
+	CHECK_FALSE(LaterTipHoldsOwnCommit(builder, "c1", "c3", "merged"));
+}
