@@ -270,7 +270,8 @@ namespace Core {
 		// Forgets what in-memory checks wrote; a check does this itself when it ends.
 		void DropObjectsInMemory() const;
 
-		// Whether a commit with this id can be read.
+		// Whether the repository has a commit with this id: false when the object database lacks it (IsMissingObject), and
+		// IoFailure when it cannot be read for another reason.
 		Result<bool> HoldsCommit(const Oid& commit) const;
 
 		// Whether the two commits record the same tree. NotFound when either is missing.

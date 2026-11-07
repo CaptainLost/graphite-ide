@@ -14,7 +14,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <optional>
 #include <set>
 #include <string>
@@ -103,6 +105,39 @@ namespace {
 
 		REQUIRE(match.HasValue());
 		REQUIRE(match.GetValue().Complete);
+	}
+
+	// A zlib stream that stores `data` in one uncompressed block: header, block, length and its complement, the data, and
+	// the Adler-32 of the data.
+	std::string ZlibStreamStoring(std::string_view data)
+	{
+		constexpr std::uint32_t kAdlerModulus = 65521;
+		std::uint32_t low = 1;
+		std::uint32_t high = 0;
+
+		for (const char byte : data)
+		{
+			low = (low + static_cast<std::uint8_t>(byte)) % kAdlerModulus;
+			high = (high + low) % kAdlerModulus;
+		}
+
+		const std::uint32_t adler = (high << 16) | low;
+		const auto length = static_cast<std::uint16_t>(data.size());
+		const auto complement = static_cast<std::uint16_t>(~length);
+
+		std::string stream{'\x78', '\x01', '\x01'};
+		stream += static_cast<char>(length & 0xFF);
+		stream += static_cast<char>(length >> 8);
+		stream += static_cast<char>(complement & 0xFF);
+		stream += static_cast<char>(complement >> 8);
+		stream += data;
+
+		for (const int shift : {24, 16, 8, 0})
+		{
+			stream += static_cast<char>((adler >> shift) & 0xFF);
+		}
+
+		return stream;
 	}
 
 	bool TreesDifferAt(const Core::Repository& repository, const std::string& from, const std::string& to,
@@ -554,6 +589,44 @@ TEST_CASE("Content: a tip the repository does not hold answers unknown")
 
 	CHECK(Check(fixture, MissingCommitHex(topicTip), masterTip) == unknown);
 	CHECK(Check(fixture, topicTip, MissingCommitHex(masterTip)) == unknown);
+}
+
+TEST_CASE("Content: a tip that cannot be read for another reason than a missing object fails the check")
+{
+	GitFixture fixture;
+	StartTopic(fixture);
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string topicTip = fixture.Commit("topic edits line two");
+	fixture.Checkout("master");
+	fixture.Write("b.txt", "unrelated\n");
+	const std::string masterTip = fixture.Commit("unrelated");
+
+	// The commit's file inflates, but to no object header: libgit2 fails to parse it (GIT_ERROR_OBJECT), which is not an
+	// object the database lacks. A file that does not inflate reads as missing (GIT_ERROR_ODB), as ruled for a corrupt one.
+	fixture.RemoveObject(topicTip);
+	const std::filesystem::path objectFile = fixture.GetPath() / ".git" / "objects" / topicTip.substr(0, 2) / topicTip.substr(2);
+
+	{
+		std::ofstream unparsable{objectFile, std::ios::binary | std::ios::trunc};
+		REQUIRE(unparsable.is_open());
+		unparsable << ZlibStreamStoring("no header here");
+	}
+
+	const Core::Repository repository = OpenInMemory(fixture);
+	Core::PatchIdCache cache;
+
+	const Core::Result<bool> held = repository.HoldsCommit(OidOf(topicTip));
+	REQUIRE_FALSE(held.HasValue());
+	CHECK(held.GetError().Code == Core::ErrorCode::IoFailure);
+
+	const Core::Result<Core::ContentVerdict> verdict = Core::CheckMergedByContent(repository, OidOf(topicTip), OidOf(masterTip), cache);
+	REQUIRE_FALSE(verdict.HasValue());
+	CHECK(verdict.GetError().Code == Core::ErrorCode::IoFailure);
+
+	// A commit that is not there at all is still an answer.
+	const Core::Result<bool> missing = repository.HoldsCommit(OidOf(MissingCommitHex(masterTip)));
+	REQUIRE(missing.HasValue());
+	CHECK_FALSE(missing.GetValue());
 }
 
 TEST_CASE("Content: a commit's twin is found on a release line")

@@ -719,7 +719,24 @@ namespace Core {
 			return RepositoryNotOpen();
 		}
 
-		return LookupCommit(m_Handle.get(), commit).HasValue();
+		const git_oid id = ToGitOid(commit);
+		CommitHandle found;
+		git_error_clear();
+		const int lookupResult = git_commit_lookup(Out(found), m_Handle.get(), &id);
+
+		if (lookupResult == 0)
+		{
+			return true;
+		}
+
+		// WARNING: Only a missing object is an answer. Any other failure, a read error during a repack say, would be kept on
+		// disk as an unknown verdict for the pair until a tip moved.
+		if (IsMissingObject(lookupResult))
+		{
+			return false;
+		}
+
+		return Error{ErrorCode::IoFailure, std::format("cannot read commit {}: {}", commit.ToHex(), LastLibgit2Message())};
 	}
 
 	Result<bool> Repository::HaveSameTree(const Oid& one, const Oid& other) const
