@@ -66,6 +66,16 @@ namespace Core {
 		git_status_list_free(list);
 	}
 
+	void Libgit2Free::operator()(git_tag* tag) const
+	{
+		git_tag_free(tag);
+	}
+
+	void Libgit2Free::operator()(git_reference_iterator* iterator) const
+	{
+		git_reference_iterator_free(iterator);
+	}
+
 	void Libgit2Free::operator()(git_tree* tree) const
 	{
 		git_tree_free(tree);

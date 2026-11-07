@@ -12,6 +12,7 @@ namespace Core {
 
 	inline constexpr std::string_view kLocalBranchPrefix = "refs/heads/";
 	inline constexpr std::string_view kRemoteBranchPrefix = "refs/remotes/";
+	inline constexpr std::string_view kTagPrefix = "refs/tags/";
 
 	// "refs/heads/main" for "main".
 	inline std::string LocalBranchReference(std::string_view branchName)

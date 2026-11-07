@@ -17,6 +17,7 @@
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
+#include "Core/Git/Tag.h"
 #include "Core/Git/Worktree.h"
 
 #include <cstddef>
@@ -113,6 +114,11 @@ namespace Core {
 
 		// Local branches first, then remote-tracking ones, each group in name order.
 		Result<std::vector<Branch>> QueryBranches() const;
+
+		// Every refs/tags/* that peels to a commit this repository holds, newest first by When, then by Name. A tag
+		// of a tree or a blob, one whose commit is missing and a symbolic ref are left out; only a failure that is not
+		// a missing object fails the listing.
+		Result<std::vector<Tag>> QueryTags(TagCache& cache) const;
 
 		// One walk over every tip with the hidden commits left out, then each tip's own commits
 		// gathered from what that walk found.

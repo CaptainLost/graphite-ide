@@ -11,6 +11,7 @@
 #include <git2.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -145,6 +146,51 @@ public:
 
 		git_reference_free(createdBranch);
 		git_commit_free(target);
+	}
+
+	void TagLightweight(const std::string& name, const std::string& commitHex)
+	{
+		TagObject(name, commitHex);
+	}
+
+	// Writes the tag object and refs/tags/<name> naming it; returns the tag object's hex. The target may itself be a
+	// tag object, which makes a tag of a tag.
+	std::string TagAnnotated(const std::string& name, const std::string& targetHex, std::int64_t taggerTime, const std::string& message)
+	{
+		git_oid targetId{};
+		REQUIRE(git_oid_fromstr(&targetId, targetHex.c_str()) == 0);
+
+		git_object* target = nullptr;
+		REQUIRE(git_object_lookup(&target, m_Repository, &targetId, GIT_OBJECT_ANY) == 0);
+
+		git_signature* tagger = MakeSignature(kDefaultAuthorName, kDefaultAuthorEmail, static_cast<git_time_t>(taggerTime));
+
+		git_oid tagId{};
+		REQUIRE(git_tag_annotation_create(&tagId, m_Repository, name.c_str(), target, tagger, message.c_str()) == 0);
+
+		git_signature_free(tagger);
+		git_object_free(target);
+
+		const std::string tagHex = HexTextOf(tagId);
+		TagObject(name, tagHex);
+		return tagHex;
+	}
+
+	// refs/tags/<name> naming the object directly: a lightweight tag when it is a commit, and a tag of a tree or a
+	// blob when it is one of those.
+	void TagObject(const std::string& name, const std::string& objectHex)
+	{
+		git_oid objectId{};
+		REQUIRE(git_oid_fromstr(&objectId, objectHex.c_str()) == 0);
+
+		const std::string reference = "refs/tags/" + name;
+
+		const int overwriteExisting = 1;
+		const char* noReflogMessage = nullptr;
+		git_reference* createdReference = nullptr;
+		REQUIRE(git_reference_create(&createdReference, m_Repository, reference.c_str(), &objectId, overwriteExisting,
+									 noReflogMessage) == 0);
+		git_reference_free(createdReference);
 	}
 
 	void Checkout(const std::string& name)

@@ -169,6 +169,30 @@ TEST_CASE("A named ref limits the walk to that branch")
 	CHECK(log.GetValue().Commits[0].Summary == "add side");
 }
 
+TEST_CASE("Log: a history asked for an annotated tag's full name starts at its commit")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("a.txt", "two\n");
+	const std::string tagged = fixture.Commit("second");
+	fixture.Write("a.txt", "three\n");
+	fixture.Commit("third");
+	fixture.TagAnnotated("v1", tagged, 1500000000, "Release\n");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Ref = "refs/tags/v1";
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().Commits.size() == 2);
+	CHECK(log.GetValue().Commits[0].Summary == "second");
+	CHECK(log.GetValue().Commits[1].Summary == "first");
+}
+
 TEST_CASE("The log of a repository with no commits is empty rather than an error because an unborn HEAD is a legitimate state")
 {
 	GitFixture fixture;
