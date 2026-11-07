@@ -81,7 +81,6 @@ namespace Graphite {
 		constexpr float kMockupFontPixels = 13.0f;
 		constexpr float kMessagePiecesGap = 6.0f;
 		constexpr float kAuthorColumnPixels = 132.0f;
-		constexpr float kAuthorAvatarOnlyColumnPixels = 20.0f;
 		constexpr float kAvatarPixels = 16.0f;
 		constexpr float kAvatarInitialsPixels = 8.5f;
 		constexpr float kAvatarNameGapPixels = 6.0f;
@@ -664,14 +663,16 @@ namespace Graphite {
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
 
-		// The columns have the mockup's widths and no header row, so none of them is resized by the reader.
-		constexpr ImGuiTableFlags flags = ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY;
+		// WARNING: There is no header row, so the columns are resized by their separators down the whole list. Without a header ImGui offers no hit zone at all under NoBordersInBody; NoBordersInBodyUntilResize gives one and draws the line only while a separator is pointed at or dragged.
+		constexpr ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV |
+										  ImGuiTableFlags_NoBordersInBodyUntilResize | ImGuiTableFlags_ScrollY;
 
 		const ImGuiStyle& style = ImGui::GetStyle();
 
 		const float widthBesideScrollbar = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
 
-		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags, ImVec2(0.0f, -m_RoomBelow)))
+		// WARNING: Not the "##commits" of the header row this replaced: ImGui saved that table's columns in another order, and loading them would put the hash before the message.
+		if (ImGui::BeginTable("##history", TableIndexOf(Column::Count), flags, ImVec2(0.0f, -m_RoomBelow)))
 		{
 			PadListTableEnds();
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
@@ -682,27 +683,24 @@ namespace Graphite {
 			columnInput.FontSize = ImGui::GetFontSize();
 
 			const CommitColumns columns = LayoutCommitColumns(columnInput);
-			m_ShowsAuthorName = columns.ShowAuthorName;
 
 			const float chevronWidth = std::max(ImGui::CalcTextSize(ChevronGlyph(false)).x, ImGui::CalcTextSize(ChevronGlyph(true)).x);
-			const float authorWidth = MockupPixels(columns.ShowAuthorName ? kAuthorColumnPixels : kAuthorAvatarOnlyColumnPixels);
-			const float ageWidth = MockupPixels(kAgeColumnPixels);
-			const float hashWidth = MockupPixels(kHashColumnPixels);
 
 			constexpr ImGuiTableColumnFlags kFixedWidth = ImGuiTableColumnFlags_WidthFixed;
 			constexpr ImGuiTableColumnFlags kFixedAndLocked = kFixedWidth | ImGuiTableColumnFlags_NoResize;
 
 			// WARNING: A narrow table gives up the hash with the Disabled flag, which is read again every frame. The table is not Hideable, so ImGui offers no menu to bring it back and does not save the state.
-			const ImGuiTableColumnFlags hashFlags =
-				columns.ShowHash ? kFixedAndLocked : kFixedAndLocked | ImGuiTableColumnFlags_Disabled;
+			const ImGuiTableColumnFlags hashFlags = columns.ShowHash ? kFixedWidth : kFixedWidth | ImGuiTableColumnFlags_Disabled;
 
-			// A fixed column that cannot be resized has the width given here applied again every frame.
+			// The graph and the chevron cannot be resized, so the width given here is applied again every frame and the
+			// graph follows the lane count. The author, age and hash start at the mockup's widths and then keep the
+			// reader's, which ImGui saves with the layout.
 			ImGui::TableSetupColumn("##graph", kFixedAndLocked, columns.Graph);
 			ImGui::TableSetupColumn("##chevron", kFixedAndLocked, chevronWidth);
 			ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("Author", kFixedAndLocked, authorWidth);
-			ImGui::TableSetupColumn("Age", kFixedAndLocked, ageWidth);
-			ImGui::TableSetupColumn("Hash", hashFlags, hashWidth);
+			ImGui::TableSetupColumn("Author", kFixedWidth, MockupPixels(kAuthorColumnPixels));
+			ImGui::TableSetupColumn("Age", kFixedWidth, MockupPixels(kAgeColumnPixels));
+			ImGui::TableSetupColumn("Hash", hashFlags, MockupPixels(kHashColumnPixels));
 
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 
@@ -979,9 +977,13 @@ namespace Graphite {
 		}
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
+
+		const float authorRoom = ImGui::GetContentRegionAvail().x + kRoundedUpPixel;
+		const float avatarAndGap = MockupPixels(kAvatarPixels) + MockupPixels(kAvatarNameGapPixels);
+
 		DrawAvatar(commit.Author, alpha);
 
-		if (m_ShowsAuthorName)
+		if (ShowsAuthorName(authorRoom, avatarAndGap, ImGui::CalcTextSize("0").x))
 		{
 			ImGui::SameLine(kNoOffset, MockupPixels(kAvatarNameGapPixels));
 			DrawFittedCell(AuthorName(commit.Author), dimmedInk, highlight);

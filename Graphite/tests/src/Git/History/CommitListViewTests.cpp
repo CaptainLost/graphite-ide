@@ -384,6 +384,83 @@ namespace {
 	};
 }
 
+namespace {
+
+	int ColumnNamed(const ImGuiTable& table, std::string_view name)
+	{
+		for (int column = 0; column < table.ColumnsCount; ++column)
+		{
+			if (std::string_view{ImGui::TableGetColumnName(&table, column)} == name)
+			{
+				return column;
+			}
+		}
+
+		return -1;
+	}
+}
+
+TEST_CASE("Git window: dragging the separator between the message and the author widens the author's column for good")
+{
+	constexpr int kCommitCount = 9;
+	constexpr float kDragLeft = 40.0f;
+	constexpr int kHoverFrames = 6; // past ImGui's delay before a separator shows it is under the pointer
+	constexpr float kTruncation = 1.0f;
+
+	MarkedHistory history("ResizedAuthorHistory", kCommitCount);
+	const auto draw = [&] { history.Draw(); };
+
+	history.Settle();
+
+	const ImGuiTable* table = history.Table();
+	REQUIRE(table != nullptr);
+
+	const int message = ColumnNamed(*table, "Message");
+	const int author = ColumnNamed(*table, "Author");
+	REQUIRE(message >= 0);
+	REQUIRE(author >= 0);
+
+	const float widthBefore = table->Columns[author].WidthGiven;
+	const float separatorX = table->Columns[message].MaxX;
+	const float middleY = (table->InnerRect.Min.y + table->InnerRect.Max.y) * 0.5f;
+	const ImU32 heldSeparator = ImGui::GetColorU32(ImGuiCol_SeparatorActive);
+
+	// No line stands between the columns until a separator is pointed at.
+	CHECK_FALSE(DrawsInColour(*table->InnerWindow->DrawList, table->BorderColorStrong));
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.AddMousePosEvent(separatorX, middleY);
+
+	for (int frame = 0; frame < kHoverFrames; ++frame)
+	{
+		history.Frames.Next(draw);
+	}
+
+	CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_ResizeEW);
+
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	history.Frames.Next(draw);
+	io.AddMousePosEvent(separatorX - kDragLeft, middleY);
+	history.Frames.Next(draw);
+	history.Frames.Next(draw);
+
+	CHECK(DrawsInColour(*table->InnerWindow->DrawList, heldSeparator));
+
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+	history.Frames.Next(draw);
+	io.AddMousePosEvent(table->InnerRect.Min.x + 1.0f, middleY);
+	history.Frames.Next(draw);
+
+	const float widthAfter = table->Columns[author].WidthGiven;
+	CHECK(widthAfter >= widthBefore + kDragLeft - kTruncation);
+	CHECK(widthAfter <= widthBefore + kDragLeft + kTruncation);
+
+	history.Settle();
+
+	CHECK(table->Columns[author].WidthGiven == widthAfter);
+	CHECK_FALSE(DrawsInColour(*table->InnerWindow->DrawList, heldSeparator));
+}
+
 TEST_CASE("Git window: showing the newer commits dims them")
 {
 	MarkedHistory history("DimmedHistory", 3);

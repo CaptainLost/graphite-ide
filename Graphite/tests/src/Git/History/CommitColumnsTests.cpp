@@ -15,41 +15,35 @@ namespace {
 	}
 }
 
-TEST_CASE("Git window: a wide history shows the author's name and the hash")
+TEST_CASE("Git window: a wide history shows the hash")
 {
 	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(900.0f));
 
-	CHECK(columns.ShowAuthorName);
 	CHECK(columns.ShowHash);
 	CHECK(columns.Graph == 30.0f);
 }
 
-TEST_CASE("Git window: below 640 mockup pixels the author's name is hidden and the hash stays")
-{
-	CHECK(Graphite::LayoutCommitColumns(InputAt(640.0f)).ShowAuthorName);
-
-	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(639.0f));
-
-	CHECK_FALSE(columns.ShowAuthorName);
-	CHECK(columns.ShowHash);
-}
-
-TEST_CASE("Git window: below 500 mockup pixels the hash is hidden too")
+TEST_CASE("Git window: below 500 mockup pixels the hash is hidden")
 {
 	CHECK(Graphite::LayoutCommitColumns(InputAt(500.0f)).ShowHash);
-
-	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(InputAt(499.0f));
-
-	CHECK_FALSE(columns.ShowAuthorName);
-	CHECK_FALSE(columns.ShowHash);
+	CHECK_FALSE(Graphite::LayoutCommitColumns(InputAt(499.0f)).ShowHash);
 }
 
-TEST_CASE("Git window: the thresholds grow with the font like the mockup's em")
+TEST_CASE("Git window: the hash's threshold grows with the font like the mockup's em")
 {
-	CHECK(Graphite::LayoutCommitColumns(InputAt(800.0f, 26.0f)).ShowAuthorName == false);
-	CHECK(Graphite::LayoutCommitColumns(InputAt(1280.0f, 26.0f)).ShowAuthorName);
 	CHECK(Graphite::LayoutCommitColumns(InputAt(1000.0f, 26.0f)).ShowHash);
 	CHECK_FALSE(Graphite::LayoutCommitColumns(InputAt(999.0f, 26.0f)).ShowHash);
+}
+
+TEST_CASE("Git window: the author's cell shows the name from room for the avatar and three characters, the avatar alone below it")
+{
+	constexpr float kAvatarAndGap = 22.0f;
+	constexpr float kCharacter = 7.0f;
+
+	CHECK_FALSE(Graphite::ShowsAuthorName(20.0f, kAvatarAndGap, kCharacter));
+	CHECK_FALSE(Graphite::ShowsAuthorName(42.5f, kAvatarAndGap, kCharacter));
+	CHECK(Graphite::ShowsAuthorName(43.0f, kAvatarAndGap, kCharacter));
+	CHECK(Graphite::ShowsAuthorName(162.0f, kAvatarAndGap, kCharacter));
 }
 
 TEST_CASE("Git window: the graph is capped to a quarter of the table")

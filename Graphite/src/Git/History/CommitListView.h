@@ -202,9 +202,7 @@ namespace Graphite {
 		std::optional<Core::Oid> m_ScrollTarget;
 		bool m_ScrollToTop = false;
 
-		// What the last Render drew, which the rows and the graph read: the author's name fits beside the avatar, and
-		// the commit under the pointer.
-		bool m_ShowsAuthorName = true;
+		// The commit under the pointer when the last Render drew it, which the graph reads.
 		std::optional<Core::Oid> m_HoveredCommit;
 
 		bool m_FoldClicked = false;
