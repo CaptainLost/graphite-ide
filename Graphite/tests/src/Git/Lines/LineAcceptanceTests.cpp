@@ -9,6 +9,7 @@
 #include "Git/Content/RememberedVerdicts.h"
 #include "Git/Lines/LineReader.h"
 #include "Git/Lines/LineStore.h"
+#include "Git/Tags/TagAcceptance.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Content/ContentCheck.h"
@@ -1089,7 +1090,9 @@ namespace {
 // (GRAPHITE_CONTENT_OUT=<tsv file>: one line per check, written as it ends). With GRAPHITE_CONTENT_CARRY=1 it times the
 // carry of the verdicts after a fetch moves the lines by 1, 20 and 200 commits, checking nothing; with
 // GRAPHITE_CONTENT_CARRY_CHECK=1 it holds every verdict the carry keeps over a 20-commit move of the main line to a fresh
-// check. The repository is opened to keep the checks' objects in memory, so nothing is written into it.
+// check. The repository is opened to keep the checks' objects in memory, so nothing is written into it. With
+// GRAPHITE_TAGS=1 it lists the tags and reads the lines with and without them from fresh stores (RunTagAcceptance);
+// GRAPHITE_TAGS_OUT=<tsv file> takes the first tag of 200 commits for a comparison with git.
 TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest::skip())
 {
 	const std::string repositoryPath = EnvironmentText("GRAPHITE_LINES_REPO");
@@ -1167,6 +1170,11 @@ TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest
 			out << read.Refs[line.Ref].FullName << '\t' << comparedWith << '\t' << KindText(line.Kind) << '\t' << StateText(line.State)
 				<< '\t' << line.Ahead << '\n';
 		}
+	}
+
+	if (EnvironmentText("GRAPHITE_TAGS") == "1")
+	{
+		RunTagAcceptance(repositoryPath, now, EnvironmentText("GRAPHITE_TAGS_OUT"));
 	}
 
 	if (EnvironmentText("GRAPHITE_CONTENT") == "1")
