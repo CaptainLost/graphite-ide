@@ -87,6 +87,11 @@ namespace Graphite {
 		bool SquashPending = false;             // that branch's check has not answered yet
 	};
 
+	// What the shown branch's verdict says of a copy of one of the branch's own commits on its line, so that none is
+	// searched for there: once the verdict names a squash, the squash names the change, and the copies its check found
+	// come with it. Empty while the verdict names none, so a copy is searched for.
+	std::optional<TwinMark> TwinFromShownSquash(const ContentMark& shown, const Core::Oid& commit);
+
 	// `holding` is LinesModel::BasesHolding: one flag per base of the read, absent while it is asked. `equivalence` holds
 	// the bases that do not hold the commit: a found copy reads "≈ copy" (before a squash, which would name only
 	// the same change), a squash "≈ in squash <short hash>"; a search still running makes the line pending, one that

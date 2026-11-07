@@ -127,6 +127,25 @@ namespace Graphite {
 		return bases;
 	}
 
+	std::optional<TwinMark> TwinFromShownSquash(const ContentMark& shown, const Core::Oid& commit)
+	{
+		if (!IsMergedByContent(shown) || shown.Verdict->Kind != Core::ContentKind::Squash)
+		{
+			return std::nullopt;
+		}
+
+		for (const Core::PatchTwin& twin : shown.Verdict->Twins)
+		{
+			if (twin.Own == commit)
+			{
+				return TwinMark{.State = ContentMark::State::Known, .Twin = twin.Twin};
+			}
+		}
+
+		// Not searched for, so not known either way: the squash's chip says the line holds the change.
+		return TwinMark{.State = ContentMark::State::Unknown, .Twin = std::nullopt};
+	}
+
 	InBases DescribeInBases(const LineRead& read, const std::optional<std::vector<bool>>& holding,
 							const std::vector<BaseEquivalence>& equivalence)
 	{

@@ -1701,7 +1701,7 @@ namespace Graphite {
 		RenderDiff(palette);
 	}
 
-	void GitView::NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t base)
+	std::optional<TwinMark> GitView::NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t base)
 	{
 		const Core::BranchLine* const line = ShownContentCandidate();
 
@@ -1709,7 +1709,7 @@ namespace Graphite {
 		if (line == nullptr || !ViewFollowsModelsRead() || line->ComparedWith != std::optional<std::size_t>{base} ||
 			m_Model.GetMarkedKind() != GitModel::MarkedKind::Own || !MarkedCommitsOnScreen().contains(commit))
 		{
-			return;
+			return std::nullopt;
 		}
 
 		const ContentMark mark = m_Content.KnownMarkOf(*line);
@@ -1717,13 +1717,12 @@ namespace Graphite {
 		// The branch's check is the line's to wait for: it may yet find the squash this commit is part of.
 		equivalence.SquashPending = mark.State == ContentMark::State::Pending;
 
-		if (mark.State != ContentMark::State::Known || !mark.Verdict.has_value() ||
-			mark.Verdict->Outcome != Core::ContentOutcome::Merged || mark.Verdict->Kind != Core::ContentKind::Squash)
+		if (IsMergedByContent(mark) && mark.Verdict->Kind == Core::ContentKind::Squash)
 		{
-			return;
+			equivalence.SquashLanding = mark.Verdict->Landing;
 		}
 
-		equivalence.SquashLanding = mark.Verdict->Landing;
+		return TwinFromShownSquash(mark, commit);
 	}
 
 	std::vector<BaseEquivalence> GitView::EquivalenceOf(const LineRead& read, const Core::Oid& commit,
@@ -1741,10 +1740,12 @@ namespace Graphite {
 			}
 
 			const std::size_t ref = read.Model.Bases[index].Ref;
+			BaseEquivalence base{.Base = index};
 
-			BaseEquivalence base{.Base = index, .Twin = m_Content.TwinIn(commit, read.Refs[ref].Tip)};
+			// On the shown branch's own line, a squash its verdict names answers for the copy, which is not searched for.
+			const std::optional<TwinMark> fromSquash = NoteShownSquash(base, commit, ref);
+			base.Twin = fromSquash.has_value() ? *fromSquash : m_Content.TwinIn(commit, read.Refs[ref].Tip);
 
-			NoteShownSquash(base, commit, ref);
 			equivalence.push_back(std::move(base));
 		}
 

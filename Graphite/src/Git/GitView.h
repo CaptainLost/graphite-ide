@@ -264,7 +264,10 @@ namespace Graphite {
 		// branch's own and the base its line.
 		std::vector<BaseEquivalence> EquivalenceOf(const LineRead& read, const Core::Oid& commit,
 												   const std::vector<bool>& holding);
-		void NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t baseRef);
+
+		// What the shown branch's check says of `commit` on the base it is compared with; the copy its verdict answers
+		// for, when the verdict names a squash (TwinFromShownSquash).
+		std::optional<TwinMark> NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t baseRef);
 
 		// The source sentence of the commit the details show, kept until another is selected.
 		KeptSourceSentence m_KeptSource;

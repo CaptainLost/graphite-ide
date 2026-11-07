@@ -366,6 +366,45 @@ TEST_CASE("Git window: an own commit of a squashed branch shows in squash with t
 	CHECK(bases.Equivalents[0].Text == "\xE2\x89\x88 in squash " + landing.ShortHex());
 }
 
+TEST_CASE("Git window: an own commit of a branch known squashed is searched for no copy on its line")
+{
+	const Core::Oid own = CommitWithFirstByte(0x11);
+	const Core::Oid copy = CommitWithFirstByte(0x12);
+	const Core::Oid landing = CommitWithFirstByte(0x13);
+
+	Core::ContentVerdict squash{.Outcome = Core::ContentOutcome::Merged, .Kind = Core::ContentKind::Squash, .Landing = landing};
+	const Graphite::ContentMark squashed{.State = Graphite::ContentMark::State::Known, .Verdict = squash};
+
+	// The squash names the change: nothing is searched, and the line shows the squash's chip.
+	const std::optional<Graphite::TwinMark> fromSquash = Graphite::TwinFromShownSquash(squashed, own);
+	REQUIRE(fromSquash.has_value());
+	CHECK_FALSE(fromSquash->Twin.has_value());
+
+	const Graphite::InBases bases = Graphite::DescribeInBases(
+		TwoBasesRead(), std::vector<bool>{false, false, false},
+		{Graphite::BaseEquivalence{.Base = 2, .Twin = *fromSquash, .SquashLanding = landing}});
+	REQUIRE(bases.Equivalents.size() == 1);
+	CHECK(bases.Equivalents[0].Text == "\xE2\x89\x88 in squash " + landing.ShortHex());
+	CHECK_FALSE(bases.EquivalentsPending);
+
+	// A copy the branch's check found comes with the verdict.
+	squash.Twins = {Core::PatchTwin{.Own = own, .Twin = copy}};
+	const Graphite::ContentMark withCopy{.State = Graphite::ContentMark::State::Known, .Verdict = squash};
+	const std::optional<Graphite::TwinMark> foundCopy = Graphite::TwinFromShownSquash(withCopy, own);
+	REQUIRE(foundCopy.has_value());
+	CHECK(foundCopy->State == Graphite::ContentMark::State::Known);
+	CHECK(foundCopy->Twin == copy);
+
+	// Pending, not merged or a rebase: the copy is searched for.
+	const Core::ContentVerdict rebase{.Outcome = Core::ContentOutcome::Merged, .Kind = Core::ContentKind::Rebase};
+	CHECK_FALSE(Graphite::TwinFromShownSquash(Graphite::ContentMark{}, own).has_value());
+	CHECK_FALSE(Graphite::TwinFromShownSquash(Graphite::ContentMark{.State = Graphite::ContentMark::State::Known,
+																	.Verdict = Core::ContentVerdict{}}, own)
+					.has_value());
+	CHECK_FALSE(Graphite::TwinFromShownSquash(Graphite::ContentMark{.State = Graphite::ContentMark::State::Known, .Verdict = rebase}, own)
+					.has_value());
+}
+
 TEST_CASE("Git window: in no base yet waits for the equivalents")
 {
 	const Graphite::LineRead read = TwoBasesRead();
