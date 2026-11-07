@@ -503,15 +503,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		for (std::size_t index = 0; index < tags->size(); ++index)
-		{
-			if ((*tags)[index].FullName == *m_SelectedRef)
-			{
-				return index;
-			}
-		}
-
-		return std::nullopt;
+		return IndexOfTag(*tags, *m_SelectedRef);
 	}
 
 	SidebarSelection GitView::SidebarSelectionNow() const

@@ -11,24 +11,33 @@
 #include "Git/Changes/ChangesView.h"
 #include "Git/Content/ContentModel.h"
 #include "Git/Content/ContentPort.h"
+#include "Git/Debouncer.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitView.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/Lines/LinesPort.h"
+#include "Git/Sidebar/SidebarView.h"
 #include "Git/Window/WindowBar.h"
 #include "Git/Worktrees/WorktreePort.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Theme/ActiveScheme.h"
 #include "UI/Dialogs/ModalGate.h"
+#include "UI/Lists/ListRow.h"
+#include "Workspace/Workspace.h"
 
 #include "Core/Events/EventBus.h"
+#include "Core/Git/Lines/AncestryGraph.h"
+#include "Core/Git/Tag.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -70,25 +79,85 @@ namespace {
 			builder.AddLocal("topic-" + std::to_string(topic), {.AgeDays = 3 + topic});
 		}
 
-		return builder.Build();
+		// A read always holds a graph; this one holds none of the commits the histories show.
+		Graphite::LineRead read = builder.Build();
+		read.Graph = Core::CreateRef<const Core::AncestryGraph>();
+		return read;
 	}
 
-	// The repository as git answers it: the read's branches, the HEAD given, no remotes.
+	Core::Tag TagAt(const std::string& name, const Core::Oid& target)
+	{
+		Core::Tag tag;
+		tag.Name = name;
+		tag.FullName = "refs/tags/" + name;
+		tag.Target = target;
+		return tag;
+	}
+
+	// The repository as git answers it: the read's branches, the HEAD and the tags given, no remotes. A history is one
+	// commit, the tip of the reference it is asked for.
 	class FixedHeadPort final : public EmptyGitPort
 	{
 	public:
-		FixedHeadPort(std::vector<Core::Branch> branches, Core::HeadState head)
-			: m_Branches(std::move(branches))
+		FixedHeadPort(std::vector<Core::Branch> branches, Core::HeadState head, std::vector<Core::Tag> tags)
+			: Branches(std::move(branches))
+			, Tags(std::move(tags))
 			, m_Head(std::move(head))
 		{
 		}
 
-		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return m_Branches; }
+		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return Branches; }
+
+		Core::Result<std::vector<Core::Tag>> QueryTags(Core::TagCache&) override { return Tags; }
 
 		Core::Result<Core::HeadState> QueryHead() override { return m_Head; }
 
+		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
+		{
+			Core::LogPage page;
+			page.Complete = true;
+
+			if (const std::optional<Core::Oid> tip = TipOf(request.Ref))
+			{
+				Core::CommitSummary commit;
+				commit.Id = *tip;
+				page.Commits.push_back(std::move(commit));
+			}
+
+			return page;
+		}
+
+		// What a fetch changes.
+		std::vector<Core::Branch> Branches;
+		std::vector<Core::Tag> Tags;
+
 	private:
-		std::vector<Core::Branch> m_Branches;
+		std::optional<Core::Oid> TipOf(const std::optional<std::string>& ref) const
+		{
+			if (!ref.has_value())
+			{
+				return m_Head.Commit;
+			}
+
+			for (const Core::Branch& branch : Branches)
+			{
+				if (branch.FullName == *ref)
+				{
+					return branch.Tip;
+				}
+			}
+
+			for (const Core::Tag& tag : Tags)
+			{
+				if (tag.FullName == *ref)
+				{
+					return tag.Target;
+				}
+			}
+
+			return std::nullopt;
+		}
+
 		Core::HeadState m_Head;
 	};
 
@@ -103,6 +172,7 @@ namespace {
 		{
 			Graphite::LineRead read = m_Read;
 			read.Branches = input.Branches;
+			read.Tags = input.Tags;
 			return read;
 		}
 
@@ -159,11 +229,13 @@ namespace {
 	// The Git window drawn alone, its models fed by the ports above and answered at once.
 	struct GitWindow
 	{
-		explicit GitWindow(const char* windowName, Core::HeadState head = HeadOnMain())
+		explicit GitWindow(const char* windowName, Core::HeadState head = HeadOnMain(), std::vector<Core::Tag> tags = {})
 			: WindowName(windowName)
 			, Head(std::move(head))
+			, Port{*Read.Branches, Head, std::move(tags)}
 		{
 			Model.SetRoot("C:/repo");
+			Model.SubscribeTo(Events);
 			Model.RequestStatus();
 			Model.RequestBranches();
 			Model.RequestHead();
@@ -175,7 +247,7 @@ namespace {
 			const Core::Timestep noTime{0.0f};
 
 			Model.OnUpdate(noTime);
-			Lines.Follow(Model.GetBranches(), Model.GetBranchListingGeneration());
+			Lines.Follow(Model.GetBranches(), Model.GetBranchListingGeneration(), Model.GetTags());
 			Lines.OnUpdate(noTime);
 			Worktrees.Follow(Model.GetBranches(), Model.GetWorkingDirectory());
 			Worktrees.OnUpdate(noTime);
@@ -231,6 +303,79 @@ namespace {
 			Step();
 		}
 
+		// Clicks at `at`, then draws the frame that answers the click: a click on a sidebar row is answered while its rows
+		// are drawn, so what it changes is drawn in the frame after.
+		void ClickAt(ImVec2 at)
+		{
+			ImGui::GetIO().AddMousePosEvent(at.x, at.y);
+			Step();
+			Click();
+			Step();
+		}
+
+		// The sidebar's row whose middle is `down` the list's content, where it is on screen now.
+		ImVec2 InSidebarRows(float down) const
+		{
+			const ImGuiWindow* rows = SidebarRows();
+			return ImVec2(rows->Pos.x + 60.0f, rows->DC.CursorStartPos.y + down);
+		}
+
+		// The middle of the row the sidebar draws selected, as far down the list's content; empty when it draws none.
+		std::optional<float> SelectedRowMiddle() const
+		{
+			const ImGuiWindow* rows = SidebarRows();
+
+			if (rows == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			const ImU32 selected = ImGui::GetColorU32(Graphite::CurrentListRowColours().Selected);
+			float top = FLT_MAX;
+			float bottom = -FLT_MAX;
+
+			for (const ImDrawVert& vertex : rows->DrawList->VtxBuffer)
+			{
+				if (vertex.col == selected)
+				{
+					top = std::min(top, vertex.pos.y);
+					bottom = std::max(bottom, vertex.pos.y);
+				}
+			}
+
+			if (top > bottom)
+			{
+				return std::nullopt;
+			}
+
+			return (top + bottom) * 0.5f - rows->DC.CursorStartPos.y;
+		}
+
+		// The Changes view's lists, which the preview shows while Local changes is the row selected, were drawn last frame.
+		bool DrawsLocalChanges() const
+		{
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			for (const ImGuiWindow* window : context.Windows)
+			{
+				if (std::strstr(window->Name, WindowName) != nullptr && std::strstr(window->Name, "changes.lists") != nullptr &&
+					window->LastFrameActive == context.FrameCount)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// The repository changed under the window, as a fetch changes it, and the model's refresh has run.
+		void Refresh()
+		{
+			Events.Publish(Graphite::RepositoryChangedEvent{});
+			Model.OnUpdate(Core::Timestep{Graphite::Debouncer::kMaxSeconds});
+			Settle();
+		}
+
 		ImGuiWindow* SidebarRows() const
 		{
 			for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
@@ -249,7 +394,7 @@ namespace {
 		ImGuiFrames Frames;
 
 		Graphite::LineRead Read = MakeRead(Head);
-		FixedHeadPort Port{*Read.Branches, Head};
+		FixedHeadPort Port;
 		OneReadLinesPort LinesPort{Read};
 		NoWorktreesPort WorktreePort;
 		NoContentPort ContentPort;
@@ -275,6 +420,21 @@ namespace {
 		float BarTop = 0.0f;
 		ImGuiID ChipId = 0;
 	};
+
+	// Yours lists main, feature and the topics, each two lines high, under its one-line header.
+	constexpr int kBranchCount = 2 + kTopicCount;
+
+	// Whether `middle` lies in the row that starts `top` down the sidebar's list and is `height` high.
+	bool InSlot(std::optional<float> middle, float top, float height)
+	{
+		return middle.has_value() && *middle > top && *middle < top + height;
+	}
+
+	// The slot of the branch row at `place` in Yours, 0 for its first row.
+	float YoursRowTop(int place)
+	{
+		return Graphite::ListRowPitch() + static_cast<float>(place) * Graphite::SidebarTwoLineRowHeight();
+	}
 }
 
 TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row selected and in view in that frame")
@@ -285,6 +445,9 @@ TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row 
 	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/feature"});
 	window.Settle();
 	REQUIRE(window.View.CaptureWindowState().Ref == "refs/heads/feature");
+
+	const float two = Graphite::SidebarTwoLineRowHeight();
+	REQUIRE(InSlot(window.SelectedRowMiddle(), YoursRowTop(1), two));
 
 	ImGuiWindow* rows = window.SidebarRows();
 	REQUIRE(rows != nullptr);
@@ -301,6 +464,7 @@ TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row 
 	// In the frame the click lands in: HEAD's history, and the list at its top, where main's row stands selected.
 	CHECK(window.View.CaptureWindowState().Ref.empty());
 	CHECK(rows->Scroll.y == 0.0f);
+	CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(0), two));
 
 	// The reader scrolls away again; nothing scrolls the list back.
 	ImGui::SetScrollY(rows, rows->ScrollMax.y);
@@ -336,4 +500,64 @@ TEST_CASE("Git window: clicking a detached head's chip shows HEAD's history and 
 	window.Settle();
 
 	CHECK(rows->Scroll.y == doctest::Approx(scrolled));
+}
+
+TEST_CASE("Git window: clicking the head chip clears a search that hides HEAD's row and opens the section the reader closed")
+{
+	GitWindow window("HeadChipRevealWindow");
+	window.Settle();
+
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+	window.Settle();
+
+	const float pitch = Graphite::ListRowPitch();
+	const float two = Graphite::SidebarTwoLineRowHeight();
+	REQUIRE(InSlot(window.SelectedRowMiddle(), YoursRowTop(1), two));
+
+	// The reader closes Yours, then searches for the topics: the search lists Yours open, without main's row.
+	window.ClickAt(window.InSidebarRows(pitch * 0.5f));
+	REQUIRE_FALSE(window.SelectedRowMiddle().has_value());
+
+	const ImGuiWindow* rows = window.SidebarRows();
+	REQUIRE(rows != nullptr);
+
+	// The search field stands right above the rows.
+	window.ClickAt(ImVec2(rows->Pos.x + 60.0f, rows->Pos.y - Graphite::WindowBarEm(20.0f)));
+	ImGui::GetIO().AddInputCharactersUTF8("topic");
+	window.Step();
+	window.Step();
+	REQUIRE_FALSE(window.SelectedRowMiddle().has_value());
+
+	REQUIRE(window.PointAtChip());
+	window.Click();
+
+	CHECK(window.View.CaptureWindowState().Ref.empty());
+	CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(0), two));
+
+	// Cleared, the search lists every branch again, and Yours stays open.
+	window.Settle();
+	CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(0), two));
+}
+
+TEST_CASE("Git window: clicking a tag row shows the tag's history with the row selected")
+{
+	GitWindow window("TagRowWindow", HeadOnMain(), {TagAt("v1", OidWithFirstByte(2))});
+	window.Settle();
+
+	ImGuiWindow* rows = window.SidebarRows();
+	REQUIRE(rows != nullptr);
+	ImGui::SetScrollY(rows, rows->ScrollMax.y);
+	window.Step();
+
+	// The Tags section comes closed, after Yours; opened, it lists the tag's row under its header.
+	const float pitch = Graphite::ListRowPitch();
+	const float tagsTop = YoursRowTop(kBranchCount);
+	window.ClickAt(window.InSidebarRows(tagsTop + pitch * 0.5f));
+	window.ClickAt(window.InSidebarRows(tagsTop + pitch * 1.5f));
+
+	CHECK(window.View.CaptureWindowState().Ref == "refs/tags/v1");
+	CHECK(InSlot(window.SelectedRowMiddle(), tagsTop + pitch, pitch));
+
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK(window.Model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/tags/v1"});
 }

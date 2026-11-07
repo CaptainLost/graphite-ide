@@ -1269,6 +1269,34 @@ namespace {
 		const Lines::const_iterator at = std::find(described.begin(), described.end(), first);
 		return Lines(at, described.end());
 	}
+
+	// The first row of `kind`; null when there is none.
+	const SidebarRow* FirstRowOfKind(const std::vector<SidebarRow>& rows, SidebarRowKind kind)
+	{
+		for (const SidebarRow& row : rows)
+		{
+			if (row.Kind == kind)
+			{
+				return &row;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// The row whose open-state key is `key`; null when there is none.
+	const SidebarRow* RowWithKey(const std::vector<SidebarRow>& rows, const std::string& key)
+	{
+		for (const SidebarRow& row : rows)
+		{
+			if (row.Key == key)
+			{
+				return &row;
+			}
+		}
+
+		return nullptr;
+	}
 }
 
 TEST_CASE("Sidebar: a repository without tags has no Tags section")
@@ -1394,8 +1422,8 @@ TEST_CASE("Sidebar: a failed tag listing shows its reason in the section")
 	CHECK(From(Describe(read, rows), "# tags") ==
 		  Lines{"# tags", "! couldn't read tags: packed-refs is locked", "# stashes 0", "! No stashes"});
 
-	const auto section = std::ranges::find_if(rows, [](const SidebarRow& row) { return row.Key == "tags"; });
-	REQUIRE(section != rows.end());
+	const SidebarRow* const section = RowWithKey(rows, "tags");
+	REQUIRE(section != nullptr);
 	CHECK(section->CountFailed);
 }
 
@@ -1435,11 +1463,11 @@ TEST_CASE("Sidebar: a tag and a branch with the same short name are two rows tha
 	options.OpenByUser = {{"tags", true}};
 
 	const std::vector<SidebarRow> rows = RowsOf(read, options);
-	const auto branchRow = std::ranges::find_if(rows, [](const SidebarRow& row) { return row.Kind == SidebarRowKind::Branch; });
-	const auto tagRow = std::ranges::find_if(rows, [](const SidebarRow& row) { return row.Kind == SidebarRowKind::Tag; });
+	const SidebarRow* const branchRow = FirstRowOfKind(rows, SidebarRowKind::Branch);
+	const SidebarRow* const tagRow = FirstRowOfKind(rows, SidebarRowKind::Tag);
 
-	REQUIRE(branchRow != rows.end());
-	REQUIRE(tagRow != rows.end());
+	REQUIRE(branchRow != nullptr);
+	REQUIRE(tagRow != nullptr);
 	CHECK(branchRow->Ref == branch);
 	CHECK(RefOpenedBy(*branchRow, read, BranchLines{read}) == branch);
 	CHECK(tagRow->Tag == 0);

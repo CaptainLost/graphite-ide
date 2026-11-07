@@ -2,16 +2,23 @@
 
 namespace Graphite {
 
-	const Core::Tag* TagWithFullName(const std::vector<Core::Tag>& tags, std::string_view fullName)
+	std::optional<std::size_t> IndexOfTag(const std::vector<Core::Tag>& tags, std::string_view fullName)
 	{
-		for (const Core::Tag& tag : tags)
+		for (std::size_t index = 0; index < tags.size(); ++index)
 		{
-			if (tag.FullName == fullName)
+			if (tags[index].FullName == fullName)
 			{
-				return &tag;
+				return index;
 			}
 		}
 
-		return nullptr;
+		return std::nullopt;
+	}
+
+	const Core::Tag* TagWithFullName(const std::vector<Core::Tag>& tags, std::string_view fullName)
+	{
+		const std::optional<std::size_t> index = IndexOfTag(tags, fullName);
+
+		return index.has_value() ? &tags[*index] : nullptr;
 	}
 }
