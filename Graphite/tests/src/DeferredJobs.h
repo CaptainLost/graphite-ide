@@ -32,6 +32,21 @@ public:
 		}
 	}
 
+	// Runs the oldest job alone, as a worker taking it from the queue, and whatever it submits waits behind the rest.
+	// False when no job waits.
+	bool RunOldest()
+	{
+		if (m_Jobs.empty())
+		{
+			return false;
+		}
+
+		std::function<void()> job = std::move(m_Jobs.front());
+		m_Jobs.erase(m_Jobs.begin());
+		job();
+		return true;
+	}
+
 	std::size_t Count() const { return m_Jobs.size(); }
 
 private:

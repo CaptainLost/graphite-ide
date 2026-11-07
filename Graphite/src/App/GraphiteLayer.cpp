@@ -548,7 +548,7 @@ namespace Graphite {
 
 		// WARNING: Here, not in the Git window, so the lines are read as soon as a folder's branches are, whether or not
 		// the window is on screen.
-		m_Lines.Follow(m_Git.GetBranches(), m_Git.GetBranchListingGeneration());
+		m_Lines.Follow(m_Git.GetBranches(), m_Git.GetBranchListingGeneration(), m_Git.GetTags());
 		m_Lines.OnUpdate(timestep);
 		m_Worktrees.Follow(m_Git.GetBranches(), m_Git.GetWorkingDirectory());
 		m_Worktrees.OnUpdate(timestep);

@@ -11,6 +11,7 @@
 #include "Core/Git/Ref.h"
 #include "Core/Git/Remote.h"
 #include "Core/Git/Repository.h"
+#include "Core/Git/Tag.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,6 +24,11 @@ namespace Graphite {
 	struct LineRead
 	{
 		Core::Ref<const std::vector<Core::Branch>> Branches; // the snapshot the model describes; Refs[i] is (*Branches)[i]
+
+		// The tag snapshot the read used, newest first; null when it was given none. Their commits are in Graph, but no
+		// tag is a ref of the model.
+		Core::Ref<const std::vector<Core::Tag>> Tags;
+
 		std::vector<Core::Remote> Remotes;
 		std::vector<Core::LineRef> Refs;
 		Core::Ref<const Core::AncestryGraph> Graph; // the graph the model was computed on
@@ -49,6 +55,11 @@ namespace Graphite {
 	struct LineReadInput
 	{
 		Core::Ref<const std::vector<Core::Branch>> Branches;
+
+		// GitModel's tag snapshot, newest first, or null for no tags. Its commits are read into the graph; they never
+		// become refs.
+		Core::Ref<const std::vector<Core::Tag>> Tags;
+
 		Core::Ref<const Core::AncestryGraph> Graph; // the previous read's, or null to load graph.bin
 		std::int64_t Now = 0;
 
@@ -60,8 +71,9 @@ namespace Graphite {
 	// records newly found bases in KeptBases and at the end of BaseOrder (never one the user removed), drops kept bases
 	// and comparisons that name refs no longer there and the BaseOrder names no longer added or kept, and saves the
 	// graph and the answers when they changed. A ref whose tip git cannot read as a commit is not read and is
-	// TipMissing in the model. The graph given is never changed: a read that appends to it appends to a copy, and one
-	// that appends nothing hands back the same pointer.
+	// TipMissing in the model. The tags' commits are read into the graph beside the branch tips, so the history only a tag
+	// reaches is there too, but the model is computed on the branches alone. The graph given is never changed: a read
+	// that appends to it appends to a copy, and one that appends nothing hands back the same pointer.
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, const LineReadInput& input);
 
 	// The same read of the branches the repository lists now, starting from the cached graph.

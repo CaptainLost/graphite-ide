@@ -6,6 +6,7 @@
 #include "Git/Lines/LineStore.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Tag.h"
 
 #include "GitFixture.h"
 #include "TempDirectory.h"
@@ -166,6 +167,157 @@ namespace {
 	}
 
 	constexpr std::int64_t kReadNow = 1800000000;
+
+	constexpr std::int64_t kFirstDayStart = 1767225600;
+	constexpr std::int64_t kSecondsPerDay = 86400;
+
+	std::int64_t TimeOfDay(int day)
+	{
+		return kFirstDayStart + kSecondsPerDay * day;
+	}
+
+	// The commits of a tagged gitflow repository the tests ask about.
+	struct TaggedGitflow
+	{
+		std::string FirstRelease;  // on release/1, below v1.0
+		std::string SecondRelease; // on release/2, below v2.0-rc, which is older than v2.0
+		std::string Merge;         // master's merge of release/2, held by v2.0 and by v2.0.1 after it
+		std::string Hotfix;        // a deleted branch's commit, which only v2.0.1 reaches
+		std::string DevelopTip;    // newer than every tag
+	};
+
+	// gitflow: develop from master's first commit, pushed as origin's default. release/1 and release/2 fork from
+	// develop and are merged into master, release/1 back into develop too. master's merges are tagged v1.0 and v2.0
+	// (annotated), release/2's tip v2.0-rc (lightweight, dated by its commit), and a hotfix on master v2.0.1 before the
+	// hotfix branch was deleted.
+	TaggedGitflow BuildTaggedGitflow(GitFixture& fixture)
+	{
+		TaggedGitflow built;
+
+		fixture.Write("m.txt", "0");
+		fixture.CommitAt("start", "ann@example.com", 1);
+		fixture.Branch("develop");
+		fixture.Checkout("develop");
+
+		for (int day = 2; day <= 4; ++day)
+		{
+			fixture.Write("d.txt", std::to_string(day));
+			fixture.CommitAt("develop " + std::to_string(day), "ann@example.com", day);
+		}
+
+		fixture.Branch("release/1");
+		fixture.Checkout("release/1");
+		fixture.Write("r.txt", "1a");
+		built.FirstRelease = fixture.CommitAt("release 1a", "bob@example.com", 5);
+		fixture.Write("r.txt", "1b");
+		fixture.CommitAt("release 1b", "bob@example.com", 6);
+
+		fixture.Checkout("master");
+		const std::string firstMerge = fixture.MergeCommit("Merge release/1", "release/1");
+		fixture.TagAnnotated("v1.0", firstMerge, TimeOfDay(7), "Version 1.0\n");
+
+		fixture.Checkout("develop");
+		fixture.MergeCommit("Merge release/1 into develop", "release/1");
+
+		for (int day = 8; day <= 9; ++day)
+		{
+			fixture.Write("d.txt", std::to_string(day));
+			fixture.CommitAt("develop " + std::to_string(day), "ann@example.com", day);
+		}
+
+		fixture.Branch("release/2");
+		fixture.Checkout("release/2");
+		fixture.Write("r.txt", "2a");
+		built.SecondRelease = fixture.CommitAt("release 2a", "cat@example.com", 10);
+		fixture.Write("r.txt", "2b");
+		const std::string secondReleaseTip = fixture.CommitAt("release 2b", "cat@example.com", 11);
+		fixture.TagLightweight("v2.0-rc", secondReleaseTip);
+
+		fixture.Checkout("master");
+		built.Merge = fixture.MergeCommit("Merge release/2", "release/2");
+		fixture.TagAnnotated("v2.0", built.Merge, TimeOfDay(12), "Version 2.0\n");
+		fixture.PushTo("master", built.Merge);
+
+		fixture.Branch("hotfix");
+		fixture.Checkout("hotfix");
+		fixture.Write("m.txt", "fix");
+		built.Hotfix = fixture.CommitAt("hotfix", "dan@example.com", 13);
+		fixture.TagAnnotated("v2.0.1", built.Hotfix, TimeOfDay(13), "Version 2.0.1\n");
+
+		fixture.Checkout("develop");
+		fixture.Remove(".git/refs/heads/hotfix");
+
+		for (int day = 14; day <= 16; ++day)
+		{
+			fixture.Write("d.txt", std::to_string(day));
+			built.DevelopTip = fixture.CommitAt("develop " + std::to_string(day), "ann@example.com", day);
+		}
+
+		fixture.PushTo("develop", built.DevelopTip);
+		fixture.SetRemoteHead("develop");
+		return built;
+	}
+
+	constexpr std::int64_t kGitflowNow = kFirstDayStart + 30 * kSecondsPerDay;
+
+	Core::Ref<const std::vector<Core::Tag>> TagsOf(const Core::Repository& repository)
+	{
+		Core::TagCache cache;
+		Core::Result<std::vector<Core::Tag>> tags = repository.QueryTags(cache);
+		REQUIRE(tags.HasValue());
+		return Core::CreateRef<const std::vector<Core::Tag>>(std::move(tags).GetValue());
+	}
+
+	// Every field of the two models, ref for ref, so a difference names what differs.
+	void CheckSameModel(const LineRead& without, const LineRead& with)
+	{
+		REQUIRE(without.Refs.size() == with.Refs.size());
+		for (std::size_t index = 0; index < without.Refs.size(); ++index)
+		{
+			CHECK(without.Refs[index].FullName == with.Refs[index].FullName);
+			CHECK(without.Refs[index].Tip == with.Refs[index].Tip);
+		}
+
+		const Core::LineModel& a = without.Model;
+		const Core::LineModel& b = with.Model;
+		CHECK(a.MainLineGuessed == b.MainLineGuessed);
+
+		REQUIRE(a.Bases.size() == b.Bases.size());
+		for (std::size_t index = 0; index < a.Bases.size(); ++index)
+		{
+			INFO("base ", without.Refs[a.Bases[index].Ref].FullName);
+			CHECK(a.Bases[index].Ref == b.Bases[index].Ref);
+			CHECK(a.Bases[index].Reason == b.Bases[index].Reason);
+			CHECK(a.Bases[index].Qualities == b.Bases[index].Qualities);
+			CHECK(a.Bases[index].Active == b.Bases[index].Active);
+		}
+
+		REQUIRE(a.OldCopies.size() == b.OldCopies.size());
+		for (std::size_t index = 0; index < a.OldCopies.size(); ++index)
+		{
+			CHECK(a.OldCopies[index].Ref == b.OldCopies[index].Ref);
+			CHECK(a.OldCopies[index].Of == b.OldCopies[index].Of);
+		}
+
+		REQUIRE(a.Branches.size() == b.Branches.size());
+		for (std::size_t index = 0; index < a.Branches.size(); ++index)
+		{
+			const Core::BranchLine& x = a.Branches[index];
+			const Core::BranchLine& y = b.Branches[index];
+			INFO("branch ", without.Refs[x.Ref].FullName);
+			CHECK(x.Ref == y.Ref);
+			CHECK(x.Kind == y.Kind);
+			CHECK(x.ComparedWith == y.ComparedWith);
+			CHECK(x.ByAnswer == y.ByAnswer);
+			CHECK(x.AutomaticComparedWith == y.AutomaticComparedWith);
+			CHECK(x.AutomaticKind == y.AutomaticKind);
+			CHECK(x.State == y.State);
+			CHECK(x.Ahead == y.Ahead);
+			CHECK(x.SameRowAs == y.SameRowAs);
+		}
+
+		CHECK(without.Answers == with.Answers);
+	}
 }
 
 TEST_CASE("Lines: a branch tracking a local branch names it under refs/heads")
@@ -792,4 +944,62 @@ TEST_CASE("Git window: a read of the same tips appends nothing and keeps the gra
 	REQUIRE(later.Remotes.size() == 1);
 	CHECK(later.Remotes.front().Name == "origin");
 	CHECK_FALSE(later.Remotes.front().Url.empty());
+}
+
+TEST_CASE("Line read: a tag's commit no branch reaches is read into the graph")
+{
+	GitFixture fixture;
+	const TaggedGitflow built = BuildTaggedGitflow(fixture);
+	const Core::Oid hotfix = *Core::Oid::FromHex(built.Hotfix);
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(store);
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Core::Result<LineRead> untagged = ReadLines(repository, paths, LineReadInput{.Branches = BranchesOf(repository), .Now = kGitflowNow});
+	REQUIRE(untagged.HasValue());
+	CHECK(untagged.GetValue().Graph->Find(hotfix) == Core::AncestryGraph::kNoCommit);
+	CHECK(untagged.GetValue().Tags == nullptr);
+
+	// From the graph the read before left in the store: only what the tags reach and no branch does is read.
+	const Core::Ref<const std::vector<Core::Tag>> tags = TagsOf(repository);
+	const Core::Result<LineRead> tagged =
+		ReadLines(repository, paths, LineReadInput{.Branches = BranchesOf(repository), .Tags = tags, .Now = kGitflowNow});
+	REQUIRE(tagged.HasValue());
+	const LineRead& read = tagged.GetValue();
+
+	CHECK(read.CommitsRead == 1);
+	CHECK(read.Graph->Find(hotfix) != Core::AncestryGraph::kNoCommit);
+	CHECK(read.Graph->Size() == untagged.GetValue().Graph->Size() + 1);
+	CHECK(read.Tags == tags);
+
+	// The tags are no refs of the model.
+	CHECK(read.Refs.size() == read.Branches->size());
+	for (const Core::LineRef& ref : read.Refs)
+	{
+		CHECK_FALSE(ref.FullName.starts_with(Core::kTagPrefix));
+	}
+
+	const std::optional<Core::AncestryGraph> saved = LoadGraph(paths.Graph);
+	REQUIRE(saved.has_value());
+	CHECK(saved->Find(hotfix) != Core::AncestryGraph::kNoCommit);
+}
+
+TEST_CASE("Line read: the model is the same with and without tags")
+{
+	GitFixture fixture;
+	BuildTaggedGitflow(fixture);
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Core::Ref<const std::vector<Core::Branch>> branches = BranchesOf(repository);
+	const Core::Ref<const std::vector<Core::Tag>> tags = TagsOf(repository);
+	REQUIRE(tags->size() == 4);
+
+	TempDirectory withoutStore;
+	TempDirectory withStore;
+	const Core::Result<LineRead> without = ReadLines(repository, StoreIn(withoutStore), LineReadInput{.Branches = branches, .Now = kGitflowNow});
+	const Core::Result<LineRead> with = ReadLines(repository, StoreIn(withStore), LineReadInput{.Branches = branches, .Tags = tags, .Now = kGitflowNow});
+	REQUIRE(without.HasValue());
+	REQUIRE(with.HasValue());
+	REQUIRE(with.GetValue().Graph->Size() > without.GetValue().Graph->Size());
+
+	CheckSameModel(without.GetValue(), with.GetValue());
 }

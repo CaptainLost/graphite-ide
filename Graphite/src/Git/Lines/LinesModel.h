@@ -17,6 +17,7 @@
 #include "Core/Git/Lines/LineQuestions.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
+#include "Core/Git/Tag.h"
 #include "Core/Jobs/JobSubmitter.h"
 
 #include <atomic>
@@ -39,10 +40,12 @@ namespace Graphite {
 
 		void OnUpdate(Core::Timestep timestep); // drains landed results and asks a failed read again once its back-off ends
 
-		// Asks a read at once when the snapshot differs from the last asked. When the last read or change failed and the
-		// branches were listed again since, as a refresh lists them even when nothing changed, asks it again once the
-		// back-off after the failures in a row ends. `listing` counts the listings.
-		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing = 0);
+		// Asks a read at once when the snapshot differs from the last asked: the branches, or the tags alone, as after a
+		// fetch that only brought tags. When the last read or change failed and the branches were listed again since, as a
+		// refresh lists them even when nothing changed, asks it again once the back-off after the failures in a row ends.
+		// `listing` counts the listings. Null tags are a read without tags.
+		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing = 0,
+					const Core::Ref<const std::vector<Core::Tag>>& tags = nullptr);
 
 		void Change(LineAnswerChange change);
 
@@ -93,9 +96,18 @@ namespace Graphite {
 			std::size_t operator()(const HoldingKey& key) const noexcept;
 		};
 
+		// What a read describes: GitModel's branch and tag snapshots of one listing, told apart by pointer.
+		struct ListingSnapshot
+		{
+			Core::Ref<const std::vector<Core::Branch>> Branches;
+			Core::Ref<const std::vector<Core::Tag>> Tags;
+
+			friend bool operator==(const ListingSnapshot&, const ListingSnapshot&) = default;
+		};
+
 		void Deliver(DeliveryInbox::Delivery delivery);
 
-		void AskRead(const Core::Ref<const std::vector<Core::Branch>>& branches);
+		void AskRead(const ListingSnapshot& snapshot);
 		void RetryWhenDue();
 
 		// A change recomputed on the read before a snapshot whose read failed leaves that snapshot unread, with no failure
@@ -122,9 +134,9 @@ namespace Graphite {
 		// One generation per read or change; at most one is in flight.
 		GenerationSlot<LineRead> m_Read;
 
-		Core::Ref<const std::vector<Core::Branch>> m_LastAsked;
+		ListingSnapshot m_LastAsked;
 		std::uint64_t m_LastListing = 0;
-		Core::Ref<const std::vector<Core::Branch>> m_WaitingBranches;
+		std::optional<ListingSnapshot> m_Waiting;
 
 		// Reset by a new snapshot, a line change, a read or change that succeeds, and a folder switch.
 		ReadRetry m_Retry;

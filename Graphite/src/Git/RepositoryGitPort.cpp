@@ -263,6 +263,20 @@ namespace Graphite {
 		return repository->QueryBranches();
 	}
 
+	Core::Result<std::vector<Core::Tag>> RepositoryGitPort::QueryTags(Core::TagCache& cache)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->QueryTags(cache);
+	}
+
 	Core::Result<std::vector<Core::TipAuthors>> RepositoryGitPort::QueryOwnAuthors(const Core::OwnAuthorsRequest& request)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();

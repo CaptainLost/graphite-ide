@@ -101,6 +101,7 @@ namespace Graphite {
 
 		LineRead read;
 		read.Branches = last.Branches;
+		read.Tags = last.Tags;
 		read.Remotes = last.Remotes;
 		read.Refs = last.Refs;
 		read.Graph = last.Graph;

@@ -88,6 +88,8 @@ namespace Graphite {
 		m_Status.Clear();
 		m_WorkingDirectory.clear();
 		m_Branches.Clear();
+		m_Tags.Clear();
+		m_TagCache = Core::CreateRef<Core::TagCache>();
 		m_BranchAuthors.Clear();
 		m_LastAuthorsRequest.reset();
 		m_AuthorsHidden.reset();
@@ -247,16 +249,24 @@ namespace Graphite {
 		RequestRemotes();
 
 		const std::uint64_t generation = m_Branches.Begin();
+		const std::uint64_t tagsGeneration = m_Tags.Begin();
 
 		// WARNING: A listing equal to the snapshot held keeps that snapshot's pointer. Every reader follows the snapshot by
 		// pointer, and a refresh comes with every save, so a new pointer for the same branches would have the line model,
 		// the reviews and the lists all work out again what they show. Compared on the worker, so a listing of thousands
-		// of branches is never walked on the UI thread.
-		m_Submit([this, generation, held = m_Branches.Get()]() {
+		// of branches is never walked on the UI thread. The tags are listed after the branches in the same job and land
+		// in the same delivery, so they are known exactly when the branches are, and are kept by pointer the same way.
+		m_Submit([this, generation, tagsGeneration, held = m_Branches.Get(), heldTags = m_Tags.Get(), tagCache = m_TagCache]() {
 			Core::Result<std::vector<Core::Branch>> result = m_Port.QueryBranches();
 			const bool sameAsHeld = held != nullptr && result.HasValue() && result.GetValue() == *held;
 
-			Deliver([this, generation, held, sameAsHeld, result = std::move(result)]() mutable {
+			Core::Result<std::vector<Core::Tag>> tags = m_Port.QueryTags(*tagCache);
+			const bool tagsSameAsHeld = heldTags != nullptr && tags.HasValue() && tags.GetValue() == *heldTags;
+
+			Deliver([this, generation, held, sameAsHeld, result = std::move(result), tagsGeneration, heldTags, tagsSameAsHeld,
+					 tags = std::move(tags)]() mutable {
+				LandTags(tagsGeneration, heldTags, tagsSameAsHeld, std::move(tags));
+
 				const bool stillHeld = sameAsHeld && m_Branches.Get() == held;
 				const SlotLanding landing = stillHeld ? m_Branches.LandSameAsHeld(generation) : m_Branches.Land(generation, std::move(result));
 
@@ -266,6 +276,23 @@ namespace Graphite {
 				}
 			});
 		});
+	}
+
+	// WARNING: A failure lands apart from the branches: it keeps the tags held and its own error, and never holds the
+	// branches back.
+	void GitModel::LandTags(std::uint64_t generation, const Core::Ref<const std::vector<Core::Tag>>& held, bool sameAsHeld,
+							Core::Result<std::vector<Core::Tag>> result)
+	{
+		const bool stillHeld = sameAsHeld && m_Tags.Get() == held;
+
+		if (stillHeld)
+		{
+			m_Tags.LandSameAsHeld(generation);
+		}
+		else
+		{
+			m_Tags.Land(generation, std::move(result));
+		}
 	}
 
 	// WARNING: Read beside every branch listing, so an answer equal to the snapshot held keeps that snapshot's pointer, as

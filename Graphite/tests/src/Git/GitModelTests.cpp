@@ -9,6 +9,8 @@
 #include "Git/Diff/SyntaxRuns.h"
 #include "Workspace/Workspace.h"
 
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -99,6 +101,23 @@ namespace {
 		{
 			++BranchCalls;
 			return Branches;
+		}
+
+		Core::Result<std::vector<Core::Tag>> QueryTags(Core::TagCache& cache) override
+		{
+			TagCacheSizes.push_back(cache.GetSize());
+			BranchCallsBeforeTags.push_back(BranchCalls);
+
+			if (FailTags)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the tags cannot be read"};
+			}
+
+			// One entry more per listing, as each listing after a fetch reads a new tag object: what is in the cache tells
+			// whether two listings shared it.
+			cache.Store(OidWithFirstByte(static_cast<std::uint8_t>(TagCacheSizes.size())), Core::TagCacheEntry{});
+
+			return Tags;
 		}
 
 		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) override
@@ -352,6 +371,10 @@ namespace {
 		Core::WorkingTreeStatus Status;
 		std::filesystem::path WorkingDirectory = "C:/repo";
 		std::vector<Core::Branch> Branches;
+		std::vector<Core::Tag> Tags;
+		bool FailTags = false;
+		std::vector<std::size_t> TagCacheSizes; // what the cache held as each tag listing began
+		std::vector<int> BranchCallsBeforeTags; // the branch listings read before each tag listing
 		std::vector<Core::TipAuthors> OwnAuthors;
 		std::optional<std::string> UserEmail;
 		std::vector<Core::Remote> Remotes;
@@ -487,6 +510,17 @@ namespace {
 
 		return {main, originMain, feature};
 	}
+
+	Core::Tag TagOn(const std::string& name, std::uint8_t commitByte, std::int64_t when)
+	{
+		return Core::Tag{.Name = name,
+						 .FullName = "refs/tags/" + name,
+						 .Target = OidWithFirstByte(commitByte),
+						 .When = std::chrono::sys_seconds{std::chrono::seconds{when}}};
+	}
+
+	constexpr std::int64_t kOlderTagTime = 1700000000;
+	constexpr std::int64_t kNewerTagTime = 1750000000;
 
 	// What GraphiteLayer passes once the line read lands: the tips of the bases TrunkAndFeature stands for.
 	void HideTrunkTips(Graphite::GitModel& model)
@@ -2838,6 +2872,139 @@ TEST_CASE("Git window: a listing whose branches changed lands a new snapshot")
 	REQUIRE(model.GetBranches() != nullptr);
 	CHECK(model.GetBranches() != first);
 	CHECK(*model.GetBranches() == port.Branches);
+}
+
+TEST_CASE("Git model: tags land in the same update as the branches")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.Tags = {TagOn("v2", kMainTipByte, kNewerTagTime), TagOn("v1", kMainTipByte, kOlderTagTime)};
+
+	DeferredJobs jobs;
+	Graphite::GitModel model{port, jobs.Submitter()};
+
+	model.RequestBranches();
+
+	// Each job as a worker takes it, with a frame after it: no frame has the branches without the tags.
+	int frames = 0;
+	while (jobs.RunOldest())
+	{
+		model.OnUpdate(Core::Timestep{kNoSeconds});
+		++frames;
+
+		CHECK((model.GetBranches() == nullptr) == (model.GetTags() == nullptr));
+	}
+
+	CHECK(frames > 1);
+	REQUIRE(model.GetBranches() != nullptr);
+	REQUIRE(model.GetTags() != nullptr);
+	CHECK(*model.GetTags() == port.Tags);
+	CHECK_FALSE(model.GetTagsError().has_value());
+
+	// Read after the branches, in their job.
+	CHECK(port.BranchCallsBeforeTags == std::vector<int>{1});
+}
+
+TEST_CASE("Git model: a failed tag listing lands the branches and keeps the error for the tags")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.FailTags = true;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetBranches() != nullptr);
+	CHECK(*model.GetBranches() == port.Branches);
+	CHECK_FALSE(model.GetBranchesError().has_value());
+	CHECK(model.GetTags() == nullptr);
+	REQUIRE(model.GetTagsError().has_value());
+	CHECK(model.GetTagsError()->Message == "the tags cannot be read");
+
+	port.FailTags = false;
+	port.Tags = {TagOn("v1", kMainTipByte, kOlderTagTime)};
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	const Core::Ref<const std::vector<Core::Tag>> listed = model.GetTags();
+	REQUIRE(listed != nullptr);
+	CHECK_FALSE(model.GetTagsError().has_value());
+
+	// A listing that fails again keeps the tags it had, beside its error.
+	port.FailTags = true;
+	port.Branches = TrunkAndFeature(kMovedFeatureTipByte);
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(*model.GetBranches() == port.Branches);
+	CHECK_FALSE(model.GetBranchesError().has_value());
+	CHECK(model.GetTags() == listed);
+	CHECK(model.GetTagsError().has_value());
+}
+
+TEST_CASE("Git model: a fetch that adds a tag lists it at the next refresh")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.Tags = {TagOn("v1", kMainTipByte, kOlderTagTime)};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::EventBus events;
+	model.SubscribeTo(events);
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+
+	const Core::Ref<const std::vector<Core::Tag>> before = model.GetTags();
+	REQUIRE(before != nullptr);
+	CHECK(before->size() == 1);
+
+	// A refresh that lists the same tags keeps the snapshot, so whatever follows it by pointer has nothing to redo.
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+
+	CHECK(model.GetTags() == before);
+
+	port.Tags.insert(port.Tags.begin(), TagOn("v2", kFeatureTipByte, kNewerTagTime));
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+
+	REQUIRE(model.GetTags() != nullptr);
+	CHECK(model.GetTags() != before);
+	CHECK(*model.GetTags() == port.Tags);
+
+	// Every listing of the folder was handed the one cache, so a tag object read once is never read again.
+	CHECK(port.TagCacheSizes == std::vector<std::size_t>{0, 1, 2});
+}
+
+TEST_CASE("Git model: another folder starts a fresh tag cache and a closed one has no tags")
+{
+	FakePort port;
+	port.Tags = {TagOn("v1", kMainTipByte, kOlderTagTime)};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	Core::EventBus events;
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/repo"});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+	model.OnUpdate(Core::Timestep{kPastMaxDebounceSeconds});
+
+	CHECK(port.TagCacheSizes == std::vector<std::size_t>{0, 1, 0});
+	REQUIRE(model.GetTags() != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetTags() == nullptr);
+	CHECK_FALSE(model.GetTagsError().has_value());
 }
 
 TEST_CASE("Without a base the authors are answered without the own-commit query")

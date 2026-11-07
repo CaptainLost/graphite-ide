@@ -45,6 +45,13 @@ namespace {
 		return Core::CreateRef<const std::vector<Core::Branch>>();
 	}
 
+	using TagSnapshot = Core::Ref<const std::vector<Core::Tag>>;
+
+	TagSnapshot NewTagSnapshot()
+	{
+		return Core::CreateRef<const std::vector<Core::Tag>>();
+	}
+
 	Core::LineRef RefAt(std::string fullName, const Core::Oid& tip)
 	{
 		Core::LineRef ref;
@@ -76,6 +83,7 @@ namespace {
 
 			LineRead read;
 			read.Branches = input.Branches;
+			read.Tags = input.Tags;
 			read.Refs = {RefAt("refs/remotes/origin/main", kMainTip), RefAt("refs/heads/feature", kFeatureTip)};
 			read.Graph = input.Graph != nullptr ? input.Graph : Graph;
 			read.Generations = input.Generations != nullptr ? input.Generations : Generations;
@@ -185,6 +193,41 @@ TEST_CASE("Git window: the lines model asks one read per branch snapshot")
 	CHECK(port.ReadInputs[1].Graph == port.Graph);
 	CHECK(port.ReadInputs[1].Generations == port.Generations);
 	CHECK(model.GetRead()->Branches == second);
+}
+
+TEST_CASE("Git window: a tag snapshot that changed alone starts a new read, which carries it")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	const Snapshot branches = NewSnapshot();
+	const TagSnapshot listed = NewTagSnapshot();
+
+	model.Follow(branches, 1, listed);
+	RunUntilSettled(jobs, model);
+	model.Follow(branches, 2, listed);
+	CHECK(jobs.Count() == 0);
+
+	// A fetch that only added a tag: the branches are the same snapshot.
+	const TagSnapshot fetched = NewTagSnapshot();
+	model.Follow(branches, 3, fetched);
+	RunUntilSettled(jobs, model);
+
+	REQUIRE(port.ReadInputs.size() == 2);
+	CHECK(port.ReadInputs[0].Branches == branches);
+	CHECK(port.ReadInputs[0].Tags == listed);
+	CHECK(port.ReadInputs[1].Branches == branches);
+	CHECK(port.ReadInputs[1].Tags == fetched);
+	REQUIRE(model.GetRead() != nullptr);
+	CHECK(model.GetRead()->Tags == fetched);
+
+	// A change recomputed on that read describes the same snapshots, so no read is asked after it.
+	model.Change(UseAsBase("refs/heads/staging"));
+	RunUntilSettled(jobs, model);
+
+	CHECK(port.ReadInputs.size() == 2);
+	CHECK(model.GetRead()->Tags == fetched);
 }
 
 TEST_CASE("Git window: only the newest snapshot waits behind a running read")

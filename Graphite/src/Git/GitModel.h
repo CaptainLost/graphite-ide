@@ -193,6 +193,12 @@ namespace Graphite {
 
 		const std::optional<Core::Error>& GetBranchesError() const { return m_Branches.GetError(); }
 
+		// Listed in the branch listing's job, after the branches, and landed in the same update, so the tags are known
+		// exactly when the branches are. Null while unread. A failed listing keeps its own error and the tags held before,
+		// and never holds the branches back.
+		Core::Ref<const std::vector<Core::Tag>> GetTags() const { return m_Tags.Get(); }
+		const std::optional<Core::Error>& GetTagsError() const { return m_Tags.GetError(); }
+
 		// A branch listing is being read, or a refresh that reads one is due, as after this window's own checkout, whose
 		// HEAD is read at once and whose branches only with the refresh it marks.
 		bool IsBranchListingComing() const { return m_Branches.IsInFlight() || m_Debounce.IsDirty(); }
@@ -403,6 +409,9 @@ namespace Graphite {
 
 		void RequestBranchAuthorsWhenTipsMoved();
 
+		void LandTags(std::uint64_t generation, const Core::Ref<const std::vector<Core::Tag>>& held, bool sameAsHeld,
+					  Core::Result<std::vector<Core::Tag>> result);
+
 		void RequestUserEmail();
 		void RequestRemotes();
 
@@ -584,6 +593,13 @@ namespace Graphite {
 
 		GenerationSlot<Core::WorkingTreeStatus> m_Status;
 		GenerationSlot<std::vector<Core::Branch>> m_Branches;
+		GenerationSlot<std::vector<Core::Tag>> m_Tags;
+
+		// WARNING: Per folder: Clear() starts a fresh one. Each listing job holds the cache it was asked with, so a job
+		// of the folder before fills that folder's cache, never the next one's. Shared with the workers through its own
+		// mutex.
+		Core::Ref<Core::TagCache> m_TagCache = Core::CreateRef<Core::TagCache>();
+
 		GenerationSlot<BranchAuthors> m_BranchAuthors;
 		GenerationSlot<std::optional<std::string>> m_UserEmail;
 		GenerationSlot<std::vector<Core::Remote>> m_Remotes;

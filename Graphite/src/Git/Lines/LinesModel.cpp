@@ -119,8 +119,8 @@ namespace Graphite {
 		m_Read.Clear();
 		m_ChangeGeneration = 0;
 		m_ChangeFailure.reset();
-		m_LastAsked.reset();
-		m_WaitingBranches.reset();
+		m_LastAsked = ListingSnapshot{};
+		m_Waiting.reset();
 		m_Retry = ReadRetry{};
 		m_RetryWanted = false;
 		m_WaitingChanges.clear();
@@ -148,7 +148,8 @@ namespace Graphite {
 		return std::exchange(m_ChangeFailure, std::nullopt);
 	}
 
-	void LinesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing)
+	void LinesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing,
+							const Core::Ref<const std::vector<Core::Tag>>& tags)
 	{
 		const bool listedAgain = listing != m_LastListing;
 		m_LastListing = listing;
@@ -158,12 +159,15 @@ namespace Graphite {
 			return;
 		}
 
-		// A new snapshot is the repository changing, so it is read at once, whatever failed before.
-		if (branches != m_LastAsked)
+		// A new snapshot is the repository changing, so it is read at once, whatever failed before: new branches, or new
+		// tags alone, as a fetch that only brought tags lists them.
+		const ListingSnapshot snapshot{.Branches = branches, .Tags = tags};
+
+		if (snapshot != m_LastAsked)
 		{
 			m_Retry = ReadRetry{};
 			m_RetryWanted = false;
-			AskRead(branches);
+			AskRead(snapshot);
 			return;
 		}
 
@@ -177,10 +181,10 @@ namespace Graphite {
 		RetryWhenDue();
 	}
 
-	void LinesModel::AskRead(const Core::Ref<const std::vector<Core::Branch>>& branches)
+	void LinesModel::AskRead(const ListingSnapshot& snapshot)
 	{
-		m_LastAsked = branches;
-		m_WaitingBranches = branches;
+		m_LastAsked = snapshot;
+		m_Waiting = snapshot;
 		RunNextWaiting();
 	}
 
@@ -199,12 +203,19 @@ namespace Graphite {
 	{
 		const Core::Ref<const LineRead> read = m_Read.Get();
 
-		if (read == nullptr || m_LastAsked == nullptr || read->Branches == m_LastAsked || m_WaitingBranches != nullptr)
+		if (read == nullptr || m_LastAsked.Branches == nullptr || m_Waiting.has_value())
 		{
 			return;
 		}
 
-		m_WaitingBranches = m_LastAsked;
+		const ListingSnapshot described{.Branches = read->Branches, .Tags = read->Tags};
+
+		if (described == m_LastAsked)
+		{
+			return;
+		}
+
+		m_Waiting = m_LastAsked;
 	}
 
 	void LinesModel::Change(LineAnswerChange change)
@@ -228,7 +239,7 @@ namespace Graphite {
 		{
 			StartChange(last);
 		}
-		else if (m_WaitingBranches != nullptr)
+		else if (m_Waiting.has_value())
 		{
 			StartRead(last);
 		}
@@ -237,8 +248,10 @@ namespace Graphite {
 	void LinesModel::StartRead(const Core::Ref<const LineRead>& last)
 	{
 		LineReadInput input;
-		input.Branches = std::exchange(m_WaitingBranches, nullptr);
+		input.Branches = m_Waiting->Branches;
+		input.Tags = m_Waiting->Tags;
 		input.Now = m_Now();
+		m_Waiting.reset();
 
 		if (last != nullptr)
 		{

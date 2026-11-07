@@ -35,6 +35,7 @@ namespace Graphite {
 			const std::filesystem::path& directory) override;
 		Core::Result<std::filesystem::path> GetWorkingDirectory() override;
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override;
+		Core::Result<std::vector<Core::Tag>> QueryTags(Core::TagCache& cache) override;
 		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) override;
 		Core::Result<std::optional<std::string>> ReadUserEmail() override;
 		Core::Result<std::vector<Core::Remote>> QueryRemotes() override;

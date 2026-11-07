@@ -12,6 +12,7 @@
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
+#include "Core/Git/Tag.h"
 #include "Git/Diff/FileTexts.h"
 
 #include <cstddef>
@@ -47,6 +48,11 @@ namespace Graphite {
 		virtual Core::Result<std::filesystem::path> GetWorkingDirectory() = 0;
 
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
+
+		// WARNING: The cache is shared by the jobs of one folder and is safe to use from any thread; a tag object it
+		// already holds is not read again.
+		virtual Core::Result<std::vector<Core::Tag>> QueryTags(Core::TagCache& cache) = 0;
+
 		virtual Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) = 0;
 		virtual Core::Result<std::optional<std::string>> ReadUserEmail() = 0;
 		virtual Core::Result<std::vector<Core::Remote>> QueryRemotes() = 0;

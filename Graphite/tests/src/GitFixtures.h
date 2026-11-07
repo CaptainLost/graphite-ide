@@ -29,6 +29,7 @@ public:
 	Core::Result<std::filesystem::path> GetWorkingDirectory() override { return std::filesystem::path{"C:/repo"}; }
 
 	Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
+	Core::Result<std::vector<Core::Tag>> QueryTags(Core::TagCache&) override { return std::vector<Core::Tag>{}; }
 	Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest&) override { return std::vector<Core::TipAuthors>{}; }
 	Core::Result<std::optional<std::string>> ReadUserEmail() override { return std::optional<std::string>{}; }
 	Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return std::vector<Core::Remote>{}; }

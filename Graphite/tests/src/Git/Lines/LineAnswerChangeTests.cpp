@@ -195,6 +195,41 @@ TEST_CASE("Git window: a recompute saves the change and recomputes on the last g
 	CHECK(LoadLineAnswers(paths.Answers) == expected);
 }
 
+TEST_CASE("Git window: a recompute keeps the read's tags")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "1");
+	const std::string master = fixture.Commit("one");
+	fixture.PushTo("master", master);
+	fixture.SetRemoteHead("master");
+	fixture.TagLightweight("v1", master);
+	fixture.Branch("feature");
+
+	TempDirectory store;
+	const LineStorePaths paths = StoreIn(fixture, store);
+	const Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Core::Branch>> branches = repository.QueryBranches();
+	REQUIRE(branches.HasValue());
+	Core::TagCache cache;
+	Core::Result<std::vector<Core::Tag>> tags = repository.QueryTags(cache);
+	REQUIRE(tags.HasValue());
+
+	const Core::Result<LineRead> read =
+		ReadLines(repository, paths,
+				  LineReadInput{.Branches = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue()),
+								.Tags = Core::CreateRef<const std::vector<Core::Tag>>(std::move(tags).GetValue()),
+								.Now = kNow});
+	REQUIRE(read.HasValue());
+	const LineRead& last = read.GetValue();
+	REQUIRE(last.Tags != nullptr);
+
+	const Core::Result<LineRead> recomputed = RecomputeLines(last, paths, ChangeOf(LineAnswerChange::Kind::UseAsBase, "refs/heads/feature"), kNow);
+	REQUIRE(recomputed.HasValue());
+
+	CHECK(recomputed.GetValue().Tags == last.Tags);
+}
+
 TEST_CASE("Git window: a change made on another repository's read is not saved in this one's store")
 {
 	GitFixture fixture;

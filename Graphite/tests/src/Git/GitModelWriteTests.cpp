@@ -32,6 +32,7 @@ namespace {
 			return WorkingDirectory;
 		}
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
+		Core::Result<std::vector<Core::Tag>> QueryTags(Core::TagCache&) override { return std::vector<Core::Tag>{}; }
 
 		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest&) override
 		{

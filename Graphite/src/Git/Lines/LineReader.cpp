@@ -132,9 +132,11 @@ namespace Graphite {
 			std::optional<Core::AncestryGraph> m_Owned;
 		};
 
-		// Each tip once, leaving out a branch whose tip git cannot read as a commit (a missing object, or one that is
-		// no commit): asking git to walk from it would fail the whole read, and the model reports it as TipMissing.
-		std::vector<Core::Oid> ReadableTips(const std::vector<Core::Branch>& branches)
+		// Each tip of the graph walk once: the branches' and the tags' commits. A branch whose tip git cannot read as a
+		// commit (a missing object, or one that is no commit) is left out: asking git to walk from it would fail the whole
+		// read, and the model reports it as TipMissing. A tag is listed only when it ends at a commit git has, so every
+		// tag's commit is readable. `tags` may be null.
+		std::vector<Core::Oid> ReadableTips(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags)
 		{
 			std::vector<Core::Oid> tips;
 			std::unordered_set<Core::Oid> seen;
@@ -144,6 +146,19 @@ namespace Graphite {
 				if (branch.TipCommit.has_value() && seen.insert(branch.Tip).second)
 				{
 					tips.push_back(branch.Tip);
+				}
+			}
+
+			if (tags == nullptr)
+			{
+				return tips;
+			}
+
+			for (const Core::Tag& tag : *tags)
+			{
+				if (seen.insert(tag.Target).second)
+				{
+					tips.push_back(tag.Target);
 				}
 			}
 
@@ -341,6 +356,7 @@ namespace Graphite {
 
 		LineRead read;
 		read.Branches = input.Branches;
+		read.Tags = input.Tags;
 		read.Remotes = std::move(remotes).GetValue();
 		read.Refs = LineRefsOf(*read.Branches, NamesOf(read.Remotes));
 
@@ -354,7 +370,8 @@ namespace Graphite {
 			graphChanged = true;
 		}
 
-		const std::vector<Core::Oid> readableTips = ReadableTips(*read.Branches);
+		// WARNING: The tags' commits are tips of the walk and never refs: the model is computed on read.Refs, the branches.
+		const std::vector<Core::Oid> readableTips = ReadableTips(*read.Branches, read.Tags.get());
 		Core::GraphReadRequest request;
 
 		for (const Core::Oid& tip : readableTips)
