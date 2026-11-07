@@ -1243,6 +1243,95 @@ TEST_CASE("Git window: the next opening carries from the newest kept line tip th
 	CHECK(model.KnownMarkOf(movedOn->Model.Branches[0]).State == ContentMark::State::Unknown);
 }
 
+TEST_CASE("Git window: a save while a moved line's carry waits or runs keeps the earlier pair, so the next session carries it")
+{
+	bool jobSubmitted = false;
+
+	SUBCASE("the carry waits, the window off screen")
+	{
+		jobSubmitted = false;
+	}
+
+	SUBCASE("the carry's job is submitted and has not run")
+	{
+		jobSubmitted = true;
+	}
+
+	TempDirectory directory;
+	const LineStorePaths store = StoreIn(directory.GetPath());
+
+	FakeContentPort port;
+	DeferredJobs jobs;
+	port.BranchPaths[ContentKey{kRoot, kBranchTip}] = {kBranchPath};
+	port.LinePaths[FakeContentPort::LineMove{kLandingOnLine, kAfterLanding}] = {"other.txt"};
+
+	{
+		ContentModel model{port, jobs.Submitter()};
+		model.SetOnScreen(true);
+		model.Follow(LandingReadIn(kLandingOnLine, store));
+		model.OnUpdate(Core::Timestep{});
+		jobs.RunAll();
+		model.OnUpdate(Core::Timestep{});
+		REQUIRE(port.Checked.size() == 1);
+
+		// The line moves; the folder switches before the carry lands, which saves what changed.
+		model.SetOnScreen(jobSubmitted);
+		model.Follow(LandingReadIn(kAfterLanding, store));
+		model.OnUpdate(Core::Timestep{});
+		REQUIRE(jobs.Count() == (jobSubmitted ? 1u : 0u));
+
+		model.Clear();
+		jobs.RunAll();
+	}
+
+	CHECK(LoadContentCache(store.Content).Verdicts.contains(ContentKey{kBranchTip, kLandingOnLine}));
+
+	ContentModel next{port, jobs.Submitter()};
+	const Core::Ref<const LineRead> movedOn = LandingReadIn(kAfterLanding, store);
+	next.Follow(movedOn);
+	CHECK(IsKnownAs(next.KnownMarkOf(movedOn->Model.Branches[0]), Core::ContentVerdict{}));
+
+	next.SetOnScreen(true);
+	Settle(jobs, next);
+	CHECK(port.Checked.size() == 1);
+}
+
+TEST_CASE("Git window: after a line move the row in view is resolved in the first job and checked before the branches out of view")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	model.Follow(Shared(CandidatesRead(100)));
+	Settle(jobs, model);
+	REQUIRE(port.Checked.size() == 100);
+
+	// A fetch moves the line, with row 70 drawn in every frame. The read has no graph, so the batch carries nothing and
+	// every pair goes back to its check.
+	LineRead moved = CandidatesRead(100);
+	moved.Refs[0].Tip = IdOf(0xEF);
+	const Core::Ref<const LineRead> next = Shared(std::move(moved));
+	const Core::BranchLine& inView = next->Model.Branches[70];
+	model.Follow(next);
+
+	static_cast<void>(model.MarkOf(inView));
+	model.OnUpdate(Core::Timestep{});
+	REQUIRE(jobs.Count() == 1);
+	CHECK(IsKnownAs(model.KnownMarkOf(inView), Core::ContentVerdict{}));
+
+	// The first job is the batch, which checks nothing; the row in view is checked next.
+	jobs.RunAll();
+	CHECK(port.Checked.size() == 100);
+
+	static_cast<void>(model.MarkOf(inView));
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+
+	REQUIRE(port.Checked.size() == 101);
+	CHECK(port.Checked[100] == KeyOfBranch(*next, 70));
+}
+
 TEST_CASE("Git window: a carry the port refuses for a repository it no longer opens is asked again")
 {
 	FakeContentPort port;
