@@ -939,6 +939,100 @@ namespace {
 		}
 	}
 
+	std::string VerdictText(const Core::ContentVerdict& verdict)
+	{
+		switch (verdict.Outcome)
+		{
+		case Core::ContentOutcome::Merged:
+			return verdict.Kind == Core::ContentKind::Rebase ? "merged by a rebase"
+															 : "merged by a squash" + (verdict.Landing.has_value() ? " in " + verdict.Landing->ShortHex() : "");
+		case Core::ContentOutcome::NotMerged:
+			return "not merged";
+		case Core::ContentOutcome::Unknown:
+			return "unknown";
+		}
+
+		return {};
+	}
+
+	// The carry held to the checks. Every candidate on the main line is checked against that line's tip set back `steps`
+	// first parents; the carry is asked of each such verdict that is not merged, as the model asks it after a fetch; and
+	// each pair it carries is checked again at the line's tip as it is. Each difference is named with both answers.
+	void CompareCarriedWithFresh(const Core::Repository& repository, const LineRead& read, std::size_t steps)
+	{
+		const Core::Oid lineTip = MostComparedLineTip(read);
+		const std::optional<Core::Oid> earlierTip = FirstParentsBelow(*read.Graph, lineTip, steps);
+		REQUIRE(earlierTip.has_value());
+
+		Core::PatchIdCache cache;
+		std::vector<CarryAsk> asks;
+		std::map<ContentKey, std::size_t> branchOfKey;
+		std::size_t failedEarlier = 0;
+		std::size_t mergedEarlier = 0;
+
+		for (const std::size_t branch : OrderCandidates(read, {}, std::nullopt))
+		{
+			const std::optional<ContentKey> key = ContentKeyOf(read, read.Model.Branches[branch]);
+
+			if (!key.has_value() || key->LineTip != lineTip)
+			{
+				continue;
+			}
+
+			const Core::Result<Core::ContentVerdict> earlier = Core::CheckMergedByContent(repository, key->BranchTip, *earlierTip, cache);
+
+			if (!earlier.HasValue())
+			{
+				++failedEarlier;
+			}
+			else if (earlier.GetValue().Outcome == Core::ContentOutcome::Merged)
+			{
+				++mergedEarlier;
+			}
+			else
+			{
+				asks.push_back(CarryAsk{.Key = *key, .EarlierLineTip = *earlierTip, .Verdict = earlier.GetValue()});
+				branchOfKey[*key] = branch;
+			}
+		}
+
+		TimedTreesPort port{repository};
+		const CarriedVerdicts carried = CarryVerdicts(*read.Graph, *read.Generations, port, 1, asks);
+
+		std::size_t same = 0;
+		std::size_t failedFresh = 0;
+		std::vector<std::string> differences;
+
+		for (const CarryAsk& ask : carried.Carried)
+		{
+			const Core::Result<Core::ContentVerdict> fresh = Core::CheckMergedByContent(repository, ask.Key.BranchTip, lineTip, cache);
+
+			if (!fresh.HasValue())
+			{
+				++failedFresh;
+			}
+			else if (fresh.GetValue().Outcome == ask.Verdict.Outcome)
+			{
+				++same;
+			}
+			else
+			{
+				differences.push_back(BranchNameOf(read, branchOfKey.at(ask.Key)) + ": carried " + VerdictText(ask.Verdict) +
+									  ", a fresh check says " + VerdictText(fresh.GetValue()));
+			}
+		}
+
+		MESSAGE("carried against fresh, the main line moved ", steps, " first parents: ", asks.size(), " not-merged or unknown verdicts at the earlier tip (",
+				mergedEarlier, " merged, ", failedEarlier, " failed, left out); ", carried.Carried.size(), " carried, ",
+				asks.size() - carried.Carried.size() - carried.Refused.size(), " back to the checks; of the carried, ", same,
+				" equal to a fresh check, ", differences.size(), " differing, ", failedFresh, " fresh checks failed");
+
+		for (const std::string& difference : differences)
+		{
+			MESSAGE("differs: ", difference);
+		}
+	}
+
 	// With GRAPHITE_CONTENT=1: every candidate's check, then what the parked timings of the content model ask.
 	// GRAPHITE_CONTENT_PROFILE=<full name>[;<full name>…] times the steps of those branches' checks alone instead.
 	void RunContentAcceptance(const std::string& repositoryPath, const LineRead& read)
@@ -990,8 +1084,9 @@ namespace {
 //   GRAPHITE_LINES_REPO=<repository> [GRAPHITE_LINES_OUT=<tsv file>] GraphiteTests -tc="Lines: acceptance*" --no-skip
 // With GRAPHITE_CONTENT=1 it also checks every candidate for a merge by content and times what the content model asks
 // (GRAPHITE_CONTENT_OUT=<tsv file>: one line per check, written as it ends). With GRAPHITE_CONTENT_CARRY=1 it times the
-// carry of the verdicts after a fetch moves the lines by 1, 20 and 200 commits, checking nothing. The repository is
-// opened to keep the checks' objects in memory, so nothing is written into it.
+// carry of the verdicts after a fetch moves the lines by 1, 20 and 200 commits, checking nothing; with
+// GRAPHITE_CONTENT_CARRY_CHECK=1 it holds every verdict the carry keeps over a 20-commit move of the main line to a fresh
+// check. The repository is opened to keep the checks' objects in memory, so nothing is written into it.
 TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest::skip())
 {
 	const std::string repositoryPath = EnvironmentText("GRAPHITE_LINES_REPO");
@@ -1079,5 +1174,13 @@ TEST_CASE("Lines: acceptance on the repository in GRAPHITE_LINES_REPO" * doctest
 	if (EnvironmentText("GRAPHITE_CONTENT_CARRY") == "1")
 	{
 		RunCarryTimings(repositoryPath, read);
+	}
+
+	if (EnvironmentText("GRAPHITE_CONTENT_CARRY_CHECK") == "1")
+	{
+		const Core::Result<Core::Repository> inMemory = Core::Repository::Open(Core::FromUtf8(repositoryPath), Core::ObjectWrites::InMemory);
+		REQUIRE(inMemory.HasValue());
+		constexpr std::size_t kLineCommitsMoved = 20;
+		CompareCarriedWithFresh(inMemory.GetValue(), read, kLineCommitsMoved);
 	}
 }
