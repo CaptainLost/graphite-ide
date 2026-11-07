@@ -5,6 +5,7 @@
 
 #include "Core/Base/Log.h"
 
+#include <algorithm>
 #include <format>
 #include <string_view>
 #include <unordered_map>
@@ -155,6 +156,7 @@ namespace Graphite {
 		m_RecheckRunning.clear();
 		m_EveryCandidateAsked = false;
 		m_Twins.clear();
+		m_TwinsReadSoFar.clear();
 
 		m_InView.clear();
 		m_Shown.reset();
@@ -369,11 +371,11 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	std::optional<ContentModel::TwinKey> ContentModel::FirstTwinWaiting(const std::vector<TwinKey>& asked) const
+	std::optional<ContentModel::TwinKey> ContentModel::FirstTwinWaiting(const std::vector<TwinKey>& asked, bool started) const
 	{
 		for (const TwinKey& key : asked)
 		{
-			if (!m_Twins.contains(key) && m_TwinChecking != key)
+			if (!m_Twins.contains(key) && m_TwinChecking != key && m_TwinsReadSoFar.contains(key) == started)
 			{
 				return key;
 			}
@@ -418,26 +420,38 @@ namespace Graphite {
 			return;
 		}
 
-		if (const std::optional<TwinKey> twin = FirstTwinWaiting(twinsAsked); twin.has_value())
+		if (const std::optional<TwinKey> twin = FirstTwinWaiting(twinsAsked, false); twin.has_value())
 		{
 			StartTwin(*twin);
 			return;
 		}
 
-		if (m_EveryCandidateAsked)
+		std::optional<std::size_t> next;
+
+		if (!m_EveryCandidateAsked)
 		{
+			next = FirstWaitingBranch(OrderCandidates(*m_Read, inView, shown));
+			m_EveryCandidateAsked = !next.has_value();
+		}
+
+		// A search's later slices wait for the rows in view as well as for the shown branch: both are asked again every
+		// frame they are drawn, so a check asked since a slice started goes before the next one.
+		if (next.has_value() && inView.contains(*next))
+		{
+			StartCheck(*next);
 			return;
 		}
 
-		const std::optional<std::size_t> next = FirstWaitingBranch(OrderCandidates(*m_Read, inView, shown));
-
-		if (!next.has_value())
+		if (const std::optional<TwinKey> twin = FirstTwinWaiting(twinsAsked, true); twin.has_value())
 		{
-			m_EveryCandidateAsked = true;
+			StartTwin(*twin);
 			return;
 		}
 
-		StartCheck(*next);
+		if (next.has_value())
+		{
+			StartCheck(*next);
+		}
 	}
 
 	void ContentModel::StartRecheck()
@@ -569,10 +583,15 @@ namespace Graphite {
 	{
 		const std::uint64_t repository = m_Port.RepositoryNow();
 
+		// The commits earlier slices read come first again, their patch ids from the cache; this slice pays for the rest.
+		const std::map<TwinKey, std::size_t>::const_iterator readSoFar = m_TwinsReadSoFar.find(key);
+		const std::size_t read = readSoFar != m_TwinsReadSoFar.end() ? readSoFar->second : 0;
+		const std::size_t budget = std::min(read + Core::kPatchCommitsPerCopySlice, Core::kPatchCommitsPerCheck);
+
 		m_TwinChecking = key;
 		m_Running = true;
 
-		Submit([this, key, repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
+		Submit([this, key, budget, repository, folder = m_Folder.load(), patchIds = m_PatchIds]() {
 			const UnfinishedJob finishing{m_UnfinishedJobs};
 
 			if (!IsSameFolder(folder))
@@ -583,19 +602,20 @@ namespace Graphite {
 			LoadPatchIdsOnce(*patchIds);
 			const std::size_t idsBefore = patchIds->Ids.GetSize();
 
-			Core::Result<std::optional<Core::Oid>> twin = m_Port.FindTwin(repository, key.Commit, key.LineTip, patchIds->Ids);
+			Core::Result<Core::PatchTwinSearch> twin = m_Port.FindTwin(repository, key.Commit, key.LineTip, budget, patchIds->Ids);
 			const bool patchIdsGrew = patchIds->Ids.GetSize() > idsBefore;
 
-			Deliver([this, folder, key, twin = std::move(twin), patchIdsGrew]() {
+			Deliver([this, folder, key, budget, twin = std::move(twin), patchIdsGrew]() {
 				if (IsSameFolder(folder))
 				{
-					LandTwin(key, twin, patchIdsGrew);
+					LandTwin(key, budget, twin, patchIdsGrew);
 				}
 			});
 		});
 	}
 
-	void ContentModel::LandTwin(const TwinKey& key, const Core::Result<std::optional<Core::Oid>>& twin, bool patchIdsGrew)
+	void ContentModel::LandTwin(const TwinKey& key, std::size_t budget, const Core::Result<Core::PatchTwinSearch>& twin,
+								bool patchIdsGrew)
 	{
 		m_Running = false;
 		m_TwinChecking.reset();
@@ -603,16 +623,27 @@ namespace Graphite {
 
 		if (twin.HasValue())
 		{
-			m_Twins[key] = TwinMark{.State = ContentMark::State::Known, .Twin = twin.GetValue()};
+			// Nothing found yet with line commits left within the whole budget: the next slice waits its turn.
+			if (twin.GetValue().MoreToRead && budget < Core::kPatchCommitsPerCheck)
+			{
+				m_TwinsReadSoFar[key] = budget;
+				return;
+			}
+
+			m_TwinsReadSoFar.erase(key);
+			m_Twins[key] = TwinMark{.State = ContentMark::State::Known, .Twin = twin.GetValue().Twin};
 			return;
 		}
 
 		const Core::Error& error = twin.GetError();
 
+		// A refused slice is asked again with the budget it had, of the repository open now.
 		if (IsRefused(error))
 		{
 			return;
 		}
+
+		m_TwinsReadSoFar.erase(key);
 
 		// NotFound is a missing commit or object, as in a blobless clone: an answer, not a failure.
 		if (error.Code != Core::ErrorCode::NotFound)
@@ -694,7 +725,8 @@ namespace Graphite {
 			return answered->second;
 		}
 
-		if (m_TwinChecking != key && !IsTwinAsked(key))
+		// Recorded while its slice runs too: in the frame that slice lands, the next one is still asked for.
+		if (!IsTwinAsked(key))
 		{
 			m_TwinsAsked.push_back(key);
 		}

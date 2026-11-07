@@ -98,8 +98,8 @@ namespace Graphite {
 
 		Core::Result<Core::ContentVerdict> CheckContent(std::uint64_t repository, const Core::Oid& branchTip, const Core::Oid& lineTip,
 														Core::PatchIdCache& patchIds) override;
-		Core::Result<std::optional<Core::Oid>> FindTwin(std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
-														Core::PatchIdCache& patchIds) override;
+		Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
+													 std::size_t budget, Core::PatchIdCache& patchIds) override;
 
 		void SetRoot(std::filesystem::path root);
 

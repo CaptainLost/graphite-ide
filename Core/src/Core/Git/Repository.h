@@ -178,10 +178,13 @@ namespace Core {
 		Result<PatchMatch> MatchPatches(const Oid& tip, const Oid& base, std::size_t budget, PatchIdCache& cache) const;
 
 		// The newest commit lineTip reaches and `commit` does not that carries `commit`'s patch: its copy
-		// on that line. Empty when none is among the first `budget` commits read, and for a commit with no
-		// patch of its own. NotFound when either commit, or an object a patch needs, is missing.
-		Result<std::optional<Oid>> FindPatchTwin(const Oid& commit, const Oid& lineTip, std::size_t budget,
-												 PatchIdCache& cache) const;
+		// on that line, among the first `budget` of those commits read newest first. No copy for a commit
+		// with no patch of its own; MoreToRead when the budget ran out before the line commits did, so a
+		// larger budget may still find one. The commits read first are the same for any budget, so a
+		// search continued with a larger budget answers as one search with that budget would. NotFound
+		// when either commit, or an object a patch needs, is missing.
+		Result<PatchTwinSearch> FindPatchTwin(const Oid& commit, const Oid& lineTip, std::size_t budget,
+											  PatchIdCache& cache) const;
 
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
 		Result<HeadState> QueryHead() const;

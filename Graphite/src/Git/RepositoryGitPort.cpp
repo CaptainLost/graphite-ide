@@ -1383,8 +1383,9 @@ namespace Graphite {
 		return Core::CheckMergedByContent(*opened.GetValue(), branchTip, lineTip, patchIds);
 	}
 
-	Core::Result<std::optional<Core::Oid>> RepositoryGitPort::FindTwin(std::uint64_t repository, const Core::Oid& commit,
-																	   const Core::Oid& lineTip, Core::PatchIdCache& patchIds)
+	Core::Result<Core::PatchTwinSearch> RepositoryGitPort::FindTwin(std::uint64_t repository, const Core::Oid& commit,
+																	const Core::Oid& lineTip, std::size_t budget,
+																	Core::PatchIdCache& patchIds)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
 
@@ -1393,6 +1394,6 @@ namespace Graphite {
 			return opened.GetError();
 		}
 
-		return opened.GetValue()->FindPatchTwin(commit, lineTip, Core::kPatchCommitsPerCheck, patchIds);
+		return opened.GetValue()->FindPatchTwin(commit, lineTip, budget, patchIds);
 	}
 }

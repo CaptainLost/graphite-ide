@@ -269,8 +269,8 @@ namespace Core {
 		return match;
 	}
 
-	Result<std::optional<Oid>> Repository::FindPatchTwin(const Oid& commit, const Oid& lineTip, std::size_t budget,
-														 PatchIdCache& cache) const
+	Result<PatchTwinSearch> Repository::FindPatchTwin(const Oid& commit, const Oid& lineTip, std::size_t budget,
+													  PatchIdCache& cache) const
 	{
 		if (m_Handle == nullptr)
 		{
@@ -289,11 +289,10 @@ namespace Core {
 			return std::move(ownPatchId).GetError();
 		}
 
-		const std::optional<Oid> noTwin;
-
+		// A commit with no patch of its own has no copy, whatever the line holds.
 		if (!ownPatchId.GetValue().has_value())
 		{
-			return noTwin;
+			return PatchTwinSearch{};
 		}
 
 		const Oid wantedPatchId = *ownPatchId.GetValue();
@@ -313,7 +312,7 @@ namespace Core {
 		{
 			if (read == budget)
 			{
-				return noTwin;
+				return PatchTwinSearch{.Twin = std::nullopt, .MoreToRead = true};
 			}
 
 			++read;
@@ -329,7 +328,7 @@ namespace Core {
 
 			if (carriesTheSamePatch)
 			{
-				return std::optional<Oid>{ToOid(walked)};
+				return PatchTwinSearch{.Twin = ToOid(walked), .MoreToRead = false};
 			}
 		}
 
@@ -338,6 +337,6 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
 		}
 
-		return noTwin;
+		return PatchTwinSearch{};
 	}
 }

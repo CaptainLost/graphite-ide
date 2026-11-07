@@ -89,7 +89,10 @@ namespace Graphite {
 		// landing or copy `commit` is.
 		std::optional<ContentSource> SourceOf(const Core::Oid& commit) const;
 
-		// Asked like the shown branch, before the rows in view, and only while the window is on screen.
+		// Searched only while the window is on screen, in slices of kPatchCommitsPerCopySlice more line commits each, up to
+		// kPatchCommitsPerCheck: the first slice is asked like the shown branch, before the rows in view; each later one
+		// after the shown branch's check and the rows in view, so a branch opened meanwhile waits for one slice, not the
+		// search. Pending until the last slice answers, which answers as one search over the whole budget would.
 		TwinMark TwinIn(const Core::Oid& commit, const Core::Oid& lineTip);
 
 		// A check or a copy search that failed, once each: to the log, unless a test listens instead.
@@ -128,7 +131,8 @@ namespace Graphite {
 		bool IsWaiting(const ContentKey& key) const;
 		bool IsWaitingBranch(std::size_t branch) const;
 		std::optional<std::size_t> FirstWaitingBranch(const std::vector<std::size_t>& order) const;
-		std::optional<TwinKey> FirstTwinWaiting(const std::vector<TwinKey>& asked) const;
+		// The first asked search not answered and not running: one not started yet, or one with slices already read.
+		std::optional<TwinKey> FirstTwinWaiting(const std::vector<TwinKey>& asked, bool started) const;
 		bool IsTwinAsked(const TwinKey& key) const;
 
 		void StartNext(const std::set<std::size_t>& inView, std::optional<std::size_t> shown, const std::vector<TwinKey>& twinsAsked);
@@ -139,7 +143,7 @@ namespace Graphite {
 		void LandRecheck(const std::vector<RememberedVerdict>& held);
 		void LandCheck(const ContentKey& key, const std::string& lineName, const Core::Result<Core::ContentVerdict>& verdict,
 					   bool patchIdsGrew);
-		void LandTwin(const TwinKey& key, const Core::Result<std::optional<Core::Oid>>& twin, bool patchIdsGrew);
+		void LandTwin(const TwinKey& key, std::size_t budget, const Core::Result<Core::PatchTwinSearch>& twin, bool patchIdsGrew);
 
 		void SaveWhenDue();
 		void SaveChanges();
@@ -169,6 +173,7 @@ namespace Graphite {
 		bool m_EveryCandidateAsked = false;     // of the followed read
 
 		std::map<TwinKey, TwinMark> m_Twins;    // answered
+		std::map<TwinKey, std::size_t> m_TwinsReadSoFar; // searches with slices read and no answer yet: the budget read
 
 		// Asked since the last update.
 		std::set<std::size_t> m_InView;

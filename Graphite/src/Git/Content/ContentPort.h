@@ -5,6 +5,7 @@
 #include "Core/Git/Oid.h"
 #include "Core/Git/PatchMatch.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -26,9 +27,11 @@ namespace Graphite {
 		virtual Core::Result<Core::ContentVerdict> CheckContent(std::uint64_t repository, const Core::Oid& branchTip,
 																const Core::Oid& lineTip, Core::PatchIdCache& patchIds) = 0;
 
-		// The commit lineTip reaches that carries `commit`'s patch, empty for none; NotFound when a commit or an object a
-		// patch needs is missing. Refused like CheckContent.
-		virtual Core::Result<std::optional<Core::Oid>> FindTwin(std::uint64_t repository, const Core::Oid& commit,
-																const Core::Oid& lineTip, Core::PatchIdCache& patchIds) = 0;
+		// The commit lineTip reaches that carries `commit`'s patch, among the first `budget` line commits read newest
+		// first (Repository::FindPatchTwin); NotFound when a commit or an object a patch needs is missing. Refused like
+		// CheckContent.
+		virtual Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t repository, const Core::Oid& commit,
+															 const Core::Oid& lineTip, std::size_t budget,
+															 Core::PatchIdCache& patchIds) = 0;
 	};
 }

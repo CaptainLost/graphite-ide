@@ -20,6 +20,15 @@ namespace Core {
 		friend bool operator==(const PatchTwin&, const PatchTwin&) = default;
 	};
 
+	// What a search for a commit's copy on a line found among the line commits its budget let it read.
+	struct PatchTwinSearch
+	{
+		std::optional<Oid> Twin;  // the newest line commit carrying the commit's patch
+		bool MoreToRead = false;  // no copy yet, and the budget ran out with line commits still unread
+
+		friend bool operator==(const PatchTwinSearch&, const PatchTwinSearch&) = default;
+	};
+
 	struct PatchMatch
 	{
 		std::size_t Ahead = 0;          // commits tip has that base lacks, merges included

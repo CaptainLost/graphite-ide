@@ -13,6 +13,7 @@
 #include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/Lines/LineQuestions.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -58,6 +59,40 @@ namespace {
 		friend bool operator==(const TwinAsk&, const TwinAsk&) = default;
 	};
 
+	// The line commits a copy search reads, newest first: `Length` of them, the copy at `TwinAt` (0 is the newest) and a
+	// patch that cannot be read at `MissingAt`.
+	struct LineWalk
+	{
+		std::size_t Length = 0;
+		std::optional<std::size_t> TwinAt;
+		std::optional<std::size_t> MissingAt;
+	};
+
+	Core::Oid CopyAt(std::size_t position)
+	{
+		return IdOf(0xE0 + static_cast<std::uint8_t>(position >> 8), static_cast<std::uint8_t>(position & 0xFF));
+	}
+
+	// What Repository::FindPatchTwin answers for such a line and a budget: the first of the copy and the unreadable
+	// patch among the commits the budget reads, else whether commits are left unread.
+	Core::Result<Core::PatchTwinSearch> SearchLine(const LineWalk& walk, std::size_t budget)
+	{
+		const std::size_t read = std::min(budget, walk.Length);
+		const bool missingFirst = walk.MissingAt.has_value() && (!walk.TwinAt.has_value() || *walk.MissingAt < *walk.TwinAt);
+
+		if (missingFirst && *walk.MissingAt < read)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "an object the patch needs is missing"};
+		}
+
+		if (walk.TwinAt.has_value() && *walk.TwinAt < read)
+		{
+			return Core::PatchTwinSearch{.Twin = CopyAt(*walk.TwinAt), .MoreToRead = false};
+		}
+
+		return Core::PatchTwinSearch{.Twin = std::nullopt, .MoreToRead = walk.Length > budget};
+	}
+
 	// Answers each check from the verdicts and failures it is given, NotMerged otherwise, and reads one patch id of the
 	// repository asked about into the cache it is handed, as a check reads the patches it compares. A pair or commit in
 	// RefuseOnce is refused the first time, as the port refuses a question for a repository it no longer opens.
@@ -99,10 +134,11 @@ namespace {
 			return Core::ContentVerdict{};
 		}
 
-		Core::Result<std::optional<Core::Oid>> FindTwin(std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
-														Core::PatchIdCache& patchIds) override
+		Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t repository, const Core::Oid& commit, const Core::Oid& lineTip,
+													 std::size_t budget, Core::PatchIdCache& patchIds) override
 		{
 			TwinsSearched.push_back(TwinAsk{commit, lineTip});
+			TwinBudgets.push_back(budget);
 
 			if (RefuseTwinOnce.erase(commit) > 0)
 			{
@@ -120,10 +156,17 @@ namespace {
 
 			if (twin != TwinOf.end())
 			{
-				return std::optional<Core::Oid>{twin->second};
+				return Core::PatchTwinSearch{.Twin = twin->second, .MoreToRead = false};
 			}
 
-			return std::optional<Core::Oid>{};
+			const std::map<Core::Oid, LineWalk>::const_iterator walk = Walks.find(commit);
+
+			if (walk != Walks.end())
+			{
+				return SearchLine(walk->second, budget);
+			}
+
+			return Core::PatchTwinSearch{};
 		}
 
 		static Core::Error Refused()
@@ -138,9 +181,11 @@ namespace {
 		std::map<Core::Oid, Core::Oid> TwinOf;
 		std::set<Core::Oid> MissingObjectsOf;
 		std::set<Core::Oid> RefuseTwinOnce;
+		std::map<Core::Oid, LineWalk> Walks;
 
 		std::vector<ContentKey> Checked;
 		std::vector<TwinAsk> TwinsSearched;
+		std::vector<std::size_t> TwinBudgets;
 	};
 
 	// Holds submitted jobs and runs the newest first, as two workers can when the older one is slow to start.
@@ -381,6 +426,176 @@ TEST_CASE("Git window: a branch's mark is pending until its check lands then kno
 	// A branch history already shows merged is not asked about.
 	CHECK(IsKnownAs(model.KnownMarkOf(read->Model.Branches[1]), Core::ContentVerdict{}));
 	CHECK(port.Checked.size() == 1);
+}
+
+namespace {
+
+	// Asked every frame, as the details ask while the commit is selected, until the search answers or kMostFrames pass.
+	TwinMark SearchToTheEnd(DeferredJobs& jobs, ContentModel& model, const Core::Oid& commit, const Core::Oid& lineTip)
+	{
+		constexpr int kMostFrames = 100;
+
+		for (int frame = 0; frame < kMostFrames; ++frame)
+		{
+			const TwinMark mark = model.TwinIn(commit, lineTip);
+
+			if (mark.State != ContentMark::State::Pending)
+			{
+				return mark;
+			}
+
+			model.OnUpdate(Core::Timestep{});
+			jobs.RunAll();
+			model.OnUpdate(Core::Timestep{});
+		}
+
+		return model.TwinIn(commit, lineTip);
+	}
+
+	// The mark one search over the whole budget would leave: a missing object reads unknown.
+	TwinMark MarkOfWholeSearch(const LineWalk& walk)
+	{
+		const Core::Result<Core::PatchTwinSearch> whole = SearchLine(walk, Core::kPatchCommitsPerCheck);
+
+		if (!whole.HasValue())
+		{
+			return TwinMark{.State = ContentMark::State::Unknown, .Twin = std::nullopt};
+		}
+
+		return TwinMark{.State = ContentMark::State::Known, .Twin = whole.GetValue().Twin};
+	}
+
+	struct SlicedCase
+	{
+		const char* Name;
+		Core::Oid Commit;
+		LineWalk Walk;
+	};
+}
+
+TEST_CASE("Git window: a copy search read in slices answers as one search over the whole budget")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+	model.Follow(Shared(CandidatesRead(0)));
+
+	const Core::Oid lineTip = TipOfRef(0);
+	const std::vector<SlicedCase> cases{
+		{"a copy in the third slice", IdOf(0xF1), LineWalk{.Length = 4000, .TwinAt = 250}},
+		{"a line that ends in the second slice", IdOf(0xF2), LineWalk{.Length = 150}},
+		{"no copy within the whole budget", IdOf(0xF3), LineWalk{.Length = 5000}},
+		{"a copy just past the whole budget", IdOf(0xF4), LineWalk{.Length = 5000, .TwinAt = Core::kPatchCommitsPerCheck}},
+		{"an unreadable patch before the copy", IdOf(0xF5), LineWalk{.Length = 4000, .TwinAt = 180, .MissingAt = 120}},
+		{"a copy before an unreadable patch", IdOf(0xF6), LineWalk{.Length = 4000, .TwinAt = 120, .MissingAt = 180}},
+	};
+
+	for (const SlicedCase& sliced : cases)
+	{
+		INFO(sliced.Name);
+		port.Walks[sliced.Commit] = sliced.Walk;
+
+		const TwinMark expected = MarkOfWholeSearch(sliced.Walk);
+		const TwinMark answered = SearchToTheEnd(jobs, model, sliced.Commit, lineTip);
+
+		CHECK(answered.State == expected.State);
+		CHECK(answered.Twin == expected.Twin);
+	}
+
+	// Each slice reads kPatchCommitsPerCopySlice more line commits, up to the whole budget and no further.
+	const std::vector<std::size_t> thirdSlice{Core::kPatchCommitsPerCopySlice, 2 * Core::kPatchCommitsPerCopySlice,
+											  3 * Core::kPatchCommitsPerCopySlice};
+	CHECK(std::vector<std::size_t>(port.TwinBudgets.begin(), port.TwinBudgets.begin() + 3) == thirdSlice);
+	CHECK(*std::max_element(port.TwinBudgets.begin(), port.TwinBudgets.end()) == Core::kPatchCommitsPerCheck);
+}
+
+TEST_CASE("Git window: a copy search stays pending between its slices, which no branch out of view comes between")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	// topic-0 waits for its check, but no row shows it.
+	const Core::Ref<const LineRead> read = Shared(CandidatesRead(1));
+	model.Follow(read);
+
+	const Core::Oid lineTip = TipOfRef(0);
+	port.Walks[kOwn] = LineWalk{.Length = 4000, .TwinAt = 150};
+
+	// Asked in every frame, as the details ask while the commit is selected, the one in which its first slice runs too.
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	model.OnUpdate(Core::Timestep{});
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	jobs.RunAll();
+
+	// The first slice finds nothing: the details keep their "…" for this base, and the second slice takes the slot.
+	CHECK(model.TwinIn(kOwn, lineTip).State == ContentMark::State::Pending);
+	model.OnUpdate(Core::Timestep{});
+	CHECK(model.TwinIn(kOwn, lineTip).State == ContentMark::State::Pending);
+	jobs.RunAll();
+
+	CHECK(port.TwinBudgets == std::vector<std::size_t>{Core::kPatchCommitsPerCopySlice, 2 * Core::kPatchCommitsPerCopySlice});
+	CHECK(port.Checked.empty());
+
+	const TwinMark found = SearchToTheEnd(jobs, model, kOwn, lineTip);
+	CHECK(found.State == ContentMark::State::Known);
+	CHECK(found.Twin == CopyAt(150));
+	CHECK(port.TwinsSearched.size() == 2);
+}
+
+TEST_CASE("Git window: the shown branch's check runs before a copy search's next slice")
+{
+	FakeContentPort port;
+	DeferredJobs jobs;
+	ContentModel model{port, jobs.Submitter()};
+	model.SetOnScreen(true);
+
+	const Core::Ref<const LineRead> read = Shared(CandidatesRead(2));
+	model.Follow(read);
+
+	const Core::Oid lineTip = TipOfRef(0);
+	port.Walks[kOwn] = LineWalk{.Length = 1000};
+
+	// The details ask for a copy: its first slice takes the one slot.
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	model.OnUpdate(Core::Timestep{});
+	REQUIRE(jobs.Count() == 1);
+
+	// While it runs, topic-1 is opened: its check is asked, and runs before the search's next slice.
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	static_cast<void>(model.MarkOfShown(read->Model.Branches[1]));
+	jobs.RunAll();
+	REQUIRE(port.TwinBudgets == std::vector<std::size_t>{Core::kPatchCommitsPerCopySlice});
+	REQUIRE(port.Checked.empty());
+
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	static_cast<void>(model.MarkOfShown(read->Model.Branches[1]));
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+
+	CHECK(port.Checked == std::vector<ContentKey>{KeyOfBranch(*read, 1)});
+	CHECK(port.TwinBudgets.size() == 1);
+
+	// Then the search goes on, before topic-0, which no row shows.
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	static_cast<void>(model.MarkOfShown(read->Model.Branches[1]));
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+
+	CHECK(port.TwinBudgets == std::vector<std::size_t>{Core::kPatchCommitsPerCopySlice, 2 * Core::kPatchCommitsPerCopySlice});
+	CHECK(port.Checked.size() == 1);
+
+	// A row drawn meanwhile is checked before the slice after that.
+	static_cast<void>(model.TwinIn(kOwn, lineTip));
+	static_cast<void>(model.MarkOfShown(read->Model.Branches[1]));
+	static_cast<void>(model.MarkOf(read->Model.Branches[0]));
+	model.OnUpdate(Core::Timestep{});
+	jobs.RunAll();
+
+	CHECK(port.Checked == std::vector<ContentKey>{KeyOfBranch(*read, 1), KeyOfBranch(*read, 0)});
+	CHECK(port.TwinBudgets.size() == 2);
 }
 
 TEST_CASE("Git window: one content check runs at a time")

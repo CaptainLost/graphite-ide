@@ -1099,9 +1099,9 @@ TEST_CASE("Git window: the port refuses a content check for another repository g
 													 .Twins = {Core::PatchTwin{.Own = topicTip, .Twin = copy}}});
 	CHECK(fixture.ObjectFileCount() == objectsBefore);
 
-	const Core::Result<std::optional<Core::Oid>> twin = port.FindTwin(asked, topicTip, copy, patchIds);
+	const Core::Result<Core::PatchTwinSearch> twin = port.FindTwin(asked, topicTip, copy, Core::kPatchCommitsPerCheck, patchIds);
 	REQUIRE(twin.HasValue());
-	CHECK(twin.GetValue() == copy);
+	CHECK(twin.GetValue().Twin == copy);
 
 	// The same folder opened again is another repository to the port: what was asked before is not checked.
 	port.SetRoot(fixture.GetPath());
@@ -1110,7 +1110,7 @@ TEST_CASE("Git window: the port refuses a content check for another repository g
 	REQUIRE_FALSE(refused.HasValue());
 	CHECK(refused.GetError().Code == Core::ErrorCode::Cancelled);
 
-	const Core::Result<std::optional<Core::Oid>> refusedTwin = port.FindTwin(asked, topicTip, copy, patchIds);
+	const Core::Result<Core::PatchTwinSearch> refusedTwin = port.FindTwin(asked, topicTip, copy, Core::kPatchCommitsPerCheck, patchIds);
 	REQUIRE_FALSE(refusedTwin.HasValue());
 	CHECK(refusedTwin.GetError().Code == Core::ErrorCode::Cancelled);
 
@@ -1131,7 +1131,7 @@ TEST_CASE("Git window: the folder opened again lets go of its content handle at 
 	Graphite::RepositoryGitPort port{fixture.GetPath(), storeRoot.GetPath()};
 	Core::PatchIdCache patchIds;
 
-	REQUIRE(port.FindTwin(port.RepositoryNow(), tip, tip, patchIds).HasValue());
+	REQUIRE(port.FindTwin(port.RepositoryNow(), tip, tip, Core::kPatchCommitsPerCheck, patchIds).HasValue());
 	REQUIRE(port.QueryHead().HasValue());
 	REQUIRE(port.GetLiveHandleCountForThisThread() == 2);
 

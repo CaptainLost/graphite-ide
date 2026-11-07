@@ -530,16 +530,47 @@ TEST_CASE("Content: a commit's twin is found on a release line")
 	const Core::Repository repository = OpenInMemory(fixture);
 	Core::PatchIdCache cache;
 
-	const Core::Result<std::optional<Core::Oid>> twin =
+	const Core::Result<Core::PatchTwinSearch> twin =
 		repository.FindPatchTwin(OidOf(fix), OidOf(releaseTip), kPlentyOfBudget, cache);
 
 	REQUIRE(twin.HasValue());
-	CHECK(twin.GetValue() == std::optional<Core::Oid>{OidOf(pick)});
+	CHECK(twin.GetValue() == Core::PatchTwinSearch{.Twin = OidOf(pick), .MoreToRead = false});
 
 	const std::size_t noBudget = 0;
-	const Core::Result<std::optional<Core::Oid>> withoutBudget =
+	const Core::Result<Core::PatchTwinSearch> withoutBudget =
 		repository.FindPatchTwin(OidOf(fix), OidOf(releaseTip), noBudget, cache);
 
 	REQUIRE(withoutBudget.HasValue());
-	CHECK_FALSE(withoutBudget.GetValue().has_value());
+	CHECK(withoutBudget.GetValue() == Core::PatchTwinSearch{.Twin = std::nullopt, .MoreToRead = true});
+
+	// The release tip is read first; the pick is the second commit, so a budget of one stops short of it.
+	const Core::Result<Core::PatchTwinSearch> oneCommit = repository.FindPatchTwin(OidOf(fix), OidOf(releaseTip), 1, cache);
+
+	REQUIRE(oneCommit.HasValue());
+	CHECK(oneCommit.GetValue() == Core::PatchTwinSearch{.Twin = std::nullopt, .MoreToRead = true});
+}
+
+TEST_CASE("Content: a search that reads every line commit without a copy has nothing more to read")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", kBase);
+	fixture.Commit("base");
+	fixture.Branch("release");
+	fixture.Write("a.txt", kLineTwoEdit);
+	const std::string fix = fixture.Commit("fix on master");
+
+	fixture.Checkout("release");
+	fixture.Write("b.txt", "release only\n");
+	fixture.Commit("release prepares");
+	fixture.Write("c.txt", "release goes on\n");
+	const std::string releaseTip = fixture.Commit("release goes on");
+
+	const Core::Repository repository = OpenInMemory(fixture);
+	Core::PatchIdCache cache;
+
+	// Two line commits the fix lacks: a budget of exactly two reads them all.
+	const Core::Result<Core::PatchTwinSearch> search = repository.FindPatchTwin(OidOf(fix), OidOf(releaseTip), 2, cache);
+
+	REQUIRE(search.HasValue());
+	CHECK(search.GetValue() == Core::PatchTwinSearch{});
 }

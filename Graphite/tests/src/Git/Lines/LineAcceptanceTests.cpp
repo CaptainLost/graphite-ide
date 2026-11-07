@@ -298,7 +298,7 @@ namespace {
 			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
 		}
 
-		Core::Result<std::optional<Core::Oid>> FindTwin(std::uint64_t, const Core::Oid&, const Core::Oid&, Core::PatchIdCache&) override
+		Core::Result<Core::PatchTwinSearch> FindTwin(std::uint64_t, const Core::Oid&, const Core::Oid&, std::size_t, Core::PatchIdCache&) override
 		{
 			return Core::Error{Core::ErrorCode::Cancelled, "not asked"};
 		}
@@ -466,6 +466,43 @@ namespace {
 		}
 	}
 
+	// A copy search as the content model runs it: slices of kPatchCommitsPerCopySlice more line commits each, sharing
+	// one patch id cache that starts empty, until a copy, the end of the line or the whole budget.
+	struct SlicedSearch
+	{
+		Core::Result<Core::PatchTwinSearch> Answer = Core::PatchTwinSearch{};
+		std::size_t Slices = 0;
+		double LongestSlice = 0.0;
+		double Total = 0.0;
+	};
+
+	SlicedSearch SearchInSlices(const Core::Repository& repository, const Core::Oid& commit, const Core::Oid& lineTip)
+	{
+		SlicedSearch search;
+		Core::PatchIdCache cache;
+		std::size_t budget = 0;
+
+		while (budget < Core::kPatchCommitsPerCheck)
+		{
+			budget = std::min(budget + Core::kPatchCommitsPerCopySlice, Core::kPatchCommitsPerCheck);
+
+			const auto start = std::chrono::steady_clock::now();
+			search.Answer = repository.FindPatchTwin(commit, lineTip, budget, cache);
+			const double elapsed = Milliseconds(std::chrono::steady_clock::now() - start);
+
+			++search.Slices;
+			search.LongestSlice = std::max(search.LongestSlice, elapsed);
+			search.Total += elapsed;
+
+			if (!search.Answer.HasValue() || !search.Answer.GetValue().MoreToRead)
+			{
+				break;
+			}
+		}
+
+		return search;
+	}
+
 	// The newest commit with a patch of its own on a base's first-parent chain: what a details pane shows first.
 	Core::AncestryGraph::Index NewestChangeOf(const Core::AncestryGraph& graph, const Core::Oid& tip)
 	{
@@ -502,6 +539,7 @@ namespace {
 		}
 
 		double slowestCold = 0.0;
+		double slowestSlice = 0.0;
 		double slowestWarm = 0.0;
 		std::size_t searches = 0;
 		std::size_t found = 0;
@@ -526,20 +564,28 @@ namespace {
 				const Core::Oid& lineTip = read.Refs[read.Model.Bases[in].Ref].Tip;
 				std::string cold = "not timed";
 
-				if (searches < kMostColdSearches)
-				{
-					Core::PatchIdCache none;
-					const auto coldStart = std::chrono::steady_clock::now();
-					const Core::Result<std::optional<Core::Oid>> coldTwin = repository.FindPatchTwin(commit, lineTip, Core::kPatchCommitsPerCheck, none);
-					const double elapsed = Milliseconds(std::chrono::steady_clock::now() - coldStart);
-					slowestCold = std::max(slowestCold, elapsed);
-					cold = std::to_string(elapsed) + " ms" + (coldTwin.HasValue() ? "" : " (failed)");
-				}
-
 				const auto warmStart = std::chrono::steady_clock::now();
-				const Core::Result<std::optional<Core::Oid>> twin = repository.FindPatchTwin(commit, lineTip, Core::kPatchCommitsPerCheck, warm);
+				const Core::Result<Core::PatchTwinSearch> twin = repository.FindPatchTwin(commit, lineTip, Core::kPatchCommitsPerCheck, warm);
 				const double elapsed = Milliseconds(std::chrono::steady_clock::now() - warmStart);
 				slowestWarm = std::max(slowestWarm, elapsed);
+
+				if (searches < kMostColdSearches)
+				{
+					const SlicedSearch sliced = SearchInSlices(repository, commit, lineTip);
+					slowestCold = std::max(slowestCold, sliced.Total);
+					slowestSlice = std::max(slowestSlice, sliced.LongestSlice);
+					cold = std::to_string(sliced.Total) + " ms in " + std::to_string(sliced.Slices) + " slices, the longest " +
+						   std::to_string(sliced.LongestSlice) + " ms";
+
+					// Sliced, the search answers as one search over the whole budget does.
+					CHECK(sliced.Answer.HasValue() == twin.HasValue());
+
+					if (sliced.Answer.HasValue() && twin.HasValue())
+					{
+						CHECK(sliced.Answer.GetValue().Twin == twin.GetValue().Twin);
+					}
+				}
+
 				++searches;
 
 				std::string answer = "none";
@@ -548,9 +594,9 @@ namespace {
 				{
 					answer = twin.GetError().Message;
 				}
-				else if (twin.GetValue().has_value())
+				else if (twin.GetValue().Twin.has_value())
 				{
-					answer = twin.GetValue()->ShortHex();
+					answer = twin.GetValue().Twin->ShortHex();
 					++found;
 				}
 
@@ -559,8 +605,8 @@ namespace {
 			}
 		}
 
-		MESSAGE("copy searches: ", searches, ", copies found ", found, ", slowest cold ", slowestCold, " ms (first ", kMostColdSearches,
-				" timed), slowest warm ", slowestWarm, " ms");
+		MESSAGE("copy searches: ", searches, ", copies found ", found, ", slowest cold ", slowestCold, " ms in slices, the longest slice ",
+				slowestSlice, " ms (first ", kMostColdSearches, " timed), slowest warm ", slowestWarm, " ms in one search");
 	}
 
 	// The steps of one check timed apart, with a cold patch id cache: where a slow check spends its time.
