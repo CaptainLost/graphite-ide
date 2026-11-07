@@ -74,14 +74,18 @@ and keep the verdicts per repository.
   each base that does not hold it, in slices: each job reads at most `kPatchCommitsPerCopySlice` = 100 more line
   commits (budgets 100, 200, … up to `kPatchCommitsPerCheck`), the patch ids read before coming from the cache, until
   a copy, the end of the line or the whole budget. A sliced search answers as one search over the whole budget would,
-  and the `…` stays until its last slice.
+  and the `…` stays until its last slice. No copy of the shown branch's own commit is searched for on the branch's own
+  line once its verdict names a squash: the squash's chip names the change, and a copy the branch's check found comes
+  with the verdict (`TwinFromShownSquash`).
 - **The cache** (spec §7), beside `answers.json` in the repository's store
   ([0665](0665-keep-each-repository-s-git-answers-and-caches-in-local-user-data-keyed-by-its-shared-git-directory.md)):
   - `content.json` (`"version": 1`): the verdicts by (branch tip, line tip), merged, not merged or unknown, and per
-    branch tip the first merged verdict found with the line's full name (`Found`). Read on the UI thread the first time a store is followed, so the
-    second opening's marks are there in its first frame. Written by a job at most every five seconds while something
-    changed, on a folder switch and on exit, holding only what the current read can use. A save asked earlier never
-    writes over a later one of the same file.
+    branch tip the first merged verdict found (`Found`). An earlier build also wrote the line's ref name beside it,
+    which nothing read; a file with it still loads, and no migration is made. Read on the UI thread the first time a
+    store is followed, so the second opening's marks are there in its first frame. Written by a job at most every five
+    seconds while something changed, on a folder switch and on exit, holding only what the current read can use, with
+    any text that is not UTF-8 replaced rather than failing the save. A save asked earlier never writes over a later
+    one of the same file.
   - `patches.bin` (magic `GPI1`): patch ids by commit, read by the first job that needs them, never on the UI thread.
   - A damaged file, or one of another version, is ignored and rebuilt: both are machine caches.
 - **Remembered verdicts.** A `Found` verdict counts, unchecked, for a new tip of the line while the read's graph holds
@@ -110,7 +114,11 @@ and keep the verdicts per repository.
   the line ran past the patch budget after the merge said no) reads as unknown: no mark, nothing in the window bar. It
   is kept for its pair like any other verdict, so the second opening knows it in its first frame: the same two tips
   give the same answer. A check that fails reads as unknown too, is logged once, is not asked again in the session,
-  is never written to disk and is asked again in the next session.
+  is never written to disk and is asked again in the next session. Only a missing object is an unknown: a tip that
+  cannot be read for another reason fails the check (`Repository::HoldsCommit`), so a read error during a repack is
+  never kept on disk. A job that throws, on an allocation failure say, answers as a failure rather than leaving the
+  model waiting for a delivery that never comes: a check or a copy search fails, and a resolving batch sends its pairs
+  to the checks.
 
 ## Rationale
 
