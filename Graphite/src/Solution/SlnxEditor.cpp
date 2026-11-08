@@ -106,6 +106,38 @@ namespace Graphite {
 			}
 		}
 
+		// The element's text with each line after the first moved from one indent to another, so a project with children
+		// keeps its shape at the depth it lands at.
+		std::string Reindented(const std::string& element, const std::string& from, const std::string& to)
+		{
+			std::string result;
+			std::size_t lineStart = 0;
+
+			while (lineStart <= element.size())
+			{
+				const std::size_t lineEnd = element.find('\n', lineStart);
+				const std::size_t lineStop = lineEnd == std::string::npos ? element.size() : lineEnd + 1;
+				std::string_view line{element.data() + lineStart, lineStop - lineStart};
+
+				if (lineStart != 0 && line.starts_with(from))
+				{
+					result += to;
+					line.remove_prefix(from.size());
+				}
+
+				result += line;
+
+				if (lineEnd == std::string::npos)
+				{
+					break;
+				}
+
+				lineStart = lineEnd + 1;
+			}
+
+			return result;
+		}
+
 		std::string IndentOfLineAt(const std::string& text, std::size_t offset)
 		{
 			[[maybe_unused]] const auto [lineBegin, lineEnd] = LineExtent(text, offset);
@@ -584,14 +616,19 @@ namespace Graphite {
 			return NotWellFormedError();
 		}
 
+		// WARNING: The element moves as it is written, every attribute and child with it: one rebuilt from Path and Id
+		// alone dropped DefaultStartup and the project's BuildDependency elements. Only an element with no Path, which
+		// cannot be moved as it is, is written anew.
+		const std::size_t elementBegin = found.GetValue() - kElementOffsetToTagStart;
+		const std::size_t elementEnd = ElementEnd(m_Text, found.GetValue(), "Project");
+		const std::string elementIndent = IndentOfLineAt(m_Text, elementBegin);
+		std::string element = m_Text.substr(elementBegin, elementEnd - elementBegin);
+
 		if (attributes.Path.empty())
 		{
 			attributes.Path = RelativeProjectPath(m_Path, project);
-		}
-
-		if (attributes.Id.empty())
-		{
-			attributes.Id = NewGuid();
+			attributes.Id = attributes.Id.empty() ? NewGuid() : attributes.Id;
+			element = ProjectElement(attributes.Path, attributes.Id);
 		}
 
 		const bool folderMustBeCreated = !folder.empty() && !FindContainer(folder).HasValue();
@@ -620,8 +657,9 @@ namespace Graphite {
 			return containerAfterRemoval.GetError();
 		}
 
-		InsertChild(containerAfterRemoval.GetValue(),
-					ProjectElement(attributes.Path, attributes.Id));
+		const std::string landingIndent = IndentOfLineAt(m_Text, containerAfterRemoval.GetValue()) + IndentUnit(m_Text);
+
+		InsertChild(containerAfterRemoval.GetValue(), Reindented(element, elementIndent, landingIndent));
 
 		return Core::Result<void>::Ok();
 	}

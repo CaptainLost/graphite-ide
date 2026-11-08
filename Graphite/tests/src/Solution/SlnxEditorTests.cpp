@@ -607,3 +607,33 @@ TEST_CASE("Moving a project keeps its identifier")
 
 	CHECK(ReadWholeFile(file).find("{AAAA0001-0000-0000-0000-000000000000}") != std::string::npos);
 }
+
+TEST_CASE("Moving a project keeps every attribute and child it has, indented for where it lands")
+{
+	TempDirectory tempDirectory;
+	tempDirectory.MakeFile("app/App.vcxproj", "<Project />");
+	tempDirectory.MakeFile("lib/Lib.vcxproj", "<Project />");
+	const std::filesystem::path file = tempDirectory.MakeFile(
+		"Sample.slnx", "<Solution Version=\"1.4\">\r\n"
+					   "  <Folder Name=\"/App/\">\r\n"
+					   "    <Project Path=\"app\\App.vcxproj\" DefaultStartup=\"true\">\r\n"
+					   "      <BuildDependency Project=\"lib\\Lib.vcxproj\" />\r\n"
+					   "    </Project>\r\n"
+					   "  </Folder>\r\n"
+					   "</Solution>");
+
+	OpenedEditor editor = Graphite::SolutionEditor::Open(file);
+	REQUIRE(editor.HasValue());
+	REQUIRE(editor.GetValue()->MoveProject(tempDirectory.GetPath() / "app" / "App.vcxproj", kSolutionRoot).HasValue());
+	REQUIRE(editor.GetValue()->Save().HasValue());
+
+	const std::string expected = "<Solution Version=\"1.4\">\r\n"
+								 "  <Project Path=\"app\\App.vcxproj\" DefaultStartup=\"true\">\r\n"
+								 "    <BuildDependency Project=\"lib\\Lib.vcxproj\" />\r\n"
+								 "  </Project>\r\n"
+								 "  <Folder Name=\"/App/\">\r\n"
+								 "  </Folder>\r\n"
+								 "</Solution>";
+
+	CHECK(ReadWholeFile(file) == expected);
+}
