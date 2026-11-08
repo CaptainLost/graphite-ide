@@ -146,9 +146,18 @@ namespace Graphite {
 			return line;
 		}
 
+		// The read for the newer listing is coming, unless reading failed: then none is, and the failure is said.
 		if (listed != nullptr && read->Tags != listed)
 		{
-			line.Pending = true;
+			if (linesError.has_value())
+			{
+				line.Unknown = linesError->Message;
+			}
+			else
+			{
+				line.Pending = true;
+			}
+
 			return line;
 		}
 

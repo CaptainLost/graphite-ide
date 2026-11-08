@@ -85,9 +85,9 @@ namespace Graphite {
 
 	// `listed` is GitModel's tag listing: with `read` it decides whether the line is drawn at all. The line waits while no
 	// read is held, and while the read was made from another listing than `listed` (compared by pointer, as In bases waits
-	// for a commit outside the read): a tag that has just landed is not yet in the read's answer. Without a read, a failed
-	// line read (`linesError`) settles it as unknown. A commit outside the read's graph, like a commit no tag reaches, is
-	// held by no tag yet.
+	// for a commit outside the read): a tag that has just landed is not yet in the read's answer. In both waits a failure
+	// (`linesError`: the line read's, or the branch listing's when no read can come) settles it as unknown, as In bases
+	// says it. A commit outside the read's graph, like a commit no tag reaches, is held by no tag yet.
 	FirstTagLine DescribeFirstTag(const LineRead* read, const Core::Ref<const std::vector<Core::Tag>>& listed,
 								  const Core::Oid& commit, const std::optional<Core::Error>& linesError);
 

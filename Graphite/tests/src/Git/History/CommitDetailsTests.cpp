@@ -639,6 +639,25 @@ TEST_CASE("Commit details: First tag is pending while the read was made from an 
 	CHECK(Graphite::DescribeFirstTag(&read, Listed(older), kUntaggedCommit, std::nullopt).Pending);
 }
 
+TEST_CASE("Commit details: First tag is unknown when the read for a newer tag listing failed")
+{
+	// The old read stays held while the read that would have the new tag keeps failing: no answer is coming.
+	const std::vector<Core::Tag> older{TagOnCommit("v1", kTaggedCommit, 500)};
+	const Graphite::LineRead read = ReadHoldingTags(older);
+	const Core::Ref<const std::vector<Core::Tag>> newer =
+		Listed({TagOnCommit("v2", kUntaggedCommit, 900), TagOnCommit("v1", kTaggedCommit, 500)});
+	const std::optional<Core::Error> failure = Core::Error{Core::ErrorCode::IoFailure, "the graph could not be read"};
+
+	const Graphite::FirstTagLine line = Graphite::DescribeFirstTag(&read, newer, kUntaggedCommit, failure);
+	CHECK(line.Shown);
+	CHECK_FALSE(line.Pending);
+	CHECK(line.Unknown == std::optional<std::string>{"the graph could not be read"});
+	CHECK_FALSE(line.Name.has_value());
+
+	// The read's own listing still answers from the read, failure or not.
+	CHECK(Graphite::DescribeFirstTag(&read, read.Tags, kTaggedCommit, failure).Name == std::optional<std::string>{"v1"});
+}
+
 TEST_CASE("Commit details: First tag is unknown once the line read failed and no read is held")
 {
 	const Core::Ref<const std::vector<Core::Tag>> listed = Listed({TagOnCommit("v1", kTaggedCommit, 500)});

@@ -1823,7 +1823,16 @@ namespace Graphite {
 		content.Source = m_KeptSource.Keep(commit.Id, sentence);
 
 		// From the read itself, never a job of its own, so it follows each new read.
-		content.FirstTag = DescribeFirstTag(read.get(), m_Model.GetTags(), commit.Id, m_Lines.GetError());
+		// First tag settles with the failure In bases says: the lines' own, or, with no read held or coming, the branch
+		// listing's.
+		std::optional<Core::Error> firstTagFailure = m_Lines.GetError();
+
+		if (!firstTagFailure.has_value() && !read && !m_Lines.IsReading() && !m_Model.GetBranches())
+		{
+			firstTagFailure = m_Model.GetBranchesError();
+		}
+
+		content.FirstTag = DescribeFirstTag(read.get(), m_Model.GetTags(), commit.Id, firstTagFailure);
 
 		if (const auto refs = m_CommitRefs.find(commit.Id); refs != m_CommitRefs.end())
 		{

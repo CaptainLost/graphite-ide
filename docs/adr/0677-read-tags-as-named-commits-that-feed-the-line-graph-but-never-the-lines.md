@@ -67,7 +67,8 @@ branch tips, and never given to the line model.
   tag`, then the tag's pill and `made <age> ago` (`made just now` while the age reads `now`), or `no tag holds it yet`,
   or `…` while no read is in hand or the read in hand was made from an older tag listing than the one shown (compared
   by pointer, as In bases waits for a commit outside the read), or a dim `unknown`, with the reason in its tooltip,
-  once the line read has failed and none is held, as In bases says it. It is one line high in every state. It follows In bases: it is drawn wherever In
+  when either wait has no answer coming: the line read failed, or, with no read held or coming, the branch listing
+  did, as In bases says it. It is one line high in every state. It follows In bases: it is drawn wherever In
   bases is, a stash's details included, whenever the repository has tags. Whether it has is the tag listing's answer
   once the listing is in, so a fetch that deletes every tag takes the line away at once; before that, the read's.
 - **Window state.** A tag's full name restores its history. The restore waits for the tag listing, and a name no longer
