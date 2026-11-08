@@ -21,6 +21,13 @@ namespace Graphite {
 
 	namespace {
 
+		// A folder that cannot be read counts as changed.
+		bool FolderChangedSince(GitPort& port, const std::filesystem::path& folder)
+		{
+			const Core::Result<std::filesystem::path> now = port.GetWorkingDirectory();
+			return !now.HasValue() || now.GetValue() != folder;
+		}
+
 		// WARNING: No default, so a kind added later is a warning here, and warnings fail the build.
 		bool IsAnswerRatherThanWrite(GitModel::WriteKind kind)
 		{
@@ -922,6 +929,16 @@ namespace Graphite {
 	FastForwardAnswer GitModel::RunFastForward(const FastForwardRequest& request)
 	{
 		FastForwardAnswer answer;
+
+		// The folder first, so a folder switched since the fetch is said as that, not as the other folder's branch being
+		// checked out. It is checked again just before the merge.
+		answer.FolderChanged = FolderChangedSince(m_Port, request.WorkingDirectory);
+
+		if (answer.FolderChanged)
+		{
+			return answer;
+		}
+
 		const Core::Result<std::vector<Core::Branch>> listed = m_Port.QueryBranches();
 
 		if (!listed.HasValue())
@@ -957,8 +974,7 @@ namespace Graphite {
 
 		// WARNING: The port opens whichever folder is open by now, and a folder change does not wait for a write, so the
 		// folder is checked last, as close to the merge as it can be.
-		const Core::Result<std::filesystem::path> folder = m_Port.GetWorkingDirectory();
-		answer.FolderChanged = !folder.HasValue() || folder.GetValue() != request.WorkingDirectory;
+		answer.FolderChanged = FolderChangedSince(m_Port, request.WorkingDirectory);
 
 		if (answer.FolderChanged)
 		{

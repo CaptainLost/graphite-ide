@@ -40,6 +40,9 @@ namespace {
 	constexpr float kFrameSeconds = 0.016f;
 	constexpr std::chrono::seconds kPatience{5};
 	constexpr std::chrono::milliseconds kPoll{1};
+
+	// Long enough for the held call to have polled its cancel flag many times.
+	constexpr std::chrono::milliseconds kPollsToSettle{50};
 	constexpr std::chrono::milliseconds kDetachAllowance{2000};
 	constexpr int kHeldPercent = 45;
 
@@ -94,6 +97,9 @@ namespace {
 
 		std::filesystem::path WorkingDirectory{"C:/repo"};
 
+		// When set, the working directory cannot be read.
+		std::optional<Core::Error> WorkingDirectoryFailure;
+
 		// A commit moves the checked-out branch's tip to this, one more commit ahead.
 		Core::Oid CommitTip = OidWithFirstByte(0xC0);
 
@@ -107,7 +113,15 @@ namespace {
 
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return Branches; }
 		Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return Remotes; }
-		Core::Result<std::filesystem::path> GetWorkingDirectory() override { return WorkingDirectory; }
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override
+		{
+			if (WorkingDirectoryFailure.has_value())
+			{
+				return *WorkingDirectoryFailure;
+			}
+
+			return WorkingDirectory;
+		}
 
 		Core::Result<Core::Oid> Commit(const Core::CommitRequest&) override
 		{
@@ -967,5 +981,128 @@ TEST_CASE("Network model: a branch whose upstream is a local branch is not pushe
 	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
 	REQUIRE(failure.has_value());
 	CHECK(failure->Error.Message == "feature's upstream is the local branch main, so Push needs a remote chosen.");
+	CHECK(network.Port.CallsSoFar().empty());
+}
+
+TEST_CASE("Network model: pull that finds the folder changed says so even when the new folder has another branch checked out")
+{
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 2)), RemoteBranch("origin", "main")};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	model.Pull();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	port.WorkingDirectory = "C:/other";
+	port.Branches = {LocalBranch("main", "origin/main", 0, 2), CheckedOut(LocalBranch("feature")), RemoteBranch("origin", "main")};
+
+	writes.RunAll();
+	git.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	const std::optional<NetworkFailureReport> failure = model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "The folder changed while Pull ran, so it did not merge origin/main.");
+}
+
+TEST_CASE("Network model: detach releases a pull and a push that wait for the write queue")
+{
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 1, 1)), RemoteBranch("origin", "main")};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	git.RequestStage({"a.txt"});
+
+	for (const NetworkOperation operation : {NetworkOperation::Pull, NetworkOperation::Push})
+	{
+		if (operation == NetworkOperation::Pull)
+		{
+			model.Pull();
+		}
+		else
+		{
+			model.Push();
+		}
+
+		model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+		REQUIRE(model.GetState().Running == std::optional<NetworkOperation>{operation});
+
+		model.Detach();
+
+		CHECK(model.GetState() == NetworkState{});
+	}
+
+	writes.RunAll();
+	git.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetState() == NetworkState{});
+	CHECK_FALSE(model.TakeDone().has_value());
+	CHECK_FALSE(model.TakeFailure().has_value());
+	CHECK(port.CallsSoFar().empty());
+}
+
+TEST_CASE("Network model: a cancel of serial zero leaves the running operation alone")
+{
+	ThreadedNetwork network;
+	network.Port.Held = "FetchAll";
+
+	network.Model.Fetch();
+	REQUIRE(network.Port.WaitUntilHeldEntered());
+
+	network.Model.Cancel(0);
+	std::this_thread::sleep_for(kPollsToSettle);
+	network.Port.HeldReleased.store(true);
+
+	CHECK(network.WaitForDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Fetch}});
+	CHECK_FALSE(network.Port.HeldSawCancel.load());
+}
+
+TEST_CASE("Network model: a serial from before a detach cancels nothing after it")
+{
+	ThreadedNetwork network;
+	network.Port.Held = "FetchAll";
+
+	network.Model.Fetch();
+	REQUIRE(network.Port.WaitUntilHeldEntered());
+	const std::uint64_t before = network.Model.GetState().Serial;
+
+	network.Model.Detach();
+	network.Port.HeldEntered.store(false);
+	network.Port.HeldSawCancel.store(false);
+
+	network.Model.Fetch();
+	REQUIRE(network.Port.WaitUntilHeldEntered());
+	REQUIRE(network.Model.GetState().Serial != before);
+
+	network.Model.Cancel(before);
+	std::this_thread::sleep_for(kPollsToSettle);
+	network.Port.HeldReleased.store(true);
+
+	CHECK(network.WaitForDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Fetch}});
+	CHECK_FALSE(network.Port.HeldSawCancel.load());
+}
+
+TEST_CASE("Network model: pull refuses when the working directory cannot be read before its fetch")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 1)), RemoteBranch("origin", "main")};
+	network.Port.WorkingDirectoryFailure = Core::Error{Core::ErrorCode::NotFound, "the folder is gone"};
+
+	network.Model.Pull();
+	network.Update();
+
+	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "the folder is gone");
 	CHECK(network.Port.CallsSoFar().empty());
 }
