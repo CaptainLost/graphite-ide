@@ -41,8 +41,8 @@ namespace Core {
 							 const std::function<void(std::string_view)>& onProgressLine);
 
 	// Never lets git prompt, keeps its messages in English, and puts ssh in batch mode unless an ssh command is
-	// configured. sshCommandConfigured is the repository's core.sshCommand; a GIT_SSH_COMMAND in this process's
-	// environment is honoured here as well, since the child inherits it.
+	// configured. sshCommandConfigured is the repository's core.sshCommand; a GIT_SSH_COMMAND or GIT_SSH in this
+	// process's environment is honoured here as well, since the child inherits it.
 	std::vector<EnvironmentVariable> GitEnvironment(bool sshCommandConfigured);
 
 	// The percent of one of git's progress lines, such as "Receiving objects:  45% (9/20)" or

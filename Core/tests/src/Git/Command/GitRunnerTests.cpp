@@ -533,7 +533,9 @@ TEST_CASE("Git: progress lines are handed over as they come")
 TEST_CASE("Git: the environment never prompts and keeps a configured ssh command")
 {
 	const ScopedEnvironmentVariable noInheritedSshCommand(L"GIT_SSH_COMMAND", std::nullopt);
+	const ScopedEnvironmentVariable noInheritedSshProgram(L"GIT_SSH", std::nullopt);
 	REQUIRE(noInheritedSshCommand.WasSet());
+	REQUIRE(noInheritedSshProgram.WasSet());
 
 	const std::vector<Core::EnvironmentVariable> unconfigured = Core::GitEnvironment(kNoSshCommandConfigured);
 
@@ -546,6 +548,24 @@ TEST_CASE("Git: the environment never prompts and keeps a configured ssh command
 	CHECK(ValueOf(configured, "GIT_TERMINAL_PROMPT") == "0");
 	CHECK(ValueOf(configured, "LC_ALL") == "C");
 	CHECK_FALSE(ValueOf(configured, "GIT_SSH_COMMAND").has_value());
+
+	{
+		// GIT_SSH_COMMAND outranks GIT_SSH in git, so setting it would put OpenSSH in place of plink.
+		const ScopedEnvironmentVariable inheritedSshProgram(L"GIT_SSH", L"C:\\Program Files\\PuTTY\\plink.exe");
+		REQUIRE(inheritedSshProgram.WasSet());
+
+		const std::vector<Core::EnvironmentVariable> inheritedProgram = Core::GitEnvironment(kNoSshCommandConfigured);
+
+		CHECK(ValueOf(inheritedProgram, "GIT_TERMINAL_PROMPT") == "0");
+		CHECK_FALSE(ValueOf(inheritedProgram, "GIT_SSH_COMMAND").has_value());
+	}
+
+	{
+		const ScopedEnvironmentVariable emptySshProgram(L"GIT_SSH", L"");
+		REQUIRE(emptySshProgram.WasSet());
+
+		CHECK(ValueOf(Core::GitEnvironment(kNoSshCommandConfigured), "GIT_SSH_COMMAND") == "ssh -o BatchMode=yes");
+	}
 
 	const ScopedEnvironmentVariable inheritedSshCommand(L"GIT_SSH_COMMAND", L"ssh -i chosen-key");
 	REQUIRE(inheritedSshCommand.WasSet());

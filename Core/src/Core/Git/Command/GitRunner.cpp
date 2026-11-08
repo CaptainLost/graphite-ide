@@ -26,6 +26,7 @@ namespace Core {
 		constexpr const char* kUntranslatedLocale = "C";
 		constexpr const char* kSshCommandName = "GIT_SSH_COMMAND";
 		constexpr const wchar_t* kSshCommandWideName = L"GIT_SSH_COMMAND";
+		constexpr const wchar_t* kSshProgramWideName = L"GIT_SSH";
 		constexpr const char* kBatchModeSsh = "ssh -o BatchMode=yes";
 
 		// git writes "<title>: <percent>% (<done>/<total>)", the percent padded to three places.
@@ -236,9 +237,12 @@ namespace Core {
 			{.Name = kLocaleName, .Value = kUntranslatedLocale},
 		};
 
+		// WARNING: git lets GIT_SSH_COMMAND outrank GIT_SSH, so setting it over an inherited GIT_SSH would swap a PuTTY
+		// user's plink for OpenSSH, which knows nothing of their keys.
 		const bool sshCommandInherited = EnvironmentValue(kSshCommandWideName).has_value();
+		const bool sshProgramInherited = EnvironmentValue(kSshProgramWideName).has_value();
 
-		if (!sshCommandConfigured && !sshCommandInherited)
+		if (!sshCommandConfigured && !sshCommandInherited && !sshProgramInherited)
 		{
 			environment.push_back({.Name = kSshCommandName, .Value = kBatchModeSsh});
 		}
