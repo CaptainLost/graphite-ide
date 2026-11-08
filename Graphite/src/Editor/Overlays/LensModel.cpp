@@ -114,6 +114,7 @@ namespace Graphite {
 			{
 				CopyCount(m_Entries[*same].LensValue, entry.LensValue);
 				entry.Asked = m_Entries[*same].Asked;
+				entry.Stale = m_Entries[*same].Stale;
 				carried[nextIndex] = true;
 			}
 		}
@@ -130,11 +131,15 @@ namespace Graphite {
 			if (const std::optional<std::size_t> moved = TakeFirst(previousByKey, KeyOf(entry), previousTaken, AnyRow))
 			{
 				CopyCount(m_Entries[*moved].LensValue, entry.LensValue);
+				entry.Stale = m_Entries[*moved].Stale;
 			}
 			else if (const std::optional<std::size_t> seeded = TakeFirst(seededByKey, KeyOf(entry), seededTaken, AnyRow))
 			{
+				// WARNING: Stale from the start: the analysis counted what the workspace held when it ran, which a file
+				// changed since, or a server that knows more files, can contradict.
 				entry.LensValue.Count = m_Seeded[*seeded].Count;
 				entry.LensValue.CountKnown = true;
+				entry.Stale = true;
 			}
 		}
 
@@ -218,6 +223,7 @@ namespace Graphite {
 			foundEntry->LensValue.Count = count;
 			foundEntry->LensValue.CountKnown = true;
 			foundEntry->LensValue.CountFailed = false;
+			foundEntry->Stale = false;
 		}
 	}
 
@@ -226,10 +232,19 @@ namespace Graphite {
 		const std::vector<Entry>::iterator foundEntry =
 			std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow, EntryBeforeRow);
 
-		if (foundEntry != m_Entries.end() && foundEntry->LensValue.DocumentRow == documentRow)
+		if (foundEntry == m_Entries.end() || foundEntry->LensValue.DocumentRow != documentRow)
 		{
-			foundEntry->LensValue.CountFailed = true;
+			return;
 		}
+
+		// A count asked again that fails keeps the one it had, rather than turning a number into "unavailable".
+		if (foundEntry->Stale)
+		{
+			foundEntry->Stale = false;
+			return;
+		}
+
+		foundEntry->LensValue.CountFailed = true;
 	}
 
 	// WARNING: Every name line moves, not only those of lenses whose row moved: a declaration can begin
@@ -299,7 +314,9 @@ namespace Graphite {
 		{
 			const bool inRange = entry.LensValue.DocumentRow >= fromRow && entry.LensValue.DocumentRow < toRow;
 
-			if (!inRange || entry.LensValue.CountKnown || entry.Asked)
+			const bool settled = entry.LensValue.CountKnown && !entry.Stale;
+
+			if (!inRange || settled || entry.Asked)
 			{
 				continue;
 			}
@@ -320,6 +337,16 @@ namespace Graphite {
 				entry.Asked = false;
 				entry.LensValue.CountFailed = false;
 			}
+		}
+	}
+
+	void LensModel::MarkCountsStale()
+	{
+		for (Entry& entry : m_Entries)
+		{
+			entry.Asked = false;
+			entry.LensValue.CountFailed = false;
+			entry.Stale = entry.LensValue.CountKnown;
 		}
 	}
 

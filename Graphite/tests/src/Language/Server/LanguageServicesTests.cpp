@@ -2578,7 +2578,7 @@ namespace {
 TEST_CASE("A server's report lists it starting and getting ready")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
 	FakeClock clock;
@@ -2600,7 +2600,7 @@ TEST_CASE("A server's report lists it starting and getting ready")
 TEST_CASE("A server's report says how long it has been in its state, on the services clock")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
 	FakeClock clock;
@@ -2622,7 +2622,7 @@ TEST_CASE("A server's report says how long it has been in its state, on the serv
 TEST_CASE("A server's report records how long its indexing took")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
 	FakeClock clock;
@@ -2652,7 +2652,7 @@ TEST_CASE("A server's report records how long its indexing took")
 TEST_CASE("A server's report records the failure that stopped it and its restart")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
 	FakeClock clock;

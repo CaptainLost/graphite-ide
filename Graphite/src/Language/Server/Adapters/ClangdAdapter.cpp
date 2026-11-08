@@ -39,7 +39,23 @@ namespace Graphite {
 	{
 		if (!LacksCompileDatabase(context.Root))
 		{
-			return std::nullopt;
+			// WARNING: compile_flags.txt gives clangd the flags but no list of files, so it indexes nothing in the
+			// background: references, and the counts above declarations, reach only the files open with it. A .clangd may
+			// point clangd at a compile_commands.json elsewhere, so it is taken at its word.
+			const bool hasCompileCommands = Core::PathExists(context.Root / "compile_commands.json") ||
+											Core::PathExists(context.Root / "build" / "compile_commands.json");
+			const bool flagsOnly = !hasCompileCommands && !Core::PathExists(context.Root / ".clangd") &&
+								   Core::PathExists(context.Root / "compile_flags.txt");
+
+			if (!flagsOnly)
+			{
+				return std::nullopt;
+			}
+
+			return ProjectProblem{.Summary = "open files only",
+								  .Explanation = "compile_flags.txt gives clangd the flags but not the project's files, so "
+												 "references and their counts reach only the files that are open. A "
+												 "compile_commands.json lets clangd index the whole project."};
 		}
 
 		return ProjectProblem{.Summary = "no compile database",

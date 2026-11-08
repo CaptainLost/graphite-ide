@@ -211,6 +211,13 @@ namespace Graphite {
 			bool NeedsRebuild = false;
 
 			bool ServerCouldCount = false;
+
+			// The sum of every document's diagnostics generation when this lens last looked: it moves whenever the server
+			// has analysed any file again, which is when a count it gave may have changed.
+			std::uint64_t SeenAnalyses = 0;
+
+			// FrameClock() when the counts are to be asked again, once the analyses have stopped moving for a moment.
+			std::optional<double> RecountAt;
 		};
 
 		struct LinePeekState

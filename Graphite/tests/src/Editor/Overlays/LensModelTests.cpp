@@ -404,3 +404,49 @@ TEST_CASE("Forgetting the failed counts offers them again and leaves the counts 
 	CHECK_FALSE(model.LensAt(1)->CountFailed);
 	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
 }
+
+TEST_CASE("A remembered count is shown at once and still asked of the server")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SeedCounts({{"Draw", Graphite::DeclarationKind::Function, 7}});
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+	CHECK(model.LensAt(1)->Count == 7);
+
+	model.SetCount(1, 3);
+	CHECK(model.LensAt(1)->Count == 3);
+	CHECK(model.TakeRowsToAsk(0, 4).empty());
+}
+
+TEST_CASE("Counts marked stale are asked again and keep showing until answered")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Update", 3)}, rows, buffer, 4);
+	REQUIRE(model.TakeRowsToAsk(0, 4).size() == 2);
+	model.SetCount(1, 0);
+	model.SetCount(3, 2);
+	REQUIRE(model.TakeRowsToAsk(0, 4).empty());
+
+	model.MarkCountsStale();
+
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1, 3});
+	CHECK(model.LensAt(1)->CountKnown);
+	CHECK(model.LensAt(1)->Count == 0);
+
+	model.SetCount(1, 3);
+	model.SetCountFailed(3);
+
+	CHECK(model.LensAt(1)->Count == 3);
+	CHECK(model.LensAt(3)->Count == 2);
+	CHECK_FALSE(model.LensAt(3)->CountFailed);
+	CHECK(model.TakeRowsToAsk(0, 4).empty());
+}

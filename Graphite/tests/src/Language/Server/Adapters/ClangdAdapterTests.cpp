@@ -69,3 +69,31 @@ TEST_CASE("clangd needs a document opened before it indexes and can switch betwe
 	CHECK(clangd.WarmUpNeedsOpen());
 	CHECK(clangd.SupportsSwitchSourceHeader());
 }
+
+TEST_CASE("clangd with compile_flags.txt alone is reported as seeing only the open files")
+{
+	TempDirectory temp;
+	Touch(temp.GetPath() / "compile_flags.txt");
+
+	const std::optional<Graphite::ProjectProblem> problem =
+		Graphite::AdapterOf(Graphite::AdapterKind::Clangd).ProjectProblemAt(Graphite::AdapterContext{.Root = temp.GetPath()});
+
+	REQUIRE(problem.has_value());
+	CHECK(problem->Summary == "open files only");
+	CHECK(problem->Explanation.find("compile_commands.json") != std::string::npos);
+}
+
+TEST_CASE("clangd with compile_flags.txt beside a compile_commands.json or a .clangd reports nothing missing")
+{
+	TempDirectory withCommands;
+	Touch(withCommands.GetPath() / "compile_flags.txt");
+	Touch(withCommands.GetPath() / "build" / "compile_commands.json");
+
+	TempDirectory withClangd;
+	Touch(withClangd.GetPath() / "compile_flags.txt");
+	Touch(withClangd.GetPath() / ".clangd");
+
+	const Graphite::ServerAdapter& clangd = Graphite::AdapterOf(Graphite::AdapterKind::Clangd);
+	CHECK_FALSE(clangd.ProjectProblemAt(Graphite::AdapterContext{.Root = withCommands.GetPath()}).has_value());
+	CHECK_FALSE(clangd.ProjectProblemAt(Graphite::AdapterContext{.Root = withClangd.GetPath()}).has_value());
+}

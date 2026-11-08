@@ -2103,7 +2103,30 @@ namespace Graphite {
 
 		if (m_Router.NoteServerState(item.Path))
 		{
-			state.Model.ForgetAsked();
+			state.Model.MarkCountsStale();
+		}
+
+		// WARNING: A count is right only for the server's view when it was asked: a file not yet parsed counts nothing,
+		// and an edit in another file, or the server indexing more of the workspace, changes what is counted. Every such
+		// change ends in the server publishing diagnostics again, so the counts are asked again a moment after the last.
+		constexpr double kRecountDelaySeconds = 0.75;
+		std::uint64_t analyses = 0;
+
+		for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
+		{
+			analyses += entry.Generation;
+		}
+
+		if (analyses != state.SeenAnalyses)
+		{
+			state.SeenAnalyses = analyses;
+			state.RecountAt = FrameClock() + kRecountDelaySeconds;
+		}
+
+		if (state.RecountAt.has_value() && FrameClock() >= *state.RecountAt)
+		{
+			state.RecountAt.reset();
+			state.Model.MarkCountsStale();
 		}
 
 		// WARNING: A count that failed is not asked again on its own, so one that failed while the server was busy

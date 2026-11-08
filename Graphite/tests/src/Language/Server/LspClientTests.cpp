@@ -237,7 +237,7 @@ TEST_CASE("A server declaring a legend is asked, and its reply is read through t
 TEST_CASE("An initialize reply that is an error leaves the client failed, not ready")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.TakeSent();
@@ -253,7 +253,7 @@ TEST_CASE("An initialize reply that is an error leaves the client failed, not re
 TEST_CASE("A refused handshake stops the pre-handshake queue growing")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.TakeSent();
@@ -281,7 +281,7 @@ TEST_CASE("A refused handshake stops the pre-handshake queue growing")
 TEST_CASE("A handshake nobody answers becomes Failed once its time is up")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.TakeSent();
@@ -306,7 +306,7 @@ TEST_CASE("A handshake nobody answers becomes Failed once its time is up")
 TEST_CASE("A successful initialize reply reports the server's version and releases the queue")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.TakeSent();
@@ -347,7 +347,7 @@ TEST_CASE("A root with no compile database settles into saying so rather than in
 TEST_CASE("A progress notification moves the percentage the status bar shows")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
@@ -373,7 +373,7 @@ TEST_CASE("A progress notification moves the percentage the status bar shows")
 TEST_CASE("Indexing ends only when the last of its progress tokens ends")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
@@ -467,7 +467,7 @@ TEST_CASE("A server request nothing here understands is refused rather than left
 TEST_CASE("An answer is correlated to the question that was asked under its id")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
@@ -1739,7 +1739,7 @@ TEST_CASE("Closing a document cancels its pull and drops the answer")
 TEST_CASE("A progress title and its latest message are what the server is working on, until the progress ends")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
@@ -1762,7 +1762,7 @@ TEST_CASE("A progress title and its latest message are what the server is workin
 TEST_CASE("When one of two progresses ends the server is working on the other")
 {
 	TempDirectory temp;
-	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("compile_commands.json", "[]\n");
 
 	Graphite::LspClient client = Offline(temp.GetPath());
 	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");

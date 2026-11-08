@@ -62,6 +62,11 @@ namespace Graphite {
 
 		void ForgetAsked();
 
+		// Asks every known count again, showing the old one until the new one comes: for when the server's view of the
+		// workspace has moved on, by an edit here, in another file, or its own indexing. A count seeded from the
+		// analysis starts out stale.
+		void MarkCountsStale();
+
 		const LensRows& GetRows() const { return m_Rows; }
 
 		const Lens* LensAt(std::size_t documentRow) const;
@@ -77,6 +82,9 @@ namespace Graphite {
 			std::string Name;
 			DeclarationKind Kind = DeclarationKind::Other;
 			bool Asked = false;
+
+			// Known, but from before the server last moved on: asked again, and shown until answered.
+			bool Stale = false;
 		};
 
 		void CarryOverInto(std::vector<Entry>& next);
