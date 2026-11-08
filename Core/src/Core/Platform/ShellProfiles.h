@@ -17,8 +17,8 @@ namespace Core {
 	// first shell.
 	std::vector<ShellProfile> DiscoverShells();
 
-	// Empty when no PATH entry holds the file. PATHEXT is not tried, so the name must carry its
-	// extension.
+	// Empty when no absolute PATH entry holds the file; a relative entry is skipped. PATHEXT is not
+	// tried, so the name must carry its extension.
 	std::filesystem::path FindOnPath(const std::string& executableFileName);
 
 	// The install roots Git for Windows' installer recorded in the registry, machine-wide first, then per user, then a

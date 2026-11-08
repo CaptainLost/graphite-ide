@@ -3,10 +3,13 @@
 #include "Core/Git/Command/GitExecutable.h"
 #include "Core/Platform/ShellProfiles.h"
 
+#include "ScopedCurrentDirectory.h"
 #include "ScopedEnvironmentVariable.h"
+#include "TempDirectory.h"
 
 #include <filesystem>
 #include <optional>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -63,4 +66,25 @@ TEST_CASE("Git: git is found on PATH or where Git for Windows installs it")
 
 	CHECK(std::filesystem::exists(*installed));
 	CHECK(IsUnderAGitForWindowsRoot(*installed));
+}
+
+TEST_CASE("Git: git is never taken from a PATH entry relative to the current directory")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path planted = temporaryDirectory.MakeFile("git.exe");
+
+	const ScopedCurrentDirectory insideThePlantedGit(temporaryDirectory.GetPath());
+	const ScopedEnvironmentVariable currentDirectoryOnly(L"PATH", L".");
+	REQUIRE(insideThePlantedGit.WasChanged());
+	REQUIRE(currentDirectoryOnly.WasSet());
+
+	const std::optional<std::filesystem::path> found = Core::FindGit();
+
+	if (found.has_value())
+	{
+		std::error_code compareError;
+
+		CHECK(found->is_absolute());
+		CHECK_FALSE(std::filesystem::equivalent(*found, planted, compareError));
+	}
 }

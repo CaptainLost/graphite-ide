@@ -203,10 +203,13 @@ namespace Core {
 			const std::size_t entryEnd = isLastEntry ? pathVariable.size() : separatorPosition;
 
 			const std::wstring_view entry = WithoutEnclosingQuotes(std::wstring_view{pathVariable}.substr(entryStart, entryEnd - entryStart));
+			const std::filesystem::path entryDirectory{std::wstring{entry}};
 
-			if (!entry.empty())
+			// WARNING: A relative entry such as "." names a folder under this process's current directory, which can be
+			// whatever folder the user opened, so a program found there is one the folder planted, not one PATH meant.
+			if (entryDirectory.is_absolute())
 			{
-				const std::filesystem::path candidate = std::filesystem::path{std::wstring{entry}} / executableFileName;
+				const std::filesystem::path candidate = entryDirectory / executableFileName;
 
 				if (PathExists(candidate))
 				{

@@ -3,6 +3,10 @@
 #include "Core/Base/PlatformDetection.h"
 #include "Core/Platform/ShellProfiles.h"
 
+#include "ScopedCurrentDirectory.h"
+#include "ScopedEnvironmentVariable.h"
+#include "TempDirectory.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -82,6 +86,30 @@ namespace {
 
 		return false;
 	}
+}
+
+TEST_CASE("FindOnPath skips a PATH entry that is not absolute and goes on to the next one")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("graphite-relative-probe.exe");
+	temporaryDirectory.MakeFile("bin/graphite-relative-probe.exe");
+	const std::filesystem::path absoluteProbe = temporaryDirectory.MakeFile("absolute/graphite-relative-probe.exe");
+
+	const ScopedCurrentDirectory insideTheProbes(temporaryDirectory.GetPath());
+	REQUIRE(insideTheProbes.WasChanged());
+
+	{
+		const ScopedEnvironmentVariable relativeEntriesOnly(L"PATH", L".;bin");
+		REQUIRE(relativeEntriesOnly.WasSet());
+
+		CHECK(Core::FindOnPath("graphite-relative-probe.exe").empty());
+	}
+
+	const std::wstring relativeThenAbsolute = L".;bin;" + (temporaryDirectory.GetPath() / "absolute").wstring();
+	const ScopedEnvironmentVariable relativeThenAbsoluteEntries(L"PATH", relativeThenAbsolute);
+	REQUIRE(relativeThenAbsoluteEntries.WasSet());
+
+	CHECK(Core::FindOnPath("graphite-relative-probe.exe") == absoluteProbe);
 }
 
 TEST_CASE("DiscoverShells finds at least one shell on this machine")
