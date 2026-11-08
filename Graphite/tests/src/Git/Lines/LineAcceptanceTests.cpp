@@ -18,12 +18,12 @@
 
 #include "DeferredJobs.h"
 #include "TempDirectory.h"
+#include "TextFixtures.h"
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -38,20 +38,6 @@
 using namespace Graphite;
 
 namespace {
-	std::string EnvironmentText(const char* name)
-	{
-		char* value = nullptr;
-		std::size_t length = 0;
-		if (::_dupenv_s(&value, &length, name) != 0 || value == nullptr)
-		{
-			return {};
-		}
-
-		std::string text{value};
-		std::free(value);
-		return text;
-	}
-
 	double Milliseconds(std::chrono::steady_clock::duration duration)
 	{
 		return std::chrono::duration<double, std::milli>(duration).count();

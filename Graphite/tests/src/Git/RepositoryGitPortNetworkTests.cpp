@@ -4,6 +4,7 @@
 
 #include "GitFixtures.h"
 #include "TempDirectory.h"
+#include "TextFixtures.h"
 
 #include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
@@ -56,21 +57,6 @@ namespace {
 		while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
 		{
 			text.pop_back();
-		}
-
-		return text;
-	}
-
-	std::string ForwardSlashes(const std::filesystem::path& path)
-	{
-		std::string text = Core::ToUtf8(path);
-
-		for (char& character : text)
-		{
-			if (character == '\\')
-			{
-				character = '/';
-			}
 		}
 
 		return text;

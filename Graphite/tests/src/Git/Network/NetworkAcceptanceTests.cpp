@@ -6,6 +6,8 @@
 #include "Git/Network/NetworkText.h"
 #include "Git/RepositoryGitPort.h"
 
+#include "TextFixtures.h"
+
 #include "Core/Base/Timestep.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Command/GitExecutable.h"
@@ -19,7 +21,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -66,21 +67,6 @@ namespace {
 	constexpr double kMostFrameCostBeyondIdleMilliseconds = 1.0;
 	constexpr int kIdleFrames = 120;
 
-	std::string EnvironmentText(const char* name)
-	{
-		char* value = nullptr;
-		std::size_t length = 0;
-
-		if (::_dupenv_s(&value, &length, name) != 0 || value == nullptr)
-		{
-			return {};
-		}
-
-		std::string text{value};
-		std::free(value);
-		return text;
-	}
-
 	double Milliseconds(std::chrono::steady_clock::duration duration)
 	{
 		return std::chrono::duration<double, std::milli>(duration).count();
@@ -91,21 +77,6 @@ namespace {
 		while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
 		{
 			text.pop_back();
-		}
-
-		return text;
-	}
-
-	std::string ForwardSlashes(const std::filesystem::path& path)
-	{
-		std::string text = Core::ToUtf8(path);
-
-		for (char& character : text)
-		{
-			if (character == '\\')
-			{
-				character = '/';
-			}
 		}
 
 		return text;
