@@ -715,4 +715,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0683](0683-clear-libgit2-s-last-error-by-hand-before-a-call-whose-failure-is-judged.md) | Clear libgit2's last error by hand before a call whose failure is judged | accepted | 2026-11-08 |
 | [0684](0684-copy-unsaved-changes-aside-so-a-crash-or-a-kill-does-not-lose-them.md) | Copy unsaved changes aside so a crash or a kill does not lose them | proposed | 2026-11-08 |
 | [0685](0685-close-every-file-when-another-folder-replaces-the-open-one-asking-first-about-unsaved-changes.md) | Close every file when another folder replaces the open one, asking first about unsaved changes | proposed | 2026-11-08 |
+| [0686](0686-force-push-only-with-a-lease-only-to-the-branch-s-own-upstream-and-only-after-a-question.md) | Force push only with a lease, only to the branch's own upstream, and only after a question | proposed | 2026-11-08 |
 <!-- /adr-index -->
