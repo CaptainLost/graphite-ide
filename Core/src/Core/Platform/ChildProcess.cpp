@@ -34,6 +34,7 @@ namespace Core {
 		constexpr DWORD kPollWithoutWaiting = 0;
 		constexpr DWORD kNothingCopied = 0;
 		constexpr std::chrono::milliseconds kCancelRetryInterval{1};
+		constexpr std::size_t kMostBytesTakenAfterStop = 1024 * 1024;
 
 		// INFINITE is one past it, and a wait asked for in milliseconds is never meant to be endless.
 		constexpr long long kLongestFiniteWait = INFINITE - 1;
@@ -194,38 +195,49 @@ namespace Core {
 			return static_cast<std::size_t>(bytesRead);
 		}
 
-		// Asks only for bytes the pipe already holds, which ReadFile hands over without waiting.
-		std::size_t ReadWhatIsWaiting(HANDLE readEnd, std::span<char> buffer)
+		std::size_t BytesWaitingIn(const UniqueHandle& readEnd)
 		{
 			DWORD bytesWaiting = 0;
-			const BOOL peeked = ::PeekNamedPipe(readEnd, nullptr, kNothingCopied, nullptr, &bytesWaiting, nullptr);
 
-			if (!peeked || bytesWaiting == 0)
+			if (!readEnd || !::PeekNamedPipe(readEnd.Get(), nullptr, kNothingCopied, nullptr, &bytesWaiting, nullptr))
 			{
 				return 0;
 			}
 
-			const std::size_t bytesToRead = (std::min)(buffer.size(), static_cast<std::size_t>(bytesWaiting));
-
-			return ReadOrWait(readEnd, buffer.first(bytesToRead));
+			return static_cast<std::size_t>(bytesWaiting);
 		}
 
-		// WARNING: The count goes up before the flag is read, and StopReading sets the flag before it reads the count,
-		// so of a read and a StopReading running at once, at least one sees the other.
-		std::size_t ReadFromPipe(HANDLE readEnd, std::span<char> buffer, const std::atomic<bool>& readingStopped,
-								 std::atomic<int>& readsThatMayWait)
+		// WARNING: Once the child has ended, the pipe holds no more of its output than fits in the pipe's buffer, but a
+		// process it left behind can have a write of any size pending, which counts as waiting too.
+		std::size_t BytesToTakeAfterStop(std::size_t bytesWaiting)
 		{
-			++readsThatMayWait;
+			return (std::min)(bytesWaiting, kMostBytesTakenAfterStop);
+		}
 
-			if (readingStopped.load())
+		// Asks only for bytes the pipe already holds, which ReadFile hands over without waiting, and for no more than
+		// it held at the first read after the stop: a process the child left behind may refill it for ever.
+		// WARNING: What is left is measured here, by the pipe's only reader, and never by StopReading: a peek from
+		// another thread waits behind a read pending on the same handle, since synchronous calls on one handle run one
+		// at a time.
+		std::size_t ReadWhatIsWaiting(const UniqueHandle& readEnd, std::span<char> buffer, std::optional<std::size_t>& bytesLeftToTake)
+		{
+			const std::size_t bytesWaiting = BytesWaitingIn(readEnd);
+
+			if (!bytesLeftToTake.has_value())
 			{
-				--readsThatMayWait;
-				return ReadWhatIsWaiting(readEnd, buffer);
+				bytesLeftToTake = BytesToTakeAfterStop(bytesWaiting);
 			}
 
-			const std::size_t bytesRead = ReadOrWait(readEnd, buffer);
+			const std::size_t bytesToRead = (std::min)((std::min)(buffer.size(), *bytesLeftToTake), bytesWaiting);
 
-			--readsThatMayWait;
+			if (bytesToRead == 0)
+			{
+				return 0;
+			}
+
+			const std::size_t bytesRead = ReadOrWait(readEnd.Get(), buffer.first(bytesToRead));
+
+			*bytesLeftToTake -= bytesRead;
 			return bytesRead;
 		}
 
@@ -441,7 +453,7 @@ namespace Core {
 	std::size_t ChildProcess::Read([[maybe_unused]] std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		return ReadFromPipe(m_FromChild.Get(), buffer, m_ReadingStopped, m_ReadsThatMayWait);
+		return ReadFromPipe(m_FromChild, m_OutputLeftToTake, buffer);
 #else
 		return 0;
 #endif
@@ -457,11 +469,31 @@ namespace Core {
 			return 0;
 		}
 
-		return ReadFromPipe(m_ErrorsFromChild.Get(), buffer, m_ReadingStopped, m_ReadsThatMayWait);
+		return ReadFromPipe(m_ErrorsFromChild, m_ErrorsLeftToTake, buffer);
 #else
 		return 0;
 #endif
 	}
+
+#ifdef CORE_PLATFORM_WINDOWS
+	// WARNING: The count goes up before the flag is read, and StopReading sets the flag before it reads the count, so of
+	// a read and a StopReading running at once, at least one sees the other.
+	std::size_t ChildProcess::ReadFromPipe(const UniqueHandle& readEnd, std::optional<std::size_t>& bytesLeftToTake, std::span<char> buffer)
+	{
+		++m_ReadsThatMayWait;
+
+		if (m_ReadingStopped.load())
+		{
+			--m_ReadsThatMayWait;
+			return ReadWhatIsWaiting(readEnd, buffer, bytesLeftToTake);
+		}
+
+		const std::size_t bytesRead = ReadOrWait(readEnd.Get(), buffer);
+
+		--m_ReadsThatMayWait;
+		return bytesRead;
+	}
+#endif
 
 	std::optional<std::uint32_t> ChildProcess::GetExitCode() const
 	{

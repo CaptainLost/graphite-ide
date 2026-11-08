@@ -56,9 +56,10 @@ namespace Core {
 
 		bool Write(std::string_view bytes);
 
-		// From now on Read and ReadErrors return what the pipes already hold and then zero, instead of waiting for
-		// more, and a read waiting now is released; it ends no process. It is for a child that has ended while a
-		// process it started still holds the pipes open. Returns once no read can wait any longer.
+		// From now on Read and ReadErrors return what each pipe holds at its next read and then zero, instead of
+		// waiting for more or taking what comes later, and a read waiting now is released; it ends no process. It is
+		// for a child that has ended while a process it started still holds the pipes open, perhaps writing. Returns
+		// once no read can wait any longer.
 		void StopReading();
 
 		// Safe while another thread is blocked in Read, which the child's death releases. It exists
@@ -78,6 +79,8 @@ namespace Core {
 	private:
 		ChildProcess() = default;
 
+		std::size_t ReadFromPipe(const UniqueHandle& readEnd, std::optional<std::size_t>& bytesLeftToTake, std::span<char> buffer);
+
 		UniqueHandle m_Job;
 		UniqueHandle m_Process;
 		UniqueHandle m_ToChild;
@@ -86,5 +89,8 @@ namespace Core {
 		bool m_EndJobOnClose = true;
 		std::atomic<bool> m_ReadingStopped{false};
 		std::atomic<int> m_ReadsThatMayWait{0};
+		// Each is touched by its pipe's reader alone, once reading has stopped.
+		std::optional<std::size_t> m_OutputLeftToTake;
+		std::optional<std::size_t> m_ErrorsLeftToTake;
 	};
 }

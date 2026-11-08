@@ -25,6 +25,7 @@ namespace {
 	constexpr std::size_t kReadChunkBytes = 256;
 	constexpr int kExitPollAttempts = 100;
 	constexpr std::chrono::milliseconds kExitPollInterval{20};
+	constexpr std::chrono::milliseconds kSlowReadPause{10};
 
 	// Long enough for PowerShell to start twice on a slow machine.
 	constexpr std::chrono::seconds kGrandchildDeadline{30};
@@ -56,6 +57,21 @@ namespace {
 		for (std::size_t bytesRead = process.Read(buffer); bytesRead != 0; bytesRead = process.Read(buffer))
 		{
 			text.append(buffer.data(), bytesRead);
+		}
+
+		return text;
+	}
+
+	// A reader slow enough that a child writing in a loop keeps the pipe full.
+	std::string ReadAllSlowly(Core::ChildProcess& process)
+	{
+		std::string text;
+		std::array<char, kReadChunkBytes> buffer{};
+
+		for (std::size_t bytesRead = process.Read(buffer); bytesRead != 0; bytesRead = process.Read(buffer))
+		{
+			text.append(buffer.data(), bytesRead);
+			std::this_thread::sleep_for(kSlowReadPause);
 		}
 
 		return text;
@@ -437,5 +453,38 @@ TEST_CASE("Child process: stopping the reads releases a read that a process the 
 	CHECK(stillWaitingAfterTheChildEnded);
 	CHECK(releasedInTime);
 	CHECK(output.find("held") != std::string::npos);
+	CHECK(child.IsRunning());
+}
+
+TEST_CASE("Child process: stopping the reads ends them while a process the child left behind keeps writing")
+{
+	// The inner cmd echoes for as long as it runs and holds the output pipe after the outer cmd has ended. It echoes
+	// faster than the slow reader takes, so the pipe never runs dry.
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "start /b cmd.exe /c for /l %i in (0,0,1) do @echo flood"},
+													 std::filesystem::current_path());
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	std::future<std::string> reading = std::async(std::launch::async, ReadAllSlowly, std::ref(child));
+
+	const bool childEnded = child.WaitForExit(kGrandchildDeadline);
+	const bool stillReadingAfterTheChildEnded = reading.wait_for(kLongerThanATermination) == std::future_status::timeout;
+
+	child.StopReading();
+
+	const bool stoppedInTime = reading.wait_for(kGrandchildDeadline) == std::future_status::ready;
+
+	// Ends a read StopReading failed to, so that the test fails rather than hangs.
+	if (!stoppedInTime)
+	{
+		child.Terminate();
+	}
+
+	const std::string output = reading.get();
+
+	REQUIRE(childEnded);
+	CHECK(stillReadingAfterTheChildEnded);
+	CHECK(stoppedInTime);
+	CHECK(output.find("flood") != std::string::npos);
 	CHECK(child.IsRunning());
 }
