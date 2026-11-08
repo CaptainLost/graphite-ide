@@ -10,7 +10,7 @@
 
 namespace Graphite {
 
-	// "Fetching… 45%", "Pulling…", "Pushing…"; empty while nothing runs.
+	// "Fetching… 45%", "Fetching full history… 45%", "Pulling…", "Pushing…"; empty while nothing runs.
 	std::string RunningText(const NetworkState& state);
 
 	// "Fetched", "Pulled 5 commits", "Pushed 2 commits", "Already up to date", "Nothing to push", "Fetch cancelled".

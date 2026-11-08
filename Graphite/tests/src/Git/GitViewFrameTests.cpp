@@ -780,6 +780,34 @@ TEST_CASE("Git window: a click on a shallow clone's Fetch full history fetches t
 	CHECK(window.Port.Network.Calls == std::vector<std::string>{"FetchFullHistory"});
 }
 
+TEST_CASE("Git window: a running full history shows as the running Fetch button, and a click on it cancels the full history")
+{
+	GitWindow window("CutOffCancelWindow", HeadOnMain(), {}, CutOffBranchRead());
+	ShowCutOffBranch(window);
+	window.HoldsNetworkJobs = true;
+
+	window.ClickAt(BannerActionPoint(window));
+	window.Settle(2);
+
+	const Graphite::NetworkState running = window.Network.GetState();
+	REQUIRE(running.Running == Graphite::NetworkOperation::FullHistory);
+	REQUIRE(running.Cancellable);
+
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+
+	window.HoldsNetworkJobs = false;
+	window.HeldNetworkJobs.RunAll();
+	window.Settle(2);
+
+	// The job, cancelled before it started, ran no git.
+	const std::optional<Graphite::NetworkDone> done = window.Network.GetShownDone();
+	REQUIRE(done.has_value());
+	CHECK(done->Cancelled);
+	CHECK(done->Operation == Graphite::NetworkOperation::FullHistory);
+	CHECK(window.Port.Network.Calls.empty());
+}
+
 TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row selected and in view in that frame")
 {
 	GitWindow window("HeadChipWindow");

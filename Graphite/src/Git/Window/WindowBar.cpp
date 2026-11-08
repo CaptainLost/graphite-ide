@@ -370,7 +370,8 @@ namespace Graphite {
 		}
 
 		// Laid over the buttons as described with nothing running. The others are disabled and keep their counts, dim in
-		// their slots: the running state changes only its own button.
+		// their slots: the running state changes only its own button. The full history's fetch is a fetch, so it runs as
+		// Fetch's, with Fetch's cancel and percent.
 		void ApplyRunning(const NetworkState& state, NetworkButtons& buttons)
 		{
 			for (ButtonText* const button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
@@ -378,12 +379,6 @@ namespace Graphite {
 				button->Enabled = false;
 				button->Tooltip.clear();
 				button->AsksWhichRemote = false;
-			}
-
-			// The full history's fetch has no button: all three wait for it.
-			if (*state.Running == NetworkOperation::FullHistory)
-			{
-				return;
 			}
 
 			// The label stays; the slot reads the percent, empty until git counts, and the tooltip says the rest.

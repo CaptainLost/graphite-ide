@@ -40,8 +40,9 @@ namespace Graphite {
 			switch (operation)
 			{
 			case NetworkOperation::Fetch:
-			case NetworkOperation::FullHistory:
 				return "Fetching";
+			case NetworkOperation::FullHistory:
+				return "Fetching full history";
 			case NetworkOperation::Pull:
 				return "Pulling";
 			case NetworkOperation::Push:

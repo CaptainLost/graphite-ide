@@ -783,6 +783,20 @@ TEST_CASE("Network model: detach cancels and never blocks")
 	CHECK(network.Port.CallsSoFar() == Calls({"FetchAll"}));
 }
 
+TEST_CASE("Network model: detach cancels a running full history as it cancels every other operation")
+{
+	ThreadedNetwork network;
+	network.Port.Held = "FetchFullHistory";
+
+	network.Model.FetchFullHistory();
+	REQUIRE(network.Port.WaitUntilHeldEntered());
+
+	network.Model.Detach();
+
+	CHECK(network.Port.HeldSawCancel.load());
+	CHECK(network.Model.GetState() == NetworkState{});
+}
+
 TEST_CASE("Network model: an answer for the folder before is dropped")
 {
 	DeferredJobs jobs;

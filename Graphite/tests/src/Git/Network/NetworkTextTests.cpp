@@ -44,7 +44,9 @@ TEST_CASE("Network text: the running and done texts and the cancelled ones")
 {
 	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::Fetch, .Percent = 45}) == "Fetching" + kEllipsis + " 45%");
 	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::Fetch}) == "Fetching" + kEllipsis);
-	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::FullHistory, .Percent = 7}) == "Fetching" + kEllipsis + " 7%");
+	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::FullHistory, .Percent = 7}) ==
+		  "Fetching full history" + kEllipsis + " 7%");
+	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::FullHistory}) == "Fetching full history" + kEllipsis);
 	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::Pull}) == "Pulling" + kEllipsis);
 	CHECK(Graphite::RunningText(NetworkState{.Running = NetworkOperation::Push, .Percent = 100}) == "Pushing" + kEllipsis + " 100%");
 	CHECK(Graphite::RunningText(NetworkState{}).empty());

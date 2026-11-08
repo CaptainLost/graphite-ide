@@ -775,14 +775,20 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 	CHECK(buttons.Push.Label == "Push");
 	CHECK(buttons.Push.Tooltip == "Pushing\xE2\x80\xA6\nClick to cancel");
 
-	// The full history's fetch has no button of its own: all three wait.
+	// The full history's fetch is a fetch: it runs as Fetch's, with Fetch's cancel and percent.
 	state.Running = Graphite::NetworkOperation::FullHistory;
+	state.Percent = 45;
 	buttons = Buttons(&head, &branches, &kOrigin, state);
+	CHECK(buttons.Fetch.Label == "Fetch");
+	CHECK(buttons.Fetch.Running);
+	CHECK(buttons.Fetch.Enabled);
+	CHECK(buttons.Fetch.Count == "45%");
+	CHECK(buttons.Fetch.Tooltip == "Fetching full history\xE2\x80\xA6 45%\nClick to cancel");
 
-	for (const Graphite::ButtonText* button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
+	for (const Graphite::ButtonText* other : {&buttons.Pull, &buttons.Push})
 	{
-		CHECK_FALSE(button->Running);
-		CHECK_FALSE(button->Enabled);
+		CHECK_FALSE(other->Running);
+		CHECK_FALSE(other->Enabled);
 	}
 
 	CHECK(buttons.Pull.Count == "3");
