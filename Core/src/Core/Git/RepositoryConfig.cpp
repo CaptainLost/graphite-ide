@@ -52,4 +52,34 @@ namespace Core {
 
 		return std::optional<std::string>{trimmedEmail};
 	}
+
+	Result<bool> Repository::IsSshCommandConfigured() const
+	{
+		if (m_Handle == nullptr)
+		{
+			return RepositoryNotOpen();
+		}
+
+		ConfigHandle snapshot;
+
+		if (git_repository_config_snapshot(Out(snapshot), m_Handle.get()) != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot read the git configuration: {}", LastLibgit2Message())};
+		}
+
+		const char* command = nullptr;
+		const int lookupResult = git_config_get_string(&command, snapshot.get(), "core.sshcommand");
+
+		if (lookupResult == GIT_ENOTFOUND)
+		{
+			return false;
+		}
+
+		if (lookupResult != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot read core.sshCommand: {}", LastLibgit2Message())};
+		}
+
+		return true;
+	}
 }

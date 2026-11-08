@@ -11,12 +11,14 @@
 #include "Settings/UserDirectories.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace Graphite {
@@ -55,6 +57,19 @@ namespace Graphite {
 		Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) override;
 		Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) override;
 		Core::Result<void> Init() override;
+
+		NetworkSetup QueryNetworkSetup() override;
+		std::optional<std::chrono::sys_seconds> QueryLastFetch() override;
+		Core::NetworkOutcome FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) override;
+		Core::NetworkOutcome FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+										 const std::string& remote) override;
+		Core::NetworkOutcome FetchFullHistory(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) override;
+		Core::NetworkOutcome FastForward(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+										 const std::string& upstreamFullName) override;
+		Core::NetworkOutcome PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+									const std::string& remote, const std::optional<std::string>& upstreamBranch) override;
+		Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+											   const std::string& remote) override;
 
 		Core::Result<void> CreateBranch(const std::string& name, const Core::Oid& from) override;
 		Core::Result<void> RenameBranch(const std::string& from, const std::string& to) override;
@@ -118,6 +133,9 @@ namespace Graphite {
 
 	private:
 		Core::Result<Core::Repository*> RepositoryForThisThread();
+
+		// The setup as a run, or the outcome to answer when there is no git to run.
+		std::variant<Core::NetworkRun, Core::NetworkOutcome> NetworkRunForThisThread();
 
 		// The repository of that generation of the root, or an error once the port has been pointed at a folder since.
 		Core::Result<Core::Repository*> RepositoryForThisThreadOf(std::uint64_t generation,

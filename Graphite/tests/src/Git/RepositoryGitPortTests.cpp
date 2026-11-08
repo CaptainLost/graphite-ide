@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -1184,4 +1185,79 @@ TEST_CASE("Git window: the port lists the worktrees of the repository")
 	CHECK(std::ranges::any_of(listed.GetValue(), [&worktree](const Core::WorktreeEntry& entry) {
 		return !entry.IsMain && entry.Head.BranchName == "side" && Core::SamePath(entry.Path, worktree);
 	}));
+}
+
+TEST_CASE("Git network: the setup names the work tree and the common git directory")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("first");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	const Graphite::NetworkSetup setup = port.QueryNetworkSetup();
+
+	CHECK(Core::SamePath(setup.WorkingDirectory, repository.GetPath()));
+	CHECK(Core::SamePath(setup.CommonGitDir, repository.GetPath() / ".git"));
+}
+
+TEST_CASE("Git network: core.sshCommand in the repository's configuration is reported")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("first");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	git_repository* opened = nullptr;
+	REQUIRE(git_repository_open(&opened, Core::ToUtf8(repository.GetPath()).c_str()) == 0);
+	git_config* config = nullptr;
+	REQUIRE(git_repository_config(&config, opened) == 0);
+
+	// WARNING: A machine-wide core.sshCommand would make the unset case unreachable, so that case is only checked
+	// when nothing above the repository sets one.
+	const bool setAbove = port.QueryNetworkSetup().SshCommandConfigured;
+
+	if (!setAbove)
+	{
+		CHECK_FALSE(port.QueryNetworkSetup().SshCommandConfigured);
+	}
+
+	REQUIRE(git_config_set_string(config, "core.sshCommand", "plink -batch") == 0);
+	git_config_free(config);
+	git_repository_free(opened);
+
+	CHECK(port.QueryNetworkSetup().SshCommandConfigured);
+}
+
+TEST_CASE("Git network: the last fetch is read from the common git directory, also from a linked worktree")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("fork point");
+	repository.Branch("side");
+	const std::filesystem::path worktree = repository.AddWorktree("side");
+	const std::filesystem::path fetchHead = repository.GetPath() / ".git" / "FETCH_HEAD";
+	ReviewRepository::WriteFileAt(fetchHead, "x\n");
+	const auto stamp = std::chrono::sys_seconds{std::chrono::seconds{1700000000}};
+	std::error_code code;
+	std::filesystem::last_write_time(fetchHead, std::chrono::clock_cast<std::chrono::file_clock>(stamp), code);
+	REQUIRE_FALSE(code);
+	Graphite::RepositoryGitPort fromWorktree{worktree};
+	Graphite::RepositoryGitPort fromMain{repository.GetPath()};
+
+	const std::optional<std::chrono::sys_seconds> viaWorktree = fromWorktree.QueryLastFetch();
+
+	REQUIRE(viaWorktree.has_value());
+	CHECK(*viaWorktree == stamp);
+	CHECK(fromMain.QueryLastFetch() == viaWorktree);
+	CHECK(Core::SamePath(fromWorktree.QueryNetworkSetup().CommonGitDir, repository.GetPath() / ".git"));
+}
+
+TEST_CASE("Git network: a repository never fetched has no last fetch")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("first");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	CHECK_FALSE(port.QueryLastFetch().has_value());
 }

@@ -3,6 +3,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
+#include "Core/Git/Command/GitNetwork.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/OwnAuthors.h"
@@ -15,6 +16,8 @@
 #include "Core/Git/Tag.h"
 #include "Git/Diff/FileTexts.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <optional>
@@ -30,6 +33,16 @@ namespace Graphite {
 		std::size_t Count = 0;
 
 		friend bool operator==(const CommitCount&, const CommitCount&) = default;
+	};
+
+	// What the network operations run with. Git is empty when no git was found, and then every operation fails.
+	// WARNING: CommonGitDir is the directory the worktrees share, which a linked worktree's own git dir is not.
+	struct NetworkSetup
+	{
+		std::optional<std::filesystem::path> Git;
+		bool SshCommandConfigured = false;
+		std::filesystem::path WorkingDirectory;
+		std::filesystem::path CommonGitDir;
 	};
 
 	// WARNING: Every method is called on a worker thread.
@@ -101,6 +114,25 @@ namespace Graphite {
 		virtual Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) = 0;
 		virtual Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) = 0;
 		virtual Core::Result<void> DiscardAll(Core::UntrackedFiles untrackedFiles) = 0;
+
+		// WARNING: Answers an empty Git and empty directories when the repository cannot be opened.
+		virtual NetworkSetup QueryNetworkSetup() = 0;
+
+		// The mtime of FETCH_HEAD in the common git dir; empty when never fetched.
+		virtual std::optional<std::chrono::sys_seconds> QueryLastFetch() = 0;
+
+		// WARNING: Each runs git itself, to its end, in the repository's work tree, and polls `cancelled` every 50 ms.
+		// Without a git they fail at once, saying so. FastForward cannot be cancelled once its merge has started.
+		virtual Core::NetworkOutcome FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) = 0;
+		virtual Core::NetworkOutcome FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+												 const std::string& remote) = 0;
+		virtual Core::NetworkOutcome FetchFullHistory(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) = 0;
+		virtual Core::NetworkOutcome FastForward(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+												 const std::string& upstreamFullName) = 0;
+		virtual Core::NetworkOutcome PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+											const std::string& remote, const std::optional<std::string>& upstreamBranch) = 0;
+		virtual Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+													   const std::string& remote) = 0;
 
 		// WARNING: Init answers NotFound when no folder is open.
 		virtual Core::Result<void> Init() = 0;

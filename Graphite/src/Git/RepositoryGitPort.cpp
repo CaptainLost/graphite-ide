@@ -1,6 +1,8 @@
 #include "Git/RepositoryGitPort.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Command/GitExecutable.h"
+#include "Core/Git/Command/GitNetwork.h"
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
 
@@ -8,6 +10,7 @@
 #include <system_error>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 namespace Graphite {
 
@@ -1436,5 +1439,100 @@ namespace Graphite {
 		}
 
 		return opened.GetValue()->TreesDifferAt(from, to, paths);
+	}
+
+	NetworkSetup RepositoryGitPort::QueryNetworkSetup()
+	{
+		NetworkSetup setup;
+		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return setup;
+		}
+
+		const Core::Repository* repository = opened.GetValue();
+		setup.Git = Core::FindGit();
+		setup.WorkingDirectory = repository->GetWorkingDirectory();
+		setup.CommonGitDir = repository->CommonDirectory();
+
+		// WARNING: A configuration that cannot be read counts as set: the user's own transport is then kept, and a
+		// batch-mode ssh of ours would replace one we cannot see.
+		const Core::Result<bool> sshCommand = repository->IsSshCommandConfigured();
+		setup.SshCommandConfigured = !sshCommand.HasValue() || sshCommand.GetValue();
+
+		return setup;
+	}
+
+	std::optional<std::chrono::sys_seconds> RepositoryGitPort::QueryLastFetch()
+	{
+		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return std::nullopt;
+		}
+
+		return Core::LastFetchTime(opened.GetValue()->CommonDirectory());
+	}
+
+	std::variant<Core::NetworkRun, Core::NetworkOutcome> RepositoryGitPort::NetworkRunForThisThread()
+	{
+		const NetworkSetup setup = QueryNetworkSetup();
+
+		if (!setup.Git.has_value() || setup.WorkingDirectory.empty())
+		{
+			const std::string text = setup.Git.has_value() ? "the repository could not be opened" : "git was not found";
+			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed, .Failure = {.Shown = text, .Copied = text}};
+		}
+
+		return Core::NetworkRun{.Git = *setup.Git, .WorkingDirectory = setup.WorkingDirectory,
+								.SshCommandConfigured = setup.SshCommandConfigured};
+	}
+
+	Core::NetworkOutcome RepositoryGitPort::FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress)
+	{
+		const auto run = NetworkRunForThisThread();
+		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
+		return ready != nullptr ? Core::FetchAll(*ready, cancelled, progress) : std::get<Core::NetworkOutcome>(run);
+	}
+
+	Core::NetworkOutcome RepositoryGitPort::FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+														const std::string& remote)
+	{
+		const auto run = NetworkRunForThisThread();
+		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
+		return ready != nullptr ? Core::FetchRemote(*ready, cancelled, progress, remote) : std::get<Core::NetworkOutcome>(run);
+	}
+
+	Core::NetworkOutcome RepositoryGitPort::FetchFullHistory(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress)
+	{
+		const auto run = NetworkRunForThisThread();
+		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
+		return ready != nullptr ? Core::FetchFullHistory(*ready, cancelled, progress) : std::get<Core::NetworkOutcome>(run);
+	}
+
+	Core::NetworkOutcome RepositoryGitPort::FastForward(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+														const std::string& upstreamFullName)
+	{
+		const auto run = NetworkRunForThisThread();
+		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
+		return ready != nullptr ? Core::FastForward(*ready, cancelled, progress, upstreamFullName) : std::get<Core::NetworkOutcome>(run);
+	}
+
+	Core::NetworkOutcome RepositoryGitPort::PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+												   const std::string& remote, const std::optional<std::string>& upstreamBranch)
+	{
+		const auto run = NetworkRunForThisThread();
+		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
+		return ready != nullptr ? Core::PushTo(*ready, cancelled, progress, remote, upstreamBranch) : std::get<Core::NetworkOutcome>(run);
+	}
+
+	Core::NetworkOutcome RepositoryGitPort::SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+															  const std::string& remote)
+	{
+		const auto run = NetworkRunForThisThread();
+		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
+		return ready != nullptr ? Core::SetRemoteHeadAuto(*ready, cancelled, progress, remote) : std::get<Core::NetworkOutcome>(run);
 	}
 }

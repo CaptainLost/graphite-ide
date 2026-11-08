@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "GitFixtures.h"
 #include "Git/GitModel.h"
 
 #include "Core/Events/EventBus.h"
@@ -16,7 +17,7 @@
 
 namespace {
 
-	class WritePort final : public Graphite::GitPort
+	class WritePort final : public NetworkDoublePort
 	{
 	public:
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Status; }

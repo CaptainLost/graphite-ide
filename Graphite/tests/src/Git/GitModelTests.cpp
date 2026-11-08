@@ -37,7 +37,7 @@ namespace {
 	constexpr std::uint8_t kOldestCommitFirstByte = 0;
 	constexpr const char* kAbsentPath = "";
 
-	class FakePort final : public Graphite::GitPort
+	class FakePort final : public NetworkDoublePort
 	{
 	public:
 		using TextsByPathsMap = std::map<std::string, Graphite::FileTexts>;

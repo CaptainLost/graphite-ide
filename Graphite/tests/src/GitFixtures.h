@@ -6,6 +6,7 @@
 #include "Git/GitModel.h"
 #include "Git/GitPort.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -16,10 +17,75 @@
 #include <utility>
 #include <vector>
 
+// What a test double of the port answers to the network operations: it records the call's name and arguments, and
+// answers what a test set, Done by default.
+struct NetworkDoubleState
+{
+	Graphite::NetworkSetup Setup;
+	std::optional<std::chrono::sys_seconds> LastFetch;
+	Core::NetworkOutcome Outcome;
+	std::vector<std::string> Calls;
+	int Progress = -1;
+
+	Core::NetworkOutcome Answer(std::string call, const Core::ProgressSink& progress)
+	{
+		Calls.push_back(std::move(call));
+
+		if (progress && Progress >= 0)
+		{
+			progress(Progress);
+		}
+
+		return Outcome;
+	}
+};
+
+// The network half of GitPort for a test double: each call is recorded by name and arguments, and answered with what a
+// test set in Network, Done by default.
+class NetworkDoublePort : public Graphite::GitPort
+{
+public:
+	NetworkDoubleState Network;
+
+	Graphite::NetworkSetup QueryNetworkSetup() override { return Network.Setup; }
+	std::optional<std::chrono::sys_seconds> QueryLastFetch() override { return Network.LastFetch; }
+
+	Core::NetworkOutcome FetchAll(const std::atomic<bool>&, const Core::ProgressSink& progress) override
+	{
+		return Network.Answer("FetchAll", progress);
+	}
+
+	Core::NetworkOutcome FetchRemote(const std::atomic<bool>&, const Core::ProgressSink& progress, const std::string& remote) override
+	{
+		return Network.Answer("FetchRemote " + remote, progress);
+	}
+
+	Core::NetworkOutcome FetchFullHistory(const std::atomic<bool>&, const Core::ProgressSink& progress) override
+	{
+		return Network.Answer("FetchFullHistory", progress);
+	}
+
+	Core::NetworkOutcome FastForward(const std::atomic<bool>&, const Core::ProgressSink& progress, const std::string& upstream) override
+	{
+		return Network.Answer("FastForward " + upstream, progress);
+	}
+
+	Core::NetworkOutcome PushTo(const std::atomic<bool>&, const Core::ProgressSink& progress, const std::string& remote,
+								const std::optional<std::string>& upstreamBranch) override
+	{
+		return Network.Answer("PushTo " + remote + " " + upstreamBranch.value_or("(set upstream)"), progress);
+	}
+
+	Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>&, const Core::ProgressSink& progress, const std::string& remote) override
+	{
+		return Network.Answer("SetRemoteHeadAuto " + remote, progress);
+	}
+};
+
 // A repository with nothing in it: every query answers empty and every write succeeds, for tests
 // that need a GitModel but none of its answers. A diff or a file's texts can be told to fail instead, and a
 // test that needs one answer of its own derives and overrides that query.
-class EmptyGitPort : public Graphite::GitPort
+class EmptyGitPort : public NetworkDoublePort
 {
 public:
 	using Paths = std::vector<std::filesystem::path>;
