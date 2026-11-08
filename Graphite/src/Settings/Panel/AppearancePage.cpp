@@ -42,7 +42,7 @@ namespace Graphite {
 		constexpr const char* kOwnSchemeDescription = "A copy of your own: rename it, delete it, or change its colours below.";
 		constexpr const char* kColourNote = "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.";
 		constexpr const char* kBuiltInColourDescription = "Built-in scheme: duplicate it to change this colour.";
-		constexpr const char* kLayoutNote = "Dimmed names are inherited from the built-in scheme. âº puts an overridden measurement back.";
+		constexpr const char* kLayoutNote = "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden measurement back.";
 		constexpr const char* kBuiltInLayoutDescription = "Built-in scheme: duplicate it to change this measurement.";
 		constexpr std::string_view kLayoutUnit = "px";
 		constexpr const char* kResetLayoutTip = "Put back the inherited measurement";

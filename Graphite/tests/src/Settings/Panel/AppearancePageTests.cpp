@@ -138,7 +138,7 @@ TEST_CASE("A copy's layout rows are dimmed until the copy sets them, and the car
 	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
 
 	REQUIRE(cards.size() > kLayoutCard);
-	CHECK(cards[kLayoutCard].Note == "Dimmed names are inherited from the built-in scheme. âº puts an overridden measurement back.");
+	CHECK(cards[kLayoutCard].Note == "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden measurement back.");
 
 	for (const Graphite::SettingsRow& row : cards[kLayoutCard].Rows)
 	{
