@@ -77,6 +77,11 @@ TEST_CASE("Network text: the sentences said when an operation cannot go on name 
 		  "main and origin/main have diverged (3 to push, 5 to pull). Pull can only fast-forward for now; merge or rebase in a "
 		  "terminal.");
 	CHECK(Graphite::NoUpstreamText("main") == "main has no upstream branch.");
+	CHECK(Graphite::GoneUpstreamText("feature", "origin/feature") == "feature's upstream origin/feature no longer exists.");
+	CHECK(Graphite::PublishText("feature", "origin", std::nullopt) == "Push feature to origin as origin/feature");
+	CHECK(Graphite::PublishText("feature", "origin", std::string{"origin/feature"}) == "Push feature to origin as origin/feature");
+	CHECK(Graphite::PublishText("my-fix", "origin", std::string{"origin/main"}) ==
+		  "Push my-fix to origin as origin/my-fix; it then tracks origin/my-fix instead of origin/main");
 	CHECK(Graphite::NoRemoteText() == "This repository has no remote.");
 	CHECK(Graphite::NoLongerCheckedOutText("main", "origin/main") ==
 		  "main is no longer checked out, so Pull did not merge origin/main.");

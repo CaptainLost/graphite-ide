@@ -698,6 +698,33 @@ TEST_CASE("Window bar: push of a branch whose upstream has another name says it 
 		  "Push Main to origin as origin/Main; it then tracks origin/Main instead of origin/main");
 }
 
+TEST_CASE("Window bar: a branch whose upstream was deleted on its remote says so for Pull, and Push names the branch it makes")
+{
+	const Core::HeadState head = OnBranch("feature");
+	Core::Branch feature = HeadBranch("feature");
+	feature.MissingUpstream = "origin/feature";
+	std::vector<Core::Branch> branches = {feature};
+
+	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK_FALSE(buttons.Pull.Enabled);
+	CHECK(buttons.Pull.Tooltip == "feature's upstream origin/feature no longer exists.");
+	CHECK(buttons.Push.Enabled);
+	CHECK(buttons.Push.Tooltip == "Push feature to origin as origin/feature");
+
+	// With several remotes Push asks which, as for any branch without an upstream.
+	const std::vector<Core::Remote> two = {{"origin", "u"}, {"backup", "v"}};
+	buttons = Buttons(&head, &branches, &two);
+	CHECK(buttons.Pull.Tooltip == "feature's upstream origin/feature no longer exists.");
+	CHECK(buttons.Push.AsksWhichRemote);
+	CHECK(buttons.Push.Tooltip == "Push feature to\xE2\x80\xA6");
+
+	// One that tracked another name says it tracks its own from then on.
+	feature.MissingUpstream = "origin/main";
+	branches = {feature};
+	CHECK(Buttons(&head, &branches, &kOrigin).Push.Tooltip ==
+		  "Push feature to origin as origin/feature; it then tracks origin/feature instead of origin/main");
+}
+
 TEST_CASE("Window bar: push asks which remote only with several remotes and no upstream on one")
 {
 	const Core::HeadState head = OnBranch("main");

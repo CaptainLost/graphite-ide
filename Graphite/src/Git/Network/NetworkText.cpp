@@ -223,6 +223,11 @@ namespace Graphite {
 		return branch + " has no upstream branch.";
 	}
 
+	std::string GoneUpstreamText(const std::string& branch, const std::string& upstream)
+	{
+		return branch + "'s upstream " + upstream + " no longer exists.";
+	}
+
 	std::string LocalUpstreamText(const std::string& branch, const std::string& upstream)
 	{
 		return branch + "'s upstream is the local branch " + upstream + ", so Push needs a remote chosen.";

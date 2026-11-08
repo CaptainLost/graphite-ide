@@ -662,6 +662,22 @@ TEST_CASE("Network model: pull without an upstream fails without fetching")
 	CHECK(network.Port.CallsSoFar().empty());
 }
 
+TEST_CASE("Network model: pull of a branch whose upstream was deleted on its remote says so, without fetching")
+{
+	InlineNetwork network;
+	Core::Branch feature = CheckedOut(LocalBranch("feature"));
+	feature.MissingUpstream = "origin/feature";
+	network.Port.Branches = {feature};
+
+	network.Model.Pull();
+	network.Update();
+
+	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "feature's upstream origin/feature no longer exists.");
+	CHECK(network.Port.CallsSoFar().empty());
+}
+
 TEST_CASE("Network model: push without an upstream goes to the remote given")
 {
 	InlineNetwork network;

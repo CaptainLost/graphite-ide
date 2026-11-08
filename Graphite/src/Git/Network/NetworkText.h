@@ -24,6 +24,10 @@ namespace Graphite {
 	std::string NoLongerCheckedOutText(const std::string& branch, const std::string& upstream);
 	std::string FolderChangedText(const std::string& upstream);
 	std::string NoUpstreamText(const std::string& branch);
+
+	// The upstream the branch's config names was deleted on its remote, as a fetch with --prune after a merged pull
+	// request leaves it: "feature's upstream origin/feature no longer exists."
+	std::string GoneUpstreamText(const std::string& branch, const std::string& upstream);
 	std::string LocalUpstreamText(const std::string& branch, const std::string& upstream);
 	std::string NoRemoteText();
 	std::string NoBranchText();

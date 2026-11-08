@@ -268,7 +268,8 @@ namespace Graphite {
 		{
 			if (!branch.Upstream.has_value())
 			{
-				pull.Tooltip = NoUpstreamText(branch.Name);
+				pull.Tooltip = branch.MissingUpstream.has_value() ? GoneUpstreamText(branch.Name, *branch.MissingUpstream)
+																   : NoUpstreamText(branch.Name);
 				return;
 			}
 
@@ -309,6 +310,14 @@ namespace Graphite {
 			{
 				push.Count = SlotCount(branch.Ahead);
 				push.Tooltip = "Push " + CommitsText(branch.Ahead) + " to " + *upstreamRemote;
+				return;
+			}
+
+			// A branch whose upstream was deleted is pushed as one without an upstream, which makes the branch anew: it is
+			// named, so the push is not taken for one to the upstream it had.
+			if (!upstreamRemote.has_value() && remotes.size() == 1 && branch.MissingUpstream.has_value())
+			{
+				push.Tooltip = PublishText(branch.Name, remotes.front().Name, branch.MissingUpstream);
 				return;
 			}
 

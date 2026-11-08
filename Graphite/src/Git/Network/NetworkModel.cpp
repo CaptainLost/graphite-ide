@@ -517,7 +517,8 @@ namespace Graphite {
 
 		if (upstream == nullptr)
 		{
-			answer.Outcome = FailedWith(NoUpstreamText(checkedOut.Name));
+			answer.Outcome = FailedWith(checkedOut.MissingUpstream.has_value() ? GoneUpstreamText(checkedOut.Name, *checkedOut.MissingUpstream)
+																			   : NoUpstreamText(checkedOut.Name));
 			return answer;
 		}
 
