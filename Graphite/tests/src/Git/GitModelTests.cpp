@@ -1014,13 +1014,13 @@ TEST_CASE("A requested diff becomes readable after the next update")
 	request.Target = Core::DiffTarget::WorkTreeToHead;
 	model.RequestWorkingTreeDiff(request);
 
-	CHECK(model.GetWorkingTreeDiff() == nullptr);
+	CHECK(model.GetWorkingTreeDiff(Core::DiffRequest{}) == nullptr);
 
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
-	REQUIRE(model.GetWorkingTreeDiff()->Files.size() == 1);
-	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("a.txt"));
+	REQUIRE(model.GetWorkingTreeDiff(Core::DiffRequest{}) != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff(Core::DiffRequest{})->Files.size() == 1);
+	CHECK(model.GetWorkingTreeDiff(Core::DiffRequest{})->Files.front().NewPath == std::filesystem::path("a.txt"));
 }
 
 TEST_CASE("A request made while one is already in flight is not resubmitted")
@@ -1045,9 +1045,9 @@ TEST_CASE("A request made while one is already in flight is not resubmitted")
 
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
-	REQUIRE(model.GetWorkingTreeDiff()->Files.size() == 1);
-	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("stale.txt"));
+	REQUIRE(model.GetWorkingTreeDiff(Core::DiffRequest{}) != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff(Core::DiffRequest{})->Files.size() == 1);
+	CHECK(model.GetWorkingTreeDiff(Core::DiffRequest{})->Files.front().NewPath == std::filesystem::path("stale.txt"));
 }
 
 TEST_CASE("A failed diff keeps the last good one")
@@ -1072,8 +1072,8 @@ TEST_CASE("A failed diff keeps the last good one")
 	REQUIRE(port.DiffCalls == 2);
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
-	CHECK(model.GetWorkingTreeDiff()->Files.size() == 1);
+	REQUIRE(model.GetWorkingTreeDiff(Core::DiffRequest{}) != nullptr);
+	CHECK(model.GetWorkingTreeDiff(Core::DiffRequest{})->Files.size() == 1);
 }
 
 TEST_CASE("Closing the workspace drops the diff too")
@@ -1091,12 +1091,12 @@ TEST_CASE("Closing the workspace drops the diff too")
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
-	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff(Core::DiffRequest{}) != nullptr);
 
 	events.Publish(Graphite::WorkspaceClosedEvent{});
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
-	CHECK(model.GetWorkingTreeDiff() == nullptr);
+	CHECK(model.GetWorkingTreeDiff(Core::DiffRequest{}) == nullptr);
 }
 
 namespace {
@@ -2067,10 +2067,11 @@ TEST_CASE("A working-tree diff's C# text arrives from the model coloured by the 
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "Widget.cs"});
+	const Core::DiffRequest request{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "Widget.cs"};
+	model.RequestWorkingTreeDiff(request);
 	model.OnUpdate(Core::Timestep{kNoSeconds});
 
-	const Core::Ref<const Graphite::FileTexts> texts = model.GetWorkingTreeTexts();
+	const Core::Ref<const Graphite::FileTexts> texts = model.GetWorkingTreeTexts(request);
 
 	REQUIRE(texts != nullptr);
 	REQUIRE(texts->Tokens.New.size() == 1);
@@ -2226,16 +2227,17 @@ TEST_CASE("A working-tree diff brings its file's text with it")
 	port.WorkingTreeTexts.HasNew = true;
 	port.WorkingTreeTexts.New = "on disk";
 
+	const Core::DiffRequest request{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "new.txt"};
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
 
-	CHECK(model.GetWorkingTreeTexts() == nullptr);
+	CHECK(model.GetWorkingTreeTexts(request) == nullptr);
 
-	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "new.txt"});
+	model.RequestWorkingTreeDiff(request);
 	model.OnUpdate(Core::Timestep{kNoSeconds});
 
-	REQUIRE(model.GetWorkingTreeTexts() != nullptr);
-	CHECK(model.GetWorkingTreeTexts()->New == "on disk");
+	REQUIRE(model.GetWorkingTreeTexts(request) != nullptr);
+	CHECK(model.GetWorkingTreeTexts(request)->New == "on disk");
 	CHECK(port.WorkingTreeTextCalls == 1);
 	CHECK(port.LastTextPaths == "old.txt|new.txt");
 }
@@ -2247,11 +2249,12 @@ TEST_CASE("A working-tree diff that names no file reads no text")
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "gone.txt"});
+	const Core::DiffRequest request{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "gone.txt"};
+	model.RequestWorkingTreeDiff(request);
 	model.OnUpdate(Core::Timestep{kNoSeconds});
 
 	CHECK(port.WorkingTreeTextCalls == 0);
-	CHECK(model.GetWorkingTreeTexts() == nullptr);
+	CHECK(model.GetWorkingTreeTexts(request) == nullptr);
 }
 
 TEST_CASE("An untracked listing is null until it has been asked for and applied")

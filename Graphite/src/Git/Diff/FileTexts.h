@@ -98,7 +98,7 @@ namespace Graphite {
 		// different texts object.
 		void Update(GitModel& model, const Core::Oid& commit, const Core::FileDiff& file);
 
-		void UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file);
+		void UpdateFromWorkingTree(GitModel& model, const Core::DiffRequest& request, const Core::FileDiff& file);
 
 		void ForgetFailure(GitModel& model);
 	};

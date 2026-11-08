@@ -26,10 +26,9 @@ namespace Graphite {
 		}
 		else
 		{
-			// WARNING: The working-tree diff is not cached by key like a commit's: it
-			// changes on every keystroke, so the model holds exactly one and replaces it.
-			model.RequestWorkingTreeDiff({.Target = body.Diff.Target, .File = body.Diff.Path});
-			loadedDiff = model.GetWorkingTreeDiff();
+			const Core::DiffRequest request = WorkingTreeRequestOf(body.Diff);
+			model.RequestWorkingTreeDiff(request);
+			loadedDiff = model.GetWorkingTreeDiff(request);
 		}
 
 		if (!loadedDiff)
@@ -65,7 +64,7 @@ namespace Graphite {
 		}
 		else
 		{
-			body.Texts.UpdateFromWorkingTree(model, file);
+			body.Texts.UpdateFromWorkingTree(model, WorkingTreeRequestOf(body.Diff), file);
 		}
 
 		body.View.OnOpenFile = style.OpenFile;

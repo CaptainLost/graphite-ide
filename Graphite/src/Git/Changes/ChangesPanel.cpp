@@ -10,9 +10,9 @@ namespace Graphite {
 		  m_DiffWindows(diffWindows), m_View(model, modals, editor, scheme, events, shared, "panel")
 	{
 		m_View.OnFileChosen = [this](const OpenDiff& diff) {
-			// WARNING: GitModel keeps a single slot for the working-tree diff, so two tabs of
-			// it would take turns failing. Closed only for a different diff: Open() re-docks an
-			// exact match, and closing first would yank a tab the user moved back to the centre.
+			// The side panel shows one working-tree diff tab at a time: a pick of another file takes the place of the
+			// last. Closed only for a different diff: Open() re-docks an exact match, and closing first would yank a
+			// tab the user moved back to the centre.
 			if (!m_DiffWindows.IsOpen(diff))
 			{
 				m_DiffWindows.CloseWorkingTree();

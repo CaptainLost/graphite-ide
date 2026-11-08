@@ -225,3 +225,57 @@ TEST_CASE("Forgetting the failed entries a test accepts leaves the others and ev
 	CHECK_FALSE(cache.IsFailed(6));
 	CHECK(cache.Request(4).has_value());
 }
+
+TEST_CASE("A stale entry is asked again and keeps its value until the new answer lands")
+{
+	Cache cache{4};
+	Fill(cache, 1, "old");
+
+	cache.MarkAllStale();
+
+	const std::optional<std::uint64_t> again = cache.Request(1);
+	REQUIRE(again.has_value());
+	CHECK(*cache.Get(1) == "old");
+	CHECK(cache.IsLoading(1));
+	CHECK_FALSE(cache.Request(1).has_value());
+
+	REQUIRE(cache.Succeed(1, *again, Text("new")));
+	CHECK(*cache.Get(1) == "new");
+	CHECK_FALSE(cache.Request(1).has_value());
+}
+
+TEST_CASE("An entry marked stale while in flight is asked again once its answer lands")
+{
+	Cache cache{4};
+	const std::optional<std::uint64_t> first = cache.Request(1);
+	REQUIRE(first.has_value());
+
+	cache.MarkAllStale();
+	CHECK_FALSE(cache.Request(1).has_value());
+
+	REQUIRE(cache.Succeed(1, *first, Text("answered")));
+	CHECK(cache.Request(1).has_value());
+}
+
+TEST_CASE("A stale entry asked again that fails keeps its last good value, and a later success clears the failure")
+{
+	Cache cache{4};
+	Fill(cache, 1, "good");
+
+	cache.MarkAllStale();
+	const std::optional<std::uint64_t> failing = cache.Request(1);
+	REQUIRE(failing.has_value());
+	REQUIRE(cache.Fail(1, *failing));
+
+	CHECK(cache.IsFailed(1));
+	CHECK(*cache.Get(1) == "good");
+	CHECK_FALSE(cache.Request(1).has_value());
+
+	cache.MarkAllStale();
+	const std::optional<std::uint64_t> succeeding = cache.Request(1);
+	REQUIRE(succeeding.has_value());
+	REQUIRE(cache.Succeed(1, *succeeding, Text("fresh")));
+
+	CHECK_FALSE(cache.IsFailed(1));
+	CHECK(*cache.Get(1) == "fresh");
+}

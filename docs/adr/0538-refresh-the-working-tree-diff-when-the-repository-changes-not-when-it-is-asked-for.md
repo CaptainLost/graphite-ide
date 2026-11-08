@@ -90,3 +90,5 @@ another's.
   the refresh this diff now follows.
 - [0502](0502-read-a-working-tree-file-s-text-from-the-index-and-the-disk.md) —
   the reads that ride on every working-tree diff query.
+- [0680](0680-keep-each-working-tree-diff-under-the-request-it-answers.md) —
+  amends this record: one answer per request in place of the single slot.

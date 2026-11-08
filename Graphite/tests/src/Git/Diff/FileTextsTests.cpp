@@ -193,11 +193,12 @@ TEST_CASE("A working-tree diff's texts that could not be read say why")
 	Graphite::GitModel model(port, RunJobsInline());
 	model.SetRoot("C:/repo");
 
-	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"});
+	const Core::DiffRequest request{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
+	model.RequestWorkingTreeDiff(request);
 	model.OnUpdate(Core::Timestep{kNoTimePasses});
 
 	Graphite::FileTextsBinding binding;
-	binding.UpdateFromWorkingTree(model, model.GetWorkingTreeDiff()->Files.front());
+	binding.UpdateFromWorkingTree(model, request, model.GetWorkingTreeDiff(request)->Files.front());
 
 	CHECK(binding.Wait == Graphite::TextsWait{.Progress = Graphite::TextsProgress::Failed, .Reason = "sharing violation"});
 }

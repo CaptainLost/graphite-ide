@@ -675,7 +675,7 @@ TEST_CASE("Requesting the working tree diff repeatedly submits only one query")
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 
 	CHECK(port.DiffCalls == 1);
-	CHECK(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(model.GetWorkingTreeDiff(Core::DiffRequest{}) != nullptr);
 }
 
 TEST_CASE("A refresh after the working tree diff landed submits it exactly once more")
@@ -720,7 +720,7 @@ TEST_CASE("A refresh that runs while the working tree diff is in flight asks aga
 	CHECK(port.DiffCalls == 2);
 }
 
-TEST_CASE("Switching the working tree diff's target shows no stale answer and asks once")
+TEST_CASE("Switching the working tree diff's target shows no other request's answer and asks once")
 {
 	WritePort port;
 	Graphite::GitModel model{port, Inline()};
@@ -731,11 +731,11 @@ TEST_CASE("Switching the working tree diff's target shows no stale answer and as
 
 	model.RequestWorkingTreeDiff(unstaged);
 	model.OnUpdate(Core::Timestep{0.016f});
-	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff(unstaged) != nullptr);
 
 	model.RequestWorkingTreeDiff(staged);
-	CHECK(model.GetWorkingTreeDiff() == nullptr);
-	CHECK(model.GetWorkingTreeTexts() == nullptr);
+	CHECK(model.GetWorkingTreeDiff(staged) == nullptr);
+	CHECK(model.GetWorkingTreeTexts(staged) == nullptr);
 
 	model.RequestWorkingTreeDiff(staged);
 	CHECK(port.DiffCalls == 2);
@@ -743,12 +743,12 @@ TEST_CASE("Switching the working tree diff's target shows no stale answer and as
 	model.OnUpdate(Core::Timestep{0.016f});
 	model.RequestWorkingTreeDiff(staged);
 
-	CHECK(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(model.GetWorkingTreeDiff(staged) != nullptr);
 	CHECK(port.DiffCalls == 2);
 	CHECK(port.DiffTargets == std::vector<Core::DiffTarget>{Core::DiffTarget::WorkTreeToIndex, Core::DiffTarget::IndexToHead});
 }
 
-TEST_CASE("A working tree diff asked for while another is in flight is sent when that one lands")
+TEST_CASE("Two working tree diffs are asked at once and each is held under its own request")
 {
 	WritePort port;
 	Graphite::GitModel model{port, Inline()};
@@ -760,46 +760,79 @@ TEST_CASE("A working tree diff asked for while another is in flight is sent when
 	model.RequestWorkingTreeDiff(unstaged);
 	model.RequestWorkingTreeDiff(staged);
 
-	CHECK(port.DiffCalls == 1);
-
-	model.OnUpdate(Core::Timestep{0.016f});
 	CHECK(port.DiffCalls == 2);
-	CHECK(model.GetWorkingTreeDiff() == nullptr);
 
 	model.OnUpdate(Core::Timestep{0.016f});
-	CHECK(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(model.GetWorkingTreeDiff(unstaged) != nullptr);
+	CHECK(model.GetWorkingTreeDiff(staged) != nullptr);
+
+	// Both tabs keep asking every frame; neither asks the other's answer away.
+	for (int frame = 0; frame < 3; ++frame)
+	{
+		model.RequestWorkingTreeDiff(unstaged);
+		model.RequestWorkingTreeDiff(staged);
+		model.OnUpdate(Core::Timestep{0.016f});
+	}
+
+	CHECK(port.DiffCalls == 2);
 	CHECK(port.DiffTargets == std::vector<Core::DiffTarget>{Core::DiffTarget::WorkTreeToIndex, Core::DiffTarget::IndexToHead});
 }
 
-TEST_CASE("The working tree diff is loading until the wanted request has been answered")
+TEST_CASE("A refresh asks every working tree diff held again, and each keeps its answer until the new one lands")
 {
 	WritePort port;
+	Core::EventBus events;
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);
-
-	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
+	model.SubscribeTo(events);
 
 	const Core::DiffRequest unstaged{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
 	const Core::DiffRequest staged{.Target = Core::DiffTarget::IndexToHead, .File = "a.txt"};
 
 	model.RequestWorkingTreeDiff(unstaged);
-	CHECK(model.IsWorkingTreeDiffLoading());
-
-	model.OnUpdate(Core::Timestep{0.016f});
-	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
-
 	model.RequestWorkingTreeDiff(staged);
-	CHECK(model.IsWorkingTreeDiffLoading());
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(port.DiffCalls == 2);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{.Directories = {}, .Everything = false});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	model.RequestWorkingTreeDiff(unstaged);
+	model.RequestWorkingTreeDiff(staged);
+	CHECK(port.DiffCalls == 4);
+	CHECK(model.GetWorkingTreeDiff(unstaged) != nullptr);
+	CHECK(model.GetWorkingTreeDiff(staged) != nullptr);
+}
+
+TEST_CASE("A working tree diff is loading until its request has been answered")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	const Core::DiffRequest unstaged{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
+	const Core::DiffRequest staged{.Target = Core::DiffTarget::IndexToHead, .File = "a.txt"};
+
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading(unstaged));
+
+	model.RequestWorkingTreeDiff(unstaged);
+	CHECK(model.IsWorkingTreeDiffLoading(unstaged));
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading(staged));
 
 	model.OnUpdate(Core::Timestep{0.016f});
-	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading(unstaged));
 
 	port.FailDiff = true;
-	model.RequestWorkingTreeDiff(unstaged);
+	model.RequestWorkingTreeDiff(staged);
+	CHECK(model.IsWorkingTreeDiffLoading(staged));
+
 	model.OnUpdate(Core::Timestep{0.016f});
 
-	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
-	CHECK(model.GetWorkingTreeDiff() == nullptr);
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading(staged));
+	CHECK(model.GetWorkingTreeDiff(staged) == nullptr);
+	CHECK(model.GetWorkingTreeDiffFailure(staged).has_value());
+	CHECK(model.GetWorkingTreeDiff(unstaged) != nullptr);
+	CHECK_FALSE(model.GetWorkingTreeDiffFailure(unstaged).has_value());
 }
 
 TEST_CASE("A failed working tree diff is not asked again every frame")
@@ -812,7 +845,7 @@ TEST_CASE("A failed working tree diff is not asked again every frame")
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
-	REQUIRE(model.GetWorkingTreeDiffFailure().has_value());
+	REQUIRE(model.GetWorkingTreeDiffFailure(Core::DiffRequest{}).has_value());
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});

@@ -207,7 +207,7 @@ namespace Graphite {
 		}
 		else
 		{
-			reason = model.GetWorkingTreeDiffFailure();
+			reason = model.GetWorkingTreeDiffFailure(WorkingTreeRequestOf(diff));
 
 			if (!reason.has_value())
 			{
@@ -236,7 +236,7 @@ namespace Graphite {
 			return;
 		}
 
-		model.RetryWorkingTreeDiff();
+		model.RetryWorkingTreeDiff(WorkingTreeRequestOf(diff));
 	}
 
 	void DiffWindows::Open(const OpenDiff& diff)
@@ -276,19 +276,6 @@ namespace Graphite {
 		std::erase_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Body.Diff); });
 	}
 
-	std::optional<OpenDiff> DiffWindows::WorkingTreeDiff() const
-	{
-		const auto found =
-			std::ranges::find_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Body.Diff); });
-
-		if (found == m_Open.end())
-		{
-			return std::nullopt;
-		}
-
-		return found->Body.Diff;
-	}
-
 	std::vector<DiffTabState> DiffWindows::CaptureState() const
 	{
 		std::vector<DiffTabState> diffs;
@@ -304,17 +291,6 @@ namespace Graphite {
 
 	void DiffWindows::RestoreState(const std::vector<DiffTabState>& diffs)
 	{
-		bool workingTreeOpen = false;
-
-		for (const Entry& entry : m_Open)
-		{
-			if (IsWorkingTreeDiff(entry.Body.Diff))
-			{
-				workingTreeOpen = true;
-				break;
-			}
-		}
-
 		for (const DiffTabState& stored : diffs)
 		{
 			const OpenDiff diff{.Commit = stored.Commit, .Target = stored.Target, .Path = stored.Path};
@@ -322,16 +298,6 @@ namespace Graphite {
 			if (IsOpen(diff))
 			{
 				continue;
-			}
-
-			if (IsWorkingTreeDiff(diff))
-			{
-				if (workingTreeOpen)
-				{
-					continue;
-				}
-
-				workingTreeOpen = true;
 			}
 
 			m_Open.push_back(Entry{.Body = {.Diff = diff},

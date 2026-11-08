@@ -48,13 +48,8 @@ namespace Graphite {
 
 		void CloseAll();
 
-		// WARNING: There is at most one working-tree tab, since GitModel keeps a single slot for
-		// the working-tree diff. A caller that opens a new working-tree tab calls this
-		// immediately before Open() so the previous tab does not ask into the new tab's slot.
+		// Closes every working-tree tab and leaves the commits' tabs.
 		void CloseWorkingTree();
-
-		// What the working-tree tab shows, while one is open.
-		std::optional<OpenDiff> WorkingTreeDiff() const;
 
 		std::vector<DiffTabState> CaptureState() const;
 

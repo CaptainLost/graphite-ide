@@ -136,20 +136,34 @@ TEST_CASE("Opening the same working-tree diff twice adds one tab")
 	CHECK(windows.GetCount() == 1);
 }
 
-TEST_CASE("The working-tree tab's diff is known while it is open")
+TEST_CASE("Closing the working-tree tabs closes every one of them and leaves the commits' tabs")
 {
 	Graphite::DiffWindows windows;
-	CHECK_FALSE(windows.WorkingTreeDiff().has_value());
 
-	windows.Open(Diff(1, "commit.txt"));
-	CHECK_FALSE(windows.WorkingTreeDiff().has_value());
-
+	const Graphite::OpenDiff commit = Diff(1, "commit.txt");
 	const Graphite::OpenDiff staged{.Commit = std::nullopt, .Target = Core::DiffTarget::IndexToHead, .Path = "a.txt"};
+	const Graphite::OpenDiff unstaged{.Commit = std::nullopt, .Target = Core::DiffTarget::WorkTreeToIndex, .Path = "b.txt"};
+	windows.Open(commit);
 	windows.Open(staged);
-	CHECK(windows.WorkingTreeDiff() == staged);
+	windows.Open(unstaged);
+	REQUIRE(windows.GetCount() == 3);
 
 	windows.CloseWorkingTree();
-	CHECK_FALSE(windows.WorkingTreeDiff().has_value());
+
+	CHECK(windows.GetCount() == 1);
+	CHECK(windows.IsOpen(commit));
+}
+
+TEST_CASE("A restore opens every working-tree tab it held")
+{
+	Graphite::DiffWindows windows;
+
+	windows.RestoreState({Graphite::DiffTabState{std::nullopt, Core::DiffTarget::IndexToHead, "a.txt"},
+						  Graphite::DiffTabState{std::nullopt, Core::DiffTarget::WorkTreeToIndex, "b.txt"}});
+
+	CHECK(windows.GetCount() == 2);
+	CHECK(windows.IsOpen({.Commit = std::nullopt, .Target = Core::DiffTarget::IndexToHead, .Path = "a.txt"}));
+	CHECK(windows.IsOpen({.Commit = std::nullopt, .Target = Core::DiffTarget::WorkTreeToIndex, .Path = "b.txt"}));
 }
 
 namespace {
@@ -361,7 +375,7 @@ TEST_CASE("A working-tree diff that failed names the file, and Retry shows the l
 
 	Graphite::RetryDiff(diff, model);
 
-	CHECK(model.IsWorkingTreeDiffLoading());
+	CHECK(model.IsWorkingTreeDiffLoading(Graphite::WorkingTreeRequestOf(diff)));
 	CHECK_FALSE(Graphite::DiffFailureOf(diff, model).has_value());
 }
 
@@ -373,11 +387,12 @@ TEST_CASE("A working-tree diff whose texts could not be read says why beside the
 	Graphite::GitModel model(port, RunJobsInline());
 	model.SetRoot("C:/repo");
 
-	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"});
+	const Core::DiffRequest request{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
+	model.RequestWorkingTreeDiff(request);
 	model.OnUpdate(Core::Timestep{kNoTimePasses});
 
-	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
-	CHECK(model.GetWorkingTreeTexts() == nullptr);
-	REQUIRE(model.GetWorkingTreeTextsFailure().has_value());
-	CHECK(model.GetWorkingTreeTextsFailure()->Message == "access denied");
+	REQUIRE(model.GetWorkingTreeDiff(request) != nullptr);
+	CHECK(model.GetWorkingTreeTexts(request) == nullptr);
+	REQUIRE(model.GetWorkingTreeTextsFailure(request).has_value());
+	CHECK(model.GetWorkingTreeTextsFailure(request)->Message == "access denied");
 }

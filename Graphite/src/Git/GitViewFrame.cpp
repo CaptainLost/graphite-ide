@@ -108,13 +108,6 @@ namespace Graphite {
 		m_Sidebar.DrawRowMenu = [this](const SidebarRow& row) { DrawSidebarRowMenu(row); };
 
 		m_Changes.OnFileChosen = [this](const OpenDiff& diff) {
-			// WARNING: GitModel keeps a single slot for the working-tree diff, so a working-tree tab of another diff
-			// would take turns with this one; the newest pick closes it, as the side panel's picks do.
-			if (!diff.Commit.has_value() && !m_DiffWindows.IsOpen(diff))
-			{
-				m_DiffWindows.CloseWorkingTree();
-			}
-
 			m_ChangesDiff.Diff = diff;
 			m_ChangesPicked = true;
 		};
@@ -778,25 +771,9 @@ namespace Graphite {
 		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 
 		// A file staged or unstaged since it was picked is followed to the side that now holds it, as a diff tab is.
-		const auto followed = [&status](OpenDiff working) {
-			if (status && !working.Commit.has_value())
-			{
-				working.Target = TargetHolding(*status, working.Path, working.Target).value_or(working.Target);
-			}
-
-			return working;
-		};
-
-		diff = followed(diff);
-
-		// WARNING: A tab of another working-tree diff opened since the pick is the newest, and it keeps GitModel's
-		// single working-tree slot. The tab is followed here too, so the two agree whichever is drawn first.
-		if (const std::optional<OpenDiff> tab = m_DiffWindows.WorkingTreeDiff();
-			!diff.Commit.has_value() && tab.has_value() && followed(*tab) != diff)
+		if (status && !diff.Commit.has_value())
 		{
-			m_ChangesPicked = false;
-			Core::EmptyState("Pick a file to see its changes");
-			return;
+			diff.Target = TargetHolding(*status, diff.Path, diff.Target).value_or(diff.Target);
 		}
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());

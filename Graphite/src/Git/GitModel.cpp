@@ -109,13 +109,7 @@ namespace Graphite {
 		m_MarkedLog.Clear();
 		m_LastMarkedRequest.reset();
 		m_MarkedLabel.clear();
-		m_WorkingTreeDiff.Clear();
-		m_WorkingTreeTexts.reset();
-		m_WorkingTreeTextsFailure.reset();
-		m_WantedWorkingTreeDiff.reset();
-		m_WorkingTreeDiffFor.reset();
-		m_WorkingTreeDiffSettled.reset();
-		m_WorkingTreeDiffStale = false;
+		m_WorkingTreeDiffs.Clear();
 		m_CommitDiffs.Clear();
 		m_Brought.Clear();
 		m_Texts.Clear();
@@ -203,7 +197,7 @@ namespace Graphite {
 				}
 			}
 
-			m_WorkingTreeDiffStale = true;
+			m_WorkingTreeDiffs.MarkAllStale();
 		}
 
 		m_Inbox.Drain();
@@ -601,42 +595,36 @@ namespace Graphite {
 		return held->Count.Count;
 	}
 
-	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)
+	std::size_t GitModel::DiffRequestHash::operator()(const Core::DiffRequest& request) const noexcept
+	{
+		std::size_t hash = std::hash<int>{}(static_cast<int>(request.Target));
+		const auto mix = [&hash](std::size_t part) { hash ^= part + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2); };
+
+		mix(request.From.has_value() ? std::hash<Core::Oid>{}(*request.From) : 0);
+		mix(request.To.has_value() ? std::hash<Core::Oid>{}(*request.To) : 0);
+		mix(request.File.has_value() ? std::hash<std::filesystem::path>{}(*request.File) : 0);
+		mix(std::hash<int>{}(static_cast<int>(request.Whitespace)));
+
+		return hash;
+	}
+
+	// WARNING: The diff window asks every frame it is open. The cache answers an ask in flight, answered or failed with
+	// nothing, or a slow or permanently failing diff would resubmit a worker job every frame.
+	void GitModel::RequestWorkingTreeDiff(const Core::DiffRequest& request)
 	{
 		if (!HasOpenFolder())
 		{
 			return;
 		}
 
-		m_WantedWorkingTreeDiff = std::move(request);
-		PumpWorkingTreeDiff();
-	}
+		const std::optional<std::uint64_t> generation = m_WorkingTreeDiffs.Request(request);
 
-	// WARNING: The diff window asks every frame it is open. Without the in-flight and settled
-	// guards below, a slow or permanently failing diff would resubmit a worker job every frame.
-	void GitModel::PumpWorkingTreeDiff()
-	{
-		if (!m_WantedWorkingTreeDiff.has_value())
+		if (!generation.has_value())
 		{
 			return;
 		}
 
-		if (m_WorkingTreeDiff.IsInFlight())
-		{
-			return;
-		}
-
-		if (m_WorkingTreeDiffSettled == m_WantedWorkingTreeDiff && !m_WorkingTreeDiffStale)
-		{
-			return;
-		}
-
-		m_WorkingTreeDiffStale = false;
-
-		const std::uint64_t generation = m_WorkingTreeDiff.Begin();
-		Core::DiffRequest request = *m_WantedWorkingTreeDiff;
-
-		m_Submit([this, generation, request = std::move(request)]() {
+		m_Submit([this, generation = *generation, request]() {
 			Core::Result<Core::Diff> result = m_Port.QueryDiff(request);
 
 			std::optional<FileTexts> texts;
@@ -663,52 +651,59 @@ namespace Graphite {
 				}
 			}
 
-			Deliver([this, generation, request = std::move(request), result = std::move(result),
-					 texts = std::move(texts), textsFailure = std::move(textsFailure)]() mutable {
-				const SlotLanding landing = m_WorkingTreeDiff.Land(generation, std::move(result));
-
-				if (landing == SlotLanding::Stale)
+			Deliver([this, generation, request, result = std::move(result), texts = std::move(texts),
+					 textsFailure = std::move(textsFailure)]() mutable {
+				if (!result.HasValue())
 				{
+					m_WorkingTreeDiffs.Fail(request, generation, result.GetError());
 					return;
 				}
 
-				m_WorkingTreeDiffSettled = request;
+				WorkingTreeAnswer answer{.Diff = Core::CreateRef<const Core::Diff>(std::move(result).GetValue()),
+										 .Texts = texts.has_value() ? Core::CreateRef<const FileTexts>(std::move(*texts)) : nullptr,
+										 .TextsFailure = std::move(textsFailure)};
 
-				if (landing == SlotLanding::Failed)
-				{
-					PumpWorkingTreeDiff();
-					return;
-				}
-
-				m_WorkingTreeDiffFor = std::move(request);
-
-				m_WorkingTreeTexts = texts.has_value()
-										 ? Core::CreateRef<const FileTexts>(std::move(*texts))
-										 : nullptr;
-				m_WorkingTreeTextsFailure = std::move(textsFailure);
-
-				PumpWorkingTreeDiff();
+				m_WorkingTreeDiffs.Succeed(request, generation, Core::CreateRef<const WorkingTreeAnswer>(std::move(answer)));
 			});
 		});
 	}
 
-	std::optional<Core::Error> GitModel::GetWorkingTreeDiffFailure() const
+	Core::Ref<const Core::Diff> GitModel::GetWorkingTreeDiff(const Core::DiffRequest& request) const
 	{
-		const bool wantedAnswerSettled =
-			m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled == m_WantedWorkingTreeDiff;
+		const Core::Ref<const WorkingTreeAnswer> answer = m_WorkingTreeDiffs.Get(request);
 
-		if (!wantedAnswerSettled || AnswersWantedWorkingTreeDiff())
+		return answer ? answer->Diff : nullptr;
+	}
+
+	std::optional<Core::Error> GitModel::GetWorkingTreeDiffFailure(const Core::DiffRequest& request) const
+	{
+		// A failure after a good answer leaves that answer shown, so nothing is said of it.
+		if (m_WorkingTreeDiffs.Get(request) != nullptr)
 		{
 			return std::nullopt;
 		}
 
-		return m_WorkingTreeDiff.GetError();
+		return m_WorkingTreeDiffs.FailureOf(request);
 	}
 
-	void GitModel::RetryWorkingTreeDiff()
+	void GitModel::RetryWorkingTreeDiff(const Core::DiffRequest& request)
 	{
-		m_WorkingTreeDiffSettled.reset();
-		PumpWorkingTreeDiff();
+		m_WorkingTreeDiffs.ForgetFailed(request);
+		RequestWorkingTreeDiff(request);
+	}
+
+	Core::Ref<const FileTexts> GitModel::GetWorkingTreeTexts(const Core::DiffRequest& request) const
+	{
+		const Core::Ref<const WorkingTreeAnswer> answer = m_WorkingTreeDiffs.Get(request);
+
+		return answer ? answer->Texts : nullptr;
+	}
+
+	std::optional<Core::Error> GitModel::GetWorkingTreeTextsFailure(const Core::DiffRequest& request) const
+	{
+		const Core::Ref<const WorkingTreeAnswer> answer = m_WorkingTreeDiffs.Get(request);
+
+		return answer ? answer->TextsFailure : std::nullopt;
 	}
 
 	void GitModel::RequestDiffFor(const Core::Oid& commit)

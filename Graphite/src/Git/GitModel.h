@@ -156,7 +156,10 @@ namespace Graphite {
 		// A log asked without them clears the old ones as it lands, not when it is asked.
 		void RequestLog(Core::LogRequest request, std::optional<MarkedCommitsRequest> marked = std::nullopt);
 
-		void RequestWorkingTreeDiff(Core::DiffRequest request);
+		// Asked every frame a working-tree diff is on screen. Each request is answered and kept under itself, so any number
+		// of tabs and previews can show working-tree diffs at once; an answer is asked again only after a refresh (0538),
+		// and a failure counts as an answer.
+		void RequestWorkingTreeDiff(const Core::DiffRequest& request);
 
 		void RequestDiffFor(const Core::Oid& commit);
 		void ForgetFailedDiffFor(const Core::Oid& commit);
@@ -282,29 +285,20 @@ namespace Graphite {
 		std::optional<std::size_t> GetCommitCountFor(const std::optional<std::string>& ref, Core::FollowedParents parents) const;
 		bool IsCommitCountInFlight() const { return m_CommitCount.IsInFlight(); }
 
-		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
-		{
-			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff.Get() : nullptr;
-		}
+		// The last good answer to `request`: kept while it is asked again after a refresh, and after that ask fails.
+		Core::Ref<const Core::Diff> GetWorkingTreeDiff(const Core::DiffRequest& request) const;
 
-		bool IsWorkingTreeDiffLoading() const
-		{
-			return m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled != m_WantedWorkingTreeDiff;
-		}
+		// Asked and not answered yet.
+		bool IsWorkingTreeDiffLoading(const Core::DiffRequest& request) const { return m_WorkingTreeDiffs.IsLoading(request); }
 
-		std::optional<Core::Error> GetWorkingTreeDiffFailure() const;
+		// Why `request` has no answer to show; empty while one is shown or none has come.
+		std::optional<Core::Error> GetWorkingTreeDiffFailure(const Core::DiffRequest& request) const;
 
-		void RetryWorkingTreeDiff();
+		void RetryWorkingTreeDiff(const Core::DiffRequest& request);
 
-		Core::Ref<const FileTexts> GetWorkingTreeTexts() const
-		{
-			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTexts : nullptr;
-		}
-
-		std::optional<Core::Error> GetWorkingTreeTextsFailure() const
-		{
-			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTextsFailure : std::nullopt;
-		}
+		// The texts that landed with the diff `request` shows, and why they could not be read.
+		Core::Ref<const FileTexts> GetWorkingTreeTexts(const Core::DiffRequest& request) const;
+		std::optional<Core::Error> GetWorkingTreeTextsFailure(const Core::DiffRequest& request) const;
 
 		const std::optional<Core::Error>& GetStatusError() const { return m_Status.GetError(); }
 		const std::optional<Core::Error>& GetLogError() const { return m_Log.GetError(); }
@@ -457,8 +451,6 @@ namespace Graphite {
 		void ReadStatusAfterWrite();
 
 
-		void PumpWorkingTreeDiff();
-
 		void RequestBranchAuthorsWhenTipsMoved();
 
 		void LandTags(std::uint64_t generation, const Core::Ref<const std::vector<Core::Tag>>& held, bool sameAsHeld,
@@ -467,10 +459,18 @@ namespace Graphite {
 		void RequestUserEmail();
 		void RequestRemotes();
 
-		bool AnswersWantedWorkingTreeDiff() const
+		// What one working-tree diff request is answered with: the diff, and the file's texts read in the same job.
+		struct WorkingTreeAnswer
 		{
-			return m_WorkingTreeDiffFor.has_value() && m_WorkingTreeDiffFor == m_WantedWorkingTreeDiff;
-		}
+			Core::Ref<const Core::Diff> Diff;
+			Core::Ref<const FileTexts> Texts;
+			std::optional<Core::Error> TextsFailure;
+		};
+
+		struct DiffRequestHash
+		{
+			std::size_t operator()(const Core::DiffRequest& request) const noexcept;
+		};
 
 		struct TextsKey
 		{
@@ -705,18 +705,9 @@ namespace Graphite {
 		std::string m_MarkedLabel;
 		MarkedKind m_MarkedKind = MarkedKind::Own; // meaningful while m_MarkedLog holds a page
 
-		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
-		Core::Ref<const FileTexts> m_WorkingTreeTexts;
-		std::optional<Core::Error> m_WorkingTreeTextsFailure;
-
-		std::optional<Core::DiffRequest> m_WantedWorkingTreeDiff;
-		std::optional<Core::DiffRequest> m_WorkingTreeDiffFor;
-
-		// WARNING: Moves on a failure too, unlike m_WorkingTreeDiffFor. A failure must count as
-		// an answer, or a permanent one would be retried every frame the tab stays open.
-		std::optional<Core::DiffRequest> m_WorkingTreeDiffSettled;
-
-		bool m_WorkingTreeDiffStale = false;
+		// WARNING: A failure counts as an answer, or a permanent one would be asked again every frame its tab stays open.
+		static constexpr std::size_t kCachedWorkingTreeDiffs = 8;
+		LruResultCache<Core::DiffRequest, WorkingTreeAnswer, DiffRequestHash> m_WorkingTreeDiffs{kCachedWorkingTreeDiffs};
 
 		LruResultCache<Core::Oid, Core::Diff> m_CommitDiffs{kCachedDiffs};
 		LruResultCache<Core::Oid, Core::LogPage> m_Brought{kCachedBrought};

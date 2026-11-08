@@ -580,8 +580,7 @@ namespace Graphite {
 		// The full name of the branch, or the id of the stash, the open row menu was opened for.
 		std::string m_SidebarMenuFor;
 
-		// WARNING: A working-tree diff asks GitModel's single working-tree slot, which a diff tab shares, so it is
-		// asked for only while it is drawn.
+		// Asked for only while it is drawn.
 		DiffBody m_ChangesDiff;
 		bool m_ChangesPicked = false;
 		bool m_ChangesDrawn = false;

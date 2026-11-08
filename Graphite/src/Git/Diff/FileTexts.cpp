@@ -153,7 +153,7 @@ namespace Graphite {
 		return samePresence && sameBytes;
 	}
 
-	void FileTextsBinding::UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file)
+	void FileTextsBinding::UpdateFromWorkingTree(GitModel& model, const Core::DiffRequest& request, const Core::FileDiff& file)
 	{
 		const std::filesystem::path& shownPath = ShownPath(file);
 
@@ -173,12 +173,12 @@ namespace Graphite {
 			return;
 		}
 
-		const Core::Ref<const FileTexts> texts = model.GetWorkingTreeTexts();
+		const Core::Ref<const FileTexts> texts = model.GetWorkingTreeTexts(request);
 
 		if (texts == nullptr)
 		{
 			// WARNING: The texts land with the diff they belong to, so beside a diff on screen they are either held or failed.
-			if (const std::optional<Core::Error> failure = model.GetWorkingTreeTextsFailure())
+			if (const std::optional<Core::Error> failure = model.GetWorkingTreeTextsFailure(request))
 			{
 				Wait = FailedWait(failure);
 			}

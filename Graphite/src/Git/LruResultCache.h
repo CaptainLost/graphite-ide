@@ -47,8 +47,19 @@ namespace Graphite {
 			Entry& entry = m_Entries[key];
 			Touch(entry);
 
+			entry.Stale = false;
 			entry.Requested = ++m_Generation;
 			return entry.Requested;
+		}
+
+		// Every entry is asked again by its next Request, and keeps what it holds until that answer lands: the answers may
+		// be out of date. An entry in flight is asked again once its answer lands.
+		void MarkAllStale()
+		{
+			for (auto& [key, entry] : m_Entries)
+			{
+				entry.Stale = true;
+			}
 		}
 
 		bool Succeed(const Key& key, std::uint64_t generation, Core::Ref<const T> value)
@@ -61,6 +72,8 @@ namespace Graphite {
 			}
 
 			entry->Value = std::move(value);
+			entry->Failed = false;
+			entry->Reason.reset();
 			return true;
 		}
 
@@ -153,9 +166,11 @@ namespace Graphite {
 			std::uint64_t Requested = 0;
 			std::uint64_t Applied = 0;
 
+			// A failure keeps the value an earlier answer left, which stays the last good one.
 			Core::Ref<const T> Value;
 			bool Failed = false;
 			std::optional<Core::Error> Reason;
+			bool Stale = false;
 
 			std::uint64_t LastTouched = 0;
 		};
@@ -166,7 +181,7 @@ namespace Graphite {
 
 		static bool IsAskedAlready(const Entry& entry)
 		{
-			return IsInFlight(entry) || entry.Value != nullptr || entry.Failed;
+			return IsInFlight(entry) || ((entry.Value != nullptr || entry.Failed) && !entry.Stale);
 		}
 
 		static bool IsFailedMatch(const typename EntryMap::value_type& entry,

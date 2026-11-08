@@ -26,6 +26,12 @@ namespace Graphite {
 		friend bool operator==(const OpenDiff&, const OpenDiff&) = default;
 	};
 
+	// What the model is asked for a working-tree diff: its side and its one file.
+	inline Core::DiffRequest WorkingTreeRequestOf(const OpenDiff& diff)
+	{
+		return Core::DiffRequest{.Target = diff.Target, .File = diff.Path};
+	}
+
 	std::string EmptyDiffMessage(const OpenDiff& diff);
 
 	std::optional<std::string> DiffFailureOf(const OpenDiff& diff, const GitModel& model);

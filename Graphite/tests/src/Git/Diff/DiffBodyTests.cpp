@@ -70,7 +70,7 @@ TEST_CASE("A working-tree diff body asks for that file's diff and draws it once 
 	model.OnUpdate(Core::Timestep{kNoTimePasses});
 	DrawnGlyphCount(frames, body, model);
 
-	CHECK(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(model.GetWorkingTreeDiff(Graphite::WorkingTreeRequestOf(body.Diff)) != nullptr);
 }
 
 TEST_CASE("A diff body whose diff failed offers Retry")
