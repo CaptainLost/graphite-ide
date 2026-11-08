@@ -42,7 +42,7 @@ TEST_CASE("A search's summary adds skipped and unreadable files only when there 
 	const SearchProgress progress{.FilesScanned = 10, .FilesSkipped = 2, .Unreadable = 1};
 
 	CHECK(SearchSummaryText(kTwelveHits, progress, kSearchedFoo, "foo") ==
-		  std::optional<std::string>{"12 hits, 10 files scanned, 2 skipped, 1 unreadable"});
+		  std::optional<std::string>{"12 hits, 10 files scanned, 2 skipped as binary or too large, 1 unreadable"});
 }
 
 TEST_CASE("Before any search there is no summary, so the panel can show its hint instead")

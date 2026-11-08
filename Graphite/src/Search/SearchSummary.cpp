@@ -30,7 +30,7 @@ namespace Graphite {
 
 		if (progress.FilesSkipped != 0)
 		{
-			summary += std::format(", {} skipped", progress.FilesSkipped);
+			summary += std::format(", {} skipped as binary or too large", progress.FilesSkipped);
 		}
 
 		if (progress.Unreadable != 0)

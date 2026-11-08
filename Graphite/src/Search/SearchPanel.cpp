@@ -154,16 +154,22 @@ namespace Graphite {
 			ImGuiInputTextFlags_EnterReturnsTrue);
 
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * MaskFieldWidthInFontSizes);
-		ImGui::InputTextWithHint("##searchMask", "*.cpp;*.h", m_MaskBuffer.data(),
-								 m_MaskBuffer.size());
+		const bool maskEnterPressed = ImGui::InputTextWithHint("##searchMask", "*.cpp;*.h", m_MaskBuffer.data(),
+															   m_MaskBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+		const bool maskLeftEdited = ImGui::IsItemDeactivatedAfterEdit();
 
 		ImGui::SameLine();
-		DrawTickBox("Match case", &m_MatchCase);
+		const bool matchCaseToggled = DrawTickBox("Match case", &m_MatchCase);
 		ImGui::SameLine();
-		DrawTickBox("Whole word", &m_WholeWord);
+		const bool wholeWordToggled = DrawTickBox("Whole word", &m_WholeWord);
 		ImGui::SameLine();
 
-		if (Core::TextButton("Search") || enterPressed)
+		// WARNING: An option or the file filter changed after a search runs it again, so the list never shows hits for
+		// options no longer set; a query not yet searched waits for Search or Enter, as before.
+		const bool searchedSomething = m_SearchedNeedle.has_value() && !m_SearchedNeedle->empty();
+		const bool optionsChanged = searchedSomething && (matchCaseToggled || wholeWordToggled || maskLeftEdited);
+
+		if (Core::TextButton("Search") || enterPressed || maskEnterPressed || optionsChanged)
 		{
 			RunSearch();
 		}
