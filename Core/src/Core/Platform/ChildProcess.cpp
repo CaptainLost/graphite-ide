@@ -10,8 +10,10 @@
 #include "Core/Platform/Win32Io.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cwchar>
+#include <thread>
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -30,6 +32,8 @@ namespace Core {
 		constexpr DWORD kHandleListAttributeCount = 1;
 		constexpr UINT kTerminatedExitCode = 0;
 		constexpr DWORD kPollWithoutWaiting = 0;
+		constexpr DWORD kNothingCopied = 0;
+		constexpr std::chrono::milliseconds kCancelRetryInterval{1};
 
 		// INFINITE is one past it, and a wait asked for in milliseconds is never meant to be endless.
 		constexpr long long kLongestFiniteWait = INFINITE - 1;
@@ -175,8 +179,8 @@ namespace Core {
 		}
 
 		// ReadFile on a pipe blocks until at least one byte arrives or the writing end closes, so
-		// zero here always means the child is gone, never "nothing yet".
-		std::size_t ReadFromPipe(HANDLE readEnd, std::span<char> buffer)
+		// zero here always means the child is gone or the read was cancelled, never "nothing yet".
+		std::size_t ReadOrWait(HANDLE readEnd, std::span<char> buffer)
 		{
 			DWORD bytesRead = 0;
 
@@ -188,6 +192,50 @@ namespace Core {
 			}
 
 			return static_cast<std::size_t>(bytesRead);
+		}
+
+		// Asks only for bytes the pipe already holds, which ReadFile hands over without waiting.
+		std::size_t ReadWhatIsWaiting(HANDLE readEnd, std::span<char> buffer)
+		{
+			DWORD bytesWaiting = 0;
+			const BOOL peeked = ::PeekNamedPipe(readEnd, nullptr, kNothingCopied, nullptr, &bytesWaiting, nullptr);
+
+			if (!peeked || bytesWaiting == 0)
+			{
+				return 0;
+			}
+
+			const std::size_t bytesToRead = (std::min)(buffer.size(), static_cast<std::size_t>(bytesWaiting));
+
+			return ReadOrWait(readEnd, buffer.first(bytesToRead));
+		}
+
+		// WARNING: The count goes up before the flag is read, and StopReading sets the flag before it reads the count,
+		// so of a read and a StopReading running at once, at least one sees the other.
+		std::size_t ReadFromPipe(HANDLE readEnd, std::span<char> buffer, const std::atomic<bool>& readingStopped,
+								 std::atomic<int>& readsThatMayWait)
+		{
+			++readsThatMayWait;
+
+			if (readingStopped.load())
+			{
+				--readsThatMayWait;
+				return ReadWhatIsWaiting(readEnd, buffer);
+			}
+
+			const std::size_t bytesRead = ReadOrWait(readEnd, buffer);
+
+			--readsThatMayWait;
+			return bytesRead;
+		}
+
+		// Fails when no read waits on the handle, which is harmless, so the result is ignored.
+		void CancelWaitingRead(const UniqueHandle& readEnd)
+		{
+			if (readEnd)
+			{
+				::CancelIoEx(readEnd.Get(), nullptr);
+			}
 		}
 	}
 #endif
@@ -302,12 +350,15 @@ namespace Core {
 			return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot create a job for the child"};
 		}
 
-		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-		limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-
-		if (::SetInformationJobObject(job.Get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)) == FALSE)
+		if (options.EndJobOnClose)
 		{
-			return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot set up the child's job"};
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+			if (::SetInformationJobObject(job.Get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)) == FALSE)
+			{
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot set up the child's job"};
+			}
 		}
 
 		STARTUPINFOEXW startupInfo{
@@ -370,6 +421,7 @@ namespace Core {
 		child->m_ToChild = std::move(childStdinWrite);
 		child->m_FromChild = std::move(childStdoutRead);
 		child->m_ErrorsFromChild = std::move(childStdErrorRead);
+		child->m_EndJobOnClose = options.EndJobOnClose;
 
 		return child;
 #else
@@ -380,13 +432,16 @@ namespace Core {
 
 	ChildProcess::~ChildProcess()
 	{
-		Terminate();
+		if (m_EndJobOnClose)
+		{
+			Terminate();
+		}
 	}
 
 	std::size_t ChildProcess::Read([[maybe_unused]] std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		return ReadFromPipe(m_FromChild.Get(), buffer);
+		return ReadFromPipe(m_FromChild.Get(), buffer, m_ReadingStopped, m_ReadsThatMayWait);
 #else
 		return 0;
 #endif
@@ -402,7 +457,7 @@ namespace Core {
 			return 0;
 		}
 
-		return ReadFromPipe(m_ErrorsFromChild.Get(), buffer);
+		return ReadFromPipe(m_ErrorsFromChild.Get(), buffer, m_ReadingStopped, m_ReadsThatMayWait);
 #else
 		return 0;
 #endif
@@ -439,6 +494,22 @@ namespace Core {
 		return WriteAll(m_ToChild.Get(), bytes);
 #else
 		return false;
+#endif
+	}
+
+	void ChildProcess::StopReading()
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		m_ReadingStopped.store(true);
+
+		// WARNING: A read that looked at the flag before it was set may reach ReadFile only after a cancel, so the
+		// cancel repeats until no such read is left; a read that looks later sees the flag and never waits.
+		while (m_ReadsThatMayWait.load() > 0)
+		{
+			CancelWaitingRead(m_FromChild);
+			CancelWaitingRead(m_ErrorsFromChild);
+			std::this_thread::sleep_for(kCancelRetryInterval);
+		}
 #endif
 	}
 

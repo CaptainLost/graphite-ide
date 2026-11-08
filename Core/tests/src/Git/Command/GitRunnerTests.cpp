@@ -5,6 +5,7 @@
 #include "Core/Git/Command/GitRunner.h"
 
 #include "GitFixture.h"
+#include "ProcessFixtures.h"
 #include "ScopedEnvironmentVariable.h"
 #include "TempDirectory.h"
 
@@ -51,6 +52,11 @@ namespace {
 	constexpr int kClonedCommits = 40;
 	constexpr int kWholePercent = 100;
 
+	// The process left behind sleeps a minute: a run that waited on it would take about that long.
+	constexpr std::chrono::seconds kWellShortOfTheLeftBehindLifetime{30};
+	constexpr std::chrono::seconds kLeftBehindDeadline{30};
+	constexpr std::chrono::milliseconds kLongerThanATermination{1000};
+
 	void IgnoreLine([[maybe_unused]] std::string_view line)
 	{
 	}
@@ -85,6 +91,20 @@ namespace {
 		}
 
 		return running.get();
+	}
+
+	// The shell that runs a git alias takes a backslash as an escape in places, and a forward slash nowhere.
+	std::string WithForwardSlashes(std::string path)
+	{
+		for (char& character : path)
+		{
+			if (character == '\\')
+			{
+				character = '/';
+			}
+		}
+
+		return path;
 	}
 
 	std::optional<std::string> ValueOf(const std::vector<Core::EnvironmentVariable>& environment, const std::string& name)
@@ -423,6 +443,51 @@ TEST_CASE("Git: cancelling a run ends git and every process it started")
 	REQUIRE_FALSE(ended);
 	CHECK(ended.GetError().Code == Core::ErrorCode::Cancelled);
 	CHECK(RemovedOnceReleased(heldDirectory));
+}
+
+TEST_CASE("Git: a run that succeeds leaves running what git started")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path workingDirectory = temporaryDirectory.MakeDirectory("work");
+	const std::filesystem::path leftBehindIdFile = temporaryDirectory.GetPath() / "left-behind-id.txt";
+
+	std::vector<Core::EnvironmentVariable> environment = GitEnvironmentBelowCeiling(temporaryDirectory.GetPath());
+	environment.push_back({.Name = "CORE_TEST_POWERSHELL", .Value = WithForwardSlashes(Core::ToUtf8(WindowsPowerShell()))});
+	environment.push_back({.Name = "CORE_TEST_PROCESS_ID_FILE", .Value = Core::ToUtf8(leftBehindIdFile)});
+
+	// The shell puts PowerShell in the background and ends, so git ends at once, while PowerShell runs on for a minute
+	// holding git's output pipes, much as a sign-in browser outlives the fetch that opened it.
+	const Core::GitRun leaveBehind{.Arguments = {"-c",
+												 "alias.leave-behind=!\"$CORE_TEST_POWERSHELL\" -NoProfile -NonInteractive -Command "
+												 "'[IO.File]::WriteAllText($env:CORE_TEST_PROCESS_ID_FILE, [string]$PID + [Environment]::NewLine); "
+												 "Start-Sleep -Seconds 60' &",
+												 "leave-behind"},
+								   .WorkingDirectory = workingDirectory,
+								   .Environment = environment};
+
+	const std::chrono::steady_clock::time_point startedAt = std::chrono::steady_clock::now();
+	const RunResult ran = RunGitWithin(kRunDeadline, *git, leaveBehind, IgnoreLine);
+	const std::chrono::steady_clock::duration ranFor = std::chrono::steady_clock::now() - startedAt;
+
+	REQUIRE(ran);
+	CHECK(ran.GetValue().ExitCode == kExitedCleanly);
+	CHECK(ranFor < kWellShortOfTheLeftBehindLifetime);
+
+	const std::optional<std::uint32_t> leftBehindId = WaitForProcessId(leftBehindIdFile, kLeftBehindDeadline);
+	REQUIRE(leftBehindId.has_value());
+
+	const LeftBehindProcess leftBehind{*leftBehindId};
+
+	CHECK(leftBehind.IsRunning());
+	CHECK_FALSE(leftBehind.EndsWithin(kLongerThanATermination));
 }
 
 TEST_CASE("Git: progress lines are handed over as they come")

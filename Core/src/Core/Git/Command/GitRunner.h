@@ -35,6 +35,8 @@ namespace Core {
 	// WARNING: onProgressLine is called on a thread of the runner's while git runs, so it must be cheap, safe to call
 	// from there, and never throw. git's stdin stays open and is never written, so a command that reads it waits until
 	// it is cancelled.
+	// WARNING: A cancel ends every process git started, a browser the credential manager opened during that run
+	// included. A run that ends on its own ends none of them, and what they write once git has ended is not read.
 	Result<GitOutput> RunGit(const std::filesystem::path& git, const GitRun& run, const std::atomic<bool>& cancelled,
 							 const std::function<void(std::string_view)>& onProgressLine);
 

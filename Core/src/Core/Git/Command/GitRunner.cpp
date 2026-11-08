@@ -17,6 +17,7 @@ namespace Core {
 
 		// How long a cancel can go unnoticed while git runs.
 		constexpr std::chrono::milliseconds kCancelPollInterval{50};
+		constexpr std::chrono::milliseconds kNoWait{0};
 		constexpr std::size_t kReadChunkBytes = 4096;
 
 		constexpr const char* kNoPromptName = "GIT_TERMINAL_PROMPT";
@@ -110,13 +111,16 @@ namespace Core {
 			lines.Finish();
 		}
 
+		// A git that ended as the cancel came counts as ended, so that a late cancel ends nothing it left behind.
 		RunEnd WaitForExitOrCancel(const ChildProcess& git, const std::atomic<bool>& cancelled)
 		{
 			while (!git.WaitForExit(kCancelPollInterval))
 			{
 				if (cancelled.load())
 				{
-					return RunEnd::Cancelled;
+					const bool endedAsTheCancelCame = git.WaitForExit(kNoWait);
+
+					return endedAsTheCancelCame ? RunEnd::Exited : RunEnd::Cancelled;
 				}
 			}
 
@@ -162,9 +166,11 @@ namespace Core {
 			return CancelledError();
 		}
 
-		const ChildProcessOptions errorsPiped{.PipeErrors = true};
+		// WARNING: The job is ended only on a cancel. What git leaves running when it ends on its own, such as a browser
+		// the credential manager opened to sign in, must outlive the run, so closing the job ends nothing.
+		const ChildProcessOptions gitOptions{.PipeErrors = true, .EndJobOnClose = false};
 
-		const Result<Scope<ChildProcess>> started = ChildProcess::Start(git, run.Arguments, run.WorkingDirectory, run.Environment, errorsPiped);
+		const Result<Scope<ChildProcess>> started = ChildProcess::Start(git, run.Arguments, run.WorkingDirectory, run.Environment, gitOptions);
 
 		if (!started)
 		{
@@ -188,6 +194,7 @@ namespace Core {
 		catch (const std::exception&)
 		{
 			process.Terminate();
+			process.StopReading();
 			JoinIfStarted(outputReader);
 
 			return Error{.Code = ErrorCode::IoFailure, .Message = "cannot start a thread to read git's output"};
@@ -195,9 +202,14 @@ namespace Core {
 
 		const RunEnd end = WaitForExitOrCancel(process, cancelled);
 
-		// WARNING: Ended even after git exits on its own: a process it started and left running would hold the pipes
-		// open, and the readers would wait on it for as long as it ran.
-		process.Terminate();
+		if (end == RunEnd::Cancelled)
+		{
+			process.Terminate();
+		}
+
+		// WARNING: A process git left running may hold the pipes open for as long as it runs. Everything git wrote is
+		// in them once git has ended, so the readers take what is there and stop instead of waiting on that process.
+		process.StopReading();
 		outputReader.join();
 		errorReader.join();
 

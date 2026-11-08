@@ -1,12 +1,16 @@
 #include <doctest/doctest.h>
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/ChildProcess.h"
 
+#include "ProcessFixtures.h"
 #include "TempDirectory.h"
 
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <functional>
+#include <future>
 #include <optional>
 #include <string>
 #include <thread>
@@ -21,6 +25,28 @@ namespace {
 	constexpr std::size_t kReadChunkBytes = 256;
 	constexpr int kExitPollAttempts = 100;
 	constexpr std::chrono::milliseconds kExitPollInterval{20};
+
+	// Long enough for PowerShell to start twice on a slow machine.
+	constexpr std::chrono::seconds kGrandchildDeadline{30};
+	constexpr std::chrono::milliseconds kLongerThanATermination{1000};
+
+	constexpr const char* kProcessIdFileVariable = "CORE_TEST_PROCESS_ID_FILE";
+
+	// The grandchild sleeps a minute, so one the test fails to end ends on its own soon after.
+	constexpr const char* kStartGrandchildThenEnd =
+		"$grandchild = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') "
+		"-ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 60' -NoNewWindow -PassThru; "
+		"[IO.File]::WriteAllText($env:CORE_TEST_PROCESS_ID_FILE, [string]$grandchild.Id + [Environment]::NewLine)";
+	constexpr const char* kStartGrandchildThenWait =
+		"$grandchild = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') "
+		"-ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 60' -NoNewWindow -PassThru; "
+		"[IO.File]::WriteAllText($env:CORE_TEST_PROCESS_ID_FILE, [string]$grandchild.Id + [Environment]::NewLine); "
+		"Start-Sleep -Seconds 60";
+
+	std::vector<std::string> PowerShellRunning(const char* script)
+	{
+		return {"-NoProfile", "-NonInteractive", "-Command", script};
+	}
 
 	std::string ReadAll(Core::ChildProcess& process)
 	{
@@ -332,4 +358,84 @@ TEST_CASE("Child process: the exit code is known once the process ends")
 	REQUIRE(waitingChild.WaitForExit(std::chrono::seconds{30}));
 
 	CHECK(waitingChild.GetExitCode().has_value());
+}
+
+TEST_CASE("Child process: one started not to end its job on close leaves what it started running once it is destroyed")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path grandchildIdFile = temporaryDirectory.GetPath() / "grandchild-id.txt";
+	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = kProcessIdFileVariable, .Value = Core::ToUtf8(grandchildIdFile)}}};
+	const Core::ChildProcessOptions leavingRunningOnClose{.EndJobOnClose = false};
+
+	StartedChild started = Core::ChildProcess::Start(WindowsPowerShell(), PowerShellRunning(kStartGrandchildThenEnd),
+													 temporaryDirectory.GetPath(), environment, leavingRunningOnClose);
+	REQUIRE(started);
+	REQUIRE(started.GetValue()->WaitForExit(kGrandchildDeadline));
+
+	const std::optional<std::uint32_t> grandchildId = WaitForProcessId(grandchildIdFile, kGrandchildDeadline);
+	REQUIRE(grandchildId.has_value());
+
+	const LeftBehindProcess grandchild{*grandchildId};
+	REQUIRE(grandchild.IsRunning());
+
+	started.GetValue().reset();
+
+	CHECK_FALSE(grandchild.EndsWithin(kLongerThanATermination));
+}
+
+TEST_CASE("Child process: terminating one started not to end its job on close still ends what it started")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path grandchildIdFile = temporaryDirectory.GetPath() / "grandchild-id.txt";
+	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = kProcessIdFileVariable, .Value = Core::ToUtf8(grandchildIdFile)}}};
+	const Core::ChildProcessOptions leavingRunningOnClose{.EndJobOnClose = false};
+
+	StartedChild started = Core::ChildProcess::Start(WindowsPowerShell(), PowerShellRunning(kStartGrandchildThenWait),
+													 temporaryDirectory.GetPath(), environment, leavingRunningOnClose);
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	const std::optional<std::uint32_t> grandchildId = WaitForProcessId(grandchildIdFile, kGrandchildDeadline);
+	REQUIRE(grandchildId.has_value());
+
+	const LeftBehindProcess grandchild{*grandchildId};
+	REQUIRE(grandchild.IsRunning());
+	REQUIRE_FALSE(child.GetExitCode().has_value());
+
+	child.Terminate();
+
+	CHECK(grandchild.EndsWithin(kGrandchildDeadline));
+	CHECK(child.WaitForExit(kGrandchildDeadline));
+}
+
+TEST_CASE("Child process: stopping the reads releases a read that a process the child left behind keeps waiting")
+{
+	// The inner cmd waits on the input this side never closes and holds the output pipe, so the output stays open
+	// after the outer cmd has ended.
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "start /b cmd.exe /k echo held"}, std::filesystem::current_path());
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	std::future<std::string> reading = std::async(std::launch::async, ReadAll, std::ref(child));
+
+	const bool childEnded = child.WaitForExit(kGrandchildDeadline);
+	const bool stillWaitingAfterTheChildEnded = reading.wait_for(kLongerThanATermination) == std::future_status::timeout;
+
+	child.StopReading();
+
+	const bool releasedInTime = reading.wait_for(kGrandchildDeadline) == std::future_status::ready;
+
+	// Releases a read StopReading failed to, so that the test fails rather than hangs.
+	if (!releasedInTime)
+	{
+		child.Terminate();
+	}
+
+	const std::string output = reading.get();
+
+	REQUIRE(childEnded);
+	CHECK(stillWaitingAfterTheChildEnded);
+	CHECK(releasedInTime);
+	CHECK(output.find("held") != std::string::npos);
+	CHECK(child.IsRunning());
 }
