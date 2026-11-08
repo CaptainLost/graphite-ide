@@ -66,11 +66,11 @@ namespace Core {
 			void operator()(wchar_t* text) const { ::CoTaskMemFree(text); }
 		};
 
-		using DialogOwner = std::unique_ptr<IFileOpenDialog, ComRelease>;
+		using DialogOwner = std::unique_ptr<IFileDialog, ComRelease>;
 		using ShellItemOwner = std::unique_ptr<IShellItem, ComRelease>;
 		using CoTaskTextOwner = std::unique_ptr<wchar_t, CoTaskMemDelete>;
 
-		HRESULT AddOptions(IFileOpenDialog& dialog, FILEOPENDIALOGOPTIONS addedOptions)
+		HRESULT AddOptions(IFileDialog& dialog, FILEOPENDIALOGOPTIONS addedOptions)
 		{
 			DWORD currentOptions = 0;
 			const HRESULT readStatus = dialog.GetOptions(&currentOptions);
@@ -83,8 +83,16 @@ namespace Core {
 			return dialog.SetOptions(currentOptions | addedOptions);
 		}
 
-		Result<std::filesystem::path> PickWithOpenDialog(FILEOPENDIALOGOPTIONS pickerOptions, const std::string& title,
-														 const std::vector<FileDialog::Filter>& filters, const std::string& whatIsPicked)
+		// Where a save dialog starts: the folder it opens in and the name filled in.
+		struct SaveStart
+		{
+			std::filesystem::path Folder;
+			std::string FileName;
+		};
+
+		Result<std::filesystem::path> PickWithDialog(REFCLSID dialogClass, FILEOPENDIALOGOPTIONS pickerOptions, const std::string& title,
+													 const std::vector<FileDialog::Filter>& filters, const std::string& whatIsPicked,
+													 const SaveStart* saveStart = nullptr)
 		{
 			const ComGuard comGuard;
 			if (!comGuard.IsUsable())
@@ -92,8 +100,8 @@ namespace Core {
 				return Error{.Code = ErrorCode::Unsupported, .Message = "COM initialisation failed"};
 			}
 
-			IFileOpenDialog* createdDialog = nullptr;
-			const HRESULT createStatus = ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&createdDialog));
+			IFileDialog* createdDialog = nullptr;
+			const HRESULT createStatus = ::CoCreateInstance(dialogClass, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&createdDialog));
 
 			if (FAILED(createStatus) || createdDialog == nullptr)
 			{
@@ -132,6 +140,24 @@ namespace Core {
 			{
 				dialog->SetFileTypes(static_cast<UINT>(filterSpecs.size()), filterSpecs.data());
 				dialog->SetFileTypeIndex(kFirstFilterCountingFromOne);
+			}
+
+			if (saveStart != nullptr)
+			{
+				if (!saveStart->FileName.empty())
+				{
+					dialog->SetFileName(ToUtf16(saveStart->FileName).c_str());
+				}
+
+				IShellItem* createdFolder = nullptr;
+
+				if (!saveStart->Folder.empty() &&
+					SUCCEEDED(::SHCreateItemFromParsingName(saveStart->Folder.c_str(), nullptr, IID_PPV_ARGS(&createdFolder))) &&
+					createdFolder != nullptr)
+				{
+					const ShellItemOwner folder{createdFolder};
+					dialog->SetFolder(folder.get());
+				}
 			}
 
 			const std::wstring wideTitle = ToUtf16(title);
@@ -188,7 +214,8 @@ namespace Core {
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		const std::vector<Filter> noFilters;
-		return PickWithOpenDialog(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST, title, noFilters, "folder");
+		return PickWithDialog(CLSID_FileOpenDialog, FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST, title, noFilters,
+							  "folder");
 #else
 		return Error{.Code = ErrorCode::Unsupported,
 					 .Message = "a native folder picker is not implemented on this platform"};
@@ -199,10 +226,26 @@ namespace Core {
 													   [[maybe_unused]] const std::vector<Filter>& filters)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		return PickWithOpenDialog(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST, title, filters, "file");
+		return PickWithDialog(CLSID_FileOpenDialog, FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST, title, filters,
+							  "file");
 #else
 		return Error{.Code = ErrorCode::Unsupported,
 					 .Message = "a native file picker is not implemented on this platform"};
+#endif
+	}
+
+	Result<std::filesystem::path> FileDialog::PickSaveFile([[maybe_unused]] const std::string& title,
+														   [[maybe_unused]] const std::filesystem::path& suggested)
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		const std::vector<Filter> noFilters;
+		const SaveStart start{.Folder = suggested.parent_path(), .FileName = ToUtf8(suggested.filename())};
+
+		return PickWithDialog(CLSID_FileSaveDialog, FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT, title, noFilters,
+							  "save", &start);
+#else
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "a native save dialog is not implemented on this platform"};
 #endif
 	}
 }

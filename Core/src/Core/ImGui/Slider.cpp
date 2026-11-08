@@ -83,7 +83,10 @@ namespace Core {
 		const float knobCentreX = travelLeft + travel * fraction;
 
 		const ImVec4 emptyTrack = ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive);
-		const ImVec4 filledTrack = ImGui::GetStyleColorVec4(ImGuiCol_SliderGrab);
+		// WARNING: Disabled, the slider is drawn grey rather than only fainter: the accent at reduced alpha still read as
+		// a control that moves.
+		const bool disabled = (ImGui::GetItemFlags() & ImGuiItemFlags_Disabled) != 0;
+		const ImVec4 filledTrack = ImGui::GetStyleColorVec4(disabled ? ImGuiCol_TextDisabled : ImGuiCol_SliderGrab);
 		const ImVec4 hoveredFilled = Animation::Blend(filledTrack, ImGui::GetStyleColorVec4(ImGuiCol_Text), kHoveredTrackTextShare);
 
 		const ImU32 filledColour = ImGui::GetColorU32(Animation::Blend(filledTrack, hoveredFilled, hoverAmount));

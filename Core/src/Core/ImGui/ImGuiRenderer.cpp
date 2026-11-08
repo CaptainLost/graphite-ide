@@ -186,6 +186,11 @@ namespace Core {
 		inputOutput.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 		inputOutput.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 		inputOutput.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+		// WARNING: Ctrl+Tab belongs to the application, which steps through the editor tabs with it; ImGui's own window
+		// switcher would take it first.
+		ImGui::GetCurrentContext()->ConfigNavWindowingKeyNext = ImGuiKey_None;
+		ImGui::GetCurrentContext()->ConfigNavWindowingKeyPrev = ImGuiKey_None;
 		m_LayoutFile = layoutFile.empty() ? std::string{} : ToUtf8(layoutFile);
 		inputOutput.IniFilename = m_LayoutFile.empty() ? nullptr : m_LayoutFile.c_str();
 
