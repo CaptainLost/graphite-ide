@@ -28,8 +28,17 @@ struct NetworkDoubleState
 	std::vector<std::string> Calls;
 	int Progress = -1;
 
+	// FETCH_HEAD's time once a fetch has started: git writes the file before it reaches the remote, so a fetch that then
+	// fails has written it too. Unchanged when unset.
+	std::optional<std::chrono::sys_seconds> FetchHeadWrittenAt;
+
 	Core::NetworkOutcome Answer(std::string call, const Core::ProgressSink& progress)
 	{
+		if (call.starts_with("Fetch") && FetchHeadWrittenAt.has_value())
+		{
+			LastFetch = FetchHeadWrittenAt;
+		}
+
 		Calls.push_back(std::move(call));
 
 		if (progress && Progress >= 0)

@@ -40,7 +40,9 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -55,6 +57,9 @@ namespace {
 
 	constexpr int kTopicCount = 30;
 	constexpr ImVec2 kWindowSize(1200.0f, 700.0f);
+
+	// The mockup's .when, the bar's last-fetch age, is 12 px of its 13.
+	constexpr float kAgeMockupPixels = 12.0f;
 
 	Core::HeadState HeadOnMain()
 	{
@@ -286,6 +291,7 @@ namespace {
 				ImGui::Begin(WindowName, nullptr, ImGuiWindowFlags_NoSavedSettings);
 				BarTop = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().WindowPadding.y;
 				Font = ImGui::GetFontBaked();
+				AgeFont = ImGui::GetFont()->GetFontBaked(Graphite::WindowBarEm(kAgeMockupPixels));
 				View.OnImGuiRender();
 				ChipId = ImGui::GetID("##headChip");
 				FetchId = ImGui::GetID("##networkFetch");
@@ -657,6 +663,33 @@ namespace {
 		ImGuiID FetchId = 0;
 		ImGuiID PushId = 0;
 		ImFontBaked* Font = nullptr; // the window's face, as its text is drawn in
+		ImFontBaked* AgeFont = nullptr; // the face the bar's "fetched … ago" is drawn in
+
+		// The bar's last-fetch age as drawn last frame, without spaces, from "fetched" on; empty when it draws none.
+		std::string BarAge() const
+		{
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			for (const ImGuiWindow* window : context.Windows)
+			{
+				const bool ours = std::strstr(window->Name, WindowName) != nullptr && window->LastFrameActive == context.FrameCount;
+
+				if (!ours)
+				{
+					continue;
+				}
+
+				for (const DrawnLine& line : DrawnTextLines(*window->DrawList, *AgeFont))
+				{
+					if (const std::size_t age = line.Text.find("fetched"); age != std::string::npos)
+					{
+						return line.Text.substr(age);
+					}
+				}
+			}
+
+			return {};
+		}
 	};
 
 	// Whether `middle` lies in the row that starts `top` down the sidebar's list and is `height` high.
@@ -825,6 +858,39 @@ TEST_CASE("Git window: a click on the running button cancels the operation the b
 	REQUIRE(done.has_value());
 	CHECK(done->Cancelled);
 	CHECK(done->Operation == Graphite::NetworkOperation::Fetch);
+}
+
+TEST_CASE("Git window: after a fetch that failed once git had written FETCH_HEAD, the bar keeps the age of the fetch before it")
+{
+	const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+
+	GitWindow window("FailedFetchAgeWindow");
+	window.Port.Remotes = {{"origin", "C:/server.git"}};
+	window.Port.Network.Setup.Git = std::filesystem::path{"git.exe"};
+	window.Port.Network.LastFetch = now - std::chrono::hours{2};
+	window.ListAgain();
+
+	const std::string ageBefore = window.BarAge();
+	REQUIRE(ageBefore == "fetched2hago");
+
+	window.Port.Network.FetchHeadWrittenAt = now - std::chrono::minutes{1};
+	window.Port.Network.Outcome = Core::NetworkOutcome{
+		.Result = Core::NetworkResult::Failed,
+		.Failure = {.Shown = "fatal: 'C:/server.git' does not appear to be a git repository",
+					.Copied = "fatal: 'C:/server.git' does not appear to be a git repository\n"}};
+
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+	window.ListAgain();
+
+	// The listing reads the time the failed fetch wrote; the bar keeps the good fetch's.
+	REQUIRE(window.Model.GetLastFetch() == std::optional<std::chrono::sys_seconds>{now - std::chrono::minutes{1}});
+	CHECK(window.BarAge() == ageBefore);
+
+	// FETCH_HEAD's time changing again, as a fetch in a terminal changes it, is shown.
+	window.Port.Network.LastFetch = now - std::chrono::minutes{30};
+	window.ListAgain();
+	CHECK(window.BarAge() == "fetched30mago");
 }
 
 TEST_CASE("Git window: push with no upstream and several remotes asks which remote")
