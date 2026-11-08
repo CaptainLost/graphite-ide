@@ -111,13 +111,26 @@ namespace {
 	{
 		for (const Core::EnvironmentVariable& variable : environment)
 		{
-			if (variable.Name == name)
+			if (variable.Name == name && !variable.Removed)
 			{
 				return variable.Value;
 			}
 		}
 
 		return std::nullopt;
+	}
+
+	bool IsRemoved(const std::vector<Core::EnvironmentVariable>& environment, const std::string& name)
+	{
+		for (const Core::EnvironmentVariable& variable : environment)
+		{
+			if (variable.Name == name)
+			{
+				return variable.Removed;
+			}
+		}
+
+		return false;
 	}
 
 	std::vector<std::string_view> LinesOf(std::string_view text)
@@ -619,6 +632,24 @@ TEST_CASE("Git: the environment never prompts and keeps a configured ssh command
 
 	CHECK(ValueOf(inherited, "GIT_TERMINAL_PROMPT") == "0");
 	CHECK_FALSE(ValueOf(inherited, "GIT_SSH_COMMAND").has_value());
+}
+
+TEST_CASE("Git: the environment takes out each variable that points git at a repository, and keeps the user's own")
+{
+	const std::vector<Core::EnvironmentVariable> environment = Core::GitEnvironment(kNoSshCommandConfigured);
+
+	for (const char* name : {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+							 "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX"})
+	{
+		INFO(name);
+		CHECK(IsRemoved(environment, name));
+	}
+
+	for (const char* name : {"GIT_CONFIG_PARAMETERS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_TERMINAL_PROMPT", "LC_ALL"})
+	{
+		INFO(name);
+		CHECK_FALSE(IsRemoved(environment, name));
+	}
 }
 
 TEST_CASE("Git: progress percent reads git's counting lines")

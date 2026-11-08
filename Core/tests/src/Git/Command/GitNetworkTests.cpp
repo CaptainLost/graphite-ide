@@ -7,6 +7,7 @@
 
 #include "GitFixture.h"
 #include "IsolatedGitConfig.h"
+#include "ScopedEnvironmentVariable.h"
 #include "TempDirectory.h"
 
 #include <atomic>
@@ -205,6 +206,41 @@ TEST_CASE("Network: fetch all brings every remote's new commits and prunes a del
 	CHECK(scene.Git(scene.Work(), {"rev-parse", "refs/remotes/origin/master"}) == peerHead);
 	CHECK(scene.Git(scene.Work(), {"rev-parse", "refs/remotes/second/master"}) == peerHead);
 	CHECK(scene.GitAnyway(scene.Work(), {"rev-parse", "--verify", "refs/remotes/origin/topic"}).ExitCode != 0);
+}
+
+TEST_CASE("Network: a fetch acts on the folder's repository whatever repository GIT_DIR names in this process")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+	scene.PeerCommitsAndPushes("b.txt", "two\n");
+
+	GitFixture elsewhere;
+	elsewhere.Write("x.txt", "another repository\n");
+	elsewhere.Commit("another repository");
+
+	const std::atomic<bool> neverCancelled{false};
+	Core::NetworkOutcome fetched;
+
+	{
+		// As when Graphite is started from a git hook or alias, which runs with GIT_DIR set.
+		const ScopedEnvironmentVariable inheritedGitDir(L"GIT_DIR", (elsewhere.GetPath() / ".git").wstring());
+		REQUIRE(inheritedGitDir.WasSet());
+
+		fetched = Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote);
+	}
+
+	INFO(fetched.Failure.Copied);
+	REQUIRE(fetched.Result == Core::NetworkResult::Done);
+	CHECK(scene.Git(scene.Work(), {"rev-parse", kUpstream}) == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
+	CHECK(scene.GitAnyway(elsewhere.GetPath(), {"rev-parse", "--verify", kUpstream}).ExitCode != 0);
 }
 
 TEST_CASE("Network: a fetch leaves a remote with its default branch")

@@ -4,6 +4,7 @@
 
 #include "Core/Platform/Process.h"
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <exception>
@@ -28,6 +29,18 @@ namespace Core {
 		constexpr const wchar_t* kSshCommandWideName = L"GIT_SSH_COMMAND";
 		constexpr const wchar_t* kSshProgramWideName = L"GIT_SSH";
 		constexpr const char* kBatchModeSsh = "ssh -o BatchMode=yes";
+
+		// What git reads to find the repository, its index and its objects instead of looking from its working directory.
+		// Inherited from a hook or an alias that started this process, they would point git at another repository than the
+		// one opened. The user's own transport and configuration (GIT_SSH, GIT_CONFIG_PARAMETERS) are kept.
+		constexpr std::array<const char*, 8> kRepositoryVariables{"GIT_DIR",
+																   "GIT_WORK_TREE",
+																   "GIT_INDEX_FILE",
+																   "GIT_COMMON_DIR",
+																   "GIT_OBJECT_DIRECTORY",
+																   "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+																   "GIT_NAMESPACE",
+																   "GIT_PREFIX"};
 
 		// git writes "<title>: <percent>% (<done>/<total>)", the percent padded to three places.
 		constexpr std::string_view kPercentBeforeCount = "% (";
@@ -236,6 +249,11 @@ namespace Core {
 			{.Name = kNoPromptName, .Value = kNoPromptValue},
 			{.Name = kLocaleName, .Value = kUntranslatedLocale},
 		};
+
+		for (const char* repositoryVariable : kRepositoryVariables)
+		{
+			environment.push_back({.Name = repositoryVariable, .Removed = true});
+		}
 
 		// WARNING: git lets GIT_SSH_COMMAND outrank GIT_SSH, so setting it over an inherited GIT_SSH would swap a PuTTY
 		// user's plink for OpenSSH, which knows nothing of their keys.

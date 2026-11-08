@@ -42,7 +42,8 @@ namespace Core {
 
 	// Never lets git prompt, keeps its messages in English, and puts ssh in batch mode unless an ssh command is
 	// configured. sshCommandConfigured is the repository's core.sshCommand; a GIT_SSH_COMMAND or GIT_SSH in this
-	// process's environment is honoured here as well, since the child inherits it.
+	// process's environment is honoured here as well, since the child inherits it. Takes out GIT_DIR, GIT_WORK_TREE and
+	// every other variable that would point git at a repository, so git finds the one of its working directory.
 	std::vector<EnvironmentVariable> GitEnvironment(bool sshCommandConfigured);
 
 	// The percent of one of git's progress lines, such as "Receiving objects:  45% (9/20)" or
