@@ -56,9 +56,10 @@ and say why; everything else works. An install outside those places is not found
   command.
 - Fetch full history: the "History cut off here" banner of a shallow clone gains **Fetch full history**, which runs
   `git fetch --unshallow --progress` as a network operation with the same cancel and progress. Afterwards the history
-  and the lines are read again, whoever deepened the clone, a terminal included: libgit2 keeps the commits it parsed
-  with their parents cut, so the port opens the repository afresh once the shallow file changes, and the branch listing
-  is then a new snapshot even though no ref moved. The cost is that the whole history comes down at once, which on a
+  and the lines are read again, whoever deepened the clone, a terminal included, all the way or part way: libgit2 keeps
+  the commits it parsed with their parents cut, so the port opens the repository afresh once the shallow file changes;
+  the branch listing is then a new snapshot even though no ref moved; and the line reader starts its graph afresh once
+  a commit it holds cut is no longer on the shallow boundary. The cost is that the whole history comes down at once, which on a
   large repository is a long, cancellable run.
 - Pull is two commands, `git fetch <remote> --progress` then `git merge --ff-only <upstream>`, never `git pull`: the
   user's `pull.rebase` and `pull.ff` would decide what it did, and the window cannot yet show a rebase or a merge in
@@ -76,6 +77,10 @@ and say why; everything else works. An install outside those places is not found
 - The operations return `NetworkOutcome`: `Done`, `Cancelled` or `Failed`, a failure carrying the text to show, the text
   to copy and the hint kind. A cancel is never reported as a failure.
 - Cancel is a flag, polled every 50 ms by the code that waits on git.
+- A cancelled fetch can leave the pack it was receiving in `objects/pack` as `tmp_pack_*`: in the acceptance, 6 to 87
+  MiB of a 512 MiB fetch, still there after the next fetch. The app never deletes one, since a git run in a terminal
+  may be writing a `tmp_pack_*` of its own beside it; `git gc` removes them once they are older than its prune expiry,
+  two weeks by default. The cost is that disk space until then.
 - Only a cancel ends git's job object. A run that ends on its own leaves whatever git started running: a sign-in
   browser the credential manager opened must survive a successful fetch. A cancel can therefore end a browser opened
   during that run.
@@ -129,6 +134,7 @@ what 0491 objected to. The dependency on git is real but limited to three button
 - A straggler git, or a credential-manager window, can outlive a run or a Graphite crash.
 - A cancel can end a sign-in browser opened during that run.
 - The cancel flag is polled every 50 ms, so a cancel takes up to that long.
+- A cancelled fetch can leave a partial pack file behind until `git gc` removes it.
 - Pull's last step cannot be stopped.
 - A Fetch of several remotes shows no percent, only the busy mark.
 - The push menu lists the remotes by name, not in the order they were added.
