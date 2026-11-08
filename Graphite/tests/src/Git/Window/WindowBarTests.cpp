@@ -12,6 +12,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <optional>
@@ -718,12 +719,15 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 	CHECK(buttons.Fetch.Enabled);
 	CHECK(buttons.Fetch.Tooltip == "Fetching\xE2\x80\xA6 45%\nClick to cancel");
 
+	// The others are disabled and keep their counts: the running state changes only its own button.
 	for (const Graphite::ButtonText* other : {&buttons.Pull, &buttons.Push})
 	{
 		CHECK_FALSE(other->Running);
 		CHECK_FALSE(other->Enabled);
-		CHECK(other->Count.empty());
 	}
+
+	CHECK(buttons.Pull.Count == "3");
+	CHECK(buttons.Push.Count == "2");
 
 	state.Running = Graphite::NetworkOperation::Pull;
 	state.Percent.reset();
@@ -755,6 +759,9 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 		CHECK_FALSE(button->Running);
 		CHECK_FALSE(button->Enabled);
 	}
+
+	CHECK(buttons.Pull.Count == "3");
+	CHECK(buttons.Push.Count == "2");
 }
 
 TEST_CASE("Window bar: fetched age reads FETCH_HEAD's time")
@@ -871,6 +878,27 @@ namespace {
 		const Core::HeadState head = OnBranch("main");
 		const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", ahead, 0), RemoteMain()};
 		return Buttons(&head, &branches, &kOrigin, state, kNow - std::chrono::minutes{5});
+	}
+
+	// The right end of what the places harness drew last in `colour` inside `place`; the place's left edge when nothing.
+	float RightmostInColourWithin(ImU32 colour, const Graphite::Place& place)
+	{
+		const ImGuiWindow* window = ImGui::FindWindowByName("WindowBarPlacesHarness");
+		REQUIRE(window != nullptr);
+		float right = place.Min.x;
+
+		for (const ImDrawVert& vertex : window->DrawList->VtxBuffer)
+		{
+			const bool inside = vertex.pos.x >= place.Min.x && vertex.pos.x <= place.Max.x && vertex.pos.y >= place.Min.y &&
+								vertex.pos.y <= place.Max.y;
+
+			if (vertex.col == colour && inside)
+			{
+				right = std::max(right, vertex.pos.x);
+			}
+		}
+
+		return right;
 	}
 
 	void CheckEveryPlaceHolds(const Graphite::WindowBarPlaces& before, const Graphite::WindowBarPlaces& after)
@@ -1118,4 +1146,32 @@ TEST_CASE("Window bar: an enabled button's icon is in the icon colour, nearer th
 	fullHistory.Serial = 1;
 	PlacesFor(ButtonsWith(2, fullHistory), bar);
 	CHECK_FALSE(DrawsInColour(*ImGui::FindWindowByName("WindowBarPlacesHarness")->DrawList, colours.Icon));
+}
+
+TEST_CASE("Window bar: while a fetch runs, push still reads its count, disabled and dim, in its place")
+{
+	ImGuiFrames frames;
+	BarCase bar;
+	bar.Frames = &frames;
+	const Graphite::WindowBarColours colours = Graphite::ReadWindowBarColours(Graphite::DarkScheme());
+
+	Graphite::NetworkState fetching;
+	fetching.Running = Graphite::NetworkOperation::Fetch;
+	fetching.Serial = 3;
+	fetching.Cancellable = true;
+
+	const Graphite::NetworkButtons buttons = ButtonsWith(2, fetching);
+	CHECK(buttons.Push.Count == "2");
+	CHECK_FALSE(buttons.Push.Enabled);
+	CHECK(buttons.Push.Tooltip.empty());
+
+	// Drawn dim after the label, inside Push's own place: its dim ink reaches further right than with no count.
+	const Graphite::WindowBarPlaces withCount = PlacesFor(buttons, bar);
+	const float countRight = RightmostInColourWithin(colours.Dim, withCount.Push);
+	const Graphite::WindowBarPlaces withoutCount = PlacesFor(ButtonsWith(0, fetching), bar);
+	const float labelRight = RightmostInColourWithin(colours.Dim, withoutCount.Push);
+	CHECK(countRight > labelRight + 1.0f);
+
+	CheckEveryPlaceHolds(withCount, withoutCount);
+	CheckEveryPlaceHolds(PlacesFor(ButtonsWith(2), bar), withCount);
 }

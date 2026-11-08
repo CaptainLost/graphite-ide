@@ -358,12 +358,13 @@ namespace Graphite {
 			return buttons.Fetch;
 		}
 
+		// Laid over the buttons as described with nothing running. The others are disabled and keep their counts, dim in
+		// their slots: the running state changes only its own button.
 		void ApplyRunning(const NetworkState& state, NetworkButtons& buttons)
 		{
 			for (ButtonText* const button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
 			{
 				button->Enabled = false;
-				button->Count.clear();
 				button->Tooltip.clear();
 				button->AsksWhichRemote = false;
 			}
@@ -843,30 +844,25 @@ namespace Graphite {
 
 		const bool listed = input.Branches != nullptr && input.Remotes != nullptr;
 
-		if (state.Running.has_value())
-		{
-			ApplyRunning(state, buttons);
-			return buttons;
-		}
-
-		if (!listed)
-		{
-			return buttons;
-		}
-
-		if (!gitFound)
+		if (listed && !gitFound)
 		{
 			buttons.Fetch.Tooltip = kGitMissing;
 			buttons.Pull.Tooltip = kGitMissing;
 			buttons.Push.Tooltip = kGitMissing;
-			return buttons;
+		}
+		else if (listed)
+		{
+			DescribeFetch(input, buttons.Fetch);
+
+			if (input.Head != nullptr && !input.CheckingOut)
+			{
+				DescribeCheckedOut(input, buttons);
+			}
 		}
 
-		DescribeFetch(input, buttons.Fetch);
-
-		if (input.Head != nullptr && !input.CheckingOut)
+		if (state.Running.has_value())
 		{
-			DescribeCheckedOut(input, buttons);
+			ApplyRunning(state, buttons);
 		}
 
 		return buttons;
