@@ -46,6 +46,11 @@ namespace Graphite {
 		constexpr float kChipPlaceholder = 120.0f;  // what the chip's place holds while HEAD is unread
 		constexpr float kLighterShare = 0.4f;
 		constexpr float kAskTint = 0.15f;
+
+		// How far the network buttons' icons stand from the text toward the dim: the mockup's #c3c8cf between its text,
+		// #d6dbe2, and its dim, #7b828d.
+		constexpr float kIconShare = 0.21f;
+
 		constexpr float kKeepFontSize = 0.0f;
 
 		constexpr float kButtonSide = 8.0f;
@@ -688,7 +693,7 @@ namespace Graphite {
 
 		// WARNING: Drawn by hand on an InvisibleButton, as the HEAD chip is, and not through Core::TextButton, which draws a
 		// label alone: this one has an icon that becomes the busy mark and a count in the match colour.
-		// A button: its icon in the dim colour, its label, and its count in the match colour; a disabled one is all dim.
+		// A button: its icon a little dimmer than its label, and its count in the match colour; a disabled one is all dim.
 		NetworkClick DrawNetworkButton(const WindowBarDrawing& drawing, const ButtonLook& look, ImVec2 topLeft, NetworkClick onClick)
 		{
 			const ButtonText& button = *look.Text;
@@ -724,7 +729,7 @@ namespace Graphite {
 			}
 			else
 			{
-				drawList->AddText(ImVec2(x, textTop), colours.Dim, look.Icon);
+				drawList->AddText(ImVec2(x, textTop), button.Enabled ? colours.Icon : colours.Dim, look.Icon);
 			}
 
 			x += WidthOf(look.Icon) + Em(kButtonInnerGap);
@@ -921,6 +926,7 @@ namespace Graphite {
 
 		WindowBarColours colours;
 		colours.Dim = PackedColour(ColourFromScheme(scheme, ChromeColor::TextDisabled));
+		colours.Icon = Mixed(text, colours.Dim, kIconShare);
 		colours.Match = Mixed(accent, text, kLighterShare);
 		colours.Rule = PackedColour(ColourFromScheme(scheme, ChromeColor::Border));
 		colours.ChipFill = PackedColour(ColourFromScheme(scheme, ChromeColor::Surface));

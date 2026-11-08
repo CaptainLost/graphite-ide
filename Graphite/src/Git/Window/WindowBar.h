@@ -130,6 +130,7 @@ namespace Graphite {
 	struct WindowBarColours
 	{
 		ImU32 Dim = 0;
+		ImU32 Icon = 0; // an enabled network button's icon: the mockup's .wbtn .ic, a little dimmer than the text
 		ImU32 Match = 0;
 		ImU32 Rule = 0;
 		ImU32 ChipFill = 0;

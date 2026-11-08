@@ -1,9 +1,13 @@
 #include <doctest/doctest.h>
 
+#include "DrawnColours.h"
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "Git/Window/WindowBar.h"
 #include "Theme/BuiltInSchemes.h"
+#include "Theme/ColorScheme.h"
+
+#include "Core/ImGui/ImGuiColors.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -1085,4 +1089,33 @@ TEST_CASE("Window bar: the problem starts after whatever was drawn before it, wi
 			CHECK(places.Problem.Max.x <= places.Fetch.Min.x);
 		}
 	}
+}
+
+TEST_CASE("Window bar: an enabled button's icon is in the icon colour, nearer the text's than the dim, and dim when disabled")
+{
+	ImGuiFrames frames;
+	BarCase bar;
+	bar.Frames = &frames;
+	const Graphite::WindowBarColours colours = Graphite::ReadWindowBarColours(Graphite::DarkScheme());
+	const ImU32 text = ImGui::ColorConvertFloat4ToU32(Core::ToImVec4(Graphite::ColourFromScheme(Graphite::DarkScheme(), Graphite::ChromeColor::Text)));
+
+	// As the mockup's .wbtn .ic, #c3c8cf, stands between its text, #d6dbe2, and its dim, #7b828d.
+	const float shareTowardDim = ShareFromTo(colours.Icon, text, colours.Dim);
+	CHECK(shareTowardDim > 0.1f);
+	CHECK(shareTowardDim < 0.35f);
+
+	const Graphite::WindowBarPlaces enabled = PlacesFor(ButtonsWith(2), bar);
+	const ImGuiWindow* window = ImGui::FindWindowByName("WindowBarPlacesHarness");
+	REQUIRE(window != nullptr);
+	const std::optional<HorizontalExtent> icons = HorizontalExtentInColour(*window->DrawList, colours.Icon);
+	REQUIRE(icons.has_value());
+	CHECK(icons->Left >= enabled.Fetch.Min.x);
+	CHECK(icons->Right <= enabled.Push.Max.x);
+
+	// The full history's fetch disables all three.
+	Graphite::NetworkState fullHistory;
+	fullHistory.Running = Graphite::NetworkOperation::FullHistory;
+	fullHistory.Serial = 1;
+	PlacesFor(ButtonsWith(2, fullHistory), bar);
+	CHECK_FALSE(DrawsInColour(*ImGui::FindWindowByName("WindowBarPlacesHarness")->DrawList, colours.Icon));
 }
