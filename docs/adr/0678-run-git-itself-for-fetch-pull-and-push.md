@@ -45,6 +45,28 @@ and say why; everything else works. An install outside those places is not found
   instead of asking.
 - An inherited `GIT_SSH` or `GIT_SSH_COMMAND`, or a configured `core.sshCommand`, is kept as it is. PuTTY's `plink`
   without `-batch` may then prompt on the hidden console, and the operation sits until the user cancels it.
+- Whether `core.sshCommand` is set is asked of git itself before each operation, with `git config --get
+  core.sshCommand` in the folder: exit 0 is set, even to nothing; 1 is unset; anything else, a run that cannot start
+  included, counts as set. libgit2 cannot follow every include git does: the vendored 1.8.4 knows no `includeIf
+  "hasconfig:remote.*.url:…"`, a documented way to give one organisation's remotes their own key, and a command it
+  missed would be replaced by the batch-mode one. The cost is one short run of git before each operation's.
+- `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`,
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_NAMESPACE` and `GIT_PREFIX` are taken out of every child's environment
+  (`ChildProcess` removes a variable as well as setting one). Graphite started from a git hook or alias inherits them,
+  and git would then act on another repository than the one libgit2 opened for the window. `GIT_CONFIG_PARAMETERS`,
+  `GIT_SSH`, `GIT_SSH_COMMAND` and the rest are the user's own and kept.
+
+**Restricted mode.** git runs the folder's hooks (`pre-push`, `post-merge`, `reference-transaction`) and the commands
+its config names (`core.sshCommand`, `core.fsmonitor`, a `credential.helper` that starts with `!`,
+`remote.<remote>.uploadpack` and `receivepack`), which a folder's own `.git` controls. In a folder that is not trusted
+(`WorkspaceTrust::IsTrusted` is false for the open folder) the three buttons, the three Git menu commands and the
+history banner's Fetch full history are disabled, each saying "Fetch, Pull and Push run git, which runs this folder's
+hooks and the commands its git config names. Trust the folder to use them." The window asks the trust each frame, as
+the language server is asked through its root permission, so trusting the folder enables them at once; an operation
+already running when the trust is taken back can still be cancelled. The menu shows no reason, since a command's note is
+fixed. This amends [0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md)'s "Git works as
+before" for these network operations only: every read and write through libgit2 works in restricted mode as before. The
+cost is that an untrusted folder fetches, pulls and pushes only from a terminal.
 
 **The commands.**
 - Fetch: `git fetch --all --prune --progress`, one process for every remote. `--prune` is a call: the window shows a
@@ -55,22 +77,39 @@ and say why; everything else works. An install outside those places is not found
   server's default is not tracked, so after a rename on the server the old default stays until the user runs that
   command.
 - Fetch full history: the "History cut off here" banner of a shallow clone gains **Fetch full history**, which runs
-  `git fetch --unshallow --progress` as a network operation with the same cancel and progress. Afterwards the history
+  `git fetch --unshallow --progress` as the Fetch button's operation, since it is a fetch: while it runs the Fetch
+  button shows the busy mark and the percent, its tooltip reads `Fetching full history… 45%` and "Click to cancel", and
+  a click on it cancels. The banner's action is disabled for Fetch's own reasons (no git, no remote, a folder not
+  trusted) and while any network operation runs, its tooltip saying which. Afterwards the history
   and the lines are read again, whoever deepened the clone, a terminal included, all the way or part way: libgit2 keeps
   the commits it parsed with their parents cut, so the port opens the repository afresh once the shallow file changes;
   the branch listing is then a new snapshot even though no ref moved; and the line reader starts its graph afresh once
   a commit it holds cut is no longer on the shallow boundary. The cost is that the whole history comes down at once, which on a
   large repository is a long, cancellable run.
-- Pull is two commands, `git fetch <remote> --progress` then `git merge --ff-only <upstream>`, never `git pull`: the
-  user's `pull.rebase` and `pull.ff` would decide what it did, and the window cannot yet show a rebase or a merge in
-  progress. A branch that cannot fast-forward is refused with nothing changed.
-- Push: `git push --progress <remote> HEAD:<upstream branch>` when the branch has an upstream. Without one the choice
-  depends on the remotes: with one, `git push --progress --set-upstream <remote> HEAD`; with several, the button opens a
-  menu, "Push <branch> to...", listing them by name in the order the sidebar lists them, which is the names' order,
-  because no remote is special, "origin" included, and no name is read for meaning; with none, Push is disabled and says
-  why. Fetch's tooltip names the remotes in the same order. Never forced, never with tags. The cost is one more click for
-  a branch without an upstream in a repository with several remotes, a remote added first that is not necessarily listed
-  first, and no way yet to force a push or send tags.
+- Pull is two commands, `git fetch <remote> --progress` then `git merge --ff-only --no-autostash <upstream>`, never
+  `git pull`: the user's `pull.rebase` and `pull.ff` would decide what it did, and the window cannot yet show a rebase
+  or a merge in progress. A branch that cannot fast-forward is refused with nothing changed. `--no-autostash` keeps the
+  user's `merge.autoStash` from stashing local changes and laying them back over the merge as a conflict while Pull
+  reports success: the merge refuses, and the local-changes toast names the files. It needs git 2.27 or later, and an
+  older git fails Pull with its own words. A branch whose upstream was deleted on its remote, as `fetch --prune` leaves
+  one after its pull request is merged, is not pulled, saying `feature's upstream origin/feature no longer exists.`
+- Push: `git push --progress --no-follow-tags -- <remote> HEAD:<upstream branch>` when the branch has an upstream on a
+  remote and both have one name, compared exactly, as git's own default push compares them. A branch whose upstream has
+  another name, as `git checkout -b my-fix origin/main` sets one up, is published under its own name instead, with the
+  command of a branch without an upstream, and tracks that from then on; its tooltip says so, `Push my-fix to origin as
+  origin/my-fix; it then tracks origin/my-fix instead of origin/main`. This amends spec D4, which sent HEAD to the
+  upstream whatever its name: Push on my-fix would have moved the server's main to the branch's commits, which only a
+  force push takes back. The cost is that a branch made from origin/main tracks origin/<its name> after its first push.
+  A branch whose upstream is a local branch keeps it: HEAD goes to the remote chosen, under the branch's name, without
+  `--set-upstream`. Without an upstream the choice depends on the remotes: with one, `git push --progress
+  --no-follow-tags --set-upstream -- <remote> HEAD`; with several, the button opens a menu, "Push <branch> to...",
+  listing them by name in the order the sidebar lists them, which is the names' order, because no remote is special,
+  "origin" included, and no name is read for meaning; with none, Push is disabled and says why. A branch whose upstream
+  was deleted is pushed as one without an upstream, which makes the remote branch anew, and with one remote its tooltip
+  names it, `Push feature to origin as origin/feature`. Fetch's tooltip names the remotes in the same order. Never
+  forced, never with tags: `--no-follow-tags` keeps the user's `push.followTags` from sending the annotated tags on the
+  commits pushed. The cost is one more click for a branch without an upstream in a repository with several remotes, a
+  remote added first that is not necessarily listed first, and no way yet to force a push or send tags.
 - `--` goes before every remote name, so a remote named like an option is not read as one.
 
 **Running and stopping.**
@@ -86,18 +125,23 @@ and say why; everything else works. An install outside those places is not found
   during that run.
 - A Graphite crash mid-run leaves git to finish by itself. Prompts are off and ssh is in batch mode, so git ends, and a
   fetch or push finishing is what the user asked for.
-- The fast-forward step of Pull is not cancellable: a half-updated tree is worse than a wait. Cancel is disabled, and
-  the button reads `Pulling...`, once the merge starts.
+- The fast-forward step of Pull is not cancellable: a half-updated tree is worse than a wait. Once the merge starts the
+  Pull button is disabled, still running, and its tooltip reads `Pulling… the last step cannot be cancelled`. Exit and
+  the write queue wait for the merge's end, since it runs on the write queue, which neither a change of folder nor
+  shutdown stops. With Git LFS, `submodule.recurse` or a slow `post-merge` hook that wait can include their downloads.
+  The app shows no wait at exit: its window hides at once, and the process ends once the merge has. The cost is an exit
+  held for the merge's end, and every commit, checkout and stash waiting behind it meanwhile.
 - Cancel ends the child and every process it started, which a job object does; Cancel is the running operation's own
-  button. While it runs, its icon becomes the busy mark, its count slot shows the percent, and its tooltip says
-  `Fetching... 45%`, `Pulling...` or `Pushing...` and "Click to cancel". The other two buttons are disabled and keep
-  their counts, dim: the running state changes only its own button.
+  button, Fetch's for Fetch full history. While it runs, its icon becomes the busy mark, its count slot shows the
+  percent, and its tooltip says `Fetching… 45%`, `Fetching full history… 45%`, `Pulling…` or `Pushing…` and "Click to
+  cancel". The other two buttons are disabled and keep their counts, dim: the running state changes only its own button.
 - The percent is git's own. `git fetch --all` with several remotes starts one fetch per remote and passes `--progress`
   to none of them, so they print no progress: such a Fetch shows the busy mark without a percent. Fetching remote by
   remote would show one, at the cost of the single process this decision keeps for every remote. With one remote, and
   for Pull's fetch, Push and Fetch full history, the percent is shown.
-- Shutdown and a change of folder cancel the running operation, so the queue never blocks the exit. The cost is that a
-  fetch in flight when the user switches folders is lost and has to be started again.
+- Shutdown and a change of folder cancel the running operation, Fetch full history included, so the network queue never
+  blocks the exit; only Pull's fast-forward, on the write queue, is waited for. The cost is that a fetch in flight when
+  the user switches folders is lost and has to be started again.
 - Success is quiet: the status bar shows the done text for a few seconds ("Fetched", "Pulled 5 commits", "Pushed 2
   commits") and there is no success toast. The cost is that a success is easy to miss; every failure is an error toast,
   with the whole of stderr to copy.
@@ -105,13 +149,13 @@ and say why; everything else works. An install outside those places is not found
   overlaps a commit, checkout or stash.
 
 **In the code.** Core owns the runner and the operations (`Core/src/Core/Git/Command`). `GitPort` finds git
-(`QueryNetworkSetup`: the git, the work tree, the common git dir, and whether `core.sshCommand` is configured, read
-through libgit2), forwards the six operations and answers the time of the last fetch (`QueryLastFetch`: the mtime of
-`FETCH_HEAD` in the common git dir, which a linked worktree's own git dir does not have). The age shown is that of the
-last fetch that ended well: git writes `FETCH_HEAD` before it reaches the remote, so after a fetch of the window's
-(Fetch, Pull's fetch, Fetch full history) fails or is cancelled, the age from before it stays shown until `FETCH_HEAD`'s
-time changes again. The cost is that a fetch that failed in a terminal still reads as a fetch, since nothing says how
-it ended.
+(`QueryNetworkSetup`: the git, the work tree and the common git dir), forwards the six operations, each after
+`Core::IsSshCommandConfigured` has asked git about `core.sshCommand`, and answers the time of the last fetch
+(`QueryLastFetch`: the mtime of `FETCH_HEAD` in the common git dir, which a linked worktree's own git dir does not
+have). The age shown is that of the last fetch that ended well: git writes `FETCH_HEAD` before it reaches the remote,
+so after a fetch of the window's (Fetch, Pull's fetch, Fetch full history) fails or is cancelled, the age from before it
+stays shown until `FETCH_HEAD`'s time changes again. The cost is that a fetch that failed in a terminal still reads as
+a fetch, since nothing says how it ended.
 
 ## Rationale
 
@@ -135,7 +179,12 @@ what 0491 objected to. The dependency on git is real but limited to three button
 - A cancel can end a sign-in browser opened during that run.
 - The cancel flag is polled every 50 ms, so a cancel takes up to that long.
 - A cancelled fetch can leave a partial pack file behind until `git gc` removes it.
-- Pull's last step cannot be stopped.
+- Pull's last step cannot be stopped, and exit waits for it, downloads that LFS, submodules or hooks make included,
+  with no wait shown.
+- An untrusted folder cannot fetch, pull or push from the window.
+- A branch made from an upstream of another name tracks a branch of its own name after its first push.
+- Each operation runs git once more, to ask whether `core.sshCommand` is set.
+- Pull needs git 2.27 or later.
 - A Fetch of several remotes shows no percent, only the busy mark.
 - The push menu lists the remotes by name, not in the order they were added.
 - Git Credential Manager still shows its own window, which is a separate program.
@@ -162,5 +211,7 @@ what 0491 objected to. The dependency on git is real but limited to three button
 
 - [0491](0491-keep-git-data-in-core-and-git-freshness-in-graphite.md) - the rejection this narrows.
 - [0492](0492-give-each-worker-thread-its-own-repository-handle.md) - the worker threads the port runs on.
+- [0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md) - restricted mode, whose "Git works
+  as before" this amends for fetch, pull and push.
 - `docs/superpowers/specs/2026-11-08-git-network-design.md` and
   `docs/superpowers/plans/2026-11-08-git-window-stage5-network.md` - the design and the plan this records.
