@@ -2,6 +2,7 @@
 
 #include "DeferredJobs.h"
 #include "GitFixtures.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/GitModel.h"
 #include "Git/Network/NetworkModel.h"
 #include "Git/Network/NetworkText.h"
@@ -17,6 +18,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -86,6 +88,17 @@ namespace {
 		std::vector<Core::Remote> Remotes{Core::Remote{.Name = "origin"}};
 		std::map<std::string, Core::NetworkOutcome> Outcomes;
 
+		// What the branches read once a fetch of one remote has brought the remote's new commits; unchanged when unset.
+		std::optional<std::vector<Core::Branch>> BranchesAfterFetch;
+
+		std::filesystem::path WorkingDirectory{"C:/repo"};
+
+		// A commit moves the checked-out branch's tip to this, one more commit ahead.
+		Core::Oid CommitTip = OidWithFirstByte(0xC0);
+
+		// The checked-out branch's tip at each push, in order.
+		std::vector<Core::Oid> PushedTips;
+
 		std::string Held;
 		std::atomic<bool> HeldEntered{false};
 		std::atomic<bool> HeldReleased{false};
@@ -93,6 +106,21 @@ namespace {
 
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return Branches; }
 		Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return Remotes; }
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override { return WorkingDirectory; }
+
+		Core::Result<Core::Oid> Commit(const Core::CommitRequest&) override
+		{
+			for (Core::Branch& branch : Branches)
+			{
+				if (branch.IsHead)
+				{
+					branch.Tip = CommitTip;
+					++branch.Ahead;
+				}
+			}
+
+			return CommitTip;
+		}
 
 		Core::NetworkOutcome FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) override
 		{
@@ -102,7 +130,14 @@ namespace {
 		Core::NetworkOutcome FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 										 const std::string& remote) override
 		{
-			return Answer("FetchRemote", "FetchRemote " + remote, cancelled, progress);
+			const Core::NetworkOutcome outcome = Answer("FetchRemote", "FetchRemote " + remote, cancelled, progress);
+
+			if (BranchesAfterFetch.has_value())
+			{
+				Branches = *BranchesAfterFetch;
+			}
+
+			return outcome;
 		}
 
 		Core::NetworkOutcome FetchFullHistory(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) override
@@ -119,6 +154,11 @@ namespace {
 		Core::NetworkOutcome PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress, const std::string& remote,
 									const std::optional<std::string>& upstreamBranch) override
 		{
+			if (const Core::Branch* checkedOut = Graphite::CheckedOutBranch(Branches); checkedOut != nullptr)
+			{
+				PushedTips.push_back(checkedOut->Tip);
+			}
+
 			return Answer("PushTo", "PushTo " + remote + " " + upstreamBranch.value_or("(set upstream)"), cancelled, progress);
 		}
 
@@ -421,6 +461,40 @@ TEST_CASE("Network model: a fetch that failed records no default branch")
 	REQUIRE(network.Model.TakeFailure().has_value());
 }
 
+TEST_CASE("Network model: pull counts the commits its own fetch brought")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 0)), RemoteBranch("origin", "main")};
+	network.Port.BranchesAfterFetch =
+		std::vector<Core::Branch>{CheckedOut(LocalBranch("main", "origin/main", 0, 5)), RemoteBranch("origin", "main")};
+
+	network.Model.Pull();
+	network.Update();
+	network.Update();
+
+	CHECK(network.Model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Pull, .Commits = 5}});
+	CHECK(network.Port.CallsSoFar() == Calls({"FetchRemote origin", "FastForward refs/remotes/origin/main"}));
+}
+
+TEST_CASE("Network model: pull finds the branch diverged by the commits its own fetch brought")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 3, 0)), RemoteBranch("origin", "main")};
+	network.Port.BranchesAfterFetch =
+		std::vector<Core::Branch>{CheckedOut(LocalBranch("main", "origin/main", 3, 5)), RemoteBranch("origin", "main")};
+
+	network.Model.Pull();
+	network.Update();
+	network.Update();
+
+	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message ==
+		  "main and origin/main have diverged (3 to push, 5 to pull). Pull can only fast-forward for now; merge or rebase in a "
+		  "terminal.");
+	CHECK(network.Port.CallsSoFar() == Calls({"FetchRemote origin"}));
+}
+
 TEST_CASE("Network model: pull fails on a diverged branch without merging")
 {
 	InlineNetwork network;
@@ -649,18 +723,46 @@ TEST_CASE("Network model: an answer for the folder before is dropped")
 	model.SubscribeTo(events);
 	git.SetRoot("C:/repo");
 
+	port.Branches = {RemoteBranch("origin", "main", true)};
+
+	model.Fetch();
+	events.Publish(Graphite::WorkspaceOpenedEvent{.Root = "C:/other"});
+	model.Fetch();
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Fetch}});
+	CHECK_FALSE(model.TakeDone().has_value());
+	CHECK_FALSE(model.TakeFailure().has_value());
+	CHECK(port.CallsSoFar() == Calls({"FetchAll"}));
+	CHECK(model.GetState() == NetworkState{});
+}
+
+TEST_CASE("Network model: an answer the folder before had already sent is dropped while the next folder's runs")
+{
+	DeferredJobs jobs;
+	NetworkPort port;
+	port.Branches = {RemoteBranch("origin", "main", true)};
+	Graphite::GitModel git{port, RunJobsInline()};
+	NetworkModel model{port, git, jobs.Submitter()};
+	Core::EventBus events;
+	model.SubscribeTo(events);
+	git.SetRoot("C:/repo");
+
 	model.Fetch();
 	jobs.RunAll();
 	events.Publish(Graphite::WorkspaceOpenedEvent{.Root = "C:/other"});
+	model.Fetch();
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK_FALSE(model.TakeDone().has_value());
-	CHECK_FALSE(model.TakeFailure().has_value());
-	CHECK(model.GetState() == NetworkState{});
-
-	model.Fetch();
-
 	CHECK(model.GetState().Running == std::optional<NetworkOperation>{NetworkOperation::Fetch});
+
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Fetch}});
+	CHECK(port.CallsSoFar() == Calls({"FetchAll", "FetchAll"}));
 }
 
 TEST_CASE("Network model: the done text is shown for as long as a write's")
