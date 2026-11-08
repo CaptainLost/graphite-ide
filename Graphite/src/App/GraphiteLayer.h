@@ -11,6 +11,7 @@
 #include "Editor/Server/LanguageServicesPort.h"
 #include "App/AboutDialog.h"
 #include "UI/InfoBars/LanguageSupportBar.h"
+#include "UI/InfoBars/SettledBar.h"
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/Server/PreviewSemantics.h"
 #include "App/TitleBar.h"
@@ -170,7 +171,7 @@ namespace Graphite {
 
 		void RenderDropConfirm();
 
-		void RenderRestrictedModeBar(bool trusted);
+		void RenderRestrictedModeBar();
 
 		// A folder is open and trusted. Fetch, Pull and Push read it each time, so trusting the folder enables them at once.
 		bool IsOpenFolderTrusted() const;
@@ -283,6 +284,10 @@ namespace Graphite {
 
 		std::set<LanguageId> m_LanguagePromptsDismissedUntilRestart;
 		std::set<std::filesystem::path> m_RestrictedBarsHiddenUntilRestart;
+
+		// The bars above the editors as drawn, held while the pointer is mid-click (UI/InfoBars/SettledBar.h).
+		SettledBar<bool> m_RestrictedBar;
+		SettledBar<LanguagePrompt> m_LanguageBar;
 
 		// WARNING: Declared after m_LanguageServices, which fills it each frame, and before
 		// m_DocumentWindows and m_Panels, which hold it by reference and read it through teardown.

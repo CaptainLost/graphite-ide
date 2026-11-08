@@ -1131,11 +1131,20 @@ namespace Graphite {
 		m_DockSpace.Begin(
 			m_Layout,
 			[this, workspaceTrusted, &languagePrompt] {
-				RenderRestrictedModeBar(workspaceTrusted);
+				// WARNING: Both bars push everything below them down, so each appears or goes only while the pointer is
+				// settled: a bar that came between the two clicks of a double click moved the second onto another row.
+				const bool pointerSettled = IsPointerSettled();
+				const bool restrictedWanted = m_Workspace.IsOpen() && !workspaceTrusted &&
+											  !m_RestrictedBarsHiddenUntilRestart.contains(m_Workspace.GetRoot());
 
-				if (languagePrompt)
+				if (m_RestrictedBar.Update(restrictedWanted ? std::optional<bool>{true} : std::nullopt, pointerSettled))
 				{
-					RenderLanguageSupportBar(*languagePrompt);
+					RenderRestrictedModeBar();
+				}
+
+				if (const std::optional<LanguagePrompt>& shown = m_LanguageBar.Update(languagePrompt, pointerSettled))
+				{
+					RenderLanguageSupportBar(*shown);
 				}
 			},
 			[this, &toolStrip, &chromePalette] {
@@ -1431,9 +1440,9 @@ namespace Graphite {
 		return m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot());
 	}
 
-	void GraphiteLayer::RenderRestrictedModeBar(bool trusted)
+	void GraphiteLayer::RenderRestrictedModeBar()
 	{
-		if (!m_Workspace.IsOpen() || trusted)
+		if (!m_Workspace.IsOpen())
 		{
 			return;
 		}
