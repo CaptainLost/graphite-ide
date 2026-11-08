@@ -330,3 +330,50 @@ TEST_CASE("Without a callback the dock space keeps the full width")
 	CHECK(node->Pos.x == doctest::Approx(0.0f));
 	CHECK(node->Size.x == doctest::Approx(800.0f));
 }
+
+TEST_CASE("Resetting the layout docks a window the layout does not name into the central node")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	const DockLayout layout = LayoutWithPanelBesideCenter();
+
+	const auto frameWithDocument = [&](bool dockIntoCentre) {
+		ImGui::NewFrame();
+		host.Begin(layout);
+		host.End();
+
+		ImGui::Begin("Explorer");
+		ImGui::End();
+
+		if (dockIntoCentre)
+		{
+			ImGui::SetNextWindowDockID(host.GetCenterNodeId());
+		}
+
+		ImGui::Begin("main.cpp###document");
+		ImGui::End();
+
+		ImGui::EndFrame();
+	};
+
+	frameWithDocument(false);
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frameWithDocument(true);
+	}
+
+	const ImGuiWindow* document = ImGui::FindWindowByName("main.cpp###document");
+	REQUIRE(document != nullptr);
+	REQUIRE(document->DockNode != nullptr);
+
+	host.RequestLayoutReset();
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frameWithDocument(false);
+	}
+
+	REQUIRE(document->DockNode != nullptr);
+	CHECK(document->DockNode->ID == host.GetCenterNodeId());
+	CHECK_FALSE(host.IsCenterEmpty());
+}

@@ -30,8 +30,54 @@ namespace Core {
 			return dockSpaceNode != nullptr && dockSpaceNode->IsSplitNode();
 		}
 
+		bool IsNamedByLayout(ImGuiID windowId, const DockLayout& layout)
+		{
+			for (const std::vector<std::string>* names : {&layout.Left, &layout.Bottom, &layout.Center})
+			{
+				for (const std::string& name : *names)
+				{
+					// Hashed as DockBuilderDockWindow hashes the name it is given.
+					if (ImHashStr(name.c_str()) == windowId)
+					{
+						return true;
+					}
+				}
+			}
+
+			return false;
+		}
+
+		// Every window docked anywhere in the dock space that the layout does not place by name: a document, a diff, a
+		// terminal. Removing the dock space's nodes would leave each floating where its node was.
+		std::vector<std::string> WindowsTheLayoutDoesNotPlace(ImGuiID dockSpaceId, const DockLayout& layout)
+		{
+			std::vector<std::string> unplaced;
+
+			for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+			{
+				// WARNING: Not filtered on ImGuiWindowFlags_ChildWindow: ImGui sets it on every docked window.
+				if (window->DockNode == nullptr)
+				{
+					continue;
+				}
+
+				const ImGuiDockNode* root = ImGui::DockNodeGetRootNode(window->DockNode);
+
+				if (root == nullptr || root->ID != dockSpaceId || IsNamedByLayout(window->ID, layout))
+				{
+					continue;
+				}
+
+				unplaced.emplace_back(window->Name);
+			}
+
+			return unplaced;
+		}
+
 		void BuildDefaultLayout(ImGuiID dockSpaceId, const DockLayout& layout, ImVec2 hostSize)
 		{
+			const std::vector<std::string> unplaced = WindowsTheLayoutDoesNotPlace(dockSpaceId, layout);
+
 			ImGui::DockBuilderRemoveNode(dockSpaceId);
 			ImGui::DockBuilderAddNode(dockSpaceId, ImGuiDockNodeFlags_DockSpace);
 			ImGui::DockBuilderSetNodeSize(dockSpaceId, hostSize);
@@ -45,6 +91,10 @@ namespace Core {
 			DockPanels(leftId, layout.Left);
 			DockPanels(bottomId, layout.Bottom);
 			DockPanels(centerId, layout.Center);
+
+			// WARNING: The rest go to the centre, where a document opens; a window that has a place of its own, such as a
+			// terminal, moves there itself once the layout is rebuilt.
+			DockPanels(centerId, unplaced);
 
 			if (ImGuiDockNode* centerNode = ImGui::DockBuilderGetNode(centerId); centerNode != nullptr)
 			{
