@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <set>
+#include <string_view>
 
 namespace Graphite {
 
@@ -70,6 +72,20 @@ namespace Graphite {
 	std::optional<MainLineAsk> MainLineToAsk(const LineRead* read, bool dismissed)
 	{
 		if (read == nullptr || dismissed || !read->Model.MainLineGuessed || read->Model.Bases.empty())
+		{
+			return std::nullopt;
+		}
+
+		// WARNING: A repository whose branches all share one name (main, and origin/main) has no main line to choose, and
+		// a fresh one with a single branch was asked about it all the same.
+		std::set<std::string_view> branchNames;
+
+		for (const Core::LineRef& ref : read->Refs)
+		{
+			branchNames.insert(ref.ShortName);
+		}
+
+		if (branchNames.size() < 2)
 		{
 			return std::nullopt;
 		}

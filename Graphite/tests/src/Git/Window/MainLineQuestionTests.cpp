@@ -146,3 +146,15 @@ TEST_CASE("Git window: the question bar answers Use from the button beside it")
 
 	CHECK(harness.Last == Graphite::MainLineAnswer::UseGuess);
 }
+
+TEST_CASE("Git window: a repository whose branches all share one name is not asked for its main line")
+{
+	Graphite::LineRead single = GuessedRead(RefNamed("", "main"));
+	single.Refs = {RefNamed("", "main")};
+	single.Model.Bases[0].Ref = 0;
+	CHECK_FALSE(Graphite::MainLineToAsk(&single, false).has_value());
+
+	Graphite::LineRead tracked = GuessedRead(RefNamed("origin", "main"));
+	tracked.Refs = {RefNamed("", "main"), RefNamed("origin", "main")};
+	CHECK_FALSE(Graphite::MainLineToAsk(&tracked, false).has_value());
+}
