@@ -241,6 +241,84 @@ namespace {
 		return std::nullopt;
 	}
 
+	// master's commit "base", topic branching from it, then two commits of each side's own, cloned `depth` commits deep with
+	// every branch. At depth 2 neither side reaches the fork and no tip is on the cut; one commit deeper the fork is in, its
+	// own parent still cut, so the clone stays shallow.
+	std::filesystem::path ForkedShallowClone(NetworkScene& scene, const TempDirectory& into, const std::string& depth)
+	{
+		scene.Work().Write("a.txt", "base\n");
+		scene.Work().Commit("base");
+		scene.Git(scene.WorkPath(), {"branch", "topic"});
+
+		for (const char* change : {"master's first change", "master's second change"})
+		{
+			scene.Work().Write("a.txt", std::string{change} + "\n");
+			scene.Work().Commit(change);
+		}
+
+		scene.Git(scene.WorkPath(), {"checkout", "-q", "topic"});
+
+		for (const char* change : {"topic's first change", "topic's second change"})
+		{
+			scene.Work().Write("b.txt", std::string{change} + "\n");
+			scene.Work().Commit(change);
+		}
+
+		scene.Git(scene.WorkPath(), {"checkout", "-q", kBranch});
+		scene.Git(into.GetPath(), {"clone", "--depth", depth, "--no-single-branch", "file:///" + ForwardSlashes(scene.WorkPath()), "shallow"});
+		return into.GetPath() / "shallow";
+	}
+
+	// The window's git and lines models over the port, as the app has them, the git model hearing the window's events, with
+	// every line read the lines model asks counted. The branches are listed and read once on construction.
+	class WindowOverPort final : public Graphite::LinesPort
+	{
+	public:
+		WindowOverPort(Graphite::RepositoryGitPort& port, const std::filesystem::path& root) : Port(port)
+		{
+			Model.SetRoot(root);
+			Model.SubscribeTo(Events);
+			Model.RequestBranches();
+			Settle();
+		}
+
+		std::uint64_t RepositoryNow() override { return Port.RepositoryNow(); }
+
+		Core::Result<Graphite::LineRead> ReadLines(std::uint64_t repository, const Graphite::LineReadInput& input) override
+		{
+			++Reads;
+			return Port.ReadLines(repository, input);
+		}
+
+		Core::Result<Graphite::LineRead> RecomputeLines(const Graphite::LineRead& last, const Graphite::LineAnswerChange& change,
+														std::int64_t now) override
+		{
+			return Port.RecomputeLines(last, change, now);
+		}
+
+		void Settle() { SettleLines(Model, Lines); }
+
+		// The watcher's notice of a change on disk, as the app hears it, and the frames after it.
+		void NoticeRepositoryChange()
+		{
+			Events.Publish(Graphite::RepositoryChangedEvent{});
+			Model.OnUpdate(Core::Timestep{Graphite::Debouncer::kMaxSeconds});
+			Settle();
+		}
+
+		std::optional<Core::BranchState> StateOf(const std::string& fullName) const
+		{
+			REQUIRE(Lines.GetRead() != nullptr);
+			return LineStateOf(*Lines.GetRead(), fullName);
+		}
+
+		Graphite::RepositoryGitPort& Port;
+		int Reads = 0;
+		Core::EventBus Events;
+		Graphite::GitModel Model{Port, RunJobsInline()};
+		Graphite::LinesModel Lines{*this, RunJobsInline(), FixedNow};
+	};
+
 	// Where libgit2 looks for configuration files, pointed at an empty folder for as long as it lives, so that a
 	// core.sshCommand of the machine's or the user's cannot reach a test.
 	class NoConfigAboveRepository
@@ -631,45 +709,14 @@ TEST_CASE("Git network port: a clone deepened in a terminal, no ref moved, is re
 		return;
 	}
 
-	// topic forks from master's first commit, and each side has two commits of its own. A clone two commits deep has neither
-	// side's history down to the fork, and no tip on the cut: deepening it changes no branch's tip commit either.
 	NetworkScene scene{*git};
-	scene.Git(scene.WorkPath(), {"branch", "topic"});
-
-	for (const char* change : {"master's first change", "master's second change"})
-	{
-		scene.Work().Write("a.txt", std::string{change} + "\n");
-		scene.Work().Commit(change);
-	}
-
-	scene.Git(scene.WorkPath(), {"checkout", "-q", "topic"});
-
-	for (const char* change : {"topic's first change", "topic's second change"})
-	{
-		scene.Work().Write("b.txt", std::string{change} + "\n");
-		scene.Work().Commit(change);
-	}
-
-	scene.Git(scene.WorkPath(), {"checkout", "-q", kBranch});
-
 	TempDirectory cloneDirectory;
-	scene.Git(cloneDirectory.GetPath(),
-			  {"clone", "--depth", "2", "--no-single-branch", "file:///" + ForwardSlashes(scene.WorkPath()), "shallow"});
-	const std::filesystem::path shallow = cloneDirectory.GetPath() / "shallow";
+	const std::filesystem::path shallow = ForkedShallowClone(scene, cloneDirectory, "2");
 
-	// The window's git and lines models, as the app has them over the port.
 	TempDirectory storeRoot;
 	Graphite::RepositoryGitPort port{shallow, storeRoot.GetPath()};
-	Core::EventBus events;
-	Graphite::GitModel model{port, RunJobsInline()};
-	Graphite::LinesModel lines{port, RunJobsInline(), FixedNow};
-	model.SetRoot(shallow);
-	model.SubscribeTo(events);
-
-	model.RequestBranches();
-	SettleLines(model, lines);
-	REQUIRE(lines.GetRead() != nullptr);
-	REQUIRE(LineStateOf(*lines.GetRead(), "refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::HistoryCutOff});
+	WindowOverPort window{port, shallow};
+	REQUIRE(window.StateOf("refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::HistoryCutOff});
 
 	// Deepened outside the window, which asked for nothing.
 	const std::string refsBefore = scene.Git(shallow, {"for-each-ref"});
@@ -677,15 +724,48 @@ TEST_CASE("Git network port: a clone deepened in a terminal, no ref moved, is re
 	REQUIRE(scene.Git(shallow, {"for-each-ref"}) == refsBefore);
 
 	// The watcher's notice, as for any change on disk, and no reopening of the folder. The branches list as they did.
-	const Core::Ref<const std::vector<Core::Branch>> branchesBefore = model.GetBranches();
-	events.Publish(Graphite::RepositoryChangedEvent{});
-	model.OnUpdate(Core::Timestep{Graphite::Debouncer::kMaxSeconds});
-	SettleLines(model, lines);
-	REQUIRE(model.GetBranches() != nullptr);
-	CHECK(*model.GetBranches() == *branchesBefore);
+	const Core::Ref<const std::vector<Core::Branch>> branchesBefore = window.Model.GetBranches();
+	window.NoticeRepositoryChange();
+	REQUIRE(window.Model.GetBranches() != nullptr);
+	CHECK(*window.Model.GetBranches() == *branchesBefore);
+	CHECK(window.StateOf("refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::NotMerged});
 
-	REQUIRE(lines.GetRead() != nullptr);
-	CHECK(LineStateOf(*lines.GetRead(), "refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::NotMerged});
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
+}
+
+TEST_CASE("Git network port: a clone deepened while a ref moves is read once, however many notices follow")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	TempDirectory cloneDirectory;
+	const std::filesystem::path shallow = ForkedShallowClone(scene, cloneDirectory, "2");
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{shallow, storeRoot.GetPath()};
+	WindowOverPort window{port, shallow};
+	const int readsBefore = window.Reads;
+
+	// The server gains a commit, and the full history comes with it: a ref moves and the shallow file goes.
+	scene.Work().Write("a.txt", "master's third change\n");
+	scene.Work().Commit("master's third change");
+	const std::string refsBefore = scene.Git(shallow, {"for-each-ref"});
+	scene.Git(shallow, {"fetch", "-q", "--unshallow"});
+	REQUIRE(scene.Git(shallow, {"for-each-ref"}) != refsBefore);
+
+	// The window's own notice when its fetch ends, then the watcher's: one new snapshot, one read.
+	window.NoticeRepositoryChange();
+	window.NoticeRepositoryChange();
+
+	CHECK(window.Reads == readsBefore + 1);
+	CHECK(window.StateOf("refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::NotMerged});
 
 	port.SetRoot({});
 	port.LetGoOfHandlesNoLongerCurrent();
