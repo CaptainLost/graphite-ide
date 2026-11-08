@@ -777,6 +777,14 @@ namespace Graphite {
 
 		const std::string fileName = Core::ToUtf8(item.Path.filename());
 
+		// WARNING: A read-only document holds bytes that are not valid text for its encoding, so nothing could have been
+		// typed into it, and writing it back could only alter the file: its line endings, if nothing else.
+		if (item.Document->IsReadOnly())
+		{
+			SetTransientMessage(fileName + " is read-only and was not saved");
+			return true;
+		}
+
 		if (const Core::Result<void> result = Core::SaveDocument(m_Documents, index))
 		{
 			m_DocumentStates.NoteSaved(item.Path);

@@ -1751,3 +1751,35 @@ TEST_CASE("A large file opened with word wrap on is wrapped on the worker as its
 	fixture.DrawFrame(wordWrap);
 	CHECK(item.ColumnsPerWrappedRow == columnsBuiltOnTheWorker);
 }
+
+TEST_CASE("Saving a read-only document writes nothing and says so")
+{
+	TempDirectory folder;
+	// Windows-1250 "zażółć" with mixed line endings: not UTF-8, and a write would at least make the endings agree.
+	const std::string bytes = "za\xBF\xF3\xB3\xE6\r\nsecond\nthird\r\n";
+	const std::filesystem::path legacy = folder.MakeFile("legacy.txt", bytes);
+	const std::filesystem::file_time_type writtenAt = std::filesystem::last_write_time(legacy);
+
+	DrawnDocuments drawn(folder.GetPath());
+	drawn.Windows.RequestOpen(legacy, true);
+	drawn.ShowLanded();
+	drawn.Focus(legacy);
+
+	const std::optional<std::size_t> index = drawn.Documents.Find(legacy);
+	REQUIRE(index.has_value());
+	REQUIRE(drawn.Documents.At(*index).Document != nullptr);
+	REQUIRE(drawn.Documents.At(*index).Document->IsReadOnly());
+
+	drawn.Windows.Save();
+	drawn.Frame();
+
+	CHECK(std::filesystem::last_write_time(legacy) == writtenAt);
+	const Core::Result<std::string> after = Core::ReadFileBytes(legacy);
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue() == bytes);
+
+	const std::optional<std::string> message = drawn.Windows.GetStatusMessage();
+	REQUIRE(message.has_value());
+	CHECK(message->find("read-only") != std::string::npos);
+	CHECK(message->find(" saved") == std::string::npos);
+}
