@@ -4,8 +4,10 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include "Git/Branches/BranchLookup.h"
 #include "Git/CheckoutQuestion.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -41,6 +43,7 @@ namespace Graphite {
 			case GitModel::WriteKind::StashPop:
 			case GitModel::WriteKind::StashDrop:
 			case GitModel::WriteKind::Checkout:
+			case GitModel::WriteKind::FastForward:
 				break;
 			}
 
@@ -61,6 +64,7 @@ namespace Graphite {
 			case GitModel::WriteKind::StashApply:
 			case GitModel::WriteKind::StashPop:
 			case GitModel::WriteKind::Checkout:
+			case GitModel::WriteKind::FastForward:
 				return true;
 
 			case GitModel::WriteKind::CreateBranch:
@@ -211,6 +215,18 @@ namespace Graphite {
 		Enqueue({.Kind = WriteKind::Checkout, .Checkout = std::move(request)});
 	}
 
+	void GitModel::RequestFastForward(std::string branch, std::string upstream)
+	{
+		Enqueue({.Kind = WriteKind::FastForward, .Name = std::move(branch), .OtherName = std::move(upstream)});
+	}
+
+	std::optional<FastForwardAnswer> GitModel::TakeFastForward()
+	{
+		std::optional<FastForwardAnswer> taken = std::move(m_FastForward);
+		m_FastForward.reset();
+		return taken;
+	}
+
 	std::optional<DeleteCheck> GitModel::TakeDeleteCheck()
 	{
 		std::optional<DeleteCheck> taken = std::move(m_DeleteCheck);
@@ -330,6 +346,7 @@ namespace Graphite {
 
 		case WriteKind::Init:
 		case WriteKind::StashSave:
+		case WriteKind::FastForward:
 			break;
 		}
 
@@ -786,6 +803,12 @@ namespace Graphite {
 				outcome = RunCheckout(job.Checkout);
 				break;
 			}
+
+			case WriteKind::FastForward:
+			{
+				outcome.FastForward = RunFastForward(job.Name, job.OtherName);
+				break;
+			}
 			}
 		}
 		catch (const std::exception& exception)
@@ -896,6 +919,50 @@ namespace Graphite {
 		return outcome;
 	}
 
+	FastForwardAnswer GitModel::RunFastForward(const std::string& branch, const std::string& upstream)
+	{
+		FastForwardAnswer answer;
+		const Core::Result<std::vector<Core::Branch>> listed = m_Port.QueryBranches();
+
+		if (!listed.HasValue())
+		{
+			answer.Failure = listed.GetError();
+			return answer;
+		}
+
+		const std::vector<Core::Branch>& branches = listed.GetValue();
+		const Core::Branch* checkedOut = CheckedOutBranch(branches);
+		answer.CheckedOut = checkedOut != nullptr && checkedOut->FullName == branch;
+
+		if (!answer.CheckedOut)
+		{
+			return answer;
+		}
+
+		const Core::Branch* fetched = BranchWithFullName(branches, upstream);
+		answer.DistanceKnown = checkedOut->DistanceKnown && fetched != nullptr && checkedOut->Upstream == fetched->Name;
+
+		if (answer.DistanceKnown)
+		{
+			answer.Ahead = checkedOut->Ahead;
+			answer.Behind = checkedOut->Behind;
+		}
+
+		const bool diverged = answer.DistanceKnown && answer.Ahead > 0 && answer.Behind > 0;
+
+		if (diverged)
+		{
+			return answer;
+		}
+
+		// WARNING: Never cancelled: a merge stopped halfway leaves a half-updated tree, which is worse than a wait.
+		const std::atomic<bool> neverCancelled{false};
+		const Core::ProgressSink noProgress;
+		answer.Merge = m_Port.FastForward(neverCancelled, noProgress, upstream);
+
+		return answer;
+	}
+
 	void GitModel::ApplyWrite(const WriteJob& job, WriteOutcome outcome)
 	{
 		m_WriteInFlight = false;
@@ -905,6 +972,12 @@ namespace Graphite {
 		if (jobWasForClosedFolder)
 		{
 			PumpWrites();
+			return;
+		}
+
+		if (job.Kind == WriteKind::FastForward)
+		{
+			ApplyFastForward(job, std::move(outcome));
 			return;
 		}
 
@@ -1013,6 +1086,53 @@ namespace Graphite {
 			m_InitError.reset();
 		}
 
+		++m_AppliedWrites;
+
+		// WARNING: Asked after the settling marks above are taken, so this read is one that settles them.
+		ReadStatusAfterWrite();
+
+		PumpWrites();
+	}
+
+	void GitModel::ApplyFastForward(const WriteJob& job, WriteOutcome outcome)
+	{
+		FastForwardAnswer answer = std::move(outcome.FastForward).value_or(FastForwardAnswer{});
+
+		if (outcome.Failure.has_value())
+		{
+			answer.Failure = std::move(outcome.Failure);
+		}
+
+		const bool mergeRan = answer.Merge.has_value();
+		const bool merged = mergeRan && answer.Merge->Result == Core::NetworkResult::Done;
+		const std::optional<std::size_t> commits = answer.DistanceKnown ? std::optional<std::size_t>{answer.Behind} : std::nullopt;
+
+		m_FastForward = std::move(answer);
+
+		if (!mergeRan)
+		{
+			FailTicket(job.Ticket, false);
+			PumpWrites();
+			return;
+		}
+
+		// WARNING: A merge that failed may have written files before it stopped, so the status is read after it as well.
+		if (merged)
+		{
+			const std::optional<Core::Oid> nothingCommitted;
+			AwaitStatusAfter(job.Ticket, nothingCommitted);
+
+			if (WriteTicket* ticket = FindTicket(job.Ticket); ticket != nullptr)
+			{
+				ticket->Subject.Commits = commits;
+			}
+		}
+		else
+		{
+			FailTicket(job.Ticket, true);
+		}
+
+		MarkDirty();
 		++m_AppliedWrites;
 
 		// WARNING: Asked after the settling marks above are taken, so this read is one that settles them.

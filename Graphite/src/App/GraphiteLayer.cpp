@@ -25,6 +25,7 @@
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
+#include "Git/Network/NetworkText.h"
 #include "Git/WriteFailureTitle.h"
 
 #include "Console/ConsolePanel.h"
@@ -436,6 +437,10 @@ namespace Graphite {
 		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
 
+		// WARNING: Before AddFolderParticipants, so a running fetch, pull or push has ended before the port is pointed at the
+		// next folder.
+		m_Network.SubscribeTo(m_Events);
+
 		AddFolderParticipants();
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) { m_Folder.Open(event.Root); });
@@ -484,9 +489,10 @@ namespace Graphite {
 			});
 	}
 
-	void GraphiteLayer::LetGoOfOldRepositoryOnWriteWorker()
+	void GraphiteLayer::LetGoOfOldRepositoryOnWriteAndNetworkWorkers()
 	{
 		m_GitWrites.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
+		m_NetworkJobs.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
 	}
 
 	std::int64_t GraphiteLayer::SystemClockSeconds()
@@ -505,7 +511,7 @@ namespace Graphite {
 		m_Folder.Add(Core::CreateScope<SessionsOfFolder>(m_SessionWindows));
 		m_Folder.Add(Core::CreateScope<TerminalsOfFolder>(m_Terminals));
 		m_Folder.Add(Core::CreateScope<GitWindowOfFolder>(*m_GitView));
-		m_Folder.Add(Core::CreateScope<RepositoryOfFolder>(m_GitPort, [this] { LetGoOfOldRepositoryOnWriteWorker(); }));
+		m_Folder.Add(Core::CreateScope<RepositoryOfFolder>(m_GitPort, [this] { LetGoOfOldRepositoryOnWriteAndNetworkWorkers(); }));
 		m_Folder.Add(Core::CreateScope<DiffsOfFolder>(m_DiffWindows));
 		m_Folder.Add(Core::CreateScope<ReviewsOfFolder>(ReviewParts{.Windows = m_ReviewWindows,
 																	.Model = m_Reviews,
@@ -545,6 +551,10 @@ namespace Graphite {
 		// reports it, and the watcher never sees `.git/` when the workspace is a subfolder of the repository or a linked
 		// worktree, so writes made by this process reach the change markers and blame only from here.
 		m_WriteConsequences.Apply();
+
+		// WARNING: After the git model, whose update applies Pull's fast-forward for the network model to take.
+		m_Network.OnUpdate(timestep);
+		ApplyNetworkResults();
 
 		// WARNING: Here, not in the Git window, so the lines are read as soon as a folder's branches are, whether or not
 		// the window is on screen.
@@ -748,6 +758,10 @@ namespace Graphite {
 
 	void GraphiteLayer::OnDetach()
 	{
+		// WARNING: Before m_NetworkJobs is destroyed, which waits for the job running: a fetch nobody cancels can run for
+		// as long as the network makes it.
+		m_Network.Detach();
+
 		// WARNING: Before m_Jobs is destroyed, which runs every read still queued and waits for the one running.
 		m_Documents.CancelAllReads();
 
@@ -1103,7 +1117,8 @@ namespace Graphite {
 				.Branches = branches.get(),
 				.Status = gitStatus.get(),
 				.CheckingOut = gitWait.CheckingOut,
-				.Activity = DescribeGitActivity(m_Git.GetWriteReport(), gitWait.AwaitingAnswer),
+				.Activity = DescribeGitActivity(m_Git.GetWriteReport(), gitWait.AwaitingAnswer,
+												DescribeNetworkActivity(m_Network.GetState(), m_Network.GetShownDone())),
 			};
 
 			messages.Git = GitStatusText(gitStatusInputs);
@@ -1373,6 +1388,36 @@ namespace Graphite {
 		std::string copied = title + "\n" + failure.Error.Message;
 
 		ShowToast(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied), ToastScope::Folder);
+	}
+
+	void GraphiteLayer::ReportGitWriteFailure(const NetworkFailureReport& failure)
+	{
+		std::string shown = RelativiseUnder(failure.Error.Message, m_Git.GetWorkingDirectory());
+
+		ShowToast(Core::ToastKind::Error, FailureTitle(failure.Operation), std::move(shown), failure.Copied, ToastScope::Folder);
+	}
+
+	void GraphiteLayer::ApplyNetworkResults()
+	{
+		bool anyEnded = false;
+
+		while (m_Network.TakeDone().has_value())
+		{
+			anyEnded = true;
+		}
+
+		while (const std::optional<NetworkFailureReport> failure = m_Network.TakeFailure())
+		{
+			ReportGitWriteFailure(*failure);
+			anyEnded = true;
+		}
+
+		// WARNING: Said here as well as by the watcher, which never sees `.git/` when the workspace is a subfolder of the
+		// repository or a linked worktree. A cancelled or failed fetch may have moved some refs too.
+		if (anyEnded)
+		{
+			m_Events.Publish(RepositoryChangedEvent{});
+		}
 	}
 
 	void GraphiteLayer::ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText,

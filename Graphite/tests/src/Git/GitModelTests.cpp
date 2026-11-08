@@ -2723,6 +2723,25 @@ TEST_CASE("Git window: the remotes are read with the branches and forgotten with
 	CHECK(model.GetRemotes() == nullptr);
 }
 
+TEST_CASE("Git window: the last fetch's time is read with the branches and forgotten with the folder")
+{
+	FakePort port;
+	port.Network.LastFetch = SystemSecondsAt(1'700'000'000);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	CHECK_FALSE(model.GetLastFetch().has_value());
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetLastFetch() == port.Network.LastFetch);
+
+	model.Clear();
+
+	CHECK_FALSE(model.GetLastFetch().has_value());
+}
+
 TEST_CASE("Git window: a repository with no remotes has an empty listing once the read is done, not none")
 {
 	FakePort port;

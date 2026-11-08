@@ -28,6 +28,7 @@ TEST_CASE("Every kind of git write names its own failure")
 		{GitModel::WriteKind::StashPop, "Stash pop failed"},
 		{GitModel::WriteKind::StashDrop, "Stash drop failed"},
 		{GitModel::WriteKind::Checkout, "Checkout failed"},
+		{GitModel::WriteKind::FastForward, "Pull failed"},
 	};
 
 	for (const Case& testCase : cases)

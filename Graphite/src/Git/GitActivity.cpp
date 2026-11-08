@@ -3,6 +3,7 @@
 #include "Core/Base/Count.h"
 
 #include "Git/CheckoutQuestion.h"
+#include "Git/Network/NetworkText.h"
 
 #include <format>
 #include <string>
@@ -112,6 +113,8 @@ namespace Graphite {
 			return CheckingOutText(subject.Name);
 		case GitModel::WriteKind::DeleteCheck:
 			return std::string{"Counting commits not merged anywhere else"} + kEllipsis;
+		case GitModel::WriteKind::FastForward:
+			return RunningText(NetworkState{.Running = NetworkOperation::Pull});
 		}
 
 		return {};
@@ -148,6 +151,8 @@ namespace Graphite {
 			return "Dropped " + StashText(subject);
 		case GitModel::WriteKind::Checkout:
 			return "Checked out " + subject.Name;
+		case GitModel::WriteKind::FastForward:
+			return DoneText(NetworkDone{.Operation = NetworkOperation::Pull, .Commits = subject.Commits});
 		case GitModel::WriteKind::CheckoutPlan:
 		case GitModel::WriteKind::DeleteCheck:
 			break;
@@ -179,7 +184,7 @@ namespace Graphite {
 	}
 
 	std::optional<GitActivity> DescribeGitActivity(const std::optional<GitModel::WriteReport>& report,
-												   const std::optional<std::string>& awaitingAnswer)
+												   const std::optional<std::string>& awaitingAnswer, const NetworkActivity& network)
 	{
 		if (awaitingAnswer.has_value())
 		{
@@ -188,23 +193,34 @@ namespace Graphite {
 							   .OpensGit = true};
 		}
 
-		if (!report.has_value())
+		const bool writeRuns = report.has_value() && report->Progress == GitModel::WriteProgress::Running;
+		const bool namedInPlaceOfHead = writeRuns && report->Subject.Kind == GitModel::WriteKind::Checkout;
+
+		if (writeRuns && !namedInPlaceOfHead)
+		{
+			return GitActivity{.Text = WriteRunningText(report->Subject), .Busy = true};
+		}
+
+		if (network.Running.has_value())
+		{
+			return GitActivity{.Text = *network.Running, .Busy = true};
+		}
+
+		if (writeRuns)
 		{
 			return std::nullopt;
 		}
 
-		if (report->Progress == GitModel::WriteProgress::Done)
+		if (report.has_value())
 		{
 			return GitActivity{.Text = WriteDoneText(report->Subject)};
 		}
 
-		const bool namedInPlaceOfHead = report->Subject.Kind == GitModel::WriteKind::Checkout;
-
-		if (namedInPlaceOfHead)
+		if (network.Done.has_value())
 		{
-			return std::nullopt;
+			return GitActivity{.Text = *network.Done};
 		}
 
-		return GitActivity{.Text = WriteRunningText(report->Subject), .Busy = true};
+		return std::nullopt;
 	}
 }

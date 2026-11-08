@@ -31,6 +31,8 @@ namespace Graphite {
 			return "Stash drop failed";
 		case GitModel::WriteKind::Checkout:
 			return "Checkout failed";
+		case GitModel::WriteKind::FastForward:
+			return "Pull failed";
 
 		case GitModel::WriteKind::Init:
 		case GitModel::WriteKind::DeleteCheck:

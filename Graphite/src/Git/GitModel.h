@@ -15,6 +15,7 @@
 #include "Git/GitPort.h"
 #include "Git/LruResultCache.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -69,6 +70,26 @@ namespace Graphite {
 	{
 		Core::CheckoutTarget Target;
 		std::optional<Core::CheckoutPlan> Plan;
+		std::optional<Core::Error> Failure;
+	};
+
+	// Pull's last step as the write queue found it. The branches are read just before the merge, so a checkout or a commit
+	// made while Pull fetched is seen.
+	struct FastForwardAnswer
+	{
+		// False when another branch, or none, is checked out by then; the merge never ran.
+		bool CheckedOut = false;
+
+		// The branch's distance from the upstream fetched, known only while that is still its upstream. Behind is what a
+		// merge brings.
+		bool DistanceKnown = false;
+		std::size_t Ahead = 0;
+		std::size_t Behind = 0;
+
+		// Empty when the merge never ran: the branch is not checked out, has diverged, or could not be read.
+		std::optional<Core::NetworkOutcome> Merge;
+
+		// The branches could not be read, or the write threw.
 		std::optional<Core::Error> Failure;
 	};
 
@@ -210,6 +231,10 @@ namespace Graphite {
 		// when git has none.
 		const std::optional<std::string>& GetUserEmail() const;
 
+		// The time of the last fetch, from this window or a terminal, read with every branch listing. Empty while unread and
+		// in a repository never fetched.
+		const std::optional<std::chrono::sys_seconds>& GetLastFetch() const { return m_LastFetch; }
+
 		// Read beside every branch listing, for the window bar. Null while unread and after a failed read.
 		Core::Ref<const std::vector<Core::Remote>> GetRemotes() const { return m_Remotes.Get(); }
 		const std::optional<Core::Error>& GetRemotesError() const { return m_Remotes.GetError(); }
@@ -297,6 +322,11 @@ namespace Graphite {
 
 		std::vector<std::filesystem::path> TakeCheckedOut();
 
+		// Pull's last step: `branch` moved to `upstream`, both full names, by a fast-forward that nothing cancels, once it is
+		// still checked out and has not diverged. Its failure is not one of TakeWriteError's: the answer says what happened.
+		void RequestFastForward(std::string branch, std::string upstream);
+		std::optional<FastForwardAnswer> TakeFastForward();
+
 		bool IsWriteInFlight() const { return m_WriteInFlight; }
 
 		bool IsAwaitingStatusAfterInit() const
@@ -320,7 +350,8 @@ namespace Graphite {
 			StashPop,
 			StashDrop,
 			CheckoutPlan,
-			Checkout
+			Checkout,
+			FastForward
 		};
 
 		struct WriteFailure
@@ -345,6 +376,9 @@ namespace Graphite {
 
 			std::optional<Core::Oid> Committed;
 			std::string CommitSummary;
+
+			// A fast-forward's: the commits it brought, once it is done and they were counted.
+			std::optional<std::size_t> Commits;
 
 			friend bool operator==(const WriteSubject&, const WriteSubject&) = default;
 		};
@@ -493,6 +527,7 @@ namespace Graphite {
 			std::vector<std::filesystem::path> Changed;
 			std::optional<Core::CheckoutPlan> Plan;
 			std::optional<std::size_t> Unmerged;
+			std::optional<FastForwardAnswer> FastForward;
 		};
 
 		void Enqueue(WriteJob job);
@@ -504,7 +539,12 @@ namespace Graphite {
 
 		WriteOutcome RunCheckout(const CheckoutRequest& request);
 
+		// WARNING: Runs on a worker thread, as RunWrite.
+		FastForwardAnswer RunFastForward(const std::string& branch, const std::string& upstream);
+
 		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
+
+		void ApplyFastForward(const WriteJob& job, WriteOutcome outcome);
 
 		enum class TicketPhase
 		{
@@ -577,6 +617,7 @@ namespace Graphite {
 		std::vector<std::filesystem::path> m_CheckedOut;
 		std::optional<CheckoutPlanAnswer> m_CheckoutPlan;
 		std::optional<DeleteCheck> m_DeleteCheck;
+		std::optional<FastForwardAnswer> m_FastForward;
 		std::uint64_t m_AppliedWrites = 0;
 
 		std::deque<WriteTicket> m_Tickets;
@@ -603,6 +644,7 @@ namespace Graphite {
 		GenerationSlot<BranchAuthors> m_BranchAuthors;
 		GenerationSlot<std::optional<std::string>> m_UserEmail;
 		GenerationSlot<std::vector<Core::Remote>> m_Remotes;
+		std::optional<std::chrono::sys_seconds> m_LastFetch;
 		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
 		std::optional<std::vector<Core::Oid>> m_AuthorsHidden;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;

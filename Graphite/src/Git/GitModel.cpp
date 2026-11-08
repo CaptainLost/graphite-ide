@@ -95,6 +95,7 @@ namespace Graphite {
 		m_AuthorsHidden.reset();
 		m_UserEmail.Clear();
 		m_Remotes.Clear();
+		m_LastFetch.reset();
 		m_Stashes.Clear();
 		m_Head.Clear();
 		m_Log.Clear();
@@ -132,6 +133,7 @@ namespace Graphite {
 		m_CheckedOut.clear();
 		m_CheckoutPlan.reset();
 		m_DeleteCheck.reset();
+		m_FastForward.reset();
 
 		m_Tickets.clear();
 		m_Confirmed.reset();
@@ -263,12 +265,19 @@ namespace Graphite {
 			Core::Result<std::vector<Core::Tag>> tags = m_Port.QueryTags(*tagCache);
 			const bool tagsSameAsHeld = heldTags != nullptr && tags.HasValue() && tags.GetValue() == *heldTags;
 
+			const std::optional<std::chrono::sys_seconds> lastFetch = m_Port.QueryLastFetch();
+
 			Deliver([this, generation, held, sameAsHeld, result = std::move(result), tagsGeneration, heldTags, tagsSameAsHeld,
-					 tags = std::move(tags)]() mutable {
+					 tags = std::move(tags), lastFetch]() mutable {
 				LandTags(tagsGeneration, heldTags, tagsSameAsHeld, std::move(tags));
 
 				const bool stillHeld = sameAsHeld && m_Branches.Get() == held;
 				const SlotLanding landing = stillHeld ? m_Branches.LandSameAsHeld(generation) : m_Branches.Land(generation, std::move(result));
+
+				if (landing != SlotLanding::Stale)
+				{
+					m_LastFetch = lastFetch;
+				}
 
 				if (landing == SlotLanding::Applied)
 				{

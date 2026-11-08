@@ -36,7 +36,17 @@ namespace Graphite {
 
 	GitPanelWait DescribePanelWait(const GitPanelCheckouts& checkouts);
 
+	// A fetch, pull or push: its running text while it runs, else its done text while that is shown.
+	struct NetworkActivity
+	{
+		std::optional<std::string> Running;
+		std::optional<std::string> Done;
+	};
+
+	// A question waiting for its answer comes first, then a running write, then a running network operation, then the
+	// write's done text and the network operation's.
 	// WARNING: Says nothing of a running checkout, which the branch item names in place of the head.
 	std::optional<GitActivity> DescribeGitActivity(const std::optional<GitModel::WriteReport>& report,
-												   const std::optional<std::string>& awaitingAnswer);
+												   const std::optional<std::string>& awaitingAnswer,
+												   const NetworkActivity& network = {});
 }

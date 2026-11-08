@@ -1,0 +1,218 @@
+#pragma once
+
+#include "Core/Base/Base.h"
+
+#include "Core/Base/NonCopyable.h"
+#include "Core/Base/Result.h"
+#include "Core/Base/Timestep.h"
+#include "Core/Events/EventBus.h"
+#include "Core/Git/Command/GitNetwork.h"
+#include "Core/Git/Remote.h"
+#include "Core/Jobs/JobSubmitter.h"
+#include "Git/DeliveryInbox.h"
+#include "Git/GitModel.h"
+#include "Git/GitPort.h"
+
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace Graphite {
+
+	enum class NetworkOperation
+	{
+		Fetch,
+		Pull,
+		Push,
+		FullHistory
+	};
+
+	struct NetworkState
+	{
+		std::optional<NetworkOperation> Running;
+
+		// git's own, once it counts.
+		std::optional<int> Percent;
+
+		// False while nothing runs, and once Pull's fast-forward is asked for, which nothing stops.
+		bool Cancellable = false;
+
+		friend bool operator==(const NetworkState&, const NetworkState&) = default;
+	};
+
+	struct NetworkDone
+	{
+		NetworkOperation Operation = NetworkOperation::Fetch;
+
+		// Pull's: the commits the fast-forward brought. Push's: the commits the branch was ahead of its upstream. Empty
+		// when not counted: a fetch, a cancel, a push that set the upstream.
+		std::optional<std::size_t> Commits;
+
+		bool Cancelled = false;
+
+		friend bool operator==(const NetworkDone&, const NetworkDone&) = default;
+	};
+
+	struct NetworkFailureReport
+	{
+		NetworkOperation Operation = NetworkOperation::Fetch;
+
+		// The toast's message: the hint's sentence first, then git's last lines.
+		Core::Error Error;
+
+		// The whole of git's stderr, or the sentence when git never ran.
+		std::string Copied;
+	};
+
+	// The remote and the branch a failure's sentences name, when they are known.
+	struct NetworkNames
+	{
+		std::optional<std::string> Remote;
+		std::optional<std::string> Branch;
+	};
+
+	// Runs one fetch, pull or push at a time, on a queue of its own so a long fetch never holds a commit back; the
+	// operations asked meanwhile wait their turn in order. Each reads the branches and remotes itself as it starts, so it
+	// acts on the repository as it is, not as the last listing showed it. Pull fetches its upstream's remote, then hands
+	// the fast-forward to the git model's write queue, which reads the branches again just before the merge. UI thread
+	// only, but for the jobs it submits.
+	// WARNING: Every job captures `this`; the owner declares this after the port and the git model and before the queue
+	// behind the submitter.
+	class NetworkModel : Core::NonCopyable
+	{
+	public:
+		NetworkModel(GitPort& port, GitModel& git, Core::JobSubmitter submit);
+
+		void Fetch();
+		void Pull();
+
+		// Without a remote: the upstream's, or the only remote when the branch has no upstream. A remote other than the
+		// upstream's becomes the branch's upstream.
+		void Push(std::optional<std::string> remote = std::nullopt);
+
+		void FetchFullHistory();
+
+		// Ends the running operation within the runner's poll, unless it is Pull's fast-forward. The waiting ones still run.
+		void Cancel();
+
+		NetworkState GetState() const;
+
+		// Each finished operation, once: a done one or a cancelled one here, a failed one in TakeFailure.
+		std::optional<NetworkDone> TakeDone();
+		std::optional<NetworkFailureReport> TakeFailure();
+
+		// The last done or cancelled operation, for GitModel::kWriteConfirmationSeconds after it ended, as a write's.
+		std::optional<NetworkDone> GetShownDone() const;
+
+		void OnUpdate(Core::Timestep timestep);
+
+		// Cancels the running operation, waits for its job to end, which takes at most the runner's poll and the job's own
+		// end, and forgets every answer and every operation waiting: before the port is pointed at another folder, and on
+		// shutdown.
+		// WARNING: Pull's fast-forward, once asked for, still runs on the write queue; only the git model's own folder
+		// change drops its answer, which a Detach without one would leave for the next Pull to take.
+		void Detach();
+
+		void SubscribeTo(Core::EventBus& events); // WorkspaceOpenedEvent / WorkspaceClosedEvent -> Detach()
+
+	private:
+		struct Request
+		{
+			NetworkOperation Operation = NetworkOperation::Fetch;
+			std::optional<std::string> Remote;
+		};
+
+		// Pull's branch and the upstream its fetch brought up to date, short and full names.
+		struct PullTarget
+		{
+			std::string Branch;
+			std::string BranchFullName;
+			std::string Upstream;
+			std::string UpstreamFullName;
+		};
+
+		// What a job hands to the UI thread. A refusal before git ran is a failure whose words are the sentence.
+		struct JobAnswer
+		{
+			Core::NetworkOutcome Outcome;
+			std::optional<std::size_t> Commits;
+			NetworkNames Names;
+
+			// Set by Pull's job: the merge to ask once its fetch is done.
+			std::optional<PullTarget> FastForward;
+		};
+
+		struct RunningOperation
+		{
+			NetworkOperation Operation = NetworkOperation::Fetch;
+
+			// Per operation, so a flag set for one can never stop the next.
+			Core::Ref<std::atomic<bool>> Cancelled;
+
+			NetworkNames Names;
+
+			// Pull's, once its fast-forward is asked for.
+			std::optional<PullTarget> FastForwarding;
+		};
+
+		void Ask(Request request);
+		void StartNext();
+		void Start(const Request& request);
+
+		// WARNING: These run on a worker thread. They touch m_Port, m_Progress, m_Percent, m_JobMutex and m_Inbox and nothing
+		// else on this object.
+		void RunAndDeliver(const Request& request, const std::atomic<bool>& cancelled, std::uint64_t folder);
+		JobAnswer RunJob(const Request& request, const std::atomic<bool>& cancelled);
+		JobAnswer RunOperation(const Request& request, const std::atomic<bool>& cancelled);
+		JobAnswer RunFetch(const std::atomic<bool>& cancelled);
+		JobAnswer RunFullHistory(const std::atomic<bool>& cancelled);
+		JobAnswer RunPullFetch(const std::atomic<bool>& cancelled);
+		JobAnswer RunPush(const std::optional<std::string>& remote, const std::atomic<bool>& cancelled);
+		void RecordRemoteDefaults(const std::vector<Core::Remote>& remotes, const std::atomic<bool>& cancelled);
+
+		// Any thread: called with git's percent while it counts.
+		void NotePercent(int percent);
+
+		void Land(std::uint64_t folder, const JobAnswer& answer);
+		void LandFastForward(const FastForwardAnswer& answer);
+		void Finish(const Core::NetworkOutcome& outcome, std::optional<std::size_t> commits);
+		void ShowDone(const NetworkDone& done);
+		void CountDownShownDone(Core::Timestep timestep);
+
+		// A job holds m_JobMutex for as long as it runs, so taking it waits for the one running, if any, to end.
+		void WaitForRunningJob();
+
+		GitPort& m_Port;
+		GitModel& m_Git;
+		Core::JobSubmitter m_Submit;
+		const Core::ProgressSink m_Progress;
+
+		// WARNING: The inbox's mutex covers the inbox and nothing else; every member after it, up to m_Percent, is touched on
+		// the UI thread only.
+		DeliveryInbox m_Inbox;
+
+		// Moved by every Detach: an answer of the folder before lands as nothing.
+		std::uint64_t m_Folder = 0;
+
+		std::optional<RunningOperation> m_Running;
+		std::deque<Request> m_Waiting;
+
+		std::deque<NetworkDone> m_Done;
+		std::deque<NetworkFailureReport> m_Failures;
+
+		std::optional<NetworkDone> m_Shown;
+		float m_ShownSecondsLeft = 0.0f;
+
+		static constexpr int kNoPercent = -1;
+
+		// Written by the runner's thread, read by the UI thread.
+		std::atomic<int> m_Percent{kNoPercent};
+
+		std::mutex m_JobMutex;
+	};
+}

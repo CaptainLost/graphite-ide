@@ -184,3 +184,50 @@ TEST_CASE("A delete whose question waits for the Git panel says so")
 
 	CHECK(wait.AwaitingAnswer == "Deleting branch old");
 }
+
+TEST_CASE("Pull's fast-forward reads as pulling while it runs and counts the commits it brought once done")
+{
+	const GitModel::WriteSubject pulled{.Kind = GitModel::WriteKind::FastForward, .Commits = 3};
+
+	CHECK(Graphite::WriteRunningText(pulled) == "Pulling" + kEllipsis);
+	CHECK(Graphite::WriteDoneText(pulled) == "Pulled 3 commits");
+}
+
+TEST_CASE("A running network operation is said over a write's done text and gives way to a running write")
+{
+	const GitModel::WriteSubject staging = PathsSubject(GitModel::WriteKind::Stage, 1, "a.txt");
+	const GitModel::WriteReport stageRunning{.Subject = staging, .Progress = GitModel::WriteProgress::Running};
+	const GitModel::WriteReport stageDone{.Subject = staging, .Progress = GitModel::WriteProgress::Done};
+	const Graphite::NetworkActivity fetching{.Running = "Fetching" + kEllipsis + " 45%"};
+
+	const std::optional<Graphite::GitActivity> overDone = Graphite::DescribeGitActivity(stageDone, std::nullopt, fetching);
+	REQUIRE(overDone.has_value());
+	CHECK(overDone->Text == "Fetching" + kEllipsis + " 45%");
+	CHECK(overDone->Busy);
+
+	const std::optional<Graphite::GitActivity> givesWay = Graphite::DescribeGitActivity(stageRunning, std::nullopt, fetching);
+	REQUIRE(givesWay.has_value());
+	CHECK(givesWay->Text == "Staging a.txt" + kEllipsis);
+}
+
+TEST_CASE("A checkout named in place of the head leaves the activity line to a running network operation")
+{
+	const GitModel::WriteReport checkingOut{.Subject = NamedSubject(GitModel::WriteKind::Checkout, "feature"),
+											.Progress = GitModel::WriteProgress::Running};
+
+	const std::optional<Graphite::GitActivity> activity =
+		Graphite::DescribeGitActivity(checkingOut, std::nullopt, Graphite::NetworkActivity{.Running = "Pushing" + kEllipsis});
+
+	REQUIRE(activity.has_value());
+	CHECK(activity->Text == "Pushing" + kEllipsis);
+}
+
+TEST_CASE("A network operation's done text is said once nothing runs and no write's done text is shown")
+{
+	const std::optional<Graphite::GitActivity> activity =
+		Graphite::DescribeGitActivity(std::nullopt, std::nullopt, Graphite::NetworkActivity{.Done = "Fetched"});
+
+	REQUIRE(activity.has_value());
+	CHECK(activity->Text == "Fetched");
+	CHECK_FALSE(activity->Busy);
+}
