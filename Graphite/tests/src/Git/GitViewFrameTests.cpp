@@ -974,7 +974,8 @@ TEST_CASE("Git window: push with no upstream and several remotes asks which remo
 	REQUIRE(window.PointAt(window.PushId));
 	window.Click();
 
-	// Asking pushes nothing yet: the menu names the branch and lists the remotes in the config's order.
+	// Asking pushes nothing yet: the menu names the branch and lists the remotes in the order the port lists them, which
+	// the app's does by name and this one as given.
 	CHECK(window.Port.Network.Calls.empty());
 
 	// A popup is sized by its content over its first frames.

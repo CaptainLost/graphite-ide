@@ -53,10 +53,11 @@ namespace Graphite {
 	// One of Fetch, Pull and Push as the bar draws it: "Pull" and its count apart, the count drawn in the match colour.
 	struct ButtonText
 	{
-		// "Fetch", "Pull", "Push"; while this button's operation runs, "Fetching… 45%", "Pulling…", "Pushing…".
+		// "Fetch", "Pull", "Push", whatever runs: what runs is said by the busy mark, the count slot and the tooltip.
 		std::string Label;
 
-		// The distance to the upstream when it is over 0; empty otherwise and while the button runs.
+		// The distance to the upstream when it is over 0, and empty otherwise. While this button's operation runs, git's
+		// percent once it counts ("45%"), empty until then; a button another operation disables keeps its count.
 		std::string Count;
 
 		// What a hover says: the action, why the button is disabled, or "Click to cancel". Empty while nothing is known.

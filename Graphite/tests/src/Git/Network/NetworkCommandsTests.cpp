@@ -162,8 +162,11 @@ TEST_CASE("Commands: push with several remotes and no upstream on a remote is di
 	Registered registered(buttons);
 
 	CHECK_FALSE(registered.EnabledNow("git.push"));
-	CHECK(registered.Commands.Find("git.push")->DisabledNote == "Choose the remote from Push in the Git window.");
 	CHECK(Graphite::CommandStateOfPush(buttons).Note == "Choose the remote from Push in the Git window.");
+
+	// The menu shows a fixed note only for a command that offers something while disabled, which Push does not, and a
+	// fixed note would give this reason for every other one.
+	CHECK(registered.Commands.Find("git.push")->DisabledNote.empty());
 	CHECK(registered.EnabledNow("git.fetch"));
 }
 

@@ -82,7 +82,6 @@ namespace Graphite {
 		commands.Add({.Id = "git.push",
 					  .Label = "Git: Push",
 					  .Run = services.Push,
-					  .Enabled = [buttons = services.Buttons] { return CommandStateOfPush(buttons()).Enabled; },
-					  .DisabledNote = ChooseRemoteFromBarText()});
+					  .Enabled = [buttons = services.Buttons] { return CommandStateOfPush(buttons()).Enabled; }});
 	}
 }

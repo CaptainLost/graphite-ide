@@ -211,7 +211,8 @@ namespace Graphite {
 		// A click on Fetch, Pull, Push, or on the one running.
 		void AnswerNetworkClick(NetworkClick click);
 
-		// The remotes Push can go to, when it asks which: "Push <branch> to…" and one item each, in the config's order.
+		// The remotes Push can go to, when it asks which: "Push <branch> to…" and one item each, in the order the remotes are
+		// listed, which is by name.
 		void RenderPushRemoteMenu();
 
 		// The full name of the branch the sidebar keeps listed: the selected one, or the checked-out one for HEAD's
