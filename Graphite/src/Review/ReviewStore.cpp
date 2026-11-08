@@ -1,6 +1,7 @@
 #include "Review/ReviewStore.h"
 
 #include "Persistence/FileBackup.h"
+#include "Persistence/FolderStateDirectory.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
@@ -17,7 +18,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr const char* kStateDirectory = ".graphite";
 		constexpr const char* kReviewsFile = "reviews.json";
 
 		std::string_view WhyNotTakenIn(ReviewsText text)
@@ -38,7 +38,7 @@ namespace Graphite {
 
 	std::filesystem::path ReviewStore::FileFor(const std::filesystem::path& root)
 	{
-		return root / kStateDirectory / kReviewsFile;
+		return FolderStateDirectory(root) / kReviewsFile;
 	}
 
 	void ReviewStore::Open(std::filesystem::path root)
@@ -169,8 +169,7 @@ namespace Graphite {
 			return;
 		}
 
-		std::error_code directoryError;
-		std::filesystem::create_directories(file.parent_path(), directoryError);
+		static_cast<void>(EnsureFolderStateDirectory(m_Root)); // logs its own failure, which the write below reports too
 
 		const Core::Result<void> written = Core::WriteFileAtomically(file, text);
 

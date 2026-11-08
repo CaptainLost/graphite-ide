@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Language/Analysis/AnalysisRecord.h"
+#include "Persistence/FolderStateDirectory.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Ascii.h"
@@ -90,7 +91,8 @@ namespace Graphite {
 
 		m_Ready = false;
 
-		m_Jobs.Submit([listing = m_Listing, token = m_Token, directory = Directory()] {
+		m_Jobs.Submit([listing = m_Listing, token = m_Token, root = m_Root, directory = Directory()] {
+			static_cast<void>(EnsureFolderStateDirectory(root)); // logs its own failure
 			ReadIndexInto(directory, token, *listing);
 			Core::Redraw::Request();
 		});
@@ -208,7 +210,7 @@ namespace Graphite {
 
 	std::filesystem::path AnalysisStore::Directory() const
 	{
-		return m_Root / ".graphite" / "analysis";
+		return FolderStateDirectory(m_Root) / "analysis";
 	}
 
 	std::filesystem::path AnalysisStore::RecordPath(const std::string& record) const

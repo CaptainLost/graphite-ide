@@ -1,5 +1,7 @@
 #include "Workspace/Workspace.h"
 
+#include "Persistence/FolderStateDirectory.h"
+
 #include "Settings/AppSettings.h"
 #include "Solution/SolutionFiles.h"
 #include "UI/Dialogs/FileDialogOffer.h"
@@ -205,6 +207,14 @@ namespace Graphite {
 		StartWatching(root, kNoFailureContext);
 
 		m_Settings = WorkspaceSettings{root};
+
+		// A state directory left by a build that wrote no .gitignore into it gets one now, before git lists it.
+		std::error_code stateError;
+		if (std::filesystem::is_directory(FolderStateDirectory(root), stateError))
+		{
+			static_cast<void>(EnsureFolderStateDirectory(root)); // logs its own failure
+		}
+
 		m_SelectedSolution = Core::FromUtf8(m_Settings.Read(kSelectedSolutionKey));
 
 		FindSolutions();

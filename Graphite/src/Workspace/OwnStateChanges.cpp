@@ -1,15 +1,10 @@
 #include "Workspace/OwnStateChanges.h"
 
+#include "Persistence/FolderStateDirectory.h"
+
 #include "Core/FileSystem/FileSystem.h"
 
-#include <string_view>
-
 namespace Graphite {
-
-	namespace {
-
-		constexpr std::string_view kStateDirectoryName = ".graphite";
-	}
 
 	bool OnlyOwnStateChanged(const std::vector<std::filesystem::path>& directories,
 							 const std::filesystem::path& root)
@@ -19,7 +14,7 @@ namespace Graphite {
 			return false;
 		}
 
-		const std::filesystem::path stateDirectory = root / kStateDirectoryName;
+		const std::filesystem::path stateDirectory = FolderStateDirectory(root);
 
 		for (const std::filesystem::path& directory : directories)
 		{

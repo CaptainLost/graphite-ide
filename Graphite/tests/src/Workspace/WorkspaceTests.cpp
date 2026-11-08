@@ -692,3 +692,21 @@ TEST_CASE("A solution outside the open folder goes through the replace gate and 
 	CHECK(gated == 1);
 	CHECK(Core::SamePath(workspace.GetRoot(), outside.parent_path()));
 }
+
+TEST_CASE("Opening a folder whose state directory has no .gitignore gives it one, and a folder without one gets none")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path older = temp.MakeDirectory("older");
+	temp.MakeFile("older/.graphite/workspace.json", "{}");
+	const std::filesystem::path fresh = temp.MakeDirectory("fresh");
+
+	REQUIRE(workspace.OpenFolder(older));
+	CHECK(std::filesystem::exists(older / ".graphite" / ".gitignore"));
+
+	REQUIRE(workspace.OpenFolder(fresh));
+	CHECK_FALSE(std::filesystem::exists(fresh / ".graphite"));
+}
