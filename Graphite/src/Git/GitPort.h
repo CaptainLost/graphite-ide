@@ -19,6 +19,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -33,6 +34,17 @@ namespace Graphite {
 		std::size_t Count = 0;
 
 		friend bool operator==(const CommitCount&, const CommitCount&) = default;
+	};
+
+	// The repository's shallow file as it was looked at: absent, or its size and last write. A change of it is a change of
+	// the history the repository holds, which moves no ref: a clone deepened by a fetch, here or in a terminal.
+	struct ShallowStamp
+	{
+		bool Exists = false;
+		std::uintmax_t Size = 0;
+		std::filesystem::file_time_type Written{};
+
+		friend bool operator==(const ShallowStamp&, const ShallowStamp&) = default;
 	};
 
 	// What the network operations run with. Git is empty when no git was found, and then every operation fails.
@@ -120,6 +132,9 @@ namespace Graphite {
 
 		// The mtime of FETCH_HEAD in the common git dir; empty when never fetched.
 		virtual std::optional<std::chrono::sys_seconds> QueryLastFetch() = 0;
+
+		// The shallow file in the common git dir as it is now; an absent one when the repository cannot be opened.
+		virtual ShallowStamp QueryShallowStamp() = 0;
 
 		// WARNING: Each runs git itself, to its end, in the repository's work tree, and polls `cancelled` every 50 ms.
 		// Without a git they fail at once, saying so. FastForward cannot be cancelled once its merge has started.

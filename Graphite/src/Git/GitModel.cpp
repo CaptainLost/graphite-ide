@@ -96,6 +96,7 @@ namespace Graphite {
 		m_UserEmail.Clear();
 		m_Remotes.Clear();
 		m_LastFetch.reset();
+		m_ListedShallow = ShallowStamp{};
 		m_GitFound = false;
 		m_Stashes.Clear();
 		m_Head.Clear();
@@ -268,12 +269,16 @@ namespace Graphite {
 
 			const std::optional<std::chrono::sys_seconds> lastFetch = m_Port.QueryLastFetch();
 			const bool gitFound = m_Port.QueryNetworkSetup().Git.has_value();
+			const ShallowStamp shallow = m_Port.QueryShallowStamp();
 
 			Deliver([this, generation, held, sameAsHeld, result = std::move(result), tagsGeneration, heldTags, tagsSameAsHeld,
-					 tags = std::move(tags), lastFetch, gitFound]() mutable {
+					 tags = std::move(tags), lastFetch, gitFound, shallow]() mutable {
 				LandTags(tagsGeneration, heldTags, tagsSameAsHeld, std::move(tags));
 
-				const bool stillHeld = sameAsHeld && m_Branches.Get() == held;
+				// WARNING: A clone deepened, here or in a terminal, holds history that no ref shows, so its listing is a new
+				// snapshot even when the branches are the same: whatever follows the snapshot reads that history again.
+				const bool shallowChanged = shallow != m_ListedShallow;
+				const bool stillHeld = sameAsHeld && m_Branches.Get() == held && !shallowChanged;
 				const SlotLanding landing = stillHeld ? m_Branches.LandSameAsHeld(generation) : m_Branches.Land(generation, std::move(result));
 
 				if (landing != SlotLanding::Stale)
@@ -284,6 +289,7 @@ namespace Graphite {
 
 				if (landing == SlotLanding::Applied)
 				{
+					m_ListedShallow = shallow;
 					RequestBranchAuthorsWhenTipsMoved();
 				}
 			});

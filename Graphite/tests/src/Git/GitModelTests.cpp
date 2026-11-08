@@ -2825,6 +2825,35 @@ TEST_CASE("Git window: a listing of the same branches keeps the snapshot it hold
 	CHECK_FALSE(model.GetBranchesError().has_value());
 }
 
+TEST_CASE("Git window: a listing of the same branches is a new snapshot once the clone's shallow file has changed")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.Network.Shallow = Graphite::ShallowStamp{.Exists = true, .Size = 41};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	const Core::Ref<const std::vector<Core::Branch>> shallow = model.GetBranches();
+	REQUIRE(shallow != nullptr);
+
+	// Deepened by a fetch, here or in a terminal: no ref moved, and the shallow file is gone.
+	port.Network.Shallow = Graphite::ShallowStamp{};
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	const Core::Ref<const std::vector<Core::Branch>> deepened = model.GetBranches();
+	REQUIRE(deepened != nullptr);
+	CHECK(deepened != shallow);
+	CHECK(*deepened == *shallow);
+
+	// Listed again as it is now: the snapshot is kept.
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(model.GetBranches() == deepened);
+}
+
 TEST_CASE("Git window: a refresh that reads the same remotes and e-mail keeps the snapshots it holds")
 {
 	FakePort port;

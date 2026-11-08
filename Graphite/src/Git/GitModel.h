@@ -665,6 +665,10 @@ namespace Graphite {
 		GenerationSlot<std::vector<Core::Remote>> m_Remotes;
 		std::optional<std::chrono::sys_seconds> m_LastFetch;
 		bool m_GitFound = false;
+
+		// The shallow file as the branch snapshot held was listed with.
+		ShallowStamp m_ListedShallow;
+
 		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
 		std::optional<std::vector<Core::Oid>> m_AuthorsHidden;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;

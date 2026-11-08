@@ -30,15 +30,10 @@ namespace Graphite {
 			return !sshCommand.HasValue() || sshCommand.GetValue();
 		}
 
-		// The repository's shallow file as a handle found it: absent, or its size and last write.
-		struct ShallowStamp
+		std::filesystem::path ShallowFileOf(const Core::Repository& repository)
 		{
-			bool Exists = false;
-			std::uintmax_t Size = 0;
-			std::filesystem::file_time_type Written{};
-
-			friend bool operator==(const ShallowStamp&, const ShallowStamp&) = default;
-		};
+			return repository.CommonDirectory() / "shallow";
+		}
 
 		// One look at the file's attributes. A file that cannot be looked at counts as absent: at worst a handle is opened
 		// once more.
@@ -232,7 +227,7 @@ namespace Graphite {
 		++m_OpenCount;
 
 		// Taken before the handle has parsed a commit: a change after it is one the handle may have missed, and drops it.
-		std::filesystem::path shallowFile = opened.GetValue().CommonDirectory() / "shallow";
+		std::filesystem::path shallowFile = ShallowFileOf(opened.GetValue());
 		const ShallowStamp shallow = ShallowStampOf(shallowFile);
 
 		std::pair<HandleMap::iterator, bool> insertion =
@@ -1527,6 +1522,18 @@ namespace Graphite {
 		}
 
 		return Core::LastFetchTime(opened.GetValue()->CommonDirectory());
+	}
+
+	ShallowStamp RepositoryGitPort::QueryShallowStamp()
+	{
+		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return ShallowStamp{};
+		}
+
+		return ShallowStampOf(ShallowFileOf(*opened.GetValue()));
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::WithNetworkRun(const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation)

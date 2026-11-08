@@ -2,14 +2,21 @@
 
 #include "Git/RepositoryGitPort.h"
 
+#include "GitFixtures.h"
 #include "TempDirectory.h"
 
+#include "Core/Base/Timestep.h"
+#include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Command/GitExecutable.h"
 #include "Core/Git/Command/GitRunner.h"
 #include "Core/Git/Lines/LineModel.h"
+#include "Git/Debouncer.h"
+#include "Git/GitModel.h"
 #include "Git/Lines/LineReader.h"
+#include "Git/Lines/LinesModel.h"
 #include "Review/ReviewRepository.h"
+#include "Workspace/Workspace.h"
 
 #include <git2.h>
 
@@ -212,6 +219,26 @@ namespace {
 		INFO((read.HasValue() ? std::string{} : read.GetError().Message));
 		REQUIRE(read.HasValue());
 		return std::move(read).GetValue();
+	}
+
+	// Frames of the window's two models over the port: the git model's listings land, and the lines follow them.
+	void SettleLines(Graphite::GitModel& model, Graphite::LinesModel& lines)
+	{
+		constexpr int kFrames = 6;
+		constexpr float kFrameSeconds = 0.016f;
+
+		for (int frame = 0; frame < kFrames; ++frame)
+		{
+			model.OnUpdate(Core::Timestep{kFrameSeconds});
+			lines.Follow(model.GetBranches(), model.GetBranchListingGeneration(), model.GetTags());
+			lines.OnUpdate(Core::Timestep{kFrameSeconds});
+		}
+	}
+
+	std::int64_t FixedNow()
+	{
+		constexpr std::int64_t kNow = 1800000000;
+		return kNow;
 	}
 
 	// The state the read gives the branch named `fullName`; empty when it has no line for it.
@@ -597,4 +624,74 @@ TEST_CASE("Git network port: core.sshCommand is reported when set and not when u
 	git_repository_free(opened);
 
 	CHECK(port.QueryNetworkSetup().SshCommandConfigured);
+}
+
+TEST_CASE("Git network port: a clone deepened in a terminal, no ref moved, is read afresh at the next repository change")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	// topic forks from master's first commit, and each side has two commits of its own. A clone two commits deep has neither
+	// side's history down to the fork, and no tip on the cut: deepening it changes no branch's tip commit either.
+	NetworkScene scene{*git};
+	scene.Git(scene.WorkPath(), {"branch", "topic"});
+
+	for (const char* change : {"master's first change", "master's second change"})
+	{
+		scene.Work().Write("a.txt", std::string{change} + "\n");
+		scene.Work().Commit(change);
+	}
+
+	scene.Git(scene.WorkPath(), {"checkout", "-q", "topic"});
+
+	for (const char* change : {"topic's first change", "topic's second change"})
+	{
+		scene.Work().Write("b.txt", std::string{change} + "\n");
+		scene.Work().Commit(change);
+	}
+
+	scene.Git(scene.WorkPath(), {"checkout", "-q", kBranch});
+
+	TempDirectory cloneDirectory;
+	scene.Git(cloneDirectory.GetPath(),
+			  {"clone", "--depth", "2", "--no-single-branch", "file:///" + ForwardSlashes(scene.WorkPath()), "shallow"});
+	const std::filesystem::path shallow = cloneDirectory.GetPath() / "shallow";
+
+	// The window's git and lines models, as the app has them over the port.
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{shallow, storeRoot.GetPath()};
+	Core::EventBus events;
+	Graphite::GitModel model{port, RunJobsInline()};
+	Graphite::LinesModel lines{port, RunJobsInline(), FixedNow};
+	model.SetRoot(shallow);
+	model.SubscribeTo(events);
+
+	model.RequestBranches();
+	SettleLines(model, lines);
+	REQUIRE(lines.GetRead() != nullptr);
+	REQUIRE(LineStateOf(*lines.GetRead(), "refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::HistoryCutOff});
+
+	// Deepened outside the window, which asked for nothing.
+	const std::string refsBefore = scene.Git(shallow, {"for-each-ref"});
+	scene.Git(shallow, {"fetch", "-q", "--unshallow"});
+	REQUIRE(scene.Git(shallow, {"for-each-ref"}) == refsBefore);
+
+	// The watcher's notice, as for any change on disk, and no reopening of the folder. The branches list as they did.
+	const Core::Ref<const std::vector<Core::Branch>> branchesBefore = model.GetBranches();
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{Graphite::Debouncer::kMaxSeconds});
+	SettleLines(model, lines);
+	REQUIRE(model.GetBranches() != nullptr);
+	CHECK(*model.GetBranches() == *branchesBefore);
+
+	REQUIRE(lines.GetRead() != nullptr);
+	CHECK(LineStateOf(*lines.GetRead(), "refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::NotMerged});
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
 }

@@ -60,6 +60,7 @@ namespace Graphite {
 
 		NetworkSetup QueryNetworkSetup() override;
 		std::optional<std::chrono::sys_seconds> QueryLastFetch() override;
+		ShallowStamp QueryShallowStamp() override;
 		Core::NetworkOutcome FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress) override;
 		Core::NetworkOutcome FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 										 const std::string& remote) override;

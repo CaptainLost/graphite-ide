@@ -181,18 +181,6 @@ namespace Graphite {
 		RetryWhenDue();
 	}
 
-	void LinesModel::ReadAgain()
-	{
-		if (m_LastAsked.Branches == nullptr)
-		{
-			return;
-		}
-
-		m_Retry = ReadRetry{};
-		m_RetryWanted = false;
-		AskRead(m_LastAsked);
-	}
-
 	void LinesModel::AskRead(const ListingSnapshot& snapshot)
 	{
 		m_LastAsked = snapshot;

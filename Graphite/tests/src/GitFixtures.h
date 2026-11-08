@@ -23,6 +23,7 @@ struct NetworkDoubleState
 {
 	Graphite::NetworkSetup Setup;
 	std::optional<std::chrono::sys_seconds> LastFetch;
+	Graphite::ShallowStamp Shallow;
 	Core::NetworkOutcome Outcome;
 	std::vector<std::string> Calls;
 	int Progress = -1;
@@ -49,6 +50,7 @@ public:
 
 	Graphite::NetworkSetup QueryNetworkSetup() override { return Network.Setup; }
 	std::optional<std::chrono::sys_seconds> QueryLastFetch() override { return Network.LastFetch; }
+	Graphite::ShallowStamp QueryShallowStamp() override { return Network.Shallow; }
 
 	Core::NetworkOutcome FetchAll(const std::atomic<bool>&, const Core::ProgressSink& progress) override
 	{

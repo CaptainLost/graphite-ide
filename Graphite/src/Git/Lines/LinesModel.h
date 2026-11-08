@@ -47,10 +47,6 @@ namespace Graphite {
 		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t listing = 0,
 					const Core::Ref<const std::vector<Core::Tag>>& tags = nullptr);
 
-		// Asks a read of the snapshot followed now, though it has not changed: a fetch of a shallow clone's full history
-		// changes the commits the graph holds and may move no ref. Nothing before the first snapshot is followed.
-		void ReadAgain();
-
 		void Change(LineAnswerChange change);
 
 		// A change that could not be saved, once, to be said where the user made it; the read before it stays.
