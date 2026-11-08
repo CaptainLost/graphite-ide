@@ -231,7 +231,7 @@ namespace Core {
 		g_textures = m_Textures.get();
 
 		m_Initialized = true;
-		CORE_INFO("ImGui initialized (docking + viewports)");
+		CORE_TRACE("ImGui initialized (docking + viewports)");
 		return Result<void>::Ok();
 	}
 

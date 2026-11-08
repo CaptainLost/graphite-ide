@@ -303,7 +303,7 @@ namespace Graphite {
 
 		m_StateKeeper.AdoptGlobal(stored);
 
-		APP_INFO("Registered panels: {}", m_Panels.GetCount());
+		APP_TRACE("Registered panels: {}", m_Panels.GetCount());
 
 		explorer->LoadSettings();
 
@@ -397,6 +397,8 @@ namespace Graphite {
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",
 						.Run = [this] { m_SearchPanel->Focus(); }});
+
+		m_Keys.SetDefault("search.focus", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_F)});
 
 		// WARNING: These commands act on the active editor view, the one last focused, not the one being drawn: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
 		RegisterEditorNavigationCommands(m_Commands, m_Keys, m_ActiveEditor,

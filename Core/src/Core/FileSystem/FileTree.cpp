@@ -91,7 +91,7 @@ namespace Core {
 		m_Root.IsDirectory = true;
 		m_HasRoot = true;
 
-		CORE_INFO("Workspace root set to '{}'", ToUtf8(root));
+		CORE_TRACE("Workspace root set to '{}'", ToUtf8(root));
 		return Result<void>::Ok();
 	}
 

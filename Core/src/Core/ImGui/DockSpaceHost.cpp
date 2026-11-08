@@ -102,7 +102,7 @@ namespace Core {
 			}
 
 			ImGui::DockBuilderFinish(dockSpaceId);
-			CORE_INFO("Built default dock layout");
+			CORE_TRACE("Built default dock layout");
 		}
 
 		// WARNING: ImGui selects a docked tab on a right press or release before any owner can ask about the click, and the tab bars are submitted inside DockSpace. The right button is locked for exactly that call and restored straight after, so the tab's own context menu still sees the click.

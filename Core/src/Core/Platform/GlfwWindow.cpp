@@ -53,10 +53,10 @@ namespace Core {
 
 		void LogGraphicsEnvironmentForBugReports()
 		{
-			CORE_INFO("GL vendor: {}", OpenGlStringOrUnknown(GL_VENDOR));
-			CORE_INFO("GL renderer: {}", OpenGlStringOrUnknown(GL_RENDERER));
-			CORE_INFO("GL version: {}", OpenGlStringOrUnknown(GL_VERSION));
-			CORE_INFO("GLFW: {}", glfwGetVersionString());
+			CORE_TRACE("GL vendor: {}", OpenGlStringOrUnknown(GL_VENDOR));
+			CORE_TRACE("GL renderer: {}", OpenGlStringOrUnknown(GL_RENDERER));
+			CORE_TRACE("GL version: {}", OpenGlStringOrUnknown(GL_VERSION));
+			CORE_TRACE("GLFW: {}", glfwGetVersionString());
 		}
 
 		int s_LiveWindowCount = 0;
@@ -657,7 +657,7 @@ namespace Core {
 
 		window->Show(spec.Placement);
 
-		CORE_INFO("Window created: {}x{} \"{}\"", spec.Width, spec.Height, spec.Title);
+		CORE_TRACE("Window created: {}x{} \"{}\"", spec.Width, spec.Height, spec.Title);
 		return Result<Scope<Window>>{std::move(window)};
 	}
 }
