@@ -14,6 +14,7 @@
 #include "Core/Git/Command/GitNetwork.h"
 #include "Core/Git/Command/GitRunner.h"
 #include "Core/Git/Ref.h"
+#include "Core/Git/Status.h"
 #include "Core/Jobs/JobQueue.h"
 
 #include <algorithm>
@@ -102,12 +103,27 @@ namespace {
 		return *git;
 	}
 
-	// The git the acceptance makes and moves its repositories with, apart from the app's: the user's own config, as the
-	// app runs it, and an author given on the command line.
+	// An empty file under the root, the setup's git's global config.
+	std::filesystem::path EmptyGlobalConfig()
+	{
+		const std::filesystem::path config = AcceptanceRoot() / "empty-global-gitconfig";
+		const std::ofstream emptied{config, std::ios::trunc};
+		REQUIRE(emptied.is_open());
+		return config;
+	}
+
+	// The git the acceptance makes and moves its repositories with, apart from the app's. It reads no system config and an
+	// empty global one, so nothing of the user's (commit.gpgsign, core.hooksPath, init.defaultBranch) can stop or change
+	// it, and its author is given on the command line. The app's port runs git with the user's own config, as in the app.
 	class SetupGit
 	{
 	public:
-		explicit SetupGit(std::filesystem::path git) : m_Git(std::move(git)) {}
+		SetupGit(std::filesystem::path git, const std::filesystem::path& emptyGlobalConfig)
+			: m_Git(std::move(git)), m_Environment(Core::GitEnvironment(false))
+		{
+			m_Environment.push_back(Core::EnvironmentVariable{.Name = "GIT_CONFIG_NOSYSTEM", .Value = "1"});
+			m_Environment.push_back(Core::EnvironmentVariable{.Name = "GIT_CONFIG_GLOBAL", .Value = Core::ToUtf8(emptyGlobalConfig)});
+		}
 
 		std::string Run(const std::filesystem::path& directory, std::vector<std::string> arguments) const
 		{
@@ -119,9 +135,7 @@ namespace {
 
 		Core::GitOutput RunAnyway(const std::filesystem::path& directory, std::vector<std::string> arguments) const
 		{
-			const Core::GitRun run{.Arguments = std::move(arguments),
-								   .WorkingDirectory = directory,
-								   .Environment = Core::GitEnvironment(false)};
+			const Core::GitRun run{.Arguments = std::move(arguments), .WorkingDirectory = directory, .Environment = m_Environment};
 			const std::atomic<bool> neverCancelled{false};
 			Core::Result<Core::GitOutput> finished = Core::RunGit(m_Git, run, neverCancelled, IgnoreLine);
 			REQUIRE(finished.HasValue());
@@ -160,19 +174,23 @@ namespace {
 
 	private:
 		std::filesystem::path m_Git;
+		std::vector<Core::EnvironmentVariable> m_Environment;
 	};
 
 	// One case's folder under the root, emptied of what an earlier run left, and the repositories made in it.
 	class Scene
 	{
 	public:
-		explicit Scene(const std::string& name) : Git(FoundGit()), m_Folder(AcceptanceRoot() / name)
+		explicit Scene(const std::string& name) : Git(FoundGit(), EmptyGlobalConfig()), m_Folder(AcceptanceRoot() / name)
 		{
 			std::error_code removeError;
 			std::filesystem::remove_all(m_Folder, removeError);
 			REQUIRE_MESSAGE(!removeError, removeError.message());
 			std::filesystem::create_directories(m_Folder);
 			MESSAGE("scene ", Core::ToUtf8(m_Folder), ", git ", Core::ToUtf8(Git.Executable()));
+
+			// The setup's git sees none of the machine's or the user's config: outside a repository it has none at all.
+			REQUIRE(Git.RunAnyway(m_Folder, {"config", "list", "--show-scope"}).Out.empty());
 		}
 
 		const std::filesystem::path& Folder() const { return m_Folder; }
@@ -687,7 +705,10 @@ TEST_CASE("Network acceptance: pull fast-forwards the branch to what the server 
 	CHECK(Graphite::DoneText(*landing.Done) == "Pulled 3 commits");
 	CHECK(scene.Git.Head(work) == scene.Git.Head(peer));
 	CHECK(std::filesystem::exists(work / "d.txt"));
-	CHECK(scene.Git.Run(work, {"status", "--porcelain"}).empty());
+	// As the app sees the work tree, with the user's own line-ending config the merge checked the files out with.
+	const Core::Result<Core::WorkingTreeStatus> status = app.Port.QueryStatus();
+	REQUIRE(status.HasValue());
+	CHECK(status.GetValue().Entries.empty());
 }
 
 TEST_CASE("Network acceptance: pull refuses a branch that has diverged and merges nothing" * doctest::skip())
