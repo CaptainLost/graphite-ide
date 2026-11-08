@@ -14,6 +14,7 @@
 #include "Language/Server/ServerLaunch.h"
 #include "Language/Server/SolutionForRoot.h"
 #include "Language/Server/SolutionScope.h"
+#include "Git/GitIgnoreRules.h"
 #include "Search/FileEnumerator.h"
 
 #include <algorithm>

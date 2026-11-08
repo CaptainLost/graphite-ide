@@ -5,6 +5,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/SolutionScope.h"
+#include "Git/GitIgnoreRules.h"
 #include "Search/FileEnumerator.h"
 
 #include "Core/App/Redraw.h"

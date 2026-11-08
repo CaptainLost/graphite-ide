@@ -4,6 +4,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/FileProbe.h"
+#include "Git/GitIgnoreRules.h"
 #include "Search/FileEnumerator.h"
 #include "Search/Matcher.h"
 

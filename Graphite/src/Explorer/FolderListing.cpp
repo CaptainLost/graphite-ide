@@ -2,7 +2,7 @@
 
 #include "Core/Base/Result.h"
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/Git/Repository.h"
+#include "Git/GitIgnoreRules.h"
 
 #include <utility>
 
@@ -18,24 +18,12 @@ namespace Graphite {
 			std::optional<std::size_t> Index;
 		};
 
-		std::optional<Core::Repository> OpenRepositoryAt(const std::filesystem::path& root)
-		{
-			Core::Result<Core::Repository> opened = Core::Repository::Open(root);
-
-			if (!opened)
-			{
-				return std::nullopt;
-			}
-
-			return std::move(opened).GetValue();
-		}
-
 		bool IsEntered(const ListedEntry& entry)
 		{
 			return entry.IsDirectory && !entry.Ignored && entry.Name != kGitFolderName;
 		}
 
-		void ReadOneFolder(const FolderToRead& folder, const std::optional<Core::Repository>& repository,
+		void ReadOneFolder(const FolderToRead& folder, const GitIgnoreRules& ignoreRules,
 						   std::vector<ListedEntry>& entries, std::vector<FolderToRead>& foldersToRead)
 		{
 			const Core::Result<std::vector<Core::DirectoryEntry>> listing = Core::ReadDirectory(folder.Path);
@@ -51,7 +39,7 @@ namespace Graphite {
 					.Path = directoryEntry.Path,
 					.Name = directoryEntry.Name,
 					.IsDirectory = directoryEntry.IsDirectory,
-					.Ignored = repository.has_value() && repository->IsIgnored(directoryEntry.Path),
+					.Ignored = ignoreRules.IsIgnored(directoryEntry.Path),
 					.Parent = folder.Index,
 				});
 
@@ -82,7 +70,7 @@ namespace Graphite {
 	{
 		// WARNING: A libgit2 handle must not be shared with the thread that draws the tree, so the
 		// repository is opened here, on the thread that reads.
-		const std::optional<Core::Repository> repository = OpenRepositoryAt(root);
+		const GitIgnoreRules ignoreRules{root};
 
 		std::vector<ListedEntry> entries;
 		std::vector<FolderToRead> foldersToRead{FolderToRead{.Path = root}};
@@ -91,7 +79,7 @@ namespace Graphite {
 		{
 			const FolderToRead folder = std::move(foldersToRead.back());
 			foldersToRead.pop_back();
-			ReadOneFolder(folder, repository, entries, foldersToRead);
+			ReadOneFolder(folder, ignoreRules, entries, foldersToRead);
 		}
 
 		return entries;
