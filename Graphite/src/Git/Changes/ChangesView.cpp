@@ -986,8 +986,22 @@ namespace Graphite {
 
 	Core::DiffTarget ChangesView::TargetForSection() const
 	{
-		return m_Section == Section::Staged ? Core::DiffTarget::IndexToHead
-											: Core::DiffTarget::WorkTreeToIndex;
+		switch (m_Section)
+		{
+		case Section::Staged:
+			return Core::DiffTarget::IndexToHead;
+
+		// WARNING: A conflicted file has no merged entry in the index to diff against, so it is shown against HEAD: the
+		// conflict markers then show as the lines the merge added.
+		case Section::Conflicted:
+			return Core::DiffTarget::WorkTreeToHead;
+
+		case Section::Unstaged:
+		case Section::Count:
+			break;
+		}
+
+		return Core::DiffTarget::WorkTreeToIndex;
 	}
 
 	unsigned int ChangesView::ColourOfLetter(char letter, const GitPalette& palette) const

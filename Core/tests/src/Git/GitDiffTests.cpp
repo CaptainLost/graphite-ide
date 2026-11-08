@@ -396,3 +396,41 @@ TEST_CASE("A file's added and removed lines are counted from its hunks, context 
 	CHECK(counts.Added == 2);
 	CHECK(counts.Removed == 1);
 }
+TEST_CASE("A conflicted file diffs against HEAD with the conflict markers it holds")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "base\n");
+	fixture.Commit("first");
+	fixture.Branch("other");
+	fixture.Write("a.txt", "mine\n");
+	fixture.Commit("mine");
+	fixture.Checkout("other");
+	fixture.Write("a.txt", "theirs\n");
+	fixture.Commit("theirs");
+	fixture.StartConflict("master");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	DiffRequest request;
+	request.Target = DiffTarget::WorkTreeToHead;
+	request.File = std::filesystem::path{"a.txt"};
+
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
+
+	REQUIRE(diff.HasValue());
+	REQUIRE(diff.GetValue().Files.size() == 1);
+	REQUIRE_FALSE(diff.GetValue().Files.front().Hunks.empty());
+
+	bool markerShown = false;
+
+	for (const Core::Hunk& hunk : diff.GetValue().Files.front().Hunks)
+	{
+		for (const Core::DiffLine& line : hunk.Lines)
+		{
+			markerShown = markerShown || line.Text.starts_with("<<<<<<<");
+		}
+	}
+
+	CHECK(markerShown);
+}

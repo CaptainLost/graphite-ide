@@ -244,6 +244,25 @@ namespace Core {
 		}
 	}
 
+	namespace {
+
+		bool IsConflictedInIndex(git_repository* handle, const std::filesystem::path& relative)
+		{
+			Result<IndexHandle> index = OpenFreshIndex(handle);
+
+			if (!index.HasValue() || git_index_has_conflicts(index.GetValue().get()) == 0)
+			{
+				return false;
+			}
+
+			const git_index_entry* ancestor = nullptr;
+			const git_index_entry* ours = nullptr;
+			const git_index_entry* theirs = nullptr;
+
+			return git_index_conflict_get(&ancestor, &ours, &theirs, index.GetValue().get(), ToGitPath(relative).c_str()) == 0;
+		}
+	}
+
 	Result<Diff> Repository::QueryDiff(const DiffRequest& request) const
 	{
 		if (m_Handle == nullptr)
@@ -310,6 +329,12 @@ namespace Core {
 			if (request.Target == DiffTarget::IndexToHead)
 			{
 				diffResult = git_diff_tree_to_index(Out(diff), m_Handle.get(), oldTree.get(), useRepositoryIndex, &options);
+			}
+			else if (request.File.has_value() && IsConflictedInIndex(m_Handle.get(), *request.File))
+			{
+				// WARNING: A conflicted index holds the three stages and no merged entry, so a diff through it has no hunks;
+				// the working file, conflict markers and all, is compared with HEAD directly.
+				diffResult = git_diff_tree_to_workdir(Out(diff), m_Handle.get(), oldTree.get(), &options);
 			}
 			else
 			{
