@@ -209,7 +209,8 @@ namespace Graphite {
 			chosen = m_Matches[m_Selected];
 		}
 
-		const float rowHeight = ListRowLineHeight();
+		// A row is its line and the spacing ListBodyScope keeps under it.
+		const float rowHeight = ListRowLineHeight() + ImGui::GetStyle().ItemSpacing.y;
 		const std::size_t rows = std::min(std::max<std::size_t>(m_Matches.size(), 1), kVisibleRows);
 		const float listHeight = rowHeight * static_cast<float>(rows) + ImGui::GetStyle().WindowPadding.y;
 
