@@ -75,6 +75,7 @@ namespace Core {
 		}
 
 		// CreateProcessW wants each "NAME=value" ended by a null, the block ended by one more, sorted by name ignoring case.
+		// A variable removed has no entry at all: one set to nothing would still be set.
 		Result<std::wstring> EnvironmentBlockWith(std::span<const EnvironmentVariable> overrides)
 		{
 			for (const EnvironmentVariable& variable : overrides)
@@ -107,7 +108,11 @@ namespace Core {
 				const std::wstring name = ToUtf16(variable.Name);
 
 				std::erase_if(entries, [&name](const std::wstring& entry) { return NamesVariable(entry, name); });
-				entries.push_back(name + kNameEnd + ToUtf16(variable.Value));
+
+				if (!variable.Removed)
+				{
+					entries.push_back(name + kNameEnd + ToUtf16(variable.Value));
+				}
 			}
 
 			std::sort(entries.begin(), entries.end(), ComesFirstIgnoringCase);

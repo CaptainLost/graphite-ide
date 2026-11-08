@@ -22,6 +22,9 @@ namespace Core {
 	{
 		std::string Name;
 		std::string Value;
+
+		// The child goes without the variable, whatever this process holds; Value is not read.
+		bool Removed = false;
 	};
 
 	struct ChildProcessOptions
@@ -37,7 +40,8 @@ namespace Core {
 	class ChildProcess : NonCopyable
 	{
 	public:
-		// The child inherits this process's environment, with `environment` set over it.
+		// The child inherits this process's environment, with `environment` set over it and each variable Removed taken out
+		// of it.
 		static Result<Scope<ChildProcess>> Start(const std::filesystem::path& program,
 												 const std::vector<std::string>& arguments,
 												 const std::filesystem::path& workingDirectory,

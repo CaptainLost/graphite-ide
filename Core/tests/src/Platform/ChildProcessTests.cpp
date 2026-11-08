@@ -254,6 +254,28 @@ TEST_CASE("A child given variables still inherits the rest and a given variable 
 	CHECK(output.find("=winner") != std::string::npos);
 }
 
+TEST_CASE("A variable removed for a child does not reach it, whatever case its name is given in, and the rest still do")
+{
+	const ScopedEnvironmentVariable removed(L"CORE_TEST_REMOVED_VARIABLE", L"parent");
+	const ScopedEnvironmentVariable kept(L"CORE_TEST_REMOVED_KEPT", L"inherited");
+	REQUIRE(removed.WasSet());
+	REQUIRE(kept.WasSet());
+
+	// The value is never read: a variable set to it, or to nothing, would not be one removed.
+	const std::array<Core::EnvironmentVariable, 1> environment{
+		{{.Name = "core_test_removed_variable", .Value = "unread", .Removed = true}}};
+
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "set CORE_TEST_REMOVED & echo ran"},
+													 std::filesystem::current_path(), environment);
+	REQUIRE(started);
+	const std::string output = ReadAll(*started.GetValue());
+
+	CHECK(output.find("ran") != std::string::npos);
+	CHECK(output.find("CORE_TEST_REMOVED_KEPT=inherited") != std::string::npos);
+	CHECK(output.find("parent") == std::string::npos);
+	CHECK(output.find("unread") == std::string::npos);
+}
+
 TEST_CASE("A variable without a name or with an equals sign or a null in its name is refused before anything starts")
 {
 	using namespace std::string_literals;
