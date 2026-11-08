@@ -505,20 +505,29 @@ TEST_CASE("Git network port: once the full history is fetched, the port reads th
 	scene.Git(cloneDirectory.GetPath(), {"clone", "--depth", "1", "file:///" + ForwardSlashes(scene.WorkPath()), "shallow"});
 	const std::filesystem::path shallow = cloneDirectory.GetPath() / "shallow";
 
-	// The history read while the clone is shallow, through the port's handle of this thread.
+	// The history read while the clone is shallow, through the port's handle of this thread. Asked again with the shallow
+	// file as it was, the same handle answers.
 	Graphite::RepositoryGitPort port{shallow};
 	const Core::Result<Core::LogPage> before = port.QueryLog(Core::LogRequest{});
 	REQUIRE(before.HasValue());
 	REQUIRE(before.GetValue().Commits.size() == 1);
+	REQUIRE(port.QueryLog(Core::LogRequest{}).HasValue());
+	CHECK(port.GetOpenCount() == 1);
 
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome deepened = port.FetchFullHistory(neverCancelled, IgnorePercent);
 	INFO(deepened.Failure.Copied);
 	REQUIRE(deepened.Result == Core::NetworkResult::Done);
+	CHECK(port.GetOpenCount() == 1);
 
 	const Core::Result<Core::LogPage> after = port.QueryLog(Core::LogRequest{});
 	REQUIRE(after.HasValue());
 	CHECK(after.GetValue().Commits.size() == static_cast<std::size_t>(kHistoryLength));
+	CHECK(port.GetOpenCount() == 2);
+
+	// Nothing changed since: the reopened handle answers.
+	REQUIRE(port.QueryLog(Core::LogRequest{}).HasValue());
+	CHECK(port.GetOpenCount() == 2);
 
 	port.SetRoot({});
 	port.LetGoOfHandlesNoLongerCurrent();
