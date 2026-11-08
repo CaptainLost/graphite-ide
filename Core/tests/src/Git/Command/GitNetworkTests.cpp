@@ -6,6 +6,7 @@
 #include "Core/Git/Command/GitRunner.h"
 
 #include "GitFixture.h"
+#include "IsolatedGitConfig.h"
 #include "TempDirectory.h"
 
 #include <atomic>
@@ -14,9 +15,12 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -121,6 +125,7 @@ namespace {
 			file << contents;
 		}
 
+		IsolatedGitConfig m_Isolation;
 		GitFixture m_Fixture;
 		TempDirectory m_PeerDirectory;
 		std::filesystem::path m_Git;
@@ -161,7 +166,6 @@ TEST_CASE("Network: a failure shows the hint first and git's last six lines, and
 	CHECK(failure.Shown.ends_with("line 9\nHost key verification failed."));
 	CHECK(failure.Shown.find("line 4") == std::string::npos);
 	CHECK(failure.Shown.find("Receiving") == std::string::npos);
-
 
 	const Core::GitOutput plain{.ExitCode = 1, .Out = {}, .Errors = "fatal: no luck\n"};
 	CHECK(Core::DescribeFailure(plain).Shown == "fatal: no luck");
@@ -382,6 +386,7 @@ TEST_CASE("Network: a remote that cannot be reached is a plain failure with git'
 		return;
 	}
 
+	const IsolatedGitConfig isolation;
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("one");
@@ -485,6 +490,7 @@ TEST_CASE("Network: a remote named like an option is a remote, not an option")
 
 	constexpr char kOptionLikeRemote[] = "-x";
 
+	const IsolatedGitConfig isolation;
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("one");
@@ -530,6 +536,7 @@ TEST_CASE("Network: a failed operation shows the last lines and copies the whole
 		return;
 	}
 
+	const IsolatedGitConfig isolation;
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("one");
@@ -562,6 +569,7 @@ TEST_CASE("Network: a run cancelled before git exits is cancelled, and a git tha
 		return;
 	}
 
+	const IsolatedGitConfig isolation;
 	GitFixture fixture;
 
 	const std::atomic<bool> alreadyCancelled{true};
@@ -577,4 +585,110 @@ TEST_CASE("Network: a run cancelled before git exits is cancelled, and a git tha
 	REQUIRE(unstarted.Result == Core::NetworkResult::Failed);
 	CHECK_FALSE(unstarted.Failure.Shown.empty());
 	CHECK(unstarted.Failure.Shown == unstarted.Failure.Copied);
+}
+
+TEST_CASE("Network: cancelling a fetch while git runs ends it and everything it started")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	constexpr std::chrono::seconds kDeadline{30};
+	constexpr std::chrono::milliseconds kPoll{10};
+
+	const IsolatedGitConfig isolation;
+	TempDirectory root;
+	const std::filesystem::path held = root.MakeDirectory("held");
+	const std::filesystem::path started = root.GetPath() / "started";
+
+	const std::atomic<bool> neverCancelled{false};
+	const std::vector<std::vector<std::string>> setup{
+		{"init", "--initial-branch=main", "."},
+		{"remote", "add", kRemote, Core::ToUtf8(root.GetPath() / "nowhere")},
+	};
+
+	for (const std::vector<std::string>& arguments : setup)
+	{
+		const Core::GitRun run{.Arguments = arguments, .WorkingDirectory = held, .Environment = Core::GitEnvironment(false)};
+		Core::Result<Core::GitOutput> finished = Core::RunGit(*git, run, neverCancelled, IgnoreLine);
+		REQUIRE(finished.HasValue());
+		REQUIRE(finished.GetValue().ExitCode == 0);
+	}
+
+	// The program that stands in for upload-pack writes a flag, then waits on its input, which git never closes.
+	std::string flag = Core::ToUtf8(started);
+
+	for (char& character : flag)
+	{
+		if (character == '\\')
+		{
+			character = '/';
+		}
+	}
+
+	const std::string stalledUploadPack = ": > '" + flag + "'; git hash-object --stdin #";
+	const Core::GitRun configure{.Arguments = {"config", "remote.origin.uploadpack", stalledUploadPack},
+								 .WorkingDirectory = held,
+								 .Environment = Core::GitEnvironment(false)};
+	Core::Result<Core::GitOutput> configured = Core::RunGit(*git, configure, neverCancelled, IgnoreLine);
+	REQUIRE(configured.HasValue());
+	REQUIRE(configured.GetValue().ExitCode == 0);
+
+	std::atomic<bool> cancelled{false};
+	const Core::NetworkRun run{.Git = *git, .WorkingDirectory = held};
+	std::future<Core::NetworkOutcome> fetching = std::async(std::launch::async, Core::FetchAll, std::cref(run), std::cref(cancelled),
+												   Core::ProgressSink{IgnorePercent});
+
+	const std::chrono::steady_clock::time_point giveUp = std::chrono::steady_clock::now() + kDeadline;
+
+	while (!std::filesystem::exists(started) && std::chrono::steady_clock::now() < giveUp)
+	{
+		std::this_thread::sleep_for(kPoll);
+	}
+
+	std::error_code renameError;
+	const std::filesystem::path moved = root.GetPath() / "moved";
+	std::filesystem::rename(held, moved, renameError);
+	const bool heldWhileRunning = static_cast<bool>(renameError);
+	const bool stillRunning = fetching.wait_for(std::chrono::seconds{0}) != std::future_status::ready;
+
+	cancelled.store(true);
+
+	const bool endedInTime = fetching.wait_for(kDeadline) == std::future_status::ready;
+
+	if (!endedInTime)
+	{
+		// Nothing else would end it; a test that stalls must not leave git behind.
+		FAIL("the cancelled fetch did not end");
+	}
+
+	const Core::NetworkOutcome outcome = fetching.get();
+
+	REQUIRE(std::filesystem::exists(started));
+	CHECK(stillRunning);
+	CHECK(heldWhileRunning);
+	CHECK(outcome.Result == Core::NetworkResult::Cancelled);
+	CHECK(outcome.Failure.Shown.empty());
+
+	// Every process the fetch started has the directory as its current one until it ends.
+	bool released = false;
+	const std::chrono::steady_clock::time_point releaseDeadline = std::chrono::steady_clock::now() + kDeadline;
+
+	while (!released && std::chrono::steady_clock::now() < releaseDeadline)
+	{
+		std::error_code moveError;
+		std::filesystem::rename(heldWhileRunning ? held : moved, root.GetPath() / "released", moveError);
+		released = !moveError;
+
+		if (!released)
+		{
+			std::this_thread::sleep_for(kPoll);
+		}
+	}
+
+	CHECK(released);
 }

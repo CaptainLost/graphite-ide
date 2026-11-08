@@ -198,7 +198,6 @@ namespace Core {
 		return failure;
 	}
 
-
 	std::optional<std::chrono::sys_seconds> LastFetchTime(const std::filesystem::path& commonGitDir)
 	{
 		std::error_code timeError;
