@@ -15,6 +15,7 @@
 #include "Core/Jobs/JobSubmitter.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -33,7 +34,7 @@ namespace Graphite {
 	class WorktreesModel : Core::NonCopyable
 	{
 	public:
-		WorktreesModel(WorktreePort& port, Core::JobSubmitter submit);
+		WorktreesModel(WorktreePort& port, Core::JobSubmitter submit, std::function<std::int64_t()> nowSeconds);
 
 		void OnUpdate(Core::Timestep timestep); // drains landed results and asks the counts that are due
 
@@ -45,6 +46,24 @@ namespace Graphite {
 		void Clear();
 
 		void SubscribeTo(Core::EventBus& events); // WorkspaceOpenedEvent / WorkspaceClosedEvent -> Clear()
+
+		// Every worktree of the repository, detached and folder-missing ones included; null while unread.
+		const std::vector<Core::WorktreeEntry>* Entries() const;
+
+		// The number of files with changes; empty while unknown, after a failed count, and for the open folder's own worktree.
+		std::optional<std::size_t> CountOf(const std::filesystem::path& worktree) const;
+
+		// The newest of the worktree's reflog, index and HEAD commit times and of its newest changed file; empty while unknown.
+		std::optional<std::chrono::sys_seconds> LastActivity(const std::filesystem::path& worktree) const;
+
+		// Whether the last activity is no older than kLiveSeconds.
+		bool IsLive(const std::filesystem::path& worktree) const;
+
+		// Whether every worktree has been counted once, or kFirstCountCapSeconds on screen passed since the list landed.
+		bool IsFirstCountSettled() const;
+
+		// The worktree the user is looking at: never polled nor swept, since its watcher keeps it fresh.
+		void SetLookedAt(std::optional<std::filesystem::path> worktree);
 
 		// The folder of the worktree that has that local branch checked out; empty for none, and for a worktree whose folder is missing.
 		std::optional<std::filesystem::path> WorktreeOf(std::string_view branchFullName) const;
@@ -67,6 +86,15 @@ namespace Graphite {
 		static constexpr float kPollSeconds = 3.0f;
 		static constexpr float kLongestPollSeconds = 48.0f;
 
+		// The first count of every worktree holds the list this long at most.
+		static constexpr float kFirstCountCapSeconds = 3.0f;
+
+		// A worktree out of view is counted again at most this often, one at a time, the longest-uncounted first.
+		static constexpr float kSweepSeconds = 10.0f;
+
+		// A worktree whose last activity is this recent is live.
+		static constexpr std::int64_t kLiveSeconds = 60;
+
 	private:
 		struct CountTiming
 		{
@@ -76,8 +104,20 @@ namespace Graphite {
 		};
 
 		void Land(std::uint64_t generation, Core::Result<std::vector<Core::WorktreeEntry>> result);
+		struct Observed
+		{
+			bool Counted = false; // a count, failed or not, has landed
+			float LandedAt = 0.0f; // on m_Clock
+			std::optional<std::size_t> Count;
+			std::optional<std::chrono::sys_seconds> Activity;
+			std::optional<std::chrono::sys_seconds> NewestChange;
+		};
+
 		void AskCounts(const std::set<Core::PathKeyText>& inView);
-		void LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeCount>& count);
+		void AskSweep(const std::set<Core::PathKeyText>& inView);
+		void AskCount(const Core::PathKeyText& key, const std::filesystem::path& path);
+		void LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeActivity>& activity, const Core::Result<WorktreeCount>& count);
+		bool IsCountable(const Core::WorktreeEntry& entry) const;
 		bool IsOpenFolder(const std::filesystem::path& worktree) const;
 		bool IsSameFolder(std::uint64_t folder) const;
 
@@ -97,6 +137,7 @@ namespace Graphite {
 		std::map<Core::PathKeyText, bool> m_Dirty;
 		std::map<Core::PathKeyText, std::string> m_Failures;
 		std::map<Core::PathKeyText, CountTiming> m_Timing;
+		std::map<Core::PathKeyText, Observed> m_Observed;
 		std::set<Core::PathKeyText> m_Listed; // worktrees of the last list: a count of one that left it is dropped
 		std::set<Core::PathKeyText> m_Counting;
 
@@ -105,6 +146,10 @@ namespace Graphite {
 
 		bool m_OnScreen = false;
 		float m_Clock = 0.0f; // seconds on screen
+		float m_NextSweep = kSweepSeconds; // on m_Clock
+		float m_FirstCountWaited = 0.0f; // seconds on screen since the list landed
+		Core::PathKeyText m_LookedAt;
+		std::function<std::int64_t()> m_NowSeconds;
 
 		// WARNING: Bumped by Clear; a job of the folder before does nothing, and its answer is dropped.
 		std::atomic<std::uint64_t> m_Folder{0};

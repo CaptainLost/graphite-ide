@@ -647,7 +647,7 @@ namespace {
 		}
 
 		Graphite::NetworkModel Network{Port, Model, NetworkJobs()};
-		Graphite::WorktreesModel Worktrees{WorktreePort, RunJobsInline()};
+		Graphite::WorktreesModel Worktrees{WorktreePort, RunJobsInline(), [] { return std::int64_t{0}; }};
 		Graphite::ContentModel Content{ContentPort, RunJobsInline()};
 
 		Graphite::ModalGate Modals;

@@ -5,6 +5,8 @@
 #include "DeferredJobs.h"
 #include "GitFixtures.h"
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -42,7 +44,11 @@ namespace {
 			return Entries;
 		}
 
-		Core::Result<WorktreeActivity> QueryActivity(const std::filesystem::path&) override { return WorktreeActivity{}; }
+		Core::Result<WorktreeActivity> QueryActivity(const std::filesystem::path& worktree) override
+		{
+			ActivityQueried.push_back(worktree);
+			return Activity[worktree.generic_string()];
+		}
 
 		Core::Result<WorktreeCount> CountUncommitted(const std::filesystem::path& worktree) override
 		{
@@ -55,11 +61,15 @@ namespace {
 
 			WorktreeCount count;
 			count.Changed = Changes[worktree.generic_string()];
+			count.NewestChange = Newest[worktree.generic_string()];
 			return count;
 		}
 
 		std::vector<Core::WorktreeEntry> Entries;
 		std::map<std::string, std::size_t> Changes;
+		std::map<std::string, WorktreeActivity> Activity;
+		std::map<std::string, std::optional<std::chrono::sys_seconds>> Newest;
+		std::vector<std::filesystem::path> ActivityQueried;
 		bool FailCounts = false;
 		int Listed = 0;
 		std::vector<std::filesystem::path> Counted;
@@ -76,7 +86,7 @@ TEST_CASE("Git window: worktrees are listed for each branch snapshot")
 	FakeWorktreePort port;
 	port.Entries = {WorktreeOn("main", kOpen), WorktreeOn("side", kSide)};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	const Snapshot first = NewSnapshot();
 	model.Follow(first, kOpen);
@@ -98,7 +108,7 @@ TEST_CASE("Git window: worktrees are listed for each branch snapshot")
 	CHECK_FALSE(model.WorktreeOf("refs/heads/side").has_value());
 }
 
-TEST_CASE("Git window: a worktree whose folder is missing, or without a branch, has no entry")
+TEST_CASE("Git window: a worktree whose folder is missing, or without a branch, is listed but has no branch")
 {
 	FakeWorktreePort port;
 	Core::WorktreeEntry gone = WorktreeOn("side", kSide);
@@ -107,13 +117,19 @@ TEST_CASE("Git window: a worktree whose folder is missing, or without a branch, 
 	detached.Head.Kind = Core::HeadKind::Detached;
 	port.Entries = {gone, detached};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK_FALSE(model.WorktreeOf("refs/heads/side").has_value());
+	CHECK_FALSE(model.OtherWorktreeOf("refs/heads/side").has_value());
+
+	REQUIRE(model.Entries() != nullptr);
+	REQUIRE(model.Entries()->size() == 2);
+	CHECK(model.Entries()->at(0).FolderMissing);
+	CHECK((*model.Entries())[1].Path == kOther);
 }
 
 TEST_CASE("Git window: worktree changes are counted only while on screen")
@@ -122,7 +138,7 @@ TEST_CASE("Git window: worktree changes are counted only while on screen")
 	port.Entries = {WorktreeOn("main", kOpen), WorktreeOn("side", kSide)};
 	port.Changes[kSide.generic_string()] = 2;
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
@@ -162,26 +178,27 @@ TEST_CASE("Git window: worktree changes are counted only while on screen")
 	CHECK(port.Counted.size() == 2);
 }
 
-TEST_CASE("Git window: a worktree's changes are counted only while its row is in view")
+TEST_CASE("Git window: a worktree's changes are counted again only while its row is in view")
 {
 	FakeWorktreePort port;
 	port.Entries = {WorktreeOn("side", kSide), WorktreeOn("other", kOther)};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
 	model.OnUpdate(Core::Timestep{0.0f});
 	jobs.RunAll();
-	CHECK(port.Counted.empty());
+	model.OnUpdate(Core::Timestep{0.0f});
+	CHECK(port.Counted.size() == 2);
 
 	model.DirtyInView(kOther);
-	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(kPoll);
 	jobs.RunAll();
 
-	REQUIRE(port.Counted.size() == 1);
-	CHECK(port.Counted[0] == kOther);
+	REQUIRE(port.Counted.size() == 3);
+	CHECK(port.Counted[2] == kOther);
 }
 
 TEST_CASE("Git window: a failed count of a worktree's changes shows nothing and keeps why")
@@ -190,7 +207,7 @@ TEST_CASE("Git window: a failed count of a worktree's changes shows nothing and 
 	port.Entries = {WorktreeOn("side", kSide)};
 	port.FailCounts = true;
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -220,7 +237,7 @@ TEST_CASE("Git window: a worktree whose count does not change is counted less an
 	port.Entries = {WorktreeOn("side", kSide)};
 	port.Changes[kSide.generic_string()] = 2;
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -245,6 +262,7 @@ TEST_CASE("Git window: a worktree whose count does not change is counted less an
 		model.DirtyInView(kSide);
 		model.OnUpdate(kPoll);
 		jobs.RunAll();
+		model.DirtyInView(kSide); // the drain stays in view, or the sweep would count it
 		model.OnUpdate(Core::Timestep{0.0f});
 	}
 
@@ -257,7 +275,7 @@ TEST_CASE("Git window: the open folder's worktree is not counted")
 	FakeWorktreePort port;
 	port.Entries = {WorktreeOn("main", kOpen), WorktreeOn("side", kSide)};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -278,7 +296,7 @@ TEST_CASE("Git window: worktrees of a folder cleared meanwhile are dropped")
 	FakeWorktreePort port;
 	port.Entries = {WorktreeOn("side", kSide)};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.Follow(NewSnapshot(), kOpen);
 	model.Clear();
@@ -293,7 +311,7 @@ TEST_CASE("Git window: a worktree is not counted again while its count is still 
 	FakeWorktreePort port;
 	port.Entries = {WorktreeOn("side", kSide)};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -315,7 +333,7 @@ TEST_CASE("Git window: a count asked for a folder cleared meanwhile is dropped")
 	port.Entries = {WorktreeOn("side", kSide)};
 	port.Changes[kSide.generic_string()] = 2;
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -338,7 +356,7 @@ TEST_CASE("Git window: a count that lands after the window left the screen is ke
 	port.Entries = {WorktreeOn("side", kSide)};
 	port.Changes[kSide.generic_string()] = 1;
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -359,7 +377,7 @@ TEST_CASE("Git window: a count of a worktree that left the list is not kept")
 	port.Entries = {WorktreeOn("side", kSide)};
 	port.Changes[kSide.generic_string()] = 1;
 	std::vector<std::function<void()>> waiting;
-	WorktreesModel model(port, [&waiting](std::function<void()> job) { waiting.push_back(std::move(job)); });
+	WorktreesModel model(port, [&waiting](std::function<void()> job) { waiting.push_back(std::move(job)); }, [] { return std::int64_t{0}; });
 
 	model.SetOnScreen(true);
 	model.Follow(NewSnapshot(), kOpen);
@@ -386,7 +404,7 @@ TEST_CASE("Git window: the open folder's own branch has no other worktree, the m
 	FakeWorktreePort port;
 	port.Entries = {WorktreeOn("main", kOpen), WorktreeOn("side", kSide)};
 	DeferredJobs jobs;
-	WorktreesModel model(port, jobs.Submitter());
+	WorktreesModel model(port, jobs.Submitter(), [] { return std::int64_t{0}; });
 
 	model.Follow(NewSnapshot(), kOpen);
 	jobs.RunAll();
@@ -401,4 +419,171 @@ TEST_CASE("Git window: the open folder's own branch has no other worktree, the m
 
 	CHECK(model.OtherWorktreeOf("refs/heads/main") == kOpen);
 	CHECK_FALSE(model.OtherWorktreeOf("refs/heads/side").has_value());
+}
+
+namespace {
+
+	constexpr std::int64_t kNow = 1'000'000;
+
+	std::chrono::sys_seconds At(std::int64_t secondsBeforeNow)
+	{
+		return std::chrono::sys_seconds{std::chrono::seconds{kNow - secondsBeforeNow}};
+	}
+
+	std::filesystem::path Folder(int index)
+	{
+		return "D:/repo-" + std::to_string(index);
+	}
+
+	void ListFolders(FakeWorktreePort& port, int count)
+	{
+		for (int index = 0; index < count; ++index)
+		{
+			port.Entries.push_back(WorktreeOn("branch" + std::to_string(index), Folder(index)));
+		}
+	}
+}
+
+TEST_CASE("Git window: the first read counts every worktree once, in parallel")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 5);
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(model.IsFirstCountSettled());
+	CHECK(jobs.Count() == 5);
+
+	jobs.RunAll();
+
+	CHECK(port.Counted.size() == 5);
+	CHECK(port.ActivityQueried.size() == 5);
+	CHECK_FALSE(model.IsFirstCountSettled());
+
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.IsFirstCountSettled());
+	CHECK(port.Counted.size() == 5);
+}
+
+TEST_CASE("Git window: the first count stops holding the list after 3 s")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 2);
+	std::vector<std::function<void()>> waiting;
+	WorktreesModel model(port, [&waiting](std::function<void()> job) { waiting.push_back(std::move(job)); }, [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	waiting.back()();
+	waiting.clear();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(waiting.size() == 2);
+
+	// Only the first count lands; the second never does.
+	waiting[0]();
+	model.OnUpdate(Core::Timestep{2.0f});
+	CHECK_FALSE(model.IsFirstCountSettled());
+
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(model.IsFirstCountSettled());
+}
+
+TEST_CASE("Git window: worktrees out of view are swept one at a time, at most every 10 s")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 6);
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(port.Counted.size() == 6);
+
+	port.Counted.clear();
+
+	for (int step = 0; step < 30; ++step)
+	{
+		model.OnUpdate(Core::Timestep{1.0f});
+		jobs.RunAll();
+	}
+
+	// The oldest count first: the first counts landed in list order.
+	REQUIRE(port.Counted.size() == 3);
+	CHECK(port.Counted[0] == Folder(0));
+	CHECK(port.Counted[1] == Folder(1));
+	CHECK(port.Counted[2] == Folder(2));
+}
+
+TEST_CASE("Git window: the worktree looked at is neither polled nor swept")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 3);
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.SetLookedAt(Folder(0));
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	port.Counted.clear();
+
+	for (int step = 0; step < 60; ++step)
+	{
+		model.DirtyInView(Folder(0));
+		model.OnUpdate(Core::Timestep{1.0f});
+		jobs.RunAll();
+	}
+
+	CHECK(port.Counted.size() >= 2);
+	CHECK(std::ranges::none_of(port.Counted, [](const std::filesystem::path& counted) { return counted == Folder(0); }));
+}
+
+TEST_CASE("Git window: last activity is the newest of reflog, index, HEAD commit and newest change")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 2);
+	port.Activity[Folder(0).generic_string()] = WorktreeActivity{At(500), At(300), At(400)};
+	port.Newest[Folder(0).generic_string()] = At(200);
+	port.Activity[Folder(1).generic_string()] = WorktreeActivity{At(500), At(61), At(400)};
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.LastActivity(Folder(0)) == At(200));
+	CHECK(model.LastActivity(Folder(1)) == At(61));
+	CHECK_FALSE(model.IsLive(Folder(0)));
+	CHECK_FALSE(model.IsLive(Folder(1)));
+	CHECK_FALSE(model.LastActivity(kOpen).has_value());
+
+	// A change 59 s old makes the first live; 61 s old, not.
+	port.Newest[Folder(0).generic_string()] = At(59);
+	port.Newest[Folder(1).generic_string()] = At(61);
+	model.DirtyInView(Folder(0));
+	model.DirtyInView(Folder(1));
+	model.OnUpdate(kPoll);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.LastActivity(Folder(0)) == At(59));
+	CHECK(model.IsLive(Folder(0)));
+	CHECK_FALSE(model.IsLive(Folder(1)));
 }

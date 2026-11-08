@@ -413,7 +413,7 @@ namespace Graphite {
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  WatchWithDirectoryWatcher()};
 		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
-		WorktreesModel m_Worktrees{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		WorktreesModel m_Worktrees{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		ContentModel m_Content{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::JobQueue m_Jobs;
 
