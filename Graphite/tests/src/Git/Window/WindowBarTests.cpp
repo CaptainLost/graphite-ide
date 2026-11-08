@@ -781,16 +781,34 @@ TEST_CASE("Window bar: without git every button says git was not found")
 
 namespace {
 
-	// The bar drawn in a window `width` wide with a problem to say; says where each part stood.
-	Graphite::WindowBarPlaces PlacesOf(const Graphite::NetworkButtons& network, float width = 900.0f, float* windowRight = nullptr)
+	// What the bar is drawn for: its window's width, the repository's folder, the remotes, the branch's distance and the
+	// problem said at its end.
+	struct BarCase
 	{
-		ImGuiFrames frames;
+		float Width = 900.0f;
+		std::filesystem::path Folder = kFolder;
+		std::vector<Core::Remote> Remotes = {{"origin", "https://example.com/a.git"}, {"backup", "ssh://host/a.git"}};
+		std::size_t Ahead = 2;
+		const char* Problem = "the status could not be read";
+		float* WindowRight = nullptr;
+
+		// The frames to draw in; a sweep of widths draws all of them in one.
+		ImGuiFrames* Frames = nullptr;
+	};
+
+	// The bar drawn as `bar` says; says where each part stood.
+	Graphite::WindowBarPlaces PlacesFor(const Graphite::NetworkButtons& network, const BarCase& bar)
+	{
+		ImGuiFrames ownFrames;
+		ImGuiFrames& frames = bar.Frames != nullptr ? *bar.Frames : ownFrames;
 		const Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
 		const Core::HeadState head = OnBranch("main");
-		const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 2, 0)};
-		const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}, {"backup", "ssh://host/a.git"}};
-		const Graphite::WindowBarText text = Describe(&head, &branches, &remotes);
+		const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", bar.Ahead, 0)};
+		const Graphite::WindowBarText text =
+			Graphite::DescribeWindowBar(Graphite::WindowBarInput{bar.Folder, &head, &branches, &bar.Remotes, false});
 		Graphite::WindowBarPlaces places;
+		const float width = bar.Width;
+		float* const windowRight = bar.WindowRight;
 
 		for (int frame = 0; frame < 2; ++frame)
 		{
@@ -808,9 +826,9 @@ namespace {
 				const Graphite::WindowBarColours colours = Graphite::ReadWindowBarColours(scheme);
 				places = {};
 				Graphite::DrawWindowBar(Graphite::WindowBarDrawing{.Text = text,
-																   .WorkingDirectory = kFolder,
+																   .WorkingDirectory = bar.Folder,
 																   .Colours = colours,
-																   .Problem = "the status could not be read",
+																   .Problem = bar.Problem,
 																   .Network = &network,
 																   .Places = &places});
 				ImGui::End();
@@ -818,6 +836,24 @@ namespace {
 		}
 
 		return places;
+	}
+
+	Graphite::WindowBarPlaces PlacesOf(const Graphite::NetworkButtons& network, float width = 900.0f, float* windowRight = nullptr)
+	{
+		BarCase bar;
+		bar.Width = width;
+		bar.WindowRight = windowRight;
+		return PlacesFor(network, bar);
+	}
+
+	float WidthOfPlace(const Graphite::Place& place)
+	{
+		return place.Max.x - place.Min.x;
+	}
+
+	bool Drawn(const Graphite::Place& place)
+	{
+		return place.Max.x > place.Min.x;
 	}
 
 	bool SamePlace(const Graphite::Place& first, const Graphite::Place& second)
@@ -897,12 +933,156 @@ TEST_CASE("Window bar: a narrow bar keeps the network part's place and the remot
 	CHECK(narrow.Remotes.Max.x - narrow.Remotes.Min.x == doctest::Approx(0.0f));
 	CHECK(narrow.Repository.Max.x > narrow.Repository.Min.x);
 
-	// Nothing reaches into the buttons.
-	for (const Graphite::WindowBarPlaces* places : {&narrow, &tight})
+	// At 600 the repository and the chip are drawn and stop short of the buttons; at 300 there is room for neither.
+	REQUIRE(Drawn(narrow.Repository));
+	REQUIRE(Drawn(narrow.Chip));
+	CHECK(narrow.Repository.Max.x <= narrow.Fetch.Min.x);
+	CHECK(narrow.Chip.Max.x <= narrow.Fetch.Min.x);
+	CHECK_FALSE(Drawn(tight.Repository));
+	CHECK_FALSE(Drawn(tight.Remotes));
+	CHECK_FALSE(Drawn(tight.Chip));
+}
+
+namespace {
+
+	// Frames wide enough for the whole bar at its natural width.
+	struct WideFrames
 	{
-		for (const Graphite::Place* place : {&places->Repository, &places->Remotes, &places->Chip})
+		WideFrames() { ImGui::GetIO().DisplaySize = ImVec2(3000.0f, 720.0f); }
+
+		ImGuiFrames Frames;
+	};
+
+	BarCase LongNamesWith(ImGuiFrames& frames, std::size_t ahead, float width)
+	{
+		BarCase bar;
+		bar.Frames = &frames;
+		bar.Width = width;
+		bar.Ahead = ahead;
+		bar.Folder = "C:/work/a-rather-long-repository-name-for-the-bar/";
+		bar.Remotes = {{"origin-with-a-rather-long-name", "u"}, {"backup-with-another-long-name", "v"}};
+		return bar;
+	}
+
+	// What the bar draws at one width, in the terms of the order it gives space up in.
+	struct Shares
+	{
+		float Remotes = 0.0f;
+		float Repository = 0.0f;
+		float Chip = 0.0f;
+	};
+
+	Shares SharesAt(ImGuiFrames& frames, std::size_t ahead, float width)
+	{
+		const Graphite::WindowBarPlaces places = PlacesFor(ButtonsWith(0), LongNamesWith(frames, ahead, width));
+		return Shares{WidthOfPlace(places.Remotes), WidthOfPlace(places.Repository), WidthOfPlace(places.Chip)};
+	}
+}
+
+TEST_CASE("Window bar: as the room shrinks the remotes go first, then the repository, then the chip's words, then its name")
+{
+	constexpr float kPixelOfRounding = 2.0f;
+	WideFrames wide;
+
+	for (const std::size_t ahead : {std::size_t{0}, std::size_t{2}, std::size_t{136}})
+	{
+		const Shares whole = SharesAt(wide.Frames, ahead, 2400.0f);
+		REQUIRE(whole.Remotes > 0.0f);
+		REQUIRE(whole.Repository > 0.0f);
+		REQUIRE(whole.Chip > 0.0f);
+
+		// The chip's width without its words: the same branch with nothing to push.
+		const float chipWithoutWords = SharesAt(wide.Frames, 0, 2400.0f).Chip;
+		const float repositoryMinimum = Graphite::WindowBarEm(90.0f);
+
+		bool sawRemotesCut = false;
+		bool sawRepositoryCut = false;
+		bool sawWordsDropped = false;
+		bool sawNameCut = false;
+
+		for (float width = 2400.0f; width > 330.0f; width -= 7.0f)
 		{
-			CHECK((place->Max.x <= place->Min.x || place->Max.x <= places->Fetch.Min.x));
+			INFO("ahead " << ahead << " width " << width);
+			const Shares at = SharesAt(wide.Frames, ahead, width);
+
+			// Each step starts only when the one before it is spent.
+			if (at.Remotes < whole.Remotes - kPixelOfRounding)
+			{
+				sawRemotesCut = true;
+
+				// While some of the remotes' text still shows, nothing else has lost anything.
+				if (at.Remotes > 0.0f)
+				{
+					CHECK(at.Repository >= whole.Repository - kPixelOfRounding);
+					CHECK(at.Chip >= whole.Chip - kPixelOfRounding);
+				}
+			}
+
+			if (at.Repository < whole.Repository - kPixelOfRounding)
+			{
+				sawRepositoryCut = true;
+				CHECK(at.Remotes == doctest::Approx(0.0f));
+
+				// The chip loses nothing until the repository is down to its minimum.
+				if (at.Repository > repositoryMinimum + kPixelOfRounding && at.Chip > 0.0f)
+				{
+					CHECK(at.Chip >= whole.Chip - kPixelOfRounding);
+				}
+			}
+
+			// A chip with no room for its chrome is left out, and the repository takes the room it freed.
+			if (at.Chip < whole.Chip - kPixelOfRounding && at.Chip > 0.0f)
+			{
+				CHECK(at.Remotes == doctest::Approx(0.0f));
+				CHECK(at.Repository <= repositoryMinimum + kPixelOfRounding);
+			}
+
+			if (ahead > 0 && at.Chip < whole.Chip - kPixelOfRounding && at.Chip >= chipWithoutWords - kPixelOfRounding)
+			{
+				sawWordsDropped = true;
+			}
+
+			if (at.Chip > 0.0f && at.Chip < chipWithoutWords - kPixelOfRounding)
+			{
+				sawNameCut = true;
+				CHECK(at.Repository <= repositoryMinimum + kPixelOfRounding);
+			}
+		}
+
+		CHECK(sawRemotesCut);
+		CHECK(sawRepositoryCut);
+		CHECK(sawNameCut);
+
+		// Without words to push there is nothing to drop before the name is cut.
+		CHECK(sawWordsDropped == (ahead > 0));
+	}
+}
+
+TEST_CASE("Window bar: the problem starts after whatever was drawn before it, with or without the chip")
+{
+	WideFrames wide;
+
+	for (const std::size_t ahead : {std::size_t{0}, std::size_t{136}})
+	{
+		for (float width = 2400.0f; width > 330.0f; width -= 7.0f)
+		{
+			BarCase bar = LongNamesWith(wide.Frames, ahead, width);
+			bar.Problem = "!";
+			const Graphite::WindowBarPlaces places = PlacesFor(ButtonsWith(0), bar);
+
+			if (!Drawn(places.Problem))
+			{
+				continue;
+			}
+
+			INFO("ahead " << ahead << " width " << width);
+
+			for (const Graphite::Place* before : {&places.Repository, &places.Remotes, &places.Chip})
+			{
+				CHECK((!Drawn(*before) || places.Problem.Min.x >= before->Max.x));
+			}
+
+			CHECK(places.Problem.Max.x <= places.Fetch.Min.x);
 		}
 	}
 }

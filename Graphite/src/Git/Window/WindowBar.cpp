@@ -41,8 +41,9 @@ namespace Graphite {
 		constexpr float kHeadGlow = 11.0f;
 		constexpr float kHeadGlowAlpha = 0.25f;
 		constexpr float kSeparatorHeight = 16.0f;
-		constexpr float kRepositoryShare = 0.4f;
-		constexpr float kRemotesShare = 0.35f;
+		constexpr float kRepositoryMinimum = 90.0f; // the icon and the start of the name
+		constexpr float kMeasuringSlack = 1.0f; // CalcTextSize rounds its widths up, so a width measured twice can differ by a pixel
+		constexpr float kChipPlaceholder = 120.0f;  // what the chip's place holds while HEAD is unread
 		constexpr float kLighterShare = 0.4f;
 		constexpr float kAskTint = 0.15f;
 		constexpr float kKeepFontSize = 0.0f;
@@ -67,11 +68,6 @@ namespace Graphite {
 		constexpr const char* kWidestCount = "999+";
 		constexpr const char* kWidestPercent = "100%";
 		constexpr std::size_t kLargestCountShown = 999;
-
-		// The room the remotes' text keeps while the bar has more than this to give, in mockup px; below it they shrink to
-		// nothing over the next kRemotesGiveWay.
-		constexpr float kRemotesKeepRoom = 400.0f;
-		constexpr float kRemotesGiveWay = 160.0f;
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kUnreadRemotes = "\xE2\x80\xA6";
@@ -394,13 +390,6 @@ namespace Graphite {
 			return WindowBarEm(mockupPixels);
 		}
 
-		// How much of its share the remotes' text keeps: all of it while the bar is roomy, none when it is tight, so the
-		// remotes give way before the repository's name does.
-		float RemotesKeptShare(float room)
-		{
-			return std::clamp((room - Em(kRemotesKeepRoom - kRemotesGiveWay)) / Em(kRemotesGiveWay), 0.0f, 1.0f);
-		}
-
 		float WidthOf(const std::string& text)
 		{
 			return text.empty() ? 0.0f : ImGui::CalcTextSize(text.c_str()).x;
@@ -455,7 +444,33 @@ namespace Graphite {
 		}
 
 		// The chip: the dot, HEAD's name cut to what is left of the chip's width, and its state after it.
-		bool DrawHeadChip(const WindowBarDrawing& drawing, ImVec2 topLeft, float room)
+		struct ChipDrawn
+		{
+			bool Clicked = false;
+
+			// Where the chip, or what stands in its place, ends; its start when nothing was drawn.
+			float Right = 0.0f;
+		};
+
+		float ChipChrome()
+		{
+			return 2.0f * Em(kChipSide) + Em(kHeadDot) + Em(kChipGap);
+		}
+
+		// The width the chip takes with room to spare: its chrome, HEAD's name and its state.
+		float ChipNaturalWidth(const WindowBarText& text)
+		{
+			if (text.Busy || text.Head.empty())
+			{
+				return Em(kChipPlaceholder);
+			}
+
+			const float state = text.HeadState.empty() ? 0.0f : Em(kChipGap) + WidthOf(text.HeadState);
+
+			return std::min(Em(kChipMaxWidth), ChipChrome() + WidthOf(text.Head) + state + kMeasuringSlack);
+		}
+
+		ChipDrawn DrawHeadChip(const WindowBarDrawing& drawing, ImVec2 topLeft, float room)
 		{
 			const WindowBarText& text = drawing.Text;
 			const WindowBarColours& colours = drawing.Colours;
@@ -463,7 +478,7 @@ namespace Graphite {
 			if (text.Busy || text.Head.empty())
 			{
 				DrawInPlaceOfChip(drawing, topLeft, room);
-				return false;
+				return ChipDrawn{false, std::max(topLeft.x, ImGui::GetItemRectMax().x)};
 			}
 
 			const float height = Em(kChipHeight);
@@ -473,14 +488,15 @@ namespace Graphite {
 			const float maxWidth = std::min(Em(kChipMaxWidth), room);
 
 			// Narrower than its dot and padding the chip is left out, so it never reaches into the network part.
-			if (maxWidth < 2.0f * side + dot + gap)
+			if (maxWidth < ChipChrome())
 			{
-				return false;
+				return ChipDrawn{false, topLeft.x};
 			}
+
 			float stateWidth = text.HeadState.empty() ? 0.0f : gap + WidthOf(text.HeadState);
 
-			// The state is left out when it alone would not fit, so the chip never outgrows the room it was given.
-			const bool showsState = maxWidth - 2.0f * side - dot - gap - stateWidth >= 0.0f;
+			// WARNING: The state goes before the name is cut: it is shown only when the whole name and the state both fit.
+			const bool showsState = maxWidth - ChipChrome() - WidthOf(text.Head) - stateWidth >= -kMeasuringSlack;
 			stateWidth = showsState ? stateWidth : 0.0f;
 			const std::string name = FitToWidth(text.Head, maxWidth - 2.0f * side - dot - gap - stateWidth);
 			const float width = 2.0f * side + dot + gap + WidthOf(name) + stateWidth;
@@ -514,7 +530,7 @@ namespace Graphite {
 				drawList->AddText(ImVec2(x + WidthOf(name) + gap, textTop), colours.Match, text.HeadState.c_str());
 			}
 
-			return clicked;
+			return ChipDrawn{clicked, bottomRight.x};
 		}
 
 		// The repository's icon and its folder's name in bold; returns the width it took.
@@ -550,6 +566,55 @@ namespace Graphite {
 			ShowTooltipOfLastItem(Core::ToUtf8(Core::NormalizeDirectory(drawing.WorkingDirectory)));
 
 			return width;
+		}
+
+		float RepositoryNaturalWidth(const WindowBarDrawing& drawing)
+		{
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
+			const float name = WidthOf(drawing.Text.Repository);
+			ImGui::PopFont();
+
+			return WidthOf(ICON_LC_FOLDER) + Em(kIconGap) + name;
+		}
+
+		float RemotesNaturalWidth(const WindowBarDrawing& drawing)
+		{
+			Core::PushInterfaceFont(ImGui::GetFontSize() * kRemotesText / kMockupFont);
+			const float width = WidthOf(drawing.Text.Remotes);
+			ImGui::PopFont();
+
+			return width;
+		}
+
+		// How the room left of the network part is shared as it shrinks. The bar gives space up in this order: the remotes'
+		// text, down to nothing; the repository's name, down to its minimum; the chip's state words; the chip's name.
+		struct BarRooms
+		{
+			float Repository = 0.0f;
+			float Remotes = 0.0f;
+			float Chip = 0.0f;
+		};
+
+		// `available` is the room less the gaps between the parts.
+		BarRooms ShareBar(const WindowBarDrawing& drawing, float available)
+		{
+			const float repository = RepositoryNaturalWidth(drawing);
+			const float repositoryMinimum = std::min(repository, Em(kRepositoryMinimum));
+			const float chip = ChipNaturalWidth(drawing.Text);
+
+			BarRooms rooms;
+			rooms.Remotes = std::clamp(available - repository - chip, 0.0f, RemotesNaturalWidth(drawing));
+			rooms.Repository = std::clamp(available - chip, repositoryMinimum, repository);
+
+			// Too tight even for the repository's minimum and the chip's chrome: the repository keeps what there is.
+			if (available < repositoryMinimum + ChipChrome())
+			{
+				rooms.Repository = available;
+				return rooms;
+			}
+
+			rooms.Chip = available - rooms.Repository - rooms.Remotes;
+			return rooms;
 		}
 
 		// A failed read, right-aligned between `left` and `right`, cut to fit, with the whole message in the tooltip.
@@ -895,24 +960,30 @@ namespace Graphite {
 		const float right = networkLeft - gap;
 		const float room = std::max(0.0f, right - (origin.x + side));
 
+		// What lies between the parts: after the repository, after the remotes, and the rule with its gap.
+		const float between = 3.0f * gap + 1.0f;
+		const BarRooms rooms = ShareBar(drawing, std::max(0.0f, room - between));
+
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 		drawList->AddLine(ImVec2(origin.x, origin.y + height - 1.0f), ImVec2(origin.x + width, origin.y + height - 1.0f),
 						  drawing.Colours.Rule);
 
 		float x = origin.x + side;
-		x += DrawRepository(drawing, ImVec2(x, centreY - lineHeight * kHalf), room * kRepositoryShare) + gap;
-		x += DrawRemotes(drawing, x, centreY, room * kRemotesShare * RemotesKeptShare(room)) + gap;
+		x += DrawRepository(drawing, ImVec2(x, centreY - lineHeight * kHalf), rooms.Repository) + gap;
+		x += DrawRemotes(drawing, x, centreY, rooms.Remotes) + gap;
 
 		const float separatorHalf = Em(kSeparatorHeight) * kHalf;
 		drawList->AddLine(ImVec2(x, centreY - separatorHalf), ImVec2(x, centreY + separatorHalf), drawing.Colours.Rule);
 		x += 1.0f + gap;
 
 		WindowBarClick click;
-		click.Head = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), right - x);
+		const ChipDrawn chip = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), std::min(rooms.Chip, right - x));
+		click.Head = chip.Clicked;
 
+		// WARNING: After the chip, or after the rule when no chip was drawn: never after whichever item came before.
 		if (!drawing.Problem.empty())
 		{
-			DrawProblem(drawing, ImGui::GetItemRectMax().x + gap, right, centreY);
+			DrawProblem(drawing, chip.Right + gap, right, centreY);
 		}
 
 		if (network != nullptr)
