@@ -67,10 +67,10 @@ namespace Graphite {
 		{
 			if (names.Remote.has_value() && names.Branch.has_value())
 			{
-				return *names.Remote + " has commits that " + *names.Branch + " lacks. Pull first, or merge in a terminal.";
+				return *names.Remote + " has commits that " + *names.Branch + " lacks. Pull first, merge in a terminal, or replace them with Git: Force Push.";
 			}
 
-			return "The remote has commits that this branch lacks. Pull first, or merge in a terminal.";
+			return "The remote has commits that this branch lacks. Pull first, merge in a terminal, or replace them with Git: Force Push.";
 		}
 
 		std::string SignInText(const NetworkNames& names)

@@ -75,7 +75,8 @@ namespace Graphite {
 					MenuItem::Group("panels.window"),
 					MenuItem::Command("view.resetLayout"),
 				}),
-			MenuItem::Submenu("Git", {MenuItem::Command("git.fetch"), MenuItem::Command("git.pull"), MenuItem::Command("git.push")}),
+			MenuItem::Submenu("Git", {MenuItem::Command("git.fetch"), MenuItem::Command("git.pull"), MenuItem::Command("git.push"),
+											 MenuItem::Command("git.forcePush")}),
 			MenuItem::Submenu("Help", {MenuItem::Command("help.about")}),
 #ifdef CORE_DEBUG
 			MenuItem::Submenu("Debug",

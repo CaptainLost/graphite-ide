@@ -1588,6 +1588,14 @@ namespace Graphite {
 		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::PushTo(run, cancelled, progress, remote, upstreamBranch); });
 	}
 
+	Core::NetworkOutcome RepositoryGitPort::ForcePushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+														const std::string& remote, const std::string& upstreamBranch)
+	{
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) {
+			return Core::ForcePushWithLease(run, cancelled, progress, remote, upstreamBranch);
+		});
+	}
+
 	Core::NetworkOutcome RepositoryGitPort::SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 															  const std::string& remote)
 	{

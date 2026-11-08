@@ -69,6 +69,8 @@ namespace Graphite {
 										 const std::string& upstreamFullName) override;
 		Core::NetworkOutcome PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 									const std::string& remote, const std::optional<std::string>& upstreamBranch) override;
+		Core::NetworkOutcome ForcePushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+										 const std::string& remote, const std::string& upstreamBranch) override;
 		Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 											   const std::string& remote) override;
 

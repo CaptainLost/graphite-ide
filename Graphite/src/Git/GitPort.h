@@ -145,6 +145,8 @@ namespace Graphite {
 												 const std::string& upstreamFullName) = 0;
 		virtual Core::NetworkOutcome PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 											const std::string& remote, const std::optional<std::string>& upstreamBranch) = 0;
+		virtual Core::NetworkOutcome ForcePushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
+												 const std::string& remote, const std::string& upstreamBranch) = 0;
 		virtual Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 													   const std::string& remote) = 0;
 

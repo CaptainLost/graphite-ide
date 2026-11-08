@@ -873,7 +873,7 @@ TEST_CASE("Network acceptance: a push the server rejects says to pull first, wit
 
 	REQUIRE(landing.Failure.has_value());
 	CHECK(Graphite::FailureTitle(landing.Failure->Operation) == "Push failed");
-	CHECK(FirstLine(landing.Failure->Error.Message) == "origin has commits that main lacks. Pull first, or merge in a terminal.");
+	CHECK(FirstLine(landing.Failure->Error.Message) == "origin has commits that main lacks. Pull first, merge in a terminal, or replace them with Git: Force Push.");
 	CHECK(landing.Failure->Copied.find("[rejected]") != std::string::npos);
 	CHECK(scene.Git.Run(server, {"rev-parse", kBranch}) == scene.Git.Head(peer));
 }

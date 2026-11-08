@@ -80,6 +80,10 @@ namespace Graphite {
 		// under its own name, which becomes its upstream, unless that upstream is a local branch, which is kept.
 		void Push(std::optional<std::string> remote = std::nullopt);
 
+		// Replaces the upstream branch with the checked-out one, as long as the remote's branch is still where the last
+		// fetch saw it. Only to an upstream on a remote of the branch's own name; anything else fails, saying so.
+		void ForcePush();
+
 		void FetchFullHistory();
 
 		// Ends the operation of that serial within the runner's poll while it runs, unless it is in Pull's fast-forward; an
@@ -118,6 +122,9 @@ namespace Graphite {
 		{
 			NetworkOperation Operation = NetworkOperation::Fetch;
 			std::optional<std::string> Remote;
+
+			// Push's only: replace the upstream branch rather than add to it.
+			bool Force = false;
 		};
 
 		// Pull's branch and the upstream its fetch brought up to date, short and full names, and the work tree it fetched
@@ -183,7 +190,7 @@ namespace Graphite {
 		JobAnswer RunFetch(const std::atomic<bool>& cancelled);
 		JobAnswer RunFullHistory(const std::atomic<bool>& cancelled);
 		JobAnswer RunPullFetch(const std::atomic<bool>& cancelled);
-		JobAnswer RunPush(const std::optional<std::string>& remote, const std::atomic<bool>& cancelled);
+		JobAnswer RunPush(const std::optional<std::string>& remote, bool force, const std::atomic<bool>& cancelled);
 		void RecordRemoteDefaults(const std::vector<Core::Remote>& remotes, const std::atomic<bool>& cancelled);
 
 		// Any thread: called with git's percent while it counts.

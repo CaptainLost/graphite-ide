@@ -80,6 +80,11 @@ namespace Core {
 	NetworkOutcome PushTo(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 						const std::string& remote, const std::optional<std::string>& upstreamBranch);
 
+	// Replaces the upstream branch with HEAD, only while the remote's branch is still where the last fetch saw it
+	// (--force-with-lease): a commit pushed by someone else since is never thrown away. Sends no tags, as PushTo.
+	NetworkOutcome ForcePushWithLease(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+									const std::string& remote, const std::string& upstreamBranch);
+
 	// Records which branch the remote calls its default, as refs/remotes/<remote>/HEAD.
 	NetworkOutcome SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								   const std::string& remote);

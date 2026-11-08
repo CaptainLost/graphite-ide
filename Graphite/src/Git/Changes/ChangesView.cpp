@@ -7,6 +7,7 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/ClipboardCopy.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/Changes/CommitBlocker.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -165,7 +166,9 @@ namespace Graphite {
 		: m_Model(model), m_Editor(editor), m_Scheme(scheme), m_Events(events), m_Shared(shared), m_DiscardTitle(QuestionTitle("Discard changes?", "ChangesDiscard", host)),
 		  m_DiscardQuestion(modals, m_DiscardTitle.c_str()),
 		  m_StashTitle(QuestionTitle("Stash changes", "ChangesStash", host)),
-		  m_StashQuestion(modals, m_StashTitle.c_str())
+		  m_StashQuestion(modals, m_StashTitle.c_str()),
+		  m_AmendTitle(QuestionTitle("Amend a pushed commit?", "ChangesAmendPushed", host)),
+		  m_AmendQuestion(modals, m_AmendTitle.c_str())
 	{
 	}
 
@@ -182,6 +185,11 @@ namespace Graphite {
 		{
 			m_StashQuestion.Withdraw();
 			ResetStashDialog();
+		}
+
+		if (m_AmendQuestion.IsAsked())
+		{
+			m_AmendQuestion.Withdraw();
 		}
 	}
 
@@ -207,6 +215,7 @@ namespace Graphite {
 			// was on screen would otherwise hold it forever.
 			m_DiscardQuestion.Withdraw();
 			m_StashQuestion.Withdraw();
+			m_AmendQuestion.Withdraw();
 			ResetStashDialog();
 
 			constexpr bool kHasStatus = false;
@@ -272,6 +281,7 @@ namespace Graphite {
 		RenderCommitBox();
 		RenderDiscardConfirm();
 		RenderStashDialog();
+		RenderAmendPushedConfirm();
 	}
 
 	bool ChangesView::RenderSection(const char* heading, const std::vector<std::size_t>& rows,
@@ -926,7 +936,16 @@ namespace Graphite {
 
 		if (DialogLayout::FilledButton(ICON_LC_CHECK "  Commit", accent, commitWidth, canCommit))
 		{
-			m_Model.RequestCommit({.Message = m_Shared.Message, .Amend = m_Shared.Amend});
+			const std::optional<AmendPushedQuestion> pushed = m_Shared.Amend ? PushedLastCommit() : std::nullopt;
+
+			if (pushed.has_value())
+			{
+				m_AmendQuestion.Ask(*pushed);
+			}
+			else
+			{
+				m_Model.RequestCommit({.Message = m_Shared.Message, .Amend = m_Shared.Amend});
+			}
 		}
 
 		if (whyNot.has_value() &&
@@ -1186,5 +1205,54 @@ namespace Graphite {
 		}
 
 		m_StashQuestion.End();
+	}
+
+	std::optional<ChangesView::AmendPushedQuestion> ChangesView::PushedLastCommit() const
+	{
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const Core::Branch* const checkedOut = branches != nullptr ? CheckedOutBranch(*branches) : nullptr;
+
+		// Ahead of nothing means the upstream holds the last commit.
+		if (checkedOut == nullptr || !checkedOut->Upstream.has_value() || !checkedOut->DistanceKnown || checkedOut->Ahead > 0)
+		{
+			return std::nullopt;
+		}
+
+		return AmendPushedQuestion{.Branch = checkedOut->Name, .Upstream = *checkedOut->Upstream};
+	}
+
+	void ChangesView::RenderAmendPushedConfirm()
+	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const AmendPushedQuestion* asked = m_AmendQuestion.Begin();
+		DialogLayout::AfterBegin();
+
+		if (asked == nullptr)
+		{
+			return;
+		}
+
+		DialogLayout::Text(std::format("The last commit of {} is already on {}.", asked->Branch, asked->Upstream));
+		DialogLayout::Gap();
+		DialogLayout::MutedText(std::format("Amending replaces it, so {} and {} part ways: Push is refused until Git: Force Push "
+											"replaces the commit on the remote, for everyone who has fetched it.",
+											asked->Branch, asked->Upstream));
+		DialogLayout::Gap();
+
+		const DialogLayout::ButtonSpec noSafeChoice{};
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow(noSafeChoice, {.Label = "Amend", .Enabled = !m_Model.IsWriteUnsettled()}, DangerColourOf(m_Scheme.Get()));
+
+		if (choice == DialogLayout::Choice::Destructive)
+		{
+			m_Model.RequestCommit({.Message = m_Shared.Message, .Amend = true});
+			m_AmendQuestion.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_AmendQuestion.Answer();
+		}
+
+		m_AmendQuestion.End();
 	}
 }

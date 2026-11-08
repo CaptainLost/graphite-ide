@@ -89,10 +89,10 @@ TEST_CASE("Network text: a rejected push names the remote and the branch, and sa
 		FailureWithHint(Core::NetworkHint::Rejected, " ! [rejected]        main -> main (fetch first)");
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Push, failure, NetworkNames{.Remote = "origin", .Branch = "main"}) ==
-		  "origin has commits that main lacks. Pull first, or merge in a terminal.\n ! [rejected]        main -> main (fetch first)");
+		  "origin has commits that main lacks. Pull first, merge in a terminal, or replace them with Git: Force Push.\n ! [rejected]        main -> main (fetch first)");
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Push, failure, NetworkNames{}) ==
-		  "The remote has commits that this branch lacks. Pull first, or merge in a terminal.\n ! [rejected]        main -> main "
+		  "The remote has commits that this branch lacks. Pull first, merge in a terminal, or replace them with Git: Force Push.\n ! [rejected]        main -> main "
 		  "(fetch first)");
 }
 

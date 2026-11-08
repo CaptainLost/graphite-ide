@@ -166,6 +166,16 @@ namespace Core {
 		return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--no-follow-tags", "--set-upstream", "--", remote, "HEAD"});
 	}
 
+	NetworkOutcome ForcePushWithLease(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+									const std::string& remote, const std::string& upstreamBranch)
+	{
+		// WARNING: The lease names the branch, so it is checked against refs/remotes/<remote>/<branch> as the last fetch
+		// left it, whatever push.useForceIfIncludes or a bare --force-with-lease would compare.
+		return RunToSuccess(run, cancelled, progress,
+							{"push", "--progress", "--no-follow-tags", "--force-with-lease=" + upstreamBranch, "--", remote,
+							 "HEAD:" + upstreamBranch});
+	}
+
 	NetworkOutcome SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								   const std::string& remote)
 	{
@@ -192,7 +202,9 @@ namespace Core {
 
 	NetworkHint HintOf(std::string_view errors)
 	{
-		const bool rejected = Contains(errors, "rejected") && (Contains(errors, "non-fast-forward") || Contains(errors, "fetch first"));
+		// "stale info" is a force push whose lease no longer holds: the remote moved since the last fetch.
+		const bool rejected = Contains(errors, "rejected") &&
+							  (Contains(errors, "non-fast-forward") || Contains(errors, "fetch first") || Contains(errors, "stale info"));
 
 		if (rejected)
 		{

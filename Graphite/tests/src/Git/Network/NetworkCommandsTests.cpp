@@ -64,7 +64,9 @@ namespace {
 			Graphite::RegisterNetworkCommands(Commands, Graphite::NetworkCommandServices{.Buttons = [this] { return Buttons; },
 																						  .Fetch = [this] { ++Fetches; },
 																						  .Pull = [this] { ++Pulls; },
-																						  .Push = [this] { ++Pushes; }});
+																						  .Push = [this] { ++Pushes; },
+																						  .CanForcePush = [this] { return Diverged; },
+																						  .ForcePush = [this] { ++ForcePushes; }});
 		}
 
 		bool EnabledNow(const char* id) const { return Core::IsCommandEnabled(*Commands.Find(id)); }
@@ -74,6 +76,8 @@ namespace {
 		int Fetches = 0;
 		int Pulls = 0;
 		int Pushes = 0;
+		int ForcePushes = 0;
+		bool Diverged = false;
 	};
 }
 
@@ -273,4 +277,23 @@ TEST_CASE("Commands: running one starts its operation")
 
 	CHECK_FALSE(registered.Commands.Run("git.fetch"));
 	CHECK(registered.Fetches == 1);
+}
+
+TEST_CASE("Commands: force push is enabled only while push is and the branch has diverged")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main", "origin/main", 1, 1)};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+
+	Registered registered(Describe(head, branches, remotes));
+	CHECK(registered.Commands.Find("git.forcePush")->Label == "Git: Force Push...");
+	CHECK_FALSE(registered.EnabledNow("git.forcePush"));
+
+	registered.Diverged = true;
+	CHECK(registered.EnabledNow("git.forcePush"));
+
+	const NetworkState fetching{.Running = NetworkOperation::Fetch, .Serial = 1, .Cancellable = true};
+	Registered busy(Describe(head, branches, remotes, fetching));
+	busy.Diverged = true;
+	CHECK_FALSE(busy.EnabledNow("git.forcePush"));
 }

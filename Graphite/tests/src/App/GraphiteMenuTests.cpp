@@ -321,7 +321,7 @@ TEST_CASE("A terminal is opened from the View menu, right after the panels, with
 	CHECK(with->GetChildren()[0].GetText() == "terminal.shells");
 }
 
-TEST_CASE("The Git menu lists fetch, pull and push")
+TEST_CASE("The Git menu lists fetch, pull, push and force push")
 {
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 	const MenuItem* git = FindSubmenu(tree, "Git");
@@ -335,5 +335,5 @@ TEST_CASE("The Git menu lists fetch, pull and push")
 		commands.push_back(item.GetText());
 	}
 
-	CHECK(commands == std::vector<std::string>{"git.fetch", "git.pull", "git.push"});
+	CHECK(commands == std::vector<std::string>{"git.fetch", "git.pull", "git.push", "git.forcePush"});
 }

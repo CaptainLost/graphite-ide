@@ -84,6 +84,18 @@ namespace Graphite {
 
 		void RenderStashDialog();
 
+		// The checked-out branch and its upstream when the last commit is already there, which amending it would replace.
+		struct AmendPushedQuestion
+		{
+			std::string Branch;
+			std::string Upstream;
+
+			bool operator==(const AmendPushedQuestion&) const = default;
+		};
+
+		std::optional<AmendPushedQuestion> PushedLastCommit() const;
+		void RenderAmendPushedConfirm();
+
 		void ResetStashDialog();
 
 		std::vector<std::filesystem::path> DirtyDocumentsInRepository() const;
@@ -160,5 +172,8 @@ namespace Graphite {
 		bool m_StashIncludeUntracked = false;
 
 		bool m_StashSaveFailed = false;
+
+		const std::string m_AmendTitle;
+		ModalQuestion<AmendPushedQuestion> m_AmendQuestion;
 	};
 }

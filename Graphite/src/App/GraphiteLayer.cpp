@@ -23,6 +23,7 @@
 #include "Git/GitRequests.h"
 #include "Git/GitStatusText.h"
 #include "Git/Branches/BranchAuthors.h"
+#include "Git/Branches/BranchLookup.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/Network/NetworkCommands.h"
@@ -149,7 +150,8 @@ namespace Graphite {
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
 		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle),
 		  m_About(m_Modals),
-		  m_TrustParentQuestion(m_Modals, kTrustParentTitle)
+		  m_TrustParentQuestion(m_Modals, kTrustParentTitle),
+		  m_ForcePushQuestion(m_Modals, kForcePushTitle)
 	{
 		m_Layout.Left = {"files", "changes"};
 
@@ -383,7 +385,14 @@ namespace Graphite {
 								NetworkCommandServices{.Buttons = [this] { return DescribeNetworkButtonsNow(m_Git, m_Network, m_GitView != nullptr && m_GitView->CurrentWait().CheckingOut.has_value(), IsOpenFolderTrusted()); },
 													   .Fetch = [this] { m_Network.Fetch(); },
 													   .Pull = [this] { m_Network.Pull(); },
-													   .Push = [this] { m_Network.Push(); }});
+													   .Push = [this] { m_Network.Push(); },
+													   .CanForcePush = [this] { return DivergedBranch().has_value(); },
+													   .ForcePush = [this] {
+														   if (const std::optional<ForcePushQuestion> diverged = DivergedBranch())
+														   {
+															   m_ForcePushQuestion.Ask(*diverged);
+														   }
+													   }});
 
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",
@@ -1149,6 +1158,7 @@ namespace Graphite {
 		// WARNING: Open modal popups outside the dockspace host's Begin/End and every other window: a popup must not be opened from inside a window that may not be current when it needs to draw.
 		RenderCloseConfirm();
 		RenderDropConfirm();
+		RenderForcePushConfirm();
 		m_About.Render();
 		RenderTrustParentConfirm();
 
@@ -1535,6 +1545,61 @@ namespace Graphite {
 		}
 
 		m_DropQuestion.End();
+	}
+
+	std::optional<GraphiteLayer::ForcePushQuestion> GraphiteLayer::DivergedBranch() const
+	{
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
+		const Core::Branch* const checkedOut = branches != nullptr ? CheckedOutBranch(*branches) : nullptr;
+
+		if (checkedOut == nullptr || !checkedOut->Upstream.has_value() || !checkedOut->DistanceKnown || checkedOut->Ahead == 0 ||
+			checkedOut->Behind == 0)
+		{
+			return std::nullopt;
+		}
+
+		return ForcePushQuestion{.Branch = checkedOut->Name,
+								 .Upstream = *checkedOut->Upstream,
+								 .Ahead = checkedOut->Ahead,
+								 .Behind = checkedOut->Behind};
+	}
+
+	void GraphiteLayer::RenderForcePushConfirm()
+	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const ForcePushQuestion* asked = m_ForcePushQuestion.Begin();
+		DialogLayout::AfterBegin();
+
+		if (asked == nullptr)
+		{
+			return;
+		}
+
+		const auto commits = [](std::size_t count) { return std::format("{} {}", count, count == 1 ? "commit" : "commits"); };
+
+		DialogLayout::Text(std::format("Replace {} with {}?", asked->Upstream, asked->Branch));
+		DialogLayout::Gap();
+		DialogLayout::MutedText(std::format(
+			"{} has {} that {} lacks. {} dropped from the remote for everyone, as after amending a commit that was "
+			"already pushed. The push is refused if the remote moved since the last fetch.",
+			asked->Upstream, commits(asked->Behind), asked->Branch, asked->Behind == 1 ? "It is" : "They are"));
+		DialogLayout::Gap();
+
+		const DialogLayout::ButtonSpec noSafeChoice{};
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow(noSafeChoice, {.Label = "Force Push"}, DangerColourOf(m_ActiveScheme.Get()));
+
+		if (choice == DialogLayout::Choice::Destructive)
+		{
+			m_Network.ForcePush();
+			m_ForcePushQuestion.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_ForcePushQuestion.Answer();
+		}
+
+		m_ForcePushQuestion.End();
 	}
 
 	void GraphiteLayer::RouteShortcuts(Core::Event& event, Core::TypingTarget typingTarget)

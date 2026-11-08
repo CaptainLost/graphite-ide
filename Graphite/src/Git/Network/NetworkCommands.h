@@ -49,8 +49,13 @@ namespace Graphite {
 		std::function<void()> Fetch;
 		std::function<void()> Pull;
 		std::function<void()> Push;
+
+		// Whether the checked-out branch and its upstream have each moved on, and what asks before forcing it.
+		std::function<bool()> CanForcePush;
+		std::function<void()> ForcePush;
 	};
 
-	// git.fetch, git.pull and git.push, with no default shortcuts. They are listed in the Git menu.
+	// git.fetch, git.pull, git.push and git.forcePush, with no default shortcuts. They are listed in the Git menu. Force
+	// Push is enabled only while Push is and the branch has diverged from its upstream.
 	void RegisterNetworkCommands(Core::CommandRegistry& commands, NetworkCommandServices services);
 }

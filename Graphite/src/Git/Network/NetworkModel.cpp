@@ -190,6 +190,11 @@ namespace Graphite {
 		Ask(Request{.Operation = NetworkOperation::Push, .Remote = std::move(remote)});
 	}
 
+	void NetworkModel::ForcePush()
+	{
+		Ask(Request{.Operation = NetworkOperation::Push, .Force = true});
+	}
+
 	void NetworkModel::FetchFullHistory()
 	{
 		Ask(Request{.Operation = NetworkOperation::FullHistory});
@@ -422,7 +427,7 @@ namespace Graphite {
 		case NetworkOperation::Pull:
 			return RunPullFetch(cancelled);
 		case NetworkOperation::Push:
-			return RunPush(request.Remote, cancelled);
+			return RunPush(request.Remote, request.Force, cancelled);
 		case NetworkOperation::FullHistory:
 			return RunFullHistory(cancelled);
 		}
@@ -546,7 +551,7 @@ namespace Graphite {
 		return answer;
 	}
 
-	NetworkModel::JobAnswer NetworkModel::RunPush(const std::optional<std::string>& remote, const std::atomic<bool>& cancelled)
+	NetworkModel::JobAnswer NetworkModel::RunPush(const std::optional<std::string>& remote, bool force, const std::atomic<bool>& cancelled)
 	{
 		JobAnswer answer;
 		const Core::Result<CheckedOutRead> read = ReadCheckedOut(m_Port);
@@ -586,6 +591,21 @@ namespace Graphite {
 		// push has it. A branch made from origin/main tracks origin/main, and HEAD:main would move the server's main to the
 		// branch's commits; any other branch is published under its own name and tracks that from then on.
 		const bool toUpstream = upstreamRemote == target && checkedOut.Name == NameOnRemote(upstream->FullName, *target);
+
+		// WARNING: A force push only ever replaces the branch's own upstream: anywhere else it would overwrite a branch the
+		// reader never pushed to from here.
+		if (force && !toUpstream)
+		{
+			answer.Outcome = FailedWith("Force Push replaces only an upstream of " + checkedOut.Name + "'s own name on a remote, and " +
+										checkedOut.Name + " has none.");
+			return answer;
+		}
+
+		if (force)
+		{
+			answer.Outcome = m_Port.ForcePushTo(cancelled, m_Progress, *target, NameOnRemote(upstream->FullName, *target));
+			return answer;
+		}
 
 		if (!toUpstream)
 		{

@@ -122,6 +122,17 @@ namespace Graphite {
 			ReplaceFolder
 		};
 
+		// The checked-out branch and its upstream when each has commits the other lacks, as Force Push asks about it.
+		struct ForcePushQuestion
+		{
+			std::string Branch;
+			std::string Upstream;
+			std::size_t Ahead = 0;
+			std::size_t Behind = 0;
+
+			bool operator==(const ForcePushQuestion&) const = default;
+		};
+
 		struct DroppedWorkspace
 		{
 			DropTarget Target = DropTarget::None;
@@ -184,6 +195,10 @@ namespace Graphite {
 
 		// The workspace's replace gate: opens the next folder at once when no file has unsaved changes, else asks first.
 		void AskBeforeReplacingFolder(std::function<void()> open);
+
+		// Set only while the checked-out branch and its upstream have each moved on: the one case Force Push is for.
+		std::optional<ForcePushQuestion> DivergedBranch() const;
+		void RenderForcePushConfirm();
 
 		void RenderCloseConfirm();
 
@@ -373,6 +388,10 @@ namespace Graphite {
 		static constexpr const char* kTrustParentTitle = "Trust all folders##TrustParentFolders";
 
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
+
+		static constexpr const char* kForcePushTitle = "Force push##ForcePushBranch";
+
+		ModalQuestion<ForcePushQuestion> m_ForcePushQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
 		// The order among these twelve is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel, ReviewModel,

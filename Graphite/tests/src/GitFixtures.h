@@ -87,6 +87,12 @@ public:
 		return Network.Answer("PushTo " + remote + " " + upstreamBranch.value_or("(set upstream)"), progress);
 	}
 
+	Core::NetworkOutcome ForcePushTo(const std::atomic<bool>&, const Core::ProgressSink& progress, const std::string& remote,
+									 const std::string& upstreamBranch) override
+	{
+		return Network.Answer("ForcePushTo " + remote + " " + upstreamBranch, progress);
+	}
+
 	Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>&, const Core::ProgressSink& progress, const std::string& remote) override
 	{
 		return Network.Answer("SetRemoteHeadAuto " + remote, progress);

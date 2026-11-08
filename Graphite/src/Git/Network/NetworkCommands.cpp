@@ -83,5 +83,12 @@ namespace Graphite {
 					  .Label = "Git: Push",
 					  .Run = services.Push,
 					  .Enabled = [buttons = services.Buttons] { return CommandStateOfPush(buttons()).Enabled; }});
+
+		commands.Add({.Id = "git.forcePush",
+					  .Label = "Git: Force Push...",
+					  .Run = services.ForcePush,
+					  .Enabled = [buttons = services.Buttons, canForce = services.CanForcePush] {
+						  return CommandStateOfPush(buttons()).Enabled && canForce && canForce();
+					  }});
 	}
 }

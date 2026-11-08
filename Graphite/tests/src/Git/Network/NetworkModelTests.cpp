@@ -182,6 +182,17 @@ namespace {
 			return Answer("PushTo", "PushTo " + remote + " " + upstreamBranch.value_or("(set upstream)"), cancelled, progress);
 		}
 
+		Core::NetworkOutcome ForcePushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress, const std::string& remote,
+										 const std::string& upstreamBranch) override
+		{
+			if (const Core::Branch* checkedOut = Graphite::CheckedOutBranch(Branches); checkedOut != nullptr)
+			{
+				PushedTips.push_back(checkedOut->Tip);
+			}
+
+			return Answer("ForcePushTo", "ForcePushTo " + remote + " " + upstreamBranch, cancelled, progress);
+		}
+
 		Core::NetworkOutcome SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 											   const std::string& remote) override
 		{
@@ -450,7 +461,7 @@ TEST_CASE("Network model: a failure keeps git's words and the hint first")
 	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
 	REQUIRE(failure.has_value());
 	CHECK(failure->Operation == NetworkOperation::Push);
-	CHECK(failure->Error.Message == "origin has commits that main lacks. Pull first, or merge in a terminal.\n"
+	CHECK(failure->Error.Message == "origin has commits that main lacks. Pull first, merge in a terminal, or replace them with Git: Force Push.\n"
 									"To C:/server.git\n"
 									" ! [rejected]        main -> main (fetch first)\n"
 									"error: failed to push some refs to 'C:/server.git'\n"
@@ -1305,4 +1316,30 @@ TEST_CASE("Network model: pull's fetch counts as a fetch, failed or ended well, 
 
 	REQUIRE(network.Model.TakeDone().has_value());
 	CHECK(network.Model.ShownLastFetch(kWrittenLater) == std::optional<std::chrono::sys_seconds>{kWrittenLater});
+}
+
+TEST_CASE("Network model: force push replaces the branch's own upstream")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 1, 1)), RemoteBranch("origin", "main")};
+
+	network.Model.ForcePush();
+	network.Update();
+
+	CHECK(network.Port.CallsSoFar() == Calls({"ForcePushTo origin main"}));
+	CHECK(network.Model.TakeDone().has_value());
+}
+
+TEST_CASE("Network model: force push refuses a branch whose upstream has another name, without running git")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("my-fix", "origin/main", 1, 1)), RemoteBranch("origin", "main")};
+
+	network.Model.ForcePush();
+	network.Update();
+
+	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message.find("Force Push") != std::string::npos);
+	CHECK(network.Port.CallsSoFar().empty());
 }

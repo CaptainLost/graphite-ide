@@ -148,7 +148,7 @@ TEST_CASE("Network: the hints are read from git's words")
 {
 	CHECK(Core::HintOf(" ! [rejected]        main -> main (non-fast-forward)") == Core::NetworkHint::Rejected);
 	CHECK(Core::HintOf(" ! [rejected]        main -> main (fetch first)") == Core::NetworkHint::Rejected);
-	CHECK(Core::HintOf(" ! [rejected]        main -> main (stale info)") == Core::NetworkHint::None);
+	CHECK(Core::HintOf(" ! [rejected]        main -> main (stale info)") == Core::NetworkHint::Rejected);
 	CHECK(Core::HintOf("remote: Authentication failed for 'x'") == Core::NetworkHint::SignIn);
 	CHECK(Core::HintOf("git@host: Permission denied (publickey).") == Core::NetworkHint::SignIn);
 	CHECK(Core::HintOf("Host key verification failed.") == Core::NetworkHint::SignIn);
@@ -833,4 +833,59 @@ TEST_CASE("Network: cancelling a fetch while git runs ends it and everything it 
 	}
 
 	CHECK(released);
+}
+
+TEST_CASE("Network: a force push replaces a pushed commit that was amended")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+
+	scene.Fixture().Write("local.txt", "mine\n");
+	scene.Fixture().Commit("local");
+
+	const std::atomic<bool> neverCancelled{false};
+	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch}).Result == Core::NetworkResult::Done);
+
+	scene.Git(scene.Work(), {"-c", "user.name=Me", "-c", "user.email=me@example.com", "commit", "--amend", "-m", "local, reworded"});
+	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch}).Result == Core::NetworkResult::Failed);
+
+	const Core::NetworkOutcome forced = Core::ForcePushWithLease(scene.Run(), neverCancelled, IgnorePercent, kRemote, kBranch);
+
+	REQUIRE(forced.Result == Core::NetworkResult::Done);
+	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Head());
+}
+
+TEST_CASE("Network: a force push refuses when the remote moved since the last fetch")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+	scene.PeerCommitsAndPushes("b.txt", "two\n");
+
+	scene.Fixture().Write("local.txt", "mine\n");
+	scene.Fixture().Commit("local");
+
+	const std::string peerCommit = scene.Git(scene.Peer(), {"rev-parse", "HEAD"});
+
+	const std::atomic<bool> neverCancelled{false};
+	const Core::NetworkOutcome forced = Core::ForcePushWithLease(scene.Run(), neverCancelled, IgnorePercent, kRemote, kBranch);
+
+	REQUIRE(forced.Result == Core::NetworkResult::Failed);
+	CHECK(forced.Failure.Hint == Core::NetworkHint::Rejected);
+	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == peerCommit);
 }
