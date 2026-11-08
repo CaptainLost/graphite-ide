@@ -341,6 +341,16 @@ namespace Graphite {
 		if (closeClicked || escapePressed)
 		{
 			CloseFindBar(item);
+
+			// WARNING: The bar is a child of the editor's surface, and Escape leaves ImGui's navigation on the bar, which is
+			// not drawn again: the surface would not count as focused and would take no keys until clicked. The surface,
+			// the window current here, takes the focus back, without the navigation frame Escape put round it.
+			if (frame.DocumentFocused)
+			{
+				ImGui::SetWindowFocus();
+				ImGui::SetNavCursorVisible(false);
+			}
+
 			return;
 		}
 

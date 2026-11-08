@@ -2435,3 +2435,25 @@ TEST_CASE("Peek command Line History from the menu opens on the right-clicked li
 	CHECK_FALSE(widget.ContextMenuOffset.has_value());
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
+
+TEST_CASE("Escape in the find bar hands the keyboard back to the text")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+
+	editor.Next();
+	editor.Click(ImVec2(kDocumentWidth * 0.5f, kDocumentHeight * 0.5f));
+	editor.Bar.Open(editor.Item);
+	editor.Next();
+	editor.Next();
+
+	const ImGuiContext& context = *ImGui::GetCurrentContext();
+	REQUIRE(context.ActiveId != 0);
+	REQUIRE(editor.Item.Find.Open);
+
+	editor.Frames.PressKey(ImGuiKey_Escape, [&editor] { editor.Draw(); });
+	editor.Next();
+
+	CHECK_FALSE(editor.Item.Find.Open);
+	REQUIRE(EditorSurface() != nullptr);
+	CHECK(context.NavWindow == EditorSurface());
+}
