@@ -31,8 +31,7 @@
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
-#include "Notifications/NotificationHistory.h"
-#include "Notifications/NotificationsPopup.h"
+#include "Notifications/NotificationCentre.h"
 #include "UI/ToastEvent.h"
 #include "Language/Analysis/FileTextSource.h"
 #include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
@@ -165,8 +164,6 @@ namespace Graphite {
 		void RenderTrustParentConfirm();
 
 		void RenderEmptyEditorArea();
-
-		void ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText, ToastScope scope);
 
 		void ReportGitWriteFailure(const GitModel::WriteFailure& failure);
 		void ReportGitWriteFailure(const NetworkFailureReport& failure);
@@ -431,10 +428,8 @@ namespace Graphite {
 		ClaudeSettings m_ClaudeSettings{m_AppSettings};
 		SessionWindows m_SessionWindows{m_Events, m_ClaudeSettings};
 
-		// WARNING: Declared before m_Panels, because GitView holds a reference to m_Toasts.
-		Core::Toasts m_Toasts;
-		NotificationHistory m_Notifications;
-		NotificationsPopup m_NotificationsPopup;
+		// Every toast and the history the bell opens.
+		NotificationCentre m_Notifications;
 		const std::chrono::time_zone* m_LocalTimeZone = Core::LocalTimeZone();
 
 		Core::PanelManager m_Panels;

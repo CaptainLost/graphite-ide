@@ -208,7 +208,7 @@ namespace Graphite {
 			CopyToClipboard(m_Events, what, text);
 		};
 
-		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
+		// WARNING: The toasts' OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
 		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Network, m_Worktrees, m_Content, m_GitWindowChanges,
 																   m_ActiveScheme, m_EditorSettings, m_DiffWindows, m_Modals,
@@ -458,7 +458,7 @@ namespace Graphite {
 
 		// WARNING: Cleared on WorkspaceOpeningEvent, not WorkspaceOpenedEvent: by then the new folder has reported its own failures, and clearing would take those with it.
 		m_Events.Subscribe<WorkspaceOpeningEvent>([this](const WorkspaceOpeningEvent&) {
-			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
+			m_Notifications.ClearFolder();
 		});
 
 		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
@@ -480,12 +480,12 @@ namespace Graphite {
 		});
 
 		m_Events.Subscribe<ToastEvent>([this](const ToastEvent& event) {
-			ShowToast(event.Kind, event.Title, event.Message, event.CopyText, event.Scope);
+			m_Notifications.Show(event, m_Workspace.GetRoot());
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
 			m_Folder.Close();
-			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
+			m_Notifications.ClearFolder();
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>(
@@ -994,16 +994,8 @@ namespace Graphite {
 			workingTreeHasChanges = gitStatus != nullptr && !gitStatus->Entries.empty();
 		}
 
-		// WARNING: Drain the departures before the toasts draw, so a toast cleared with its folder since the last frame already counts for the bell this frame.
-		for (const Core::ToastDeparture& departure : m_Toasts.TakeDepartures())
-		{
-			m_Notifications.NoteDeparture(departure);
-		}
-
-		// WARNING: The popup marks everything seen when it draws, after the bar, so the dot would flash for a frame while it is open.
-		const std::optional<Core::ToastKind> missedKind = m_Notifications.MostSevereMissed();
-		const bool missedOutsideTheOpenList = missedKind.has_value() && !m_NotificationsPopup.IsOpen();
-		if (missedOutsideTheOpenList)
+		// WARNING: Before the toasts draw: see MissedForTheBell.
+		if (const std::optional<Core::ToastKind> missedKind = m_Notifications.MissedForTheBell())
 		{
 			messages.MissedNotificationColour = Core::ToastAccentOf(ToastPaletteFor(m_ActiveScheme.Get()), *missedKind);
 		}
@@ -1033,7 +1025,7 @@ namespace Graphite {
 			break;
 
 		case StatusBarClick::Notifications:
-			m_NotificationsPopup.OpenFromBell(kStatusBarWindowName);
+			m_Notifications.OpenFromBell(kStatusBarWindowName);
 			break;
 
 		case StatusBarClick::None:
@@ -1150,8 +1142,7 @@ namespace Graphite {
 
 		// WARNING: Draw the toasts last, so they sit over every panel and terminal.
 		const Core::ToastPalette toastPalette = ToastPaletteFor(m_ActiveScheme.Get());
-		m_NotificationsPopup.Render(m_Notifications, toastPalette, m_Workspace.GetRoot(), m_LocalTimeZone);
-		m_Toasts.Render(toastPalette);
+		m_Notifications.Render(toastPalette, m_Workspace.GetRoot(), m_LocalTimeZone);
 
 		// WARNING: End the frame of close requests after every owner has drawn: what nobody took belonged to a window that went some other way.
 		m_TabCloseRequests.EndFrame();
@@ -1261,14 +1252,16 @@ namespace Graphite {
 		std::string shown = RelativiseUnder(failure.Error.Message, m_Git.GetWorkingDirectory());
 		std::string copied = title + "\n" + failure.Error.Message;
 
-		ShowToast(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied), ToastScope::Folder);
+		m_Notifications.Show(ToastEvent{.Kind = Core::ToastKind::Error, .Title = std::move(title), .Message = std::move(shown), .CopyText = std::move(copied), .Scope = ToastScope::Folder},
+							 m_Workspace.GetRoot());
 	}
 
 	void GraphiteLayer::ReportGitWriteFailure(const NetworkFailureReport& failure)
 	{
 		std::string shown = RelativiseUnder(failure.Error.Message, m_Git.GetWorkingDirectory());
 
-		ShowToast(Core::ToastKind::Error, FailureTitle(failure.Operation), std::move(shown), failure.Copied, ToastScope::Folder);
+		m_Notifications.Show(ToastEvent{.Kind = Core::ToastKind::Error, .Title = FailureTitle(failure.Operation), .Message = std::move(shown), .CopyText = failure.Copied, .Scope = ToastScope::Folder},
+							 m_Workspace.GetRoot());
 	}
 
 	void GraphiteLayer::ApplyNetworkResults()
@@ -1292,23 +1285,6 @@ namespace Graphite {
 		{
 			m_Events.Publish(RepositoryChangedEvent{});
 		}
-	}
-
-	void GraphiteLayer::ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText,
-								  ToastScope scope)
-	{
-		const std::uint64_t toastId = m_Toasts.Show(kind, title, message, copyText, ToastGroupOf(scope));
-		const bool aboutTheFolder = scope == ToastScope::Folder;
-
-		m_Notifications.Record({
-			.ToastId = toastId,
-			.Kind = kind,
-			.Title = std::move(title),
-			.Message = std::move(message),
-			.CopyText = std::move(copyText),
-			.Folder = aboutTheFolder ? m_Workspace.GetRoot() : std::filesystem::path(),
-			.LastShownAt = std::chrono::system_clock::now(),
-		});
 	}
 
 	void GraphiteLayer::RenderEmptyEditorArea()
