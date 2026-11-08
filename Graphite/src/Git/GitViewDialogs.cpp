@@ -176,7 +176,7 @@ namespace Graphite {
 			// WARNING: The editor's copies are reverted first. The checkout writes over the files, and
 			// a buffer still holding the old edits would disagree with the disk.
 			m_Buffers.Revert(unsaved);
-			m_Model.RequestCheckout(CheckoutRequest{.Target = target,
+			CheckOut(CheckoutRequest{.Target = target,
 													.Preparation = CheckoutPreparation::Discard,
 													.IncludeUntracked = includeUntracked});
 			AnswerCheckoutQuestion();
@@ -193,7 +193,7 @@ namespace Graphite {
 			}
 			else
 			{
-				m_Model.RequestCheckout(CheckoutRequest{.Target = target,
+				CheckOut(CheckoutRequest{.Target = target,
 														.Preparation = CheckoutPreparation::Stash,
 														.IncludeUntracked = includeUntracked,
 														.StashMessage = "Before checking out " +

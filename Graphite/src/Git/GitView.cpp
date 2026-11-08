@@ -344,6 +344,17 @@ namespace Graphite {
 		m_Model.RequestCheckoutPlan(target);
 	}
 
+	void GitView::CheckOut(CheckoutRequest request)
+	{
+		m_Model.RequestCheckout(std::move(request));
+
+		// The history of no particular ref is HEAD's, so it follows the checkout as it lands.
+		if (m_SelectedRef.has_value() || m_SelectedStash.has_value())
+		{
+			SelectRef(std::nullopt);
+		}
+	}
+
 	void GitView::ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen)
 	{
 		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
@@ -373,7 +384,7 @@ namespace Graphite {
 		}
 
 		case CheckoutPlanVerdict::CheckOut:
-			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
+			CheckOut(CheckoutRequest{.Target = answer.Target});
 			break;
 
 		case CheckoutPlanVerdict::Ask:

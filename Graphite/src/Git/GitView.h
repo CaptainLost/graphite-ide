@@ -306,6 +306,10 @@ namespace Graphite {
 		void DeselectStash();
 
 		void BeginCheckout(const Core::CheckoutTarget& target);
+
+		// Asks for the checkout and turns the history to the branch checked out, whatever it showed: after checking out a
+		// remote branch the history stayed on the branch selected before it.
+		void CheckOut(CheckoutRequest request);
 		void BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested = {});
 		void BeginRename(const std::string& branch);
 
