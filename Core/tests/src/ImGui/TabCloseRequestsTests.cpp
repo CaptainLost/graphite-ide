@@ -73,3 +73,25 @@ TEST_CASE("Names with different identities do not match")
 	CHECK_FALSE(requests.Take("a###y"));
 	CHECK(requests.Take("a###x"));
 }
+
+TEST_CASE("A tab asked to close among others is taken by Take and left by TakeAskedByName")
+{
+	TabCloseRequests requests;
+	requests.Request("main.cpp###doc1", Core::CloseAsked::ByName);
+	requests.Request("Settings###settings", Core::CloseAsked::AmongOthers);
+	requests.EndFrame();
+
+	CHECK_FALSE(requests.TakeAskedByName("Settings###settings"));
+	CHECK(requests.Take("Settings###settings"));
+	CHECK(requests.TakeAskedByName("main.cpp###doc1"));
+}
+
+TEST_CASE("A tab asked to close by name and among others counts as asked by name")
+{
+	TabCloseRequests requests;
+	requests.Request("Settings###settings", Core::CloseAsked::AmongOthers);
+	requests.Request("Settings###settings", Core::CloseAsked::ByName);
+	requests.EndFrame();
+
+	CHECK(requests.TakeAskedByName("Settings###settings"));
+}

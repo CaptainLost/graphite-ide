@@ -125,7 +125,7 @@ namespace Core {
 		{
 			for (const std::string& name : TabsToClose(tabs, clicked, *picked))
 			{
-				requests.Request(name);
+				requests.Request(name, name == clicked ? CloseAsked::ByName : CloseAsked::AmongOthers);
 			}
 		}
 	}

@@ -13,17 +13,35 @@ namespace Core {
 		}
 	}
 
-	void TabCloseRequests::Request(std::string_view name)
+	void TabCloseRequests::Request(std::string_view name, CloseAsked how)
 	{
-		m_AskedWindowIdentities.emplace(WindowIdentityOf(name));
+		const auto [asked, added] = m_AskedWindowIdentities.emplace(WindowIdentityOf(name), how);
+
+		// Asked by name once is asked by name, whatever else asked for it too.
+		if (!added && how == CloseAsked::ByName)
+		{
+			asked->second = CloseAsked::ByName;
+		}
 	}
 
 	bool TabCloseRequests::Take(std::string_view name)
 	{
-		const std::set<std::string, std::less<>>::iterator dueRequest =
-			m_DueWindowIdentities.find(WindowIdentityOf(name));
+		const auto dueRequest = m_DueWindowIdentities.find(WindowIdentityOf(name));
 
 		if (dueRequest == m_DueWindowIdentities.end())
+		{
+			return false;
+		}
+
+		m_DueWindowIdentities.erase(dueRequest);
+		return true;
+	}
+
+	bool TabCloseRequests::TakeAskedByName(std::string_view name)
+	{
+		const auto dueRequest = m_DueWindowIdentities.find(WindowIdentityOf(name));
+
+		if (dueRequest == m_DueWindowIdentities.end() || dueRequest->second != CloseAsked::ByName)
 		{
 			return false;
 		}

@@ -191,7 +191,9 @@ namespace Core {
 			panel->SetDrawnOnLatestFrame(bodyRuns);
 			DrawDockTab(DockTabLookOf(windowName), closeRequests);
 
-			const bool tabMenuAskedToClose = closeRequests.Take(windowName);
+			// WARNING: Only its own Close: Close Others or Close All picked from a document's tab closes the documents
+			// beside the panel and leaves the panel open.
+			const bool tabMenuAskedToClose = closeRequests.TakeAskedByName(windowName);
 			if (tabMenuAskedToClose)
 			{
 				windowOpen = false;
