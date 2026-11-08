@@ -10,8 +10,10 @@
 #include "Core/Git/Ref.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Tag.h"
+#include "Core/Git/Worktree.h"
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -41,6 +43,7 @@ namespace Graphite {
 	struct SidebarRowText
 	{
 		std::string Head;              // line 1: last "/" segment of the short name (Branch), the name without its remote (Base)
+		std::string HeadNote;          // dim words after Head on line 1, after a dim " · "; empty for none
 		bool IsHead = false;           // checked out: HEAD dot before Head, bright
 		std::vector<SidebarSpan> Meta; // line 2; the view joins spans with " · "
 		std::string Right;             // "2 to push", "3 to pull", "2 to push · 3 to pull", or empty
@@ -48,6 +51,12 @@ namespace Graphite {
 		std::optional<std::filesystem::path> Worktree; // where the row's local branch is checked out, if anywhere
 		std::optional<bool> Dirty;                     // that worktree has uncommitted changes; empty while unknown
 		std::string CountFailure;                      // why its changes could not be counted; empty otherwise
+
+		// A worktree row's: the count of its changed files in a badge of fixed width at the right, "…" while unknown and
+		// empty when clean; the live marker in the place of its folder icon; the lock after its name.
+		std::string Badge;
+		bool Live = false;
+		bool Locked = false;
 	};
 
 	struct SidebarTextInput
@@ -71,6 +80,23 @@ namespace Graphite {
 
 	// Empty for a row that is neither a branch nor a base.
 	SidebarRowText DescribeSidebarRow(const SidebarRow& row, const SidebarTextInput& input);
+
+	// What a worktree row is described from: the worktree and what the worktrees model knows of it now.
+	struct WorktreeRowInput
+	{
+		const Core::WorktreeEntry& Entry;
+		bool ThisFolder = false;
+		std::optional<std::size_t> Changed; // files with changes; empty while unknown and after a failed count
+		std::optional<std::chrono::sys_seconds> LastActivity;
+		bool Live = false;
+		std::string CountFailure; // why the last count failed; empty when it did not
+		std::chrono::sys_seconds Now;
+	};
+
+	// Line 1 the folder's name ("this folder" after the open folder's); line 2 the branch or "detached at <hash>", then "N
+	// changed" or "clean" ("folder missing" instead for a folder that is gone), then the last activity; the full path in
+	// the tooltip.
+	SidebarRowText DescribeWorktreeRow(const WorktreeRowInput& input);
 
 	// What stands in the place of a worktree marker's dot.
 	enum class WorktreeDotPlace

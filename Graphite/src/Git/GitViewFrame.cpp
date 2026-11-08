@@ -296,6 +296,11 @@ namespace Graphite {
 		const std::optional<Core::Error>& stashesError = m_Model.GetStashesError();
 		const std::optional<Core::Error>& tagsError = m_Model.GetTagsError();
 
+		const std::map<std::string, bool>::const_iterator worktreesOpen = m_OpenByUser.find(kWorktreesSectionKey);
+		const WorktreeOrderMoment moment = m_WorktreeMoments.Next(
+			m_SidebarOpenings, m_Sidebar.GetSearch(), worktreesOpen == m_OpenByUser.end() || worktreesOpen->second);
+		m_WorktreeOrder.Follow(moment, m_Worktrees, m_Model.GetWorkingDirectory());
+
 		SidebarInputs inputs{.Read = m_OnScreen.GetRead(),
 							 .Stashes = m_Model.GetStashes(),
 							 .StashesError = stashesError.has_value() ? std::optional<std::string>{stashesError->Message}
@@ -307,6 +312,7 @@ namespace Graphite {
 							 .ChoicesVersion = m_SidebarChoicesVersion,
 							 .MergedChoicesVersion = m_SidebarMergedChoicesVersion,
 							 .Openings = m_SidebarOpenings,
+							 .WorktreesVersion = m_WorktreeOrder.Version(),
 							 .ShownRef = SidebarShownRef()};
 
 		if (m_SidebarBuiltFrom == inputs)
@@ -363,7 +369,9 @@ namespace Graphite {
 							.ShownRef = inputs.ShownRef,
 							.MergedByContent = &mergedByContent,
 							.Tags = inputs.Tags.get(),
-							.TagsError = tagsError.has_value() ? &*tagsError : nullptr};
+							.TagsError = tagsError.has_value() ? &*tagsError : nullptr,
+							.Worktrees = &m_WorktreeOrder.Listing(),
+							.WorktreeEntries = m_Worktrees.Entries()};
 	}
 
 	void GitView::AnswerNetworkClick(NetworkClick click)
@@ -538,6 +546,11 @@ namespace Graphite {
 			return stash != nullptr ? DescribeStashRow(*stash, NowInSeconds(), ReaderTimeZone()) : SidebarRowText{};
 		}
 
+		if (row.Kind == SidebarRowKind::Worktree)
+		{
+			return SidebarWorktreeTextOf(row);
+		}
+
 		if (m_OnScreen.GetLines() == nullptr)
 		{
 			return SidebarRowText{};
@@ -554,6 +567,41 @@ namespace Graphite {
 		input.ContentOf = [this](const Core::BranchLine& line) { return m_Content.MarkOf(line); };
 
 		return DescribeSidebarRow(row, input);
+	}
+
+	SidebarRowText GitView::SidebarWorktreeTextOf(const SidebarRow& row) const
+	{
+		// The rows index the entries they were built from, and are built again in the frame the worktrees' paths change.
+		const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
+
+		if (entries == nullptr || !row.Worktree.has_value() || *row.Worktree >= entries->size())
+		{
+			return SidebarRowText{};
+		}
+
+		const Core::WorktreeEntry& entry = (*entries)[*row.Worktree];
+		WorktreeRowInput input{.Entry = entry, .ThisFolder = Core::SamePath(entry.Path, m_Model.GetWorkingDirectory()),
+							   .Now = NowInSeconds()};
+
+		if (input.ThisFolder)
+		{
+			// The open folder's changes are its Local changes row's, counted from its own status.
+			if (const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus())
+			{
+				input.Changed = status->Entries.size();
+			}
+		}
+		else
+		{
+			// Recorded as in view, so the worktree is counted again as rows in view are (ADR 0674).
+			m_Worktrees.DirtyInView(entry.Path);
+			input.Changed = m_Worktrees.CountOf(entry.Path);
+			input.LastActivity = m_Worktrees.LastActivity(entry.Path);
+			input.Live = m_Worktrees.IsLive(entry.Path);
+			input.CountFailure = m_Worktrees.CountFailureOf(entry.Path).value_or(std::string{});
+		}
+
+		return DescribeWorktreeRow(input);
 	}
 
 	std::optional<std::size_t> GitView::SelectedTagIndex() const
@@ -663,6 +711,7 @@ namespace Graphite {
 			}
 			return;
 		case SidebarRowKind::Notice:
+		case SidebarRowKind::Worktree:
 			return;
 		}
 	}

@@ -231,6 +231,7 @@ namespace Graphite {
 		std::optional<std::size_t> SelectedTagIndex() const;
 
 		SidebarRowText SidebarTextOf(const SidebarRow& row) const;
+		SidebarRowText SidebarWorktreeTextOf(const SidebarRow& row) const; // marks the worktree's row as in view
 		SidebarSelection SidebarSelectionNow() const;
 		void AnswerSidebarClick(const SidebarRow& row);
 		void AnswerSidebarLink(SidebarLink link, const std::string& remote);
@@ -560,6 +561,10 @@ namespace Graphite {
 
 		// The remote branches the rows hide as merged by content, found again only at the moments spec §6 rule 3 names.
 		MergedByContentSnapshot m_HiddenByContent;
+
+		// The Worktrees section's order, built again only at the moments its spec names (§4.2).
+		WorktreeMoments m_WorktreeMoments;
+		WorktreeOrder m_WorktreeOrder;
 
 		// The frame the sidebar was last drawn on: drawn on any later one than the next, the window was opened again.
 		int m_SidebarDrawnOnFrame = -1;

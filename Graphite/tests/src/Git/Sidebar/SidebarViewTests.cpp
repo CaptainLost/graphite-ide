@@ -603,3 +603,61 @@ TEST_CASE("Git window: a tag row draws in a folder and answers a click")
 	CHECK(clicked[0].Kind == SidebarRowKind::Tag);
 	CHECK(clicked[0].Tag == std::optional<std::size_t>{4});
 }
+
+TEST_CASE("Git window: worktree rows are two lines tall and answer a click, and so does their fold row")
+{
+	Harness harness("SidebarWorktreeRows");
+
+	SidebarRow section = Section("worktrees");
+	section.Section = SidebarSection::Worktrees;
+	section.Label = "Worktrees";
+
+	std::vector<SidebarRow> rows = {section};
+
+	for (std::size_t entry = 0; entry < 2; ++entry)
+	{
+		SidebarRow worktree;
+		worktree.Kind = SidebarRowKind::Worktree;
+		worktree.Section = SidebarSection::Worktrees;
+		worktree.Worktree = entry;
+		rows.push_back(worktree);
+	}
+
+	SidebarRow fold;
+	fold.Kind = SidebarRowKind::Group;
+	fold.Section = SidebarSection::Worktrees;
+	fold.Key = "worktrees/idle";
+	fold.Label = "3 more \xC2\xB7 no changes for 7+ days";
+	fold.Count = 3;
+	rows.push_back(fold);
+
+	harness.Rows = &rows;
+
+	// The first live with changes, the second locked and still counted: every place a worktree row draws.
+	harness.TextOf = [](const SidebarRow& row) {
+		SidebarRowText text;
+		text.Head = "wt-" + std::to_string(row.Worktree.value_or(0));
+		text.HeadNote = row.Worktree == 0u ? "this folder" : "";
+		text.Meta.push_back({"main", SidebarTone::Dim});
+		text.Badge = row.Worktree == 0u ? "3" : "\xE2\x80\xA6";
+		text.Live = row.Worktree == 0u;
+		text.Locked = row.Worktree == 1u;
+		return text;
+	};
+
+	std::vector<SidebarRow> clicked;
+	harness.View.OnClick = [&](const SidebarRow& row) { clicked.push_back(row); };
+
+	harness.Settle();
+	const ImGuiWindow* list = harness.RowsWindow();
+	REQUIRE(list != nullptr);
+
+	harness.Click(InRows(*list, ListRowPitch() + SidebarTwoLineRowHeight() * 1.5f));
+	harness.Click(InRows(*list, ListRowPitch() + SidebarTwoLineRowHeight() * 2.0f + ListRowPitch() * 0.5f));
+
+	REQUIRE(clicked.size() == 2);
+	CHECK(clicked[0].Kind == SidebarRowKind::Worktree);
+	CHECK(clicked[0].Worktree == std::optional<std::size_t>{1});
+	CHECK(clicked[1].Kind == SidebarRowKind::Group);
+	CHECK(clicked[1].Key == "worktrees/idle");
+}

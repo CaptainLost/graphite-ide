@@ -534,6 +534,8 @@ namespace Graphite {
 		++m_SidebarChoicesVersion;
 		++m_SidebarMergedChoicesVersion;
 		m_HiddenByContent = MergedByContentSnapshot{};
+		m_WorktreeMoments = WorktreeMoments{};
+		m_WorktreeOrder = WorktreeOrder{};
 
 		m_ChangesPicked = false;
 		m_ChangesDiff.Diff = {};

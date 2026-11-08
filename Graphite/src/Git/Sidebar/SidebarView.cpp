@@ -59,6 +59,14 @@ namespace Graphite {
 		constexpr float kWorktreeDotRoom = 7.0f;
 		constexpr float kWorktreeDot = 6.0f;
 		constexpr std::size_t kWorktreeLane = 3; // the purple graph lane, the mockup's #c792ea
+		constexpr float kLiveDot = 7.0f;
+		constexpr float kLiveGlow = 11.0f;
+		constexpr float kBadgeText = 11.0f;
+		constexpr float kBadgeHeight = 16.0f;
+		constexpr float kBadgeLeast = 20.0f;
+		constexpr float kBadgeSide = 5.0f;
+		constexpr float kBadgeFillAlpha = 0.16f; // the mockup's #2a2113 under its #e8b765
+		constexpr const char* kWidestBadge = "999";
 		constexpr float kLighterShare = 0.4f;
 		constexpr float kRuleThickness = 1.0f;
 		constexpr float kUnderlineThickness = 1.0f;
@@ -137,7 +145,7 @@ namespace Graphite {
 
 		float HeightOf(const SidebarRow& row)
 		{
-			return IsTwoLine(row) ? SidebarTwoLineRowHeight() : ListRowPitch();
+			return IsTwoLine(row) || row.Kind == SidebarRowKind::Worktree ? SidebarTwoLineRowHeight() : ListRowPitch();
 		}
 
 		bool OpensMenu(const SidebarRow& row)
@@ -148,7 +156,8 @@ namespace Graphite {
 		// Rows whose line 1 and line 2 come from `textOf`.
 		bool HasText(const SidebarRow& row)
 		{
-			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash || row.Kind == SidebarRowKind::Tag;
+			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash || row.Kind == SidebarRowKind::Tag ||
+				   row.Kind == SidebarRowKind::Worktree;
 		}
 
 		// Where each search word occurs in `text`, ignoring case; overlapping or touching occurrences are one range.
@@ -262,6 +271,10 @@ namespace Graphite {
 			{
 				ImGui::PushID(static_cast<int>(*row.Tag));
 			}
+			else if (row.Worktree.has_value())
+			{
+				ImGui::PushID(static_cast<int>(*row.Worktree));
+			}
 			else if (row.Link.has_value())
 			{
 				ImGui::PushID(static_cast<int>(*row.Link));
@@ -349,13 +362,21 @@ namespace Graphite {
 			}
 		}
 
-		void DrawGroupRow(const SidebarRow& row, const RowBox& box, const SidebarColours& colours)
+		void DrawGroupRow(const SidebarRow& row, const RowBox& box, bool hovered, const SidebarColours& colours)
 		{
 			const ImU32 dim = colours.Of(SidebarTone::Dim);
 			float left = IndentedLeft(box, row);
 
 			DrawChevronAt(left, box, row.Open, dim);
 			left += Em(kChevronSize) + Em(kGap);
+
+			// The worktrees' fold row says its count in its label, dim, with no icon and no count at the right (mockup).
+			if (row.Section == SidebarSection::Worktrees)
+			{
+				DrawText(ImVec2(left, ListRowTextTop(box.Top)), hovered ? ImGui::GetColorU32(ImGuiCol_Text) : dim,
+						 FitToWidth(row.Label, box.Right - left));
+				return;
+			}
 
 			DrawIconAt(left, box, row.Section == SidebarSection::Tags ? ICON_LC_FOLDER : ICON_LC_CLOCK, dim);
 			left += Em(kIconSize) + Em(kGap);
@@ -549,6 +570,26 @@ namespace Graphite {
 			return iconLeft;
 		}
 
+		// Where a two-line row's lines start: the block of both is centred in the row. Asked at the row's own font size.
+		struct TwoLineTops
+		{
+			float First = 0.0f;
+			float Second = 0.0f;
+		};
+
+		TwoLineTops TwoLineTopsOf(const RowBox& box)
+		{
+			const float firstLineHeight = ImGui::GetFontSize() * kLineSpacing;
+			const float smallSize = Em(kSmallText);
+			const float secondLineHeight = smallSize * kLineSpacing;
+			const float blockHeight = firstLineHeight + Em(kLinesApart) + secondLineHeight;
+			const float blockTop = box.Top + std::floor((box.Height - blockHeight) * kHalf);
+
+			return TwoLineTops{
+				.First = blockTop + std::floor((firstLineHeight - ImGui::GetFontSize()) * kHalf),
+				.Second = blockTop + firstLineHeight + Em(kLinesApart) + std::floor((secondLineHeight - smallSize) * kHalf)};
+		}
+
 		void DrawRefRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
 						const SidebarColours& colours, const std::vector<std::string>& searchWords)
 		{
@@ -580,20 +621,106 @@ namespace Graphite {
 				textRight = rightLeft - Em(kTwoLineGap);
 			}
 
-			const float firstLineHeight = ImGui::GetFontSize() * kLineSpacing;
-			const float smallSize = Em(kSmallText);
-			const float secondLineHeight = smallSize * kLineSpacing;
-			const float blockHeight = firstLineHeight + Em(kLinesApart) + secondLineHeight;
-			const float blockTop = box.Top + std::floor((box.Height - blockHeight) * kHalf);
+			const TwoLineTops tops = TwoLineTopsOf(box);
 
 			const ImU32 headInk = text.IsHead ? Core::EmphasisText() : ListRowNameColour(selected);
-			DrawHighlightedText(ImVec2(textLeft, blockTop + std::floor((firstLineHeight - ImGui::GetFontSize()) * kHalf)),
-								headInk, colours.Link, FitToWidth(text.Head, textRight - textLeft), searchWords);
+			DrawHighlightedText(ImVec2(textLeft, tops.First), headInk, colours.Link, FitToWidth(text.Head, textRight - textLeft),
+								searchWords);
 
-			const TextAtSize small(smallSize);
-			const float secondLineTop =
-				blockTop + firstLineHeight + Em(kLinesApart) + std::floor((secondLineHeight - smallSize) * kHalf);
-			DrawMeta(text.Meta, textLeft, secondLineTop, textRight, colours);
+			const TextAtSize small(Em(kSmallText));
+			DrawMeta(text.Meta, textLeft, tops.Second, textRight, colours);
+		}
+
+		// In the folder icon's place: a green dot with a soft glow while the worktree changed within the last minute.
+		void DrawLiveDot(ImVec2 centre, const SidebarColours& colours)
+		{
+			ImDrawList* const drawing = ImGui::GetWindowDrawList();
+			const ImU32 green = colours.Of(SidebarTone::Merged);
+
+			drawing->AddCircleFilled(centre, Em(kLiveGlow) * kHalf, WithAlphaShare(green, kHeadGlowAlpha));
+			drawing->AddCircleFilled(centre, Em(kLiveDot) * kHalf, green);
+		}
+
+		// Room for three digits whatever the count, so a count that lands or grows moves none of the row's words.
+		float WorktreeBadgeWidth()
+		{
+			const TextAtSize size(Em(kBadgeText));
+			return std::max(Em(kBadgeLeast), WidthOf(kWidestBadge) + 2.0f * Em(kBadgeSide));
+		}
+
+		// The changed files' count in an amber pill at the right; "…" alone while the count is unknown.
+		void DrawWorktreeBadge(const std::string& badge, float left, float width, const RowBox& box, const SidebarColours& colours)
+		{
+			if (badge.empty())
+			{
+				return;
+			}
+
+			const TextAtSize size(Em(kBadgeText));
+			const float textLeft = left + std::floor((width - WidthOf(badge)) * kHalf);
+			const float textTop = CentredTop(box);
+
+			if (badge == kEllipsis)
+			{
+				DrawText(ImVec2(textLeft, textTop), colours.Of(SidebarTone::Dim), badge);
+				return;
+			}
+
+			const float top = box.Top + std::floor((box.Height - Em(kBadgeHeight)) * kHalf);
+			const ImU32 amber = colours.Of(SidebarTone::Unusual);
+			ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(left, top), ImVec2(left + width, top + Em(kBadgeHeight)),
+													  WithAlphaShare(amber, kBadgeFillAlpha), Em(kBadgeHeight) * kHalf);
+			DrawText(ImVec2(textLeft, textTop), amber, badge);
+		}
+
+		void DrawWorktreeRow(const SidebarRow& row, const RowBox& box, const SidebarRowText& text, bool selected,
+							 const SidebarColours& colours, const std::vector<std::string>& searchWords)
+		{
+			const ImU32 dim = colours.Of(SidebarTone::Dim);
+			const float left = IndentedLeft(box, row);
+			const float textLeft = left + Em(kRefTextLead) + Em(kTwoLineGap);
+
+			// The live marker takes the folder icon's place, so a worktree going live or quiet moves nothing.
+			if (text.Live)
+			{
+				DrawLiveDot(ImVec2(left + Em(kRefTextLead) * kHalf, box.Top + box.Height * kHalf), colours);
+			}
+			else
+			{
+				DrawIconAt(left + std::floor((Em(kRefTextLead) - Em(kIconSize)) * kHalf), box, ICON_LC_FOLDER_GIT_2, dim);
+			}
+
+			// Every worktree row holds the badge's place, empty or not.
+			const float badgeWidth = WorktreeBadgeWidth();
+			const float badgeLeft = box.Right - badgeWidth;
+			DrawWorktreeBadge(text.Badge, badgeLeft, badgeWidth, box, colours);
+			const float textRight = badgeLeft - Em(kTwoLineGap);
+
+			const TwoLineTops tops = TwoLineTopsOf(box);
+			const std::string note = text.HeadNote.empty() ? std::string() : kSeparator + text.HeadNote;
+			const float noteWidth = WidthOf(note);
+			const float lockWidth = text.Locked ? Em(kGap) + Em(kWorktreeIcon) : 0.0f;
+			const float lockTop = tops.First + std::floor((ImGui::GetFontSize() - Em(kWorktreeIcon)) * kHalf);
+			const std::string name = FitToWidth(text.Head, std::max(0.0f, textRight - textLeft - noteWidth - lockWidth));
+
+			DrawHighlightedText(ImVec2(textLeft, tops.First), ListRowNameColour(selected), colours.Link, name, searchWords);
+			float x = textLeft + WidthOf(name);
+
+			if (!note.empty() && x + noteWidth <= textRight)
+			{
+				DrawText(ImVec2(x, tops.First), dim, note);
+				x += noteWidth;
+			}
+
+			// The reason a worktree is locked is in the row's tooltip.
+			if (text.Locked && x + lockWidth <= textRight)
+			{
+				const TextAtSize size(Em(kWorktreeIcon));
+				DrawText(ImVec2(x + Em(kGap), lockTop), dim, ICON_LC_LOCK);
+			}
+
+			const TextAtSize small(Em(kSmallText));
+			DrawMeta(text.Meta, textLeft, tops.Second, textRight, colours);
 		}
 	}
 
@@ -771,7 +898,7 @@ namespace Graphite {
 						DrawSectionRow(row, box, hovered, colours);
 						break;
 					case SidebarRowKind::Group:
-						DrawGroupRow(row, box, colours);
+						DrawGroupRow(row, box, hovered, colours);
 						break;
 					case SidebarRowKind::Link:
 						DrawLinkRow(row, box, hovered, colours);
@@ -785,6 +912,9 @@ namespace Graphite {
 					case SidebarRowKind::Branch:
 					case SidebarRowKind::Base:
 						DrawRefRow(row, box, text, isSelected, colours, searchWords);
+						break;
+					case SidebarRowKind::Worktree:
+						DrawWorktreeRow(row, box, text, isSelected, colours, searchWords);
 						break;
 					case SidebarRowKind::Notice:
 						break;

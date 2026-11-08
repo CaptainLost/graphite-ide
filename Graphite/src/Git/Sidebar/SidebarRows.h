@@ -3,12 +3,14 @@
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/LineReader.h"
+#include "Git/Worktrees/WorktreeListing.h"
 
 #include "Core/Base/Base.h"
 #include "Core/Base/Result.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Tag.h"
+#include "Core/Git/Worktree.h"
 
 #include <chrono>
 #include <cstddef>
@@ -32,12 +34,14 @@ namespace Graphite {
 		Stash,
 		Tag,
 		Link,
-		Notice // one dim line in a section: its list is being read, its read failed, or it is empty
+		Notice, // one dim line in a section: its list is being read, its read failed, or it is empty
+		Worktree
 	};
 
 	enum class SidebarSection
 	{
 		Yours,
+		Worktrees,
 		Bases,
 		Remote,
 		Tags,
@@ -57,7 +61,8 @@ namespace Graphite {
 		SidebarRowKind Kind = SidebarRowKind::Section;
 		SidebarSection Section = SidebarSection::Yours;
 
-		// The open-state key: "yours", "bases", "bases/quiet", "remote/<name>", "remote/<name>/<0|1|2>", "tags", "tags/<folder>", "stashes".
+		// The open-state key: "yours", "worktrees", "worktrees/idle", "bases", "bases/quiet", "remote/<name>",
+		// "remote/<name>/<0|1|2>", "tags", "tags/<folder>", "stashes".
 		std::string Key;
 
 		std::string Label; // section title, group label, link text or notice text; a tag row's name without its folder
@@ -73,6 +78,7 @@ namespace Graphite {
 		std::optional<std::size_t> LocalCopy; // Base: the local branch that is one row with it
 		std::optional<std::size_t> Stash;     // index into the stash list
 		std::optional<std::size_t> Tag;       // index into the tag list
+		std::optional<std::size_t> Worktree;  // index into WorktreesModel::Entries()
 		std::optional<SidebarLink> Link;
 		std::string Remote; // Remote section, its groups and links
 	};
@@ -100,12 +106,20 @@ namespace Graphite {
 		// is empty has no Tags section.
 		const std::vector<Core::Tag>* Tags = nullptr;
 		const Core::Error* TagsError = nullptr; // the last read of the tag list failed
+
+		// The Worktrees section's order and the worktrees it indexes; null for no section. Built only at the moments its
+		// order follows, so a count that lands later moves no row.
+		const WorktreeListing* Worktrees = nullptr;
+		const std::vector<Core::WorktreeEntry>* WorktreeEntries = nullptr;
 	};
 
 	inline constexpr std::size_t kFlatGroupMost = 15;
 
 	// The open-state key of the Yours section, the first of the sections.
 	inline constexpr const char* kYoursSectionKey = "yours";
+
+	// The open-state key of the Worktrees section, after Yours.
+	inline constexpr const char* kWorktreesSectionKey = "worktrees";
 
 	std::vector<SidebarRow> BuildSidebarRows(const SidebarInput& input);
 
@@ -140,6 +154,9 @@ namespace Graphite {
 
 		// Moved every time the window is drawn after a frame it was not.
 		std::uint64_t Openings = 0;
+
+		// Moved every time the Worktrees section's listing changes.
+		std::uint64_t WorktreesVersion = 0;
 
 		std::string ShownRef;
 

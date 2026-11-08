@@ -3,6 +3,8 @@
 #include "Git/Branches/BranchAge.h"
 #include "Git/Content/ContentOrder.h"
 #include "Git/History/CommitDetails.h"
+#include "Git/History/CommitLabels.h"
+#include "Git/Worktrees/WorktreeListing.h"
 
 #include "Core/Base/Count.h"
 #include "Core/Base/Strings.h"
@@ -127,6 +129,20 @@ namespace Graphite {
 		{
 			const std::string age = FormatBranchAge(branch.TipCommit->Committer.When, now);
 			return age == "now" ? age : age + " ago";
+		}
+
+		// Within the minute a worktree is live, in seconds, so the marker's reason reads on the row: "changed 12 s ago";
+		// after it, in words: "5 days ago".
+		std::string ActivityWords(std::chrono::sys_seconds last, std::chrono::sys_seconds now)
+		{
+			const std::chrono::seconds age = std::max(now - last, std::chrono::seconds{0});
+
+			if (age < std::chrono::minutes{1})
+			{
+				return "changed " + std::to_string(age.count()) + " s ago";
+			}
+
+			return RelativeAge(last, now);
 		}
 
 		std::string AuthorWords(const Core::Branch& branch, const std::optional<std::string>& userEmail)
@@ -538,6 +554,64 @@ namespace Graphite {
 					tip += "\nCannot count the changes: " + *failure;
 				}
 			}
+		}
+
+		return text;
+	}
+
+	SidebarRowText DescribeWorktreeRow(const WorktreeRowInput& input)
+	{
+		const Core::WorktreeEntry& entry = input.Entry;
+
+		SidebarRowText text;
+		text.Head = WorktreeFolderName(entry);
+		text.HeadNote = input.ThisFolder ? "this folder" : std::string();
+		text.Live = input.Live;
+		text.Locked = entry.Locked;
+
+		if (entry.Head.Kind == Core::HeadKind::Detached && entry.Head.Commit.has_value())
+		{
+			text.Meta.push_back({.Text = "detached at " + entry.Head.Commit->ShortHex(), .Tone = SidebarTone::Both});
+		}
+		else if (!entry.Head.BranchName.empty())
+		{
+			text.Meta.push_back({.Text = entry.Head.BranchName, .Tone = SidebarTone::Dim});
+		}
+
+		// The count's places, the badge and line 2's words, hold "…" until it lands, so it moves nothing when it does; a
+		// failed count leaves them empty and the tooltip says why.
+		if (entry.FolderMissing)
+		{
+			text.Meta.push_back({.Text = "folder missing", .Tone = SidebarTone::Gone});
+		}
+		else if (input.Changed.has_value())
+		{
+			const bool clean = *input.Changed == 0;
+			text.Meta.push_back({.Text = clean ? std::string("clean") : Core::FormatCount(*input.Changed) + " changed",
+								 .Tone = clean ? SidebarTone::Dim : SidebarTone::Unusual});
+			text.Badge = clean ? std::string() : Core::FormatCount(*input.Changed);
+		}
+		else if (input.CountFailure.empty())
+		{
+			text.Meta.push_back({.Text = kEllipsis, .Tone = SidebarTone::Dim});
+			text.Badge = kEllipsis;
+		}
+
+		if (!entry.FolderMissing && input.LastActivity.has_value())
+		{
+			text.Meta.push_back({.Text = ActivityWords(*input.LastActivity, input.Now), .Tone = SidebarTone::Dim});
+		}
+
+		text.Tooltip = entry.Path.empty() ? entry.Name : Core::ToUtf8(Core::NormalizeDirectory(entry.Path));
+
+		if (entry.Locked)
+		{
+			text.Tooltip += entry.LockReason.empty() ? std::string("\nLocked") : "\nLocked: " + entry.LockReason;
+		}
+
+		if (!input.CountFailure.empty())
+		{
+			text.Tooltip += "\nCannot count the changes: " + input.CountFailure;
 		}
 
 		return text;

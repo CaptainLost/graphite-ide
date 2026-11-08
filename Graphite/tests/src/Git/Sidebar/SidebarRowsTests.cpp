@@ -4,17 +4,20 @@
 #include "Git/Sidebar/SidebarText.h"
 
 #include "Git/Lines/LineReadFixtures.h"
+#include "Git/Worktrees/WorktreeListing.h"
 
 #include "Core/Git/Head.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Graphite;
@@ -36,6 +39,8 @@ namespace {
 		const Core::Error* TagsError = nullptr;
 		const BranchAuthors* Authors = nullptr;
 		std::string ShownRef;
+		const WorktreeListing* Worktrees = nullptr;
+		const std::vector<Core::WorktreeEntry>* WorktreeEntries = nullptr;
 	};
 
 	std::vector<SidebarRow> RowsOf(const LineRead& read, const Options& options = {})
@@ -48,13 +53,15 @@ namespace {
 								 .ShowingMerged = options.ShowingMerged,
 								 .ShownRef = options.ShownRef,
 								 .Tags = options.Tags,
-								 .TagsError = options.TagsError};
+								 .TagsError = options.TagsError,
+								 .Worktrees = options.Worktrees,
+								 .WorktreeEntries = options.WorktreeEntries};
 		return BuildSidebarRows(input);
 	}
 
 	// One short line per row, indented by depth: "# yours 3" a section ("# stashes" with no count while unread), "> label
 	// 2" a group (closed groups end with " closed"), "main" a branch or base, "~ text" a link, "stash 0" a stash, "? text"
-	// a notice that waits and "! text" one that does not.
+	// a notice that waits, "! text" one that does not, and "worktree 2" a worktree row by its index into the entries.
 	std::vector<std::string> Describe(const LineRead& read, const std::vector<SidebarRow>& rows)
 	{
 		std::vector<std::string> lines;
@@ -96,6 +103,9 @@ namespace {
 				break;
 			case SidebarRowKind::Notice:
 				text += (row.Waiting ? "? " : "! ") + row.Label;
+				break;
+			case SidebarRowKind::Worktree:
+				text += "worktree " + std::to_string(*row.Worktree);
 				break;
 			}
 
@@ -1508,4 +1518,126 @@ TEST_CASE("Sidebar: while the lines are read the stashes wait for the tag list, 
 		  Lines{"# stashes 0", "! No stashes"});
 	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, nullptr, &failure, {}, noneClosed, {})).front() == "# tags closed");
 	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, &tags, nullptr, {}, noneClosed, {})).back() == "! No stashes");
+}
+
+namespace {
+
+	Core::WorktreeEntry WorktreeAt(std::filesystem::path path, bool isMain = false)
+	{
+		Core::WorktreeEntry entry;
+		entry.Path = std::move(path);
+		entry.IsMain = isMain;
+		return entry;
+	}
+
+	// The main checkout, open, and two linked worktrees, one of them folded.
+	const std::vector<Core::WorktreeEntry> kWorktrees = {WorktreeAt("D:/repo", true), WorktreeAt("D:/repo-side"),
+														 WorktreeAt("D:/elsewhere/alpha")};
+
+	WorktreeListing ListingOfAll()
+	{
+		WorktreeListing listing;
+		listing.Shown = {WorktreeListed{.Entry = 0, .ThisFolder = true}, WorktreeListed{.Entry = 1}};
+		listing.Folded = {2};
+		return listing;
+	}
+
+	LineRead ReadWithBase()
+	{
+		LineReadBuilder builder;
+		builder.AddRemote("origin");
+		builder.AddLocal("feature");
+		builder.MakeBase(builder.AddRemoteBranch("origin", "main"));
+		return builder.Build();
+	}
+
+	const char* const kIdleFold = "1 more \xC2\xB7 no changes for 7+ days";
+}
+
+TEST_CASE("Sidebar: the Worktrees section sits between Yours and Bases and counts every worktree")
+{
+	const LineRead read = ReadWithBase();
+	const WorktreeListing listing = ListingOfAll();
+
+	CHECK(Describe(read, RowsOf(read, {.Worktrees = &listing, .WorktreeEntries = &kWorktrees})) ==
+		  Lines{"# yours 1", "feature", "# worktrees 3", "worktree 0", "worktree 1", std::string("> ") + kIdleFold + " 1 closed",
+				"# bases 1", "origin/main", "~ Why these, and how to change them", "# remote/origin 0", "# stashes 0",
+				"! No stashes"});
+}
+
+TEST_CASE("Sidebar: the worktrees' fold row opens to the folded worktrees and says how many were found with changes")
+{
+	const LineRead read = ReadWithBase();
+	WorktreeListing listing = ListingOfAll();
+	listing.FoldedWithChanges = 1;
+
+	const std::vector<SidebarRow> rows =
+		RowsOf(read, {.OpenByUser = {{"worktrees/idle", true}}, .Worktrees = &listing, .WorktreeEntries = &kWorktrees});
+	const std::vector<std::string> lines = Describe(read, rows);
+
+	REQUIRE(lines.size() > 6);
+	CHECK(lines[2] == "# worktrees 3");
+	CHECK(lines[5] == "> 1 more \xC2\xB7 1 with changes 1");
+	CHECK(lines[6] == "  worktree 2");
+
+	const SidebarRow& fold = rows[5];
+	CHECK(fold.Kind == SidebarRowKind::Group);
+	CHECK(fold.Section == SidebarSection::Worktrees);
+	CHECK(fold.Key == "worktrees/idle");
+	CHECK(rows[6].Section == SidebarSection::Worktrees);
+	CHECK(rows[6].Worktree == 2u);
+	CHECK(rows[2].Key == "worktrees");
+}
+
+TEST_CASE("Sidebar: the Worktrees section holds one waiting row until the first count settles")
+{
+	const LineRead read = ReadWithBase();
+	std::vector<Core::WorktreeEntry> entries = {WorktreeAt("D:/repo", true)};
+
+	for (int index = 0; index < 36; ++index)
+	{
+		entries.push_back(WorktreeAt("D:/wt/" + std::to_string(index)));
+	}
+
+	WorktreeListing listing;
+	listing.Waiting = true;
+
+	const std::vector<std::string> lines = Describe(read, RowsOf(read, {.Worktrees = &listing, .WorktreeEntries = &entries}));
+
+	REQUIRE(lines.size() > 4);
+	CHECK(lines[2] == "# worktrees 37");
+	CHECK(lines[3] == "? Reading 37 worktrees\xE2\x80\xA6");
+	CHECK(lines[4] == "# bases 1");
+}
+
+TEST_CASE("Sidebar: a repository without a linked worktree, or whose worktrees are unread, has no Worktrees section")
+{
+	const LineRead read = ReadWithBase();
+	const std::vector<Core::WorktreeEntry> mainOnly = {WorktreeAt("D:/repo", true)};
+	const WorktreeListing empty;
+
+	const Lines expected{"# yours 1", "feature", "# bases 1", "origin/main", "~ Why these, and how to change them",
+						 "# remote/origin 0", "# stashes 0", "! No stashes"};
+
+	CHECK(Describe(read, RowsOf(read, {.Worktrees = &empty, .WorktreeEntries = &mainOnly})) == expected);
+	CHECK(Describe(read, RowsOf(read, {.Worktrees = nullptr, .WorktreeEntries = &mainOnly})) == expected);
+	CHECK(Describe(read, RowsOf(read, {.Worktrees = &empty, .WorktreeEntries = nullptr})) == expected);
+}
+
+TEST_CASE("Sidebar: search matches a worktree's folder name and its path, and counts n of total")
+{
+	const LineRead read = ReadWithBase();
+	const WorktreeListing listing = ListingOfAll();
+
+	const std::vector<std::string> byName =
+		Describe(read, RowsOf(read, {.Search = "ALPHA", .Worktrees = &listing, .WorktreeEntries = &kWorktrees}));
+	CHECK(byName == Lines{"# worktrees 1/3", std::string("> ") + kIdleFold + " 1", "  worktree 2"});
+
+	const std::vector<std::string> byPath =
+		Describe(read, RowsOf(read, {.Search = "elsewhere", .Worktrees = &listing, .WorktreeEntries = &kWorktrees}));
+	CHECK(byPath == Lines{"# worktrees 1/3", std::string("> ") + kIdleFold + " 1", "  worktree 2"});
+
+	const std::vector<std::string> side =
+		Describe(read, RowsOf(read, {.Search = "side", .Worktrees = &listing, .WorktreeEntries = &kWorktrees}));
+	CHECK(side == Lines{"# worktrees 1/3", "worktree 1"});
 }

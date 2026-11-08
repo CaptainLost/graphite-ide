@@ -4,6 +4,7 @@
 
 #include "DeferredJobs.h"
 #include "GitFixtures.h"
+#include "WorktreeFixtures.h"
 
 #include <algorithm>
 #include <chrono>
@@ -16,6 +17,8 @@
 #include <vector>
 
 using namespace Graphite;
+using Graphite::Fixtures::FakeWorktreePort;
+using Graphite::Fixtures::WorktreeOn;
 
 namespace {
 
@@ -25,55 +28,6 @@ namespace {
 	{
 		return Core::CreateRef<const std::vector<Core::Branch>>();
 	}
-
-	Core::WorktreeEntry WorktreeOn(std::string branch, std::filesystem::path path)
-	{
-		Core::WorktreeEntry entry;
-		entry.Path = std::move(path);
-		entry.Head.Kind = Core::HeadKind::Branch;
-		entry.Head.BranchName = std::move(branch);
-		return entry;
-	}
-
-	class FakeWorktreePort final : public WorktreePort
-	{
-	public:
-		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override
-		{
-			++Listed;
-			return Entries;
-		}
-
-		Core::Result<WorktreeActivity> QueryActivity(const std::filesystem::path& worktree) override
-		{
-			ActivityQueried.push_back(worktree);
-			return Activity[worktree.generic_string()];
-		}
-
-		Core::Result<WorktreeCount> CountUncommitted(const std::filesystem::path& worktree) override
-		{
-			Counted.push_back(worktree);
-
-			if (FailCounts)
-			{
-				return Core::Error{Core::ErrorCode::IoFailure, "the index is locked"};
-			}
-
-			WorktreeCount count;
-			count.Changed = Changes[worktree.generic_string()];
-			count.NewestChange = Newest[worktree.generic_string()];
-			return count;
-		}
-
-		std::vector<Core::WorktreeEntry> Entries;
-		std::map<std::string, std::size_t> Changes;
-		std::map<std::string, WorktreeActivity> Activity;
-		std::map<std::string, std::optional<std::chrono::sys_seconds>> Newest;
-		std::vector<std::filesystem::path> ActivityQueried;
-		bool FailCounts = false;
-		int Listed = 0;
-		std::vector<std::filesystem::path> Counted;
-	};
 
 	const std::filesystem::path kOpen = "D:/repo";
 	const std::filesystem::path kSide = "D:/repo-side";
@@ -492,6 +446,81 @@ TEST_CASE("Git window: the first count stops holding the list after 3 s")
 
 	model.OnUpdate(Core::Timestep{1.0f});
 	CHECK(model.IsFirstCountSettled());
+}
+
+TEST_CASE("Git window: the list read again while one first count hangs still stops holding the list after 3 s")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 2);
+	std::vector<std::function<void()>> waiting;
+	WorktreesModel model(port, [&waiting](std::function<void()> job) { waiting.push_back(std::move(job)); }, [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	waiting.back()();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(waiting.size() == 3);
+
+	// The first worktree's count lands; the second's never does, while every second a new branch snapshot reads the list
+	// again.
+	waiting[1]();
+
+	for (int second = 1; second <= 3; ++second)
+	{
+		model.Follow(NewSnapshot(), kOpen);
+		waiting.back()();
+		model.OnUpdate(Core::Timestep{1.0f});
+
+		CHECK(model.IsFirstCountSettled() == (second == 3));
+	}
+}
+
+TEST_CASE("Git window: a worktree added once the first count settled does not hold the list again")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 1);
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(model.IsFirstCountSettled());
+
+	port.Entries.push_back(WorktreeOn("added", Folder(1)));
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(jobs.Count() == 1); // the added worktree's first count, not landed yet
+
+	CHECK(model.IsFirstCountSettled());
+}
+
+TEST_CASE("Git window: the first count holds the list again for a folder opened afresh")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 1);
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(model.IsFirstCountSettled());
+
+	model.Clear();
+	CHECK_FALSE(model.IsFirstCountSettled());
+
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	CHECK_FALSE(model.IsFirstCountSettled());
 }
 
 TEST_CASE("Git window: worktrees out of view are swept one at a time, at most every 10 s")

@@ -5,8 +5,12 @@
 #include "Git/Lines/LineReadFixtures.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Graphite;
@@ -832,4 +836,155 @@ TEST_CASE("Git window: a row that is no candidate asks nothing of the content ch
 	DescribeSidebarRow(BranchRow(empty), input);
 
 	CHECK(asked == 0);
+}
+
+namespace {
+
+	Core::WorktreeEntry WorktreeEntryOn(std::string branch, std::filesystem::path path)
+	{
+		Core::WorktreeEntry entry;
+		entry.Path = std::move(path);
+		entry.Head.Kind = Core::HeadKind::Branch;
+		entry.Head.BranchName = std::move(branch);
+		return entry;
+	}
+
+	std::vector<SidebarTone> MetaTones(const SidebarRowText& text)
+	{
+		std::vector<SidebarTone> tones;
+
+		for (const SidebarSpan& span : text.Meta)
+		{
+			tones.push_back(span.Tone);
+		}
+
+		return tones;
+	}
+
+	using ToneList = std::vector<SidebarTone>;
+
+	std::chrono::sys_seconds SecondsAgo(std::int64_t seconds)
+	{
+		return LineReadBuilder::Now() - std::chrono::seconds{seconds};
+	}
+}
+
+TEST_CASE("Sidebar: a worktree row names its folder, then its branch, its changes and when it was last active")
+{
+	const Core::WorktreeEntry entry = WorktreeEntryOn("worktree-eager-scribbling-frog", "D:/repo/.claude/worktrees/eager-scribbling-frog");
+
+	const SidebarRowText text = DescribeWorktreeRow(
+		WorktreeRowInput{.Entry = entry, .Changed = 3, .LastActivity = SecondsAgo(12), .Live = true, .Now = LineReadBuilder::Now()});
+
+	CHECK(text.Head == "eager-scribbling-frog");
+	CHECK(text.HeadNote.empty());
+	CHECK(Texts(text) == Strings{"worktree-eager-scribbling-frog", "3 changed", "changed 12 s ago"});
+	CHECK(MetaTones(text) == ToneList{SidebarTone::Dim, SidebarTone::Unusual, SidebarTone::Dim});
+	CHECK(text.Badge == "3");
+	CHECK(text.Live);
+	CHECK_FALSE(text.Locked);
+	CHECK(text.Tooltip == "D:\\repo\\.claude\\worktrees\\eager-scribbling-frog");
+}
+
+TEST_CASE("Sidebar: a clean worktree on a detached HEAD says so in blue and leaves the badge empty")
+{
+	Core::WorktreeEntry entry = WorktreeEntryOn("", "D:/Temp/visual-refresh-check/wt");
+	entry.Head.Kind = Core::HeadKind::Detached;
+	entry.Head.Commit = *Core::Oid::FromHex("81df3183aa00bb11cc22dd33ee44ff5566778899");
+
+	const SidebarRowText text = DescribeWorktreeRow(
+		WorktreeRowInput{.Entry = entry, .Changed = 0, .LastActivity = SecondsAgo(5 * 86400 + 600), .Now = LineReadBuilder::Now()});
+
+	CHECK(text.Head == "wt");
+	CHECK(Texts(text) == Strings{"detached at 81df318", "clean", "5 days ago"});
+	CHECK(MetaTones(text) == ToneList{SidebarTone::Both, SidebarTone::Dim, SidebarTone::Dim});
+	CHECK(text.Badge.empty());
+	CHECK_FALSE(text.Live);
+}
+
+TEST_CASE("Sidebar: a worktree whose folder is missing says so in red instead of its changes")
+{
+	Core::WorktreeEntry entry = WorktreeEntryOn("worktree-gone", "D:/wt/gone");
+	entry.FolderMissing = true;
+
+	const SidebarRowText text = DescribeWorktreeRow(WorktreeRowInput{.Entry = entry, .Now = LineReadBuilder::Now()});
+
+	CHECK(Texts(text) == Strings{"worktree-gone", "folder missing"});
+	CHECK(MetaTones(text) == ToneList{SidebarTone::Dim, SidebarTone::Gone});
+	CHECK(text.Badge.empty());
+
+	// One git cannot even look up has neither a path nor a HEAD: it goes by git's name for it.
+	Core::WorktreeEntry unknown;
+	unknown.Name = "lost";
+	unknown.FolderMissing = true;
+	unknown.Head.BranchName.clear();
+
+	const SidebarRowText lost = DescribeWorktreeRow(WorktreeRowInput{.Entry = unknown, .Now = LineReadBuilder::Now()});
+
+	CHECK(lost.Head == "lost");
+	CHECK(Texts(lost) == Strings{"folder missing"});
+}
+
+TEST_CASE("Sidebar: a worktree's count holds its places with an ellipsis until it lands, and a failed one says why")
+{
+	const Core::WorktreeEntry entry = WorktreeEntryOn("side", "D:/wt/side");
+
+	const SidebarRowText pending = DescribeWorktreeRow(WorktreeRowInput{.Entry = entry, .Now = LineReadBuilder::Now()});
+
+	CHECK(Texts(pending) == Strings{"side", "\xE2\x80\xA6"});
+	CHECK(pending.Badge == "\xE2\x80\xA6");
+
+	const SidebarRowText failed =
+		DescribeWorktreeRow(WorktreeRowInput{.Entry = entry, .CountFailure = "the index is locked", .Now = LineReadBuilder::Now()});
+
+	CHECK(Texts(failed) == Strings{"side"});
+	CHECK(failed.Badge.empty());
+	CHECK(failed.Tooltip == "D:\\wt\\side\nCannot count the changes: the index is locked");
+}
+
+TEST_CASE("Sidebar: the open folder's worktree row reads this folder")
+{
+	Core::WorktreeEntry entry = WorktreeEntryOn("main", "D:/Repos/IDE");
+	entry.IsMain = true;
+
+	const SidebarRowText text =
+		DescribeWorktreeRow(WorktreeRowInput{.Entry = entry, .ThisFolder = true, .Changed = 2, .Now = LineReadBuilder::Now()});
+
+	CHECK(text.Head == "IDE");
+	CHECK(text.HeadNote == "this folder");
+	CHECK(Texts(text) == Strings{"main", "2 changed"});
+	CHECK(text.Badge == "2");
+}
+
+TEST_CASE("Sidebar: a locked worktree carries the lock and its reason in the tooltip")
+{
+	Core::WorktreeEntry entry = WorktreeEntryOn("side", "D:/wt/side");
+	entry.Locked = true;
+	entry.LockReason = "an agent works here";
+
+	const SidebarRowText text = DescribeWorktreeRow(WorktreeRowInput{.Entry = entry, .Changed = 0, .Now = LineReadBuilder::Now()});
+
+	CHECK(text.Locked);
+	CHECK(text.Tooltip == "D:\\wt\\side\nLocked: an agent works here");
+
+	entry.LockReason.clear();
+	CHECK(DescribeWorktreeRow(WorktreeRowInput{.Entry = entry, .Changed = 0, .Now = LineReadBuilder::Now()}).Tooltip ==
+		  "D:\\wt\\side\nLocked");
+}
+
+TEST_CASE("Sidebar: a worktree's last activity reads in seconds within the minute it is live, and in words after")
+{
+	const Core::WorktreeEntry entry = WorktreeEntryOn("side", "D:/wt/side");
+	const auto lastWords = [&entry](std::int64_t secondsAgo) {
+		return DescribeWorktreeRow(
+				   WorktreeRowInput{.Entry = entry, .Changed = 0, .LastActivity = SecondsAgo(secondsAgo), .Now = LineReadBuilder::Now()})
+			.Meta.back()
+			.Text;
+	};
+
+	CHECK(lastWords(0) == "changed 0 s ago");
+	CHECK(lastWords(59) == "changed 59 s ago");
+	CHECK(lastWords(60) == "1 minute ago");
+	CHECK(lastWords(3 * 3600) == "3 hours ago");
+	CHECK(lastWords(5 * 86400) == "5 days ago");
 }

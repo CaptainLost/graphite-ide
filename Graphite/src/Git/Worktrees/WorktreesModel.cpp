@@ -67,6 +67,7 @@ namespace Graphite {
 		m_Listed.clear();
 		m_NextSweep = m_Clock + kSweepSeconds;
 		m_FirstCountWaited = 0.0f;
+		m_FirstCountSettled = false;
 		m_Counting.clear();
 		m_InView.clear();
 	}
@@ -123,7 +124,6 @@ namespace Graphite {
 			}
 		}
 
-		m_FirstCountWaited = 0.0f;
 		ForgetWorktreesNotListed(m_Observed, present);
 		ForgetWorktreesNotListed(m_Dirty, present);
 		ForgetWorktreesNotListed(m_Failures, present);
@@ -148,6 +148,7 @@ namespace Graphite {
 	void WorktreesModel::OnUpdate(Core::Timestep timestep)
 	{
 		m_Inbox.Drain();
+		SettleFirstCountWhenDone();
 
 		const std::set<Core::PathKeyText> inView = std::exchange(m_InView, {});
 
@@ -157,9 +158,33 @@ namespace Graphite {
 		}
 
 		m_Clock += timestep.GetSeconds();
-		m_FirstCountWaited += timestep.GetSeconds();
+
+		// WARNING: From the folder's first list on, never from the last: a list read again for every branch snapshot
+		// would otherwise put the cap off for as long as the branches keep moving.
+		if (m_Entries.Get() != nullptr)
+		{
+			m_FirstCountWaited += timestep.GetSeconds();
+		}
+
 		AskCounts(inView);
 		AskSweep(inView);
+		SettleFirstCountWhenDone();
+	}
+
+	void WorktreesModel::SettleFirstCountWhenDone()
+	{
+		const Core::Ref<const std::vector<Core::WorktreeEntry>> entries = m_Entries.Get();
+
+		if (m_FirstCountSettled || entries == nullptr)
+		{
+			return;
+		}
+
+		m_FirstCountSettled = m_FirstCountWaited >= kFirstCountCapSeconds ||
+							  std::ranges::all_of(*entries, [this](const Core::WorktreeEntry& entry) {
+								  const auto observed = m_Observed.find(Core::PathKey(entry.Path));
+								  return !IsCountable(entry) || (observed != m_Observed.end() && observed->second.Counted);
+							  });
 	}
 
 	bool WorktreesModel::IsCountable(const Core::WorktreeEntry& entry) const
@@ -394,26 +419,6 @@ namespace Graphite {
 	{
 		const std::optional<std::chrono::sys_seconds> last = LastActivity(worktree);
 		return last.has_value() && m_NowSeconds() - last->time_since_epoch().count() <= kLiveSeconds;
-	}
-
-	bool WorktreesModel::IsFirstCountSettled() const
-	{
-		const Core::Ref<const std::vector<Core::WorktreeEntry>> entries = m_Entries.Get();
-
-		if (entries == nullptr)
-		{
-			return false;
-		}
-
-		if (m_FirstCountWaited >= kFirstCountCapSeconds)
-		{
-			return true;
-		}
-
-		return std::ranges::all_of(*entries, [this](const Core::WorktreeEntry& entry) {
-			const auto observed = m_Observed.find(Core::PathKey(entry.Path));
-			return !IsCountable(entry) || (observed != m_Observed.end() && observed->second.Counted);
-		});
 	}
 
 	void WorktreesModel::SetLookedAt(std::optional<std::filesystem::path> worktree)

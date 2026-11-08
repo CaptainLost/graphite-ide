@@ -59,8 +59,12 @@ namespace Graphite {
 		// Whether the last activity is no older than kLiveSeconds.
 		bool IsLive(const std::filesystem::path& worktree) const;
 
-		// Whether every worktree has been counted once, or kFirstCountCapSeconds on screen passed since the list landed.
-		bool IsFirstCountSettled() const;
+		// Whether every worktree has been counted once, or kFirstCountCapSeconds on screen passed since the folder's first
+		// list landed. Once true it stays true for the folder: a worktree added later, or a list read again, holds nothing.
+		bool IsFirstCountSettled() const { return m_FirstCountSettled; }
+
+		// The clock the model tells live worktrees by, in seconds since the epoch.
+		std::int64_t NowSeconds() const { return m_NowSeconds(); }
 
 		// The worktree the user is looking at: never polled nor swept, since its watcher keeps it fresh.
 		void SetLookedAt(std::optional<std::filesystem::path> worktree);
@@ -118,6 +122,7 @@ namespace Graphite {
 		void AskCount(const Core::PathKeyText& key, const std::filesystem::path& path);
 		void LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeActivity>& activity, const Core::Result<WorktreeCount>& count);
 		bool IsCountable(const Core::WorktreeEntry& entry) const;
+		void SettleFirstCountWhenDone();
 		bool IsOpenFolder(const std::filesystem::path& worktree) const;
 		bool IsSameFolder(std::uint64_t folder) const;
 
@@ -147,7 +152,8 @@ namespace Graphite {
 		bool m_OnScreen = false;
 		float m_Clock = 0.0f; // seconds on screen
 		float m_NextSweep = kSweepSeconds; // on m_Clock
-		float m_FirstCountWaited = 0.0f; // seconds on screen since the list landed
+		float m_FirstCountWaited = 0.0f; // seconds on screen since the folder's first list landed
+		bool m_FirstCountSettled = false;
 		Core::PathKeyText m_LookedAt;
 		std::function<std::int64_t()> m_NowSeconds;
 

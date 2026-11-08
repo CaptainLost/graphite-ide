@@ -7,6 +7,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Count.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Ref.h"
 #include "Core/Base/Strings.h"
 
@@ -23,6 +24,9 @@ namespace Graphite {
 
 		constexpr bool kOnItsWay = true;
 		constexpr bool kNothingOnItsWay = false;
+
+		constexpr const char* kEllipsis = "\xE2\x80\xA6";
+		constexpr const char* kMoreThen = " more \xC2\xB7 "; // the worktrees' fold row: "3 more · no changes for 7+ days"
 
 		struct ActivityGroup
 		{
@@ -72,6 +76,7 @@ namespace Graphite {
 			std::vector<SidebarRow> Build()
 			{
 				AddYours();
+				AddWorktrees();
 				AddBases();
 
 				for (const Core::Remote& remote : m_Input.Read.Remotes)
@@ -286,6 +291,117 @@ namespace Graphite {
 						AddBranchRow(SidebarSection::Yours, ref, 0);
 					}
 				}
+			}
+
+			void AddWorktrees()
+			{
+				const WorktreeListing* const listing = m_Input.Worktrees;
+				const std::vector<Core::WorktreeEntry>* const entries = m_Input.WorktreeEntries;
+
+				if (listing == nullptr || entries == nullptr)
+				{
+					return;
+				}
+
+				// Until every worktree is counted once (or the wait is capped) the section holds one waiting row, so the rows
+				// arrive in their order at once and none moves when a count lands.
+				if (listing->Waiting)
+				{
+					const std::size_t count = entries->size();
+
+					if (AddSection(SidebarSection::Worktrees, kWorktreesSectionKey, "Worktrees", count, count))
+					{
+						AddNotice(SidebarSection::Worktrees,
+								  "Reading " + Core::FormatCount(count) + (count == 1 ? " worktree" : " worktrees") + kEllipsis, kOnItsWay);
+					}
+
+					return;
+				}
+
+				const std::size_t total = listing->Shown.size() + listing->Folded.size();
+				std::vector<std::size_t> shown;
+				std::vector<std::size_t> folded;
+
+				for (const WorktreeListed& listed : listing->Shown)
+				{
+					if (listed.Entry < entries->size() && WorktreeMatches((*entries)[listed.Entry]))
+					{
+						shown.push_back(listed.Entry);
+					}
+				}
+
+				for (const std::size_t entry : listing->Folded)
+				{
+					if (entry < entries->size() && WorktreeMatches((*entries)[entry]))
+					{
+						folded.push_back(entry);
+					}
+				}
+
+				if (total == 0 || (m_Searching && shown.empty() && folded.empty()))
+				{
+					return;
+				}
+
+				if (!AddSection(SidebarSection::Worktrees, kWorktreesSectionKey, "Worktrees", shown.size() + folded.size(), total))
+				{
+					return;
+				}
+
+				for (const std::size_t entry : shown)
+				{
+					AddWorktreeRow(entry, 0);
+				}
+
+				if (folded.empty())
+				{
+					return;
+				}
+
+				// Changes found in a folded worktree since the build are said here; the worktree leaves the fold at the next
+				// build, so no row moves under the mouse.
+				const std::string state = listing->FoldedWithChanges > 0
+											  ? Core::FormatCount(listing->FoldedWithChanges) + " with changes"
+											  : std::string("no changes for 7+ days");
+				const std::string key = std::string(kWorktreesSectionKey) + "/idle";
+				const bool open = OpenOf(key, false);
+				AddGroup(SidebarSection::Worktrees, key, Core::FormatCount(folded.size()) + kMoreThen + state, folded.size(), open, {});
+
+				if (open)
+				{
+					for (const std::size_t entry : folded)
+					{
+						AddWorktreeRow(entry, 1);
+					}
+				}
+			}
+
+			void AddWorktreeRow(std::size_t entry, std::size_t depth)
+			{
+				SidebarRow row;
+				row.Kind = SidebarRowKind::Worktree;
+				row.Section = SidebarSection::Worktrees;
+				row.Worktree = entry;
+				row.Depth = depth;
+				m_Rows.push_back(std::move(row));
+			}
+
+			// Every word is in the folder's name or in its path, as git gives it or as the tooltip shows it.
+			bool WorktreeMatches(const Core::WorktreeEntry& entry) const
+			{
+				if (!m_Searching)
+				{
+					return true;
+				}
+
+				const std::string name = WorktreeFolderName(entry);
+				const std::string path = Core::ToUtf8(entry.Path);
+				const std::string shownPath = Core::ToUtf8(Core::NormalizeDirectory(entry.Path));
+
+				return std::ranges::all_of(m_Words, [&](const std::string& word) {
+					return Core::LoweredTextContains(name, word) || Core::LoweredTextContains(path, word) ||
+						   Core::LoweredTextContains(shownPath, word);
+				});
 			}
 
 			void AddBases()
