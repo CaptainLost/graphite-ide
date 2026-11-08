@@ -54,6 +54,10 @@ namespace Core {
 		return status == kHttpStatusNotFound ? ErrorCode::NotFound : ErrorCode::IoFailure;
 	}
 
+	// A download refused with this status, in words a reader can act on: what the status means and, for a server's own
+	// trouble or a rate limit, that trying again later may work. The address and the number are kept for a report.
+	std::string DescribeRefusedDownload(std::string_view url, int status);
+
 	// HTTPS only: any other scheme is refused before anything is sent. One client may serve several threads at once.
 	class HttpClient
 	{

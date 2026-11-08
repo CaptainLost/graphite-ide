@@ -409,7 +409,7 @@ namespace Core {
 				if (status.GetValue() != kHttpStatusOk)
 				{
 					const ErrorCode code = ErrorCodeOfHttpStatus(status.GetValue());
-					return Error{.Code = code, .Message = std::format("'{}' answered {}", request.Url, status.GetValue())};
+					return Error{.Code = code, .Message = DescribeRefusedDownload(request.Url, status.GetValue())};
 				}
 
 				return ReceiveIntoFile(opened.GetValue(), request, target, observer, token);
@@ -419,6 +419,38 @@ namespace Core {
 		};
 	}
 #endif
+
+	std::string DescribeRefusedDownload(std::string_view url, int status)
+	{
+		constexpr int kUnauthorised = 401;
+		constexpr int kForbidden = 403;
+		constexpr int kTooManyRequests = 429;
+		constexpr int kFirstServerError = 500;
+		constexpr int kPastServerErrors = 600;
+
+		if (status == kHttpStatusNotFound)
+		{
+			return std::format("'{}' was not found there (HTTP {}).", url, status);
+		}
+
+		if (status == kUnauthorised || status == kForbidden)
+		{
+			return std::format("'{}' refused the download (HTTP {}).", url, status);
+		}
+
+		if (status == kTooManyRequests)
+		{
+			return std::format("'{}' turned the download away for asking too often (HTTP {}). Try again in a while.", url,
+							   status);
+		}
+
+		if (status >= kFirstServerError && status < kPastServerErrors)
+		{
+			return std::format("The server for '{}' had a problem of its own (HTTP {}). Try again in a while.", url, status);
+		}
+
+		return std::format("'{}' answered HTTP {} instead of the file.", url, status);
+	}
 
 	Result<Scope<HttpClient>> CreateHttpClient([[maybe_unused]] std::string_view userAgent)
 	{

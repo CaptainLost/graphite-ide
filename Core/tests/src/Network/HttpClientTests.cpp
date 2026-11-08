@@ -132,3 +132,17 @@ TEST_CASE("A refused request reads as NotFound for a 404 and as an IO failure fo
 	CHECK(Core::ErrorCodeOfHttpStatus(500) == Core::ErrorCode::IoFailure);
 	CHECK(Core::ErrorCodeOfHttpStatus(Core::kHttpStatusProxyAuthenticationRequired) == Core::ErrorCode::IoFailure);
 }
+TEST_CASE("A refused download says what its status means, and to try again later when that may help")
+{
+	const std::string url = "https://github.com/clangd/clangd/releases/download/x/clangd.zip";
+
+	const std::string serverTrouble = Core::DescribeRefusedDownload(url, 504);
+	CHECK(serverTrouble.find("had a problem of its own (HTTP 504)") != std::string::npos);
+	CHECK(serverTrouble.find("Try again in a while") != std::string::npos);
+	CHECK(serverTrouble.find(url) != std::string::npos);
+
+	CHECK(Core::DescribeRefusedDownload(url, 404).find("was not found there (HTTP 404)") != std::string::npos);
+	CHECK(Core::DescribeRefusedDownload(url, 429).find("Try again in a while") != std::string::npos);
+	CHECK(Core::DescribeRefusedDownload(url, 403).find("refused the download (HTTP 403)") != std::string::npos);
+	CHECK(Core::DescribeRefusedDownload(url, 302).find("answered HTTP 302") != std::string::npos);
+}
