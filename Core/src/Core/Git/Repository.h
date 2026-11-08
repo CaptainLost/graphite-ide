@@ -107,7 +107,8 @@ namespace Core {
 		Result<Diff> QueryDiff(const DiffRequest& request) const;
 
 		// Ignored files are left out: a build directory would bury everything that can be acted on.
-		Result<WorkingTreeStatus> QueryStatus() const;
+		// Skipped leaves submodules out of the answer altogether, changed or not.
+		Result<WorkingTreeStatus> QueryStatus(SubmoduleWalk submodules = SubmoduleWalk::Walked) const;
 
 		// QueryStatus collapses a wholly untracked directory to one entry on purpose, so that a large
 		// untracked directory stays cheap to ask about; this opens up one such directory.

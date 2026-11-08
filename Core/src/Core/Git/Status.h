@@ -7,6 +7,14 @@
 
 namespace Core {
 
+	// Whether a status read looks inside submodules. Walking one means opening and diffing its own repository, which is
+	// what makes the status of a checkout with many submodules slow.
+	enum class SubmoduleWalk
+	{
+		Walked,
+		Skipped
+	};
+
 	enum class StatusFlags : std::uint8_t
 	{
 		None = 0,

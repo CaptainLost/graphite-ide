@@ -88,7 +88,7 @@ namespace Core {
 		}
 	}
 
-	Result<WorkingTreeStatus> Repository::QueryStatus() const
+	Result<WorkingTreeStatus> Repository::QueryStatus(SubmoduleWalk submodules) const
 	{
 		if (m_Handle == nullptr)
 		{
@@ -98,6 +98,11 @@ namespace Core {
 		git_status_options options = GIT_STATUS_OPTIONS_INIT;
 		options.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
 		options.flags = kListChangesWithRenames;
+
+		if (submodules == SubmoduleWalk::Skipped)
+		{
+			options.flags |= GIT_STATUS_OPT_EXCLUDE_SUBMODULES;
+		}
 
 		StatusListHandle statusList;
 
