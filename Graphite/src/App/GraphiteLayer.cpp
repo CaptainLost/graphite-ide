@@ -1408,9 +1408,16 @@ namespace Graphite {
 	{
 		bool anyEnded = false;
 
-		while (m_Network.TakeDone().has_value())
+		while (const std::optional<NetworkDone> done = m_Network.TakeDone())
 		{
 			anyEnded = true;
+
+			// A deepened clone changes the commits the lines' graph holds, and may move no ref, so no new listing would read
+			// them again. A cancel that came late may have deepened it too.
+			if (done->Operation == NetworkOperation::FullHistory)
+			{
+				m_Lines.ReadAgain();
+			}
 		}
 
 		while (const std::optional<NetworkFailureReport> failure = m_Network.TakeFailure())

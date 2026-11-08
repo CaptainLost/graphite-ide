@@ -195,6 +195,35 @@ TEST_CASE("Git window: the lines model asks one read per branch snapshot")
 	CHECK(model.GetRead()->Branches == second);
 }
 
+TEST_CASE("Git window: reading again reads the snapshot followed, unchanged, on the read before's graph")
+{
+	FakeLinesPort port;
+	DeferredJobs jobs;
+	LinesModel model{port, jobs.Submitter(), FixedNow};
+
+	// Nothing followed yet: nothing to read again.
+	model.ReadAgain();
+	CHECK(jobs.Count() == 0);
+
+	const Snapshot followed = NewSnapshot();
+	model.Follow(followed);
+	RunUntilSettled(jobs, model);
+	REQUIRE(port.ReadInputs.size() == 1);
+
+	// As after a fetch that deepened a shallow clone: no ref moved, so the listing is the same snapshot.
+	model.Follow(followed);
+	CHECK(jobs.Count() == 0);
+
+	model.ReadAgain();
+	CHECK(model.IsReading());
+	RunUntilSettled(jobs, model);
+
+	REQUIRE(port.ReadInputs.size() == 2);
+	CHECK(port.ReadInputs[1].Branches == followed);
+	CHECK(port.ReadInputs[1].Graph == port.Graph);
+	CHECK(model.GetRead()->Branches == followed);
+}
+
 TEST_CASE("Git window: a tag snapshot that changed alone starts a new read, which carries it")
 {
 	FakeLinesPort port;
