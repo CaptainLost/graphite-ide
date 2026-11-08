@@ -710,4 +710,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0678](0678-run-git-itself-for-fetch-pull-and-push.md) | Run git itself for fetch, pull and push | proposed | 2026-11-08 |
 | [0679](0679-update-the-repository-s-models-in-one-repositorysession-and-ask-the-shown-history-of-one-shownhistory.md) | Update the repository's models in one RepositorySession and ask the shown history of one ShownHistory | proposed | 2026-11-08 |
 | [0680](0680-keep-each-working-tree-diff-under-the-request-it-answers.md) | Keep each working-tree diff under the request it answers | proposed | 2026-11-08 |
+| [0681](0681-keep-repositorygitport-s-forwarding-bodies-thread-local-handles-and-one-gitport.md) | Keep RepositoryGitPort's forwarding bodies, thread-local handles and one GitPort | rejected | 2026-11-08 |
 <!-- /adr-index -->
