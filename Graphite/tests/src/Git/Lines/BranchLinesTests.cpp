@@ -116,3 +116,49 @@ TEST_CASE("Git window: a base's pick is read from the answers and an old copy's 
 	read.Answers.Comparisons["refs/heads/feature"] = "refs/heads/topic";
 	CHECK_FALSE(BranchLines{read}.PickedLineOf("refs/heads/feature").has_value());
 }
+
+TEST_CASE("Git window: what a history is compared with is a pick first, then a base or an old copy, then the branch's line")
+{
+	LineRead read = ReadOfSixRefs();
+
+	const ShownComparison feature = BranchLines{read}.ComparisonOf("refs/heads/feature");
+	CHECK(feature.What == ShownComparison::Kind::Line);
+	CHECK(feature.Shown == "refs/heads/feature");
+	REQUIRE(feature.Line != nullptr);
+	CHECK(feature.Line->Ref == 1);
+
+	// A branch compared with nothing still has a line of the model's; the line says so.
+	CHECK(BranchLines{read}.ComparisonOf("refs/heads/lonely").What == ShownComparison::Kind::Line);
+
+	const ShownComparison base = BranchLines{read}.ComparisonOf("refs/remotes/origin/main");
+	CHECK(base.What == ShownComparison::Kind::Base);
+	REQUIRE(base.Base != nullptr);
+	CHECK(base.Base->Ref == 4);
+	CHECK(base.Line == nullptr);
+
+	// The base's local copy with no commits of its own stands for the base.
+	const ShownComparison main = BranchLines{read}.ComparisonOf("refs/heads/main");
+	CHECK(main.What == ShownComparison::Kind::Base);
+	CHECK(main.Shown == "refs/remotes/origin/main");
+
+	// The model gives the old copy a line; the copy is still compared with nothing.
+	const ShownComparison copy = BranchLines{read}.ComparisonOf("refs/remotes/old/main");
+	CHECK(copy.What == ShownComparison::Kind::OldCopy);
+	REQUIRE(copy.OldCopy != nullptr);
+	CHECK(copy.OldCopy->Of == 4);
+	CHECK(copy.Line == nullptr);
+
+	CHECK(BranchLines{read}.ComparisonOf("refs/heads/gone").What == ShownComparison::Kind::Nothing);
+
+	read.Answers.Comparisons["refs/remotes/origin/main"] = "refs/heads/feature";
+	const ShownComparison picked = BranchLines{read}.ComparisonOf("refs/heads/main");
+	CHECK(picked.What == ShownComparison::Kind::Pick);
+	CHECK(picked.Picked == std::optional<std::size_t>{1});
+	CHECK(picked.Base == nullptr);
+
+	read.Model.Branches[4].ByAnswer = true;
+	read.Model.Branches[4].ComparedWith = 1;
+	const ShownComparison copyPicked = BranchLines{read}.ComparisonOf("refs/remotes/old/main");
+	CHECK(copyPicked.What == ShownComparison::Kind::Pick);
+	CHECK(copyPicked.Picked == std::optional<std::size_t>{1});
+}

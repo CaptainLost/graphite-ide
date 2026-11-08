@@ -120,26 +120,23 @@ namespace Graphite {
 
 	VsLabel DescribeVs(const VsInput& input)
 	{
-		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+		const ShownComparison comparison = input.Lines.ComparisonOf(input.ShownRef);
 
-		if (const std::optional<std::size_t> picked = input.Lines.PickedLineOf(shown))
+		switch (comparison.What)
 		{
-			return DescribePick(input, *picked);
-		}
-
-		if (input.Lines.BaseNamed(shown) != nullptr)
-		{
+		case ShownComparison::Kind::Pick:
+			return DescribePick(input, *comparison.Picked);
+		case ShownComparison::Kind::Base:
 			return Plain("compare with\xE2\x80\xA6");
-		}
-
-		if (input.Lines.OldCopyNamed(shown) != nullptr)
-		{
+		case ShownComparison::Kind::OldCopy:
 			return Plain("compared with nothing");
+		case ShownComparison::Kind::Line:
+			return DescribeBranch(input, *comparison.Line);
+		case ShownComparison::Kind::Nothing:
+			return VsLabel{};
 		}
 
-		const Core::BranchLine* const line = input.Lines.LineOf(shown);
-
-		return line != nullptr ? DescribeBranch(input, *line) : VsLabel{};
+		return VsLabel{};
 	}
 
 	std::string HeadOperationText(Core::RepositoryOperation operation)

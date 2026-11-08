@@ -53,9 +53,9 @@ namespace Graphite {
 		// An old copy and a base are compared with nothing unless the user picked a line for them, so they are shown
 		// alone; so is a local branch shown as one. A pick is folded as a branch's line is: what the model counts for a
 		// branch it does not count for them, so it is never taken as merged or as having no commits of its own.
-		const std::string_view shown = lines.ShownAs(shownRef);
+		const ShownComparison comparison = lines.ComparisonOf(shownRef);
 
-		if (const std::optional<std::size_t> picked = lines.PickedLineOf(shown))
+		if (comparison.What == ShownComparison::Kind::Pick)
 		{
 			const std::optional<std::size_t> self = lines.IndexOf(shownRef);
 
@@ -64,22 +64,18 @@ namespace Graphite {
 				return {};
 			}
 
-			const Core::LineRef& line = read.Refs[*picked];
+			const std::size_t picked = *comparison.Picked;
+			const Core::LineRef& line = read.Refs[picked];
 
 			return HistoryLine{.Fold = newerShown ? LineFold::Shown : LineFold::Folded,
 							   .Branch = std::string{shownRef},
 							   .Line = line.FullName,
-							   .LineName = LineNameOf(read, *picked),
+							   .LineName = LineNameOf(read, picked),
 							   .BranchTip = read.Refs[*self].Tip,
 							   .LineTip = line.Tip};
 		}
 
-		if (lines.OldCopyNamed(shown) != nullptr || lines.BaseNamed(shown) != nullptr)
-		{
-			return {};
-		}
-
-		const Core::BranchLine* const branch = lines.LineOf(shownRef);
+		const Core::BranchLine* const branch = comparison.What == ShownComparison::Kind::Line ? comparison.Line : nullptr;
 
 		if (branch == nullptr || !branch->ComparedWith.has_value() || branch->Kind == Core::ComparedKind::None)
 		{

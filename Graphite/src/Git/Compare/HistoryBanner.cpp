@@ -86,17 +86,10 @@ namespace Graphite {
 
 	std::optional<std::string> HistoryBannerActionFor(const VsInput& input)
 	{
-		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+		// Only a branch's own line has a state of the model's to act on.
+		const ShownComparison comparison = input.Lines.ComparisonOf(input.ShownRef);
 
-		// The same lines HistoryBannerFor passes over: a picked line and an old copy have banners of their own.
-		if (input.Lines.PickedLineOf(shown).has_value() || input.Lines.OldCopyNamed(shown) != nullptr)
-		{
-			return std::nullopt;
-		}
-
-		const Core::BranchLine* const line = input.Lines.LineOf(shown);
-
-		if (line != nullptr && line->State == Core::BranchState::HistoryCutOff)
+		if (comparison.What == ShownComparison::Kind::Line && comparison.Line->State == Core::BranchState::HistoryCutOff)
 		{
 			return std::string{"Fetch full history"};
 		}
@@ -106,22 +99,22 @@ namespace Graphite {
 
 	std::optional<std::string> HistoryBannerFor(const VsInput& input)
 	{
-		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+		const ShownComparison comparison = input.Lines.ComparisonOf(input.ShownRef);
 
-		// A base or an old copy the user picked a line for is folded against it as a branch is, with no state of the
-		// model's to tell, and the distance given is the pick's.
-		if (input.Lines.PickedLineOf(shown).has_value())
+		switch (comparison.What)
 		{
+		case ShownComparison::Kind::OldCopy:
+			return OldCopyBanner(input, *comparison.OldCopy);
+		case ShownComparison::Kind::Line:
+			return BranchBanner(input, *comparison.Line);
+		case ShownComparison::Kind::Pick:
+			// A base or an old copy the user picked a line for is folded against it as a branch is, with no state of the
+			// model's to tell, and the distance given is the pick's.
+		case ShownComparison::Kind::Base:
+		case ShownComparison::Kind::Nothing:
 			return std::nullopt;
 		}
 
-		if (const Core::OldCopy* const copy = input.Lines.OldCopyNamed(shown); copy != nullptr)
-		{
-			return OldCopyBanner(input, *copy);
-		}
-
-		const Core::BranchLine* const line = input.Lines.LineOf(shown);
-
-		return line != nullptr ? BranchBanner(input, *line) : std::nullopt;
+		return std::nullopt;
 	}
 }

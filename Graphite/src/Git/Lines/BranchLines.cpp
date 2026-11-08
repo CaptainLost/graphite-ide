@@ -144,4 +144,34 @@ namespace Graphite {
 
 		return isItself ? std::nullopt : picked;
 	}
+
+	ShownComparison BranchLines::ComparisonOf(std::string_view fullName) const
+	{
+		ShownComparison comparison{.Shown = ShownAs(fullName)};
+
+		// WARNING: The old copy is asked before the line: the model gives an old copy a line of its own, which only
+		// its pick may compare it by.
+		if (const std::optional<std::size_t> picked = PickedLineOf(comparison.Shown))
+		{
+			comparison.What = ShownComparison::Kind::Pick;
+			comparison.Picked = picked;
+		}
+		else if (const Core::LineBase* const base = BaseNamed(comparison.Shown); base != nullptr)
+		{
+			comparison.What = ShownComparison::Kind::Base;
+			comparison.Base = base;
+		}
+		else if (const Core::OldCopy* const copy = OldCopyNamed(comparison.Shown); copy != nullptr)
+		{
+			comparison.What = ShownComparison::Kind::OldCopy;
+			comparison.OldCopy = copy;
+		}
+		else if (const Core::BranchLine* const line = LineOf(comparison.Shown); line != nullptr)
+		{
+			comparison.What = ShownComparison::Kind::Line;
+			comparison.Line = line;
+		}
+
+		return comparison;
+	}
 }

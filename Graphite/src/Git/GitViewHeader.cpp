@@ -257,31 +257,38 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const std::string_view shown = lines->ShownAs(shownRef);
+		const ShownComparison comparison = lines->ComparisonOf(shownRef);
 
-		// A pick for a base or an old copy is measured from the reference whose history is shown, as its fold row is.
-		if (const std::optional<std::size_t> picked = lines->PickedLineOf(shown))
+		switch (comparison.What)
 		{
+		case ShownComparison::Kind::Pick:
+		{
+			// A pick for a base or an old copy is measured from the reference whose history is shown, as its fold row is.
 			const std::optional<std::size_t> self = lines->IndexOf(shownRef);
 
-			return self.has_value() ? std::optional<DistanceTips>{DistanceTips{read.Refs[*self].Tip, read.Refs[*picked].Tip}}
+			return self.has_value() ? std::optional<DistanceTips>{DistanceTips{read.Refs[*self].Tip, read.Refs[*comparison.Picked].Tip}}
 									: std::nullopt;
 		}
-
-		if (const Core::OldCopy* const copy = lines->OldCopyNamed(shown); copy != nullptr)
+		case ShownComparison::Kind::OldCopy:
+			return DistanceTips{read.Refs[comparison.OldCopy->Ref].Tip, read.Refs[comparison.OldCopy->Of].Tip};
+		case ShownComparison::Kind::Line:
 		{
-			return DistanceTips{read.Refs[copy->Ref].Tip, read.Refs[copy->Of].Tip};
+			const Core::BranchLine& line = *comparison.Line;
+
+			// Behind is said only for a branch that is neither merged nor without commits of its own.
+			if (!line.ComparedWith.has_value() || line.State != Core::BranchState::NotMerged)
+			{
+				return std::nullopt;
+			}
+
+			return DistanceTips{read.Refs[line.Ref].Tip, read.Refs[*line.ComparedWith].Tip};
 		}
-
-		const Core::BranchLine* const line = lines->LineOf(shownRef);
-
-		// Behind is said only for a branch that is neither merged nor without commits of its own.
-		if (line == nullptr || !line->ComparedWith.has_value() || line->State != Core::BranchState::NotMerged)
-		{
+		case ShownComparison::Kind::Base:
+		case ShownComparison::Kind::Nothing:
 			return std::nullopt;
 		}
 
-		return DistanceTips{read.Refs[line->Ref].Tip, read.Refs[*line->ComparedWith].Tip};
+		return std::nullopt;
 	}
 
 	std::optional<Core::LineDistance> GitView::ShownDistance(const LineRead& read, std::string_view shownRef)
@@ -314,22 +321,15 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const std::string_view shown = lines->ShownAs(shownRef);
-
 		// The line DescribeVs describes as a branch's; a pick or an old copy has no state of the model's to check.
-		if (lines->PickedLineOf(shown).has_value() || lines->OldCopyNamed(shown) != nullptr)
+		const ShownComparison comparison = lines->ComparisonOf(shownRef);
+
+		if (comparison.What != ShownComparison::Kind::Line || !IsContentCandidate(*comparison.Line))
 		{
 			return nullptr;
 		}
 
-		const Core::BranchLine* const line = lines->LineOf(shown);
-
-		if (line == nullptr || !IsContentCandidate(*line))
-		{
-			return nullptr;
-		}
-
-		return line;
+		return comparison.Line;
 	}
 
 	bool GitView::ViewFollowsModelsRead() const

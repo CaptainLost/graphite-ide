@@ -109,9 +109,10 @@ namespace Graphite {
 
 		// A base and an old copy have no line by the rule: the rule compares them with nothing, and only the user's pick
 		// compares them with something.
-		bool StandsAlone(const VsPickerInput& input, std::string_view shown)
+		bool StandsAlone(const ShownComparison& shown)
 		{
-			return input.Lines.BaseNamed(shown) != nullptr || input.Lines.OldCopyNamed(shown) != nullptr;
+			return shown.What == ShownComparison::Kind::Pick || shown.What == ShownComparison::Kind::Base ||
+				   shown.What == ShownComparison::Kind::OldCopy;
 		}
 	}
 
@@ -120,18 +121,18 @@ namespace Graphite {
 		VsPicker picker;
 
 		// A base's local copy with no commits of its own is offered what its base is.
-		const std::string_view shown = input.Lines.ShownAs(input.Branch);
+		const ShownComparison shown = input.Lines.ComparisonOf(input.Branch);
 		const std::optional<std::size_t> named = input.Lines.IndexOf(input.Branch);
-		const std::optional<std::size_t> self = input.Lines.IndexOf(shown);
-		const bool standsAlone = StandsAlone(input, shown);
-		const Core::BranchLine* const line = standsAlone ? nullptr : input.Lines.LineOf(shown);
+		const std::optional<std::size_t> self = input.Lines.IndexOf(shown.Shown);
+		const bool standsAlone = StandsAlone(shown);
+		const Core::BranchLine* const line = shown.What == ShownComparison::Kind::Line ? shown.Line : nullptr;
 
 		if (!named.has_value() || !self.has_value() || (!standsAlone && line == nullptr))
 		{
 			return picker;
 		}
 
-		const Comparison comparison = standsAlone ? Comparison{.Automatic = std::nullopt, .Chosen = input.Lines.PickedLineOf(shown)}
+		const Comparison comparison = standsAlone ? Comparison{.Automatic = std::nullopt, .Chosen = shown.Picked}
 												  : Comparison{.Automatic = line->AutomaticComparedWith, .Chosen = line->ComparedWith};
 
 		const LineRead& read = input.Read;
