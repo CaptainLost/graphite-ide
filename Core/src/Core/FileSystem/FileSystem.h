@@ -61,6 +61,10 @@ namespace Core {
 
 	int CompareNames(std::string_view left, std::string_view right);
 
+	// As CompareNames, but a run of digits compares by its value: file2 before file10, file231 after file230. Two names
+	// that differ only in leading zeros are not equal; the one with fewer comes first.
+	int CompareNamesNaturally(std::string_view left, std::string_view right);
+
 	// Lexical, so it serves a path whose file may no longer exist, which std::filesystem::equivalent
 	// cannot: equivalent asks the file system and fails for a missing file.
 	std::filesystem::path NormalizePath(const std::filesystem::path& path);

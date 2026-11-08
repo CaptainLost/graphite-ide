@@ -657,3 +657,21 @@ TEST_CASE("CompareNames puts a name before a longer name it begins")
 	CHECK(Core::CompareNames("main", "main.cpp") < 0);
 	CHECK(Core::CompareNames("main.cpp", "main") > 0);
 }
+
+TEST_CASE("CompareNamesNaturally orders runs of digits by their value")
+{
+	CHECK(Core::CompareNamesNaturally("file2", "file10") < 0);
+	CHECK(Core::CompareNamesNaturally("file231", "file2309") < 0);
+	CHECK(Core::CompareNamesNaturally("file2310", "file231") > 0);
+	CHECK(Core::CompareNamesNaturally("v1.9.txt", "v1.10.txt") < 0);
+	CHECK(Core::CompareNamesNaturally("Alpha", "beta") < 0);
+	CHECK(Core::CompareNamesNaturally("README.md", "readme.MD") == 0);
+	CHECK(Core::CompareNamesNaturally("main", "main.cpp") < 0);
+}
+
+TEST_CASE("CompareNamesNaturally puts fewer leading zeros first and never calls such names equal")
+{
+	CHECK(Core::CompareNamesNaturally("file1", "file01") < 0);
+	CHECK(Core::CompareNamesNaturally("file01", "file1") > 0);
+	CHECK(Core::CompareNamesNaturally("file01", "file2") < 0);
+}

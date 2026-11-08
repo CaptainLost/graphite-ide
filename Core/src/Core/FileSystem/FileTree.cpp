@@ -72,7 +72,7 @@ namespace Core {
 			return left.IsDirectory;
 		}
 
-		return CompareNames(left.Name, right.Name) < 0;
+		return CompareNamesNaturally(left.Name, right.Name) < 0;
 	}
 
 	Result<void> FileTree::SetRoot(const std::filesystem::path& root)

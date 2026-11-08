@@ -394,6 +394,89 @@ namespace Core {
 		return left.size() < right.size() ? -1 : 1;
 	}
 
+	int CompareNamesNaturally(std::string_view left, std::string_view right)
+	{
+		const auto isDigit = [](char character) { return character >= '0' && character <= '9'; };
+
+		const auto digitRunEnd = [&isDigit](std::string_view text, std::size_t from) {
+			while (from < text.size() && isDigit(text[from]))
+			{
+				++from;
+			}
+
+			return from;
+		};
+
+		std::size_t leftIndex = 0;
+		std::size_t rightIndex = 0;
+		int leadingZeroTieBreak = 0;
+
+		while (leftIndex < left.size() && rightIndex < right.size())
+		{
+			if (isDigit(left[leftIndex]) && isDigit(right[rightIndex]))
+			{
+				const std::size_t leftEnd = digitRunEnd(left, leftIndex);
+				const std::size_t rightEnd = digitRunEnd(right, rightIndex);
+
+				std::string_view leftDigits = left.substr(leftIndex, leftEnd - leftIndex);
+				std::string_view rightDigits = right.substr(rightIndex, rightEnd - rightIndex);
+
+				const std::size_t leftRun = leftDigits.size();
+				const std::size_t rightRun = rightDigits.size();
+
+				while (leftDigits.size() > 1 && leftDigits.front() == '0')
+				{
+					leftDigits.remove_prefix(1);
+				}
+
+				while (rightDigits.size() > 1 && rightDigits.front() == '0')
+				{
+					rightDigits.remove_prefix(1);
+				}
+
+				if (leftDigits.size() != rightDigits.size())
+				{
+					return leftDigits.size() < rightDigits.size() ? -1 : 1;
+				}
+
+				if (const int byDigits = leftDigits.compare(rightDigits); byDigits != 0)
+				{
+					return byDigits < 0 ? -1 : 1;
+				}
+
+				if (leadingZeroTieBreak == 0 && leftRun != rightRun)
+				{
+					leadingZeroTieBreak = leftRun < rightRun ? -1 : 1;
+				}
+
+				leftIndex = leftEnd;
+				rightIndex = rightEnd;
+				continue;
+			}
+
+			const int leftLowered = LoweredByCurrentLocale(left[leftIndex]);
+			const int rightLowered = LoweredByCurrentLocale(right[rightIndex]);
+
+			if (leftLowered != rightLowered)
+			{
+				return leftLowered < rightLowered ? -1 : 1;
+			}
+
+			++leftIndex;
+			++rightIndex;
+		}
+
+		const bool leftEnded = leftIndex == left.size();
+		const bool rightEnded = rightIndex == right.size();
+
+		if (leftEnded != rightEnded)
+		{
+			return leftEnded ? -1 : 1;
+		}
+
+		return leadingZeroTieBreak;
+	}
+
 	std::filesystem::path NormalizePath(const std::filesystem::path& path)
 	{
 		std::filesystem::path normalized = path.lexically_normal();
