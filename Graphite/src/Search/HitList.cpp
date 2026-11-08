@@ -42,8 +42,10 @@ namespace Graphite {
 			// label is drawn separately because its count changes on every new hit. Passing the
 			// two combined as the id makes ImGui see a new node each time and close whatever the
 			// user had just opened.
-			const bool isGroupExpanded =
-				ChevronTreeNode(group.Id.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
+			// A file's hits show as soon as it is found: a list of closed files was one more click per file before
+			// anything could be read. A group the reader closes stays closed, ImGui keeping it by id.
+			const bool isGroupExpanded = ChevronTreeNode(
+				group.Id.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_DefaultOpen);
 
 			SameLineWithoutGap();
 

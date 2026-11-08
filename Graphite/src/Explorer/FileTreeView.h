@@ -73,6 +73,10 @@ namespace Graphite {
 		{
 			std::filesystem::path Target;
 
+			// For a folder, the files under it, counted when asked up to a ceiling; unset for a file.
+			std::optional<std::size_t> FilesInside;
+			bool MoreThanCounted = false;
+
 			bool operator==(const DeleteQuestion&) const = default;
 		};
 

@@ -2,6 +2,8 @@
 
 #include "Settings/Panel/SettingsPage.h"
 
+#include "Core/Platform/AsyncDialog.h"
+
 #include <filesystem>
 #include <string_view>
 #include <vector>
@@ -25,7 +27,11 @@ namespace Graphite {
 
 	private:
 		void DrawRemove(const std::filesystem::path& folder);
+		void DrawAdd();
 
 		WorkspaceTrust& m_Trust;
+
+		// The folder picker Add opens, which answers on a later frame.
+		Core::AsyncDialog m_AddDialog;
 	};
 }

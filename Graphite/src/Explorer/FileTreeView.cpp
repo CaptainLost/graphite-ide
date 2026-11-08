@@ -430,7 +430,7 @@ namespace Graphite {
 
 		const bool isRoot = m_Workspace.IsOpen() && node.Path == m_Workspace.GetRoot();
 
-		if (ImGui::MenuItem("Show in Explorer"))
+		if (ImGui::MenuItem("Reveal in File Explorer"))
 		{
 			if (const Core::Result<void> revealed = Core::Shell::RevealInFileBrowser(node.Path); !revealed)
 			{
@@ -579,7 +579,7 @@ namespace Graphite {
 
 		ImGui::Separator();
 
-		if (ImGui::MenuItem("Show in Explorer"))
+		if (ImGui::MenuItem("Reveal in File Explorer"))
 		{
 			if (const Core::Result<void> revealed = Core::Shell::RevealInFileBrowser(root); !revealed)
 			{
@@ -774,7 +774,31 @@ namespace Graphite {
 		m_RenamingPath.clear();
 		CloseNameEditorsInside(action.Target);
 
-		const DeleteQuestion question{.Target = action.Target};
+		DeleteQuestion question{.Target = action.Target};
+
+		// A folder says what it holds, so the reader sees a folder of thousands before it goes.
+		std::error_code kindError;
+
+		if (std::filesystem::is_directory(action.Target, kindError))
+		{
+			constexpr std::size_t kCountCeiling = 10000;
+			std::size_t files = 0;
+			std::error_code walkError;
+
+			for (std::filesystem::recursive_directory_iterator entry{action.Target, std::filesystem::directory_options::skip_permission_denied, walkError}, end;
+				 !walkError && entry != end && files < kCountCeiling; entry.increment(walkError))
+			{
+				std::error_code fileError;
+
+				if (entry->is_regular_file(fileError))
+				{
+					++files;
+				}
+			}
+
+			question.FilesInside = files;
+			question.MoreThanCounted = files >= kCountCeiling;
+		}
 
 		m_DeleteQuestion.AskOnce(question);
 	}
@@ -1216,6 +1240,16 @@ namespace Graphite {
 		DialogLayout::Text(std::format("Move \"{}\" to the Recycle Bin?", Core::ToUtf8(target.filename())));
 		DialogLayout::Gap();
 
+		if (asked->FilesInside.has_value())
+		{
+			const std::size_t files = *asked->FilesInside;
+			const std::string count = asked->MoreThanCounted ? std::format("more than {} files", files)
+															 : files == 0 ? std::string{"no files"}
+															 : std::format("{} {}", files, files == 1 ? "file" : "files");
+			DialogLayout::MutedText("The folder holds " + count + ".");
+			DialogLayout::Gap();
+		}
+
 		// WARNING: Destructive, not safe: Enter must not delete, and a drive with no Recycle Bin deletes
 		// for good.
 		const DialogLayout::ButtonSpec absentButton{};
@@ -1570,12 +1604,14 @@ namespace Graphite {
 				static_cast<void>(m_Workspace.GetTree().Expand(node));
 			}
 
+			// The name of a new file is typed at the top of its folder, where the eye is, not under the folder's last
+			// row.
+			RenderNewFileEditor(node);
+
 			for (Core::FileNode& child : node.Children)
 			{
 				RenderNode(child);
 			}
-
-			RenderNewFileEditor(node);
 
 			ImGui::TreePop();
 		}

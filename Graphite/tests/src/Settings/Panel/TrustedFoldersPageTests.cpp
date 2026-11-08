@@ -38,7 +38,8 @@ TEST_CASE("Each trusted folder has a row, and Remove stops trusting it")
 	screen.Trust.Trust(project);
 
 	const std::vector<std::string> titles = screen.Frames.RowTitles();
-	REQUIRE(titles.size() == 1);
+	REQUIRE(titles.size() == 2);
+	CHECK(titles.back() == "Trust another folder");
 
 	screen.Frames.ClickControl(titles.front());
 

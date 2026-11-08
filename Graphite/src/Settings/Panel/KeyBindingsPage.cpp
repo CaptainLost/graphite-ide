@@ -671,16 +671,20 @@ namespace Graphite {
 
 		ImGui::TableNextColumn();
 
-		const bool overridden = m_Keys.IsOverridden(command.Id);
-		ImGui::BeginDisabled(!overridden);
-
-		if (Core::SmallTextButton("Default"))
+		// Only a binding changed from its default offers to put it back: a disabled "Default" in every other row read as
+		// the column's own value repeated down the table.
+		if (m_Keys.IsOverridden(command.Id))
 		{
-			m_Keys.RestoreDefault(command.Id);
-			m_OnChanged();
-		}
+			if (Core::SmallTextButton("Restore"))
+			{
+				m_Keys.RestoreDefault(command.Id);
+				m_OnChanged();
+			}
 
-		ImGui::EndDisabled();
+			const Core::Binding* const defaultBinding = m_Keys.DefaultFor(command.Id);
+			const std::string defaultText = defaultBinding != nullptr ? Core::ToString(*defaultBinding) : std::string{};
+			ImGui::SetItemTooltip("Put back the default: %s", defaultText.empty() ? "none" : defaultText.c_str());
+		}
 
 		const bool recordingInThisRow = m_CapturingCommandId == command.Id;
 		DrawTableRowHighlight(recordingInThisRow, IsRowUnderThePointer());

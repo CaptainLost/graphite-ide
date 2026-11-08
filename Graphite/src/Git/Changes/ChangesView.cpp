@@ -8,6 +8,7 @@
 #include "UI/Lists/ListRow.h"
 #include "UI/ClipboardCopy.h"
 #include "Git/Branches/BranchLookup.h"
+#include "Git/Changes/IgnoreEntry.h"
 #include "Git/Changes/CommitBlocker.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -826,6 +827,46 @@ namespace Graphite {
 
 		const std::filesystem::path absolutePath = m_Model.GetWorkingDirectory() / file.Path;
 
+		// What the row's buttons do, offered here too: the buttons show only under the pointer, and move as the row does.
+		const bool writable = !m_Model.IsWriteUnsettled();
+		const char* const noShortcut = nullptr;
+		constexpr bool kNotSelected = false;
+
+		if (!file.IsDirectory && OnFileChosen && ImGui::MenuItem("Open Changes"))
+		{
+			OnFileChosen(OpenDiff{.Commit = std::nullopt, .Target = TargetForSection(), .Path = file.Path});
+		}
+
+		if (ImGui::MenuItem(m_Section == Section::Staged ? "Unstage" : "Stage", noShortcut, kNotSelected, writable))
+		{
+			if (m_Section == Section::Staged)
+			{
+				m_Model.RequestUnstage({file.Path});
+			}
+			else
+			{
+				m_Model.RequestStage({file.Path});
+			}
+		}
+
+		if (m_Section == Section::Unstaged &&
+			ImGui::MenuItem(file.IsUntracked ? "Delete File..." : "Discard Changes...", noShortcut, kNotSelected, writable))
+		{
+			BeginDiscard(file);
+		}
+
+		if (file.IsUntracked && ImGui::MenuItem("Add to .gitignore", noShortcut, kNotSelected, writable))
+		{
+			if (const Core::Result<void> added = AddToGitIgnore(m_Model.GetWorkingDirectory(), file.Path, file.IsDirectory); !added)
+			{
+				APP_ERROR("{}", added.GetError().Message);
+				m_Events.Publish(FolderToast(Core::ToastKind::Error, "Cannot add to .gitignore", added.GetError().Message,
+											 m_Model.GetWorkingDirectory()));
+			}
+		}
+
+		ImGui::Separator();
+
 		const bool existsOnDisk = letter != 'D';
 
 		ImGui::BeginDisabled(!existsOnDisk);
@@ -842,7 +883,7 @@ namespace Graphite {
 			ImGui::Separator();
 		}
 
-		if (ImGui::MenuItem("Show in Explorer"))
+		if (ImGui::MenuItem("Reveal in File Explorer"))
 		{
 			if (const Core::Result<void> revealed = Core::Shell::RevealInFileBrowser(absolutePath); !revealed)
 			{
