@@ -19,6 +19,7 @@
 #include "Git/GitView.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/Lines/LinesPort.h"
+#include "Git/Network/NetworkModel.h"
 #include "Git/Sidebar/SidebarView.h"
 #include "Git/Window/WindowBar.h"
 #include "Git/Worktrees/WorktreePort.h"
@@ -120,6 +121,8 @@ namespace {
 
 		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override { return Stashes; }
 
+		Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return Remotes; }
+
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
 		{
 			Core::LogPage page;
@@ -140,6 +143,7 @@ namespace {
 		std::vector<Core::Tag> Tags;
 
 		std::vector<Core::StashEntry> Stashes;
+		std::vector<Core::Remote> Remotes;
 
 	private:
 		std::optional<Core::Oid> TipOf(const std::optional<std::string>& ref) const
@@ -269,6 +273,7 @@ namespace {
 			const Core::Timestep noTime{0.0f};
 
 			Model.OnUpdate(noTime);
+			Network.OnUpdate(noTime);
 			Lines.Follow(Model.GetBranches(), Model.GetBranchListingGeneration(), Model.GetTags());
 			Lines.OnUpdate(noTime);
 			Worktrees.Follow(Model.GetBranches(), Model.GetWorkingDirectory());
@@ -283,6 +288,8 @@ namespace {
 				Font = ImGui::GetFontBaked();
 				View.OnImGuiRender();
 				ChipId = ImGui::GetID("##headChip");
+				FetchId = ImGui::GetID("##networkFetch");
+				PushId = ImGui::GetID("##networkPush");
 				ImGui::End();
 			});
 
@@ -300,6 +307,12 @@ namespace {
 		// Moves the pointer along the bar's middle until the chip is under it; false when it never is.
 		bool PointAtChip()
 		{
+			return PointAt(ChipId);
+		}
+
+		// Moves the pointer along the bar's middle until the item `id` is under it; false when it never is.
+		bool PointAt(ImGuiID id)
+		{
 			constexpr float kStep = 4.0f;
 			const float middle = BarTop + Graphite::WindowBarEm(36.0f) * 0.5f;
 
@@ -308,13 +321,20 @@ namespace {
 				ImGui::GetIO().AddMousePosEvent(x, middle);
 				Step();
 
-				if (ImGui::GetCurrentContext()->HoveredId == ChipId)
+				if (ImGui::GetCurrentContext()->HoveredId == id)
 				{
 					return true;
 				}
 			}
 
 			return false;
+		}
+
+		// Reads the repository again, as after a change on disk, so a port set up after the window began is heard.
+		void ListAgain()
+		{
+			Model.RequestBranches();
+			Settle();
 		}
 
 		// One event a frame, as a person clicks where the pointer is.
@@ -591,6 +611,7 @@ namespace {
 
 		Graphite::GitModel Model{Port, RunJobsInline()};
 		Graphite::LinesModel Lines{LinesPort, LineReadJobs(), [] { return LineReadBuilder::Now().time_since_epoch().count(); }};
+		Graphite::NetworkModel Network{Port, Model, RunJobsInline()};
 		Graphite::WorktreesModel Worktrees{WorktreePort, RunJobsInline()};
 		Graphite::ContentModel Content{ContentPort, RunJobsInline()};
 
@@ -604,11 +625,13 @@ namespace {
 		Graphite::EditorSettings EditorPreferences{Settings.Get()};
 		Graphite::DiffWindows Diffs;
 
-		Graphite::GitView View{Model,  Lines,   Worktrees, Content, Changes, Scheme, EditorPreferences,
+		Graphite::GitView View{Model,  Lines,   Network, Worktrees, Content, Changes, Scheme, EditorPreferences,
 							   Diffs, Modals, Buffers,   Events};
 
 		float BarTop = 0.0f;
 		ImGuiID ChipId = 0;
+		ImGuiID FetchId = 0;
+		ImGuiID PushId = 0;
 		ImFontBaked* Font = nullptr; // the window's face, as its text is drawn in
 	};
 
@@ -668,6 +691,50 @@ TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row 
 	window.Settle();
 
 	CHECK(rows->Scroll.y == doctest::Approx(rows->ScrollMax.y));
+}
+
+TEST_CASE("Git window: a click on Fetch starts a fetch")
+{
+	GitWindow window("NetworkFetchWindow");
+	window.Port.Remotes = {{"origin", "https://example.com/a.git"}};
+	window.Port.Network.Setup.Git = std::filesystem::path{"git.exe"};
+	window.ListAgain();
+
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+
+	REQUIRE_FALSE(window.Port.Network.Calls.empty());
+	CHECK(window.Port.Network.Calls.front() == "FetchAll");
+}
+
+TEST_CASE("Git window: push with no upstream and several remotes asks which remote")
+{
+	GitWindow window("NetworkPushWindow");
+	window.Port.Remotes = {{"origin", "https://example.com/a.git"}, {"backup", "ssh://host/a.git"}};
+	window.Port.Network.Setup.Git = std::filesystem::path{"git.exe"};
+	window.ListAgain();
+
+	REQUIRE(window.PointAt(window.PushId));
+	window.Click();
+
+	// Asking pushes nothing yet: the menu names the branch and lists the remotes in the config's order.
+	CHECK(window.Port.Network.Calls.empty());
+
+	// A popup is sized by its content over its first frames.
+	window.Settle(3);
+
+	const ImGuiContext& context = *ImGui::GetCurrentContext();
+	REQUIRE(context.OpenPopupStack.Size == 1);
+	const ImGuiWindow* menu = context.OpenPopupStack[0].Window;
+	REQUIRE(menu != nullptr);
+
+	// The last item is the second remote: a click on it pushes there and sets it as the upstream.
+	const float itemHeight = ImGui::GetTextLineHeightWithSpacing();
+	const ImVec2 target(menu->Pos.x + menu->Size.x * 0.5f, menu->Pos.y + menu->Size.y - menu->WindowPadding.y - itemHeight * 0.5f);
+	window.ClickAt(target);
+
+	REQUIRE_FALSE(window.Port.Network.Calls.empty());
+	CHECK(window.Port.Network.Calls.back() == "PushTo backup (set upstream)");
 }
 
 TEST_CASE("Git window: clicking a detached head's chip shows HEAD's history and leaves the sidebar where it was")

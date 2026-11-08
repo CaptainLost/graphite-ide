@@ -32,6 +32,7 @@
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/HeadInRead.h"
 #include "Git/Lines/LinesModel.h"
+#include "Git/Network/NetworkModel.h"
 #include "Git/Sidebar/SidebarRows.h"
 #include "Git/Sidebar/SidebarText.h"
 #include "Git/Sidebar/SidebarView.h"
@@ -74,7 +75,7 @@ namespace Graphite {
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
+		GitView(GitModel& model, LinesModel& lines, NetworkModel& network, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
 				const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
 				EditorBuffers& buffers, Core::EventBus& events);
 
@@ -201,6 +202,12 @@ namespace Graphite {
 		// The window bar's HEAD chip clicked: HEAD's history is shown, and while HEAD is on a branch the sidebar scrolls
 		// once to that branch's row, clearing a search that hides it and opening the section or group holding it.
 		void AnswerHeadChip();
+
+		// A click on Fetch, Pull, Push, or on the one running.
+		void AnswerNetworkClick(NetworkClick click);
+
+		// The remotes Push can go to, when it asks which: "Push <branch> to…" and one item each, in the config's order.
+		void RenderPushRemoteMenu();
 
 		// The full name of the branch the sidebar keeps listed: the selected one, or the checked-out one for HEAD's
 		// history; empty for a stash's.
@@ -504,6 +511,7 @@ namespace Graphite {
 
 		GitModel& m_Model;
 		LinesModel& m_Lines;
+		NetworkModel& m_Network;
 		WorktreesModel& m_Worktrees;
 		ContentModel& m_Content;
 		ChangesView& m_Changes;
@@ -533,11 +541,18 @@ namespace Graphite {
 			std::optional<std::string> CheckingOut;
 			std::filesystem::path Folder;
 
+			// What the network buttons read. The age is whole minutes, so the text is described again only when it can change.
+			NetworkState Network;
+			std::optional<std::chrono::sys_seconds> LastFetch;
+			bool GitFound = false;
+			std::int64_t NowMinutes = 0;
+
 			friend bool operator==(const WindowBarSource&, const WindowBarSource&) = default;
 		};
 
 		std::optional<WindowBarSource> m_WindowBarSource;
 		WindowBarText m_WindowBarText;
+		NetworkButtons m_NetworkButtons;
 
 		// The last complete bar of this folder, kept while a refresh is incomplete; empty while the first read runs.
 		std::optional<WindowBarText> m_WindowBarSettled;

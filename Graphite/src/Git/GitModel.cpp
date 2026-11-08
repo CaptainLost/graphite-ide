@@ -96,6 +96,7 @@ namespace Graphite {
 		m_UserEmail.Clear();
 		m_Remotes.Clear();
 		m_LastFetch.reset();
+		m_GitFound = false;
 		m_Stashes.Clear();
 		m_Head.Clear();
 		m_Log.Clear();
@@ -266,9 +267,10 @@ namespace Graphite {
 			const bool tagsSameAsHeld = heldTags != nullptr && tags.HasValue() && tags.GetValue() == *heldTags;
 
 			const std::optional<std::chrono::sys_seconds> lastFetch = m_Port.QueryLastFetch();
+			const bool gitFound = m_Port.QueryNetworkSetup().Git.has_value();
 
 			Deliver([this, generation, held, sameAsHeld, result = std::move(result), tagsGeneration, heldTags, tagsSameAsHeld,
-					 tags = std::move(tags), lastFetch]() mutable {
+					 tags = std::move(tags), lastFetch, gitFound]() mutable {
 				LandTags(tagsGeneration, heldTags, tagsSameAsHeld, std::move(tags));
 
 				const bool stillHeld = sameAsHeld && m_Branches.Get() == held;
@@ -277,6 +279,7 @@ namespace Graphite {
 				if (landing != SlotLanding::Stale)
 				{
 					m_LastFetch = lastFetch;
+					m_GitFound = gitFound;
 				}
 
 				if (landing == SlotLanding::Applied)

@@ -4,11 +4,14 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Remote.h"
+#include "Git/Network/NetworkModel.h"
 #include "Theme/ColorScheme.h"
 
 #include <imgui.h>
 
+#include <chrono>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -46,6 +49,58 @@ namespace Graphite {
 
 	// The chip's tooltip: HeadTooltip, and on a branch a second line saying what a click does.
 	std::string HeadChipTooltip(const WindowBarText& text);
+
+	// One of Fetch, Pull and Push as the bar draws it: "Pull" and its count apart, the count drawn in the match colour.
+	struct ButtonText
+	{
+		// "Fetch", "Pull", "Push"; while this button's operation runs, "Fetching… 45%", "Pulling…", "Pushing…".
+		std::string Label;
+
+		// The distance to the upstream when it is over 0; empty otherwise and while the button runs.
+		std::string Count;
+
+		// What a hover says: the action, why the button is disabled, or "Click to cancel". Empty while nothing is known.
+		std::string Tooltip;
+
+		bool Enabled = false;
+
+		// This button's operation runs: a click on it cancels, when Enabled.
+		bool Running = false;
+
+		// Push without an upstream on a remote, with several remotes: a click asks which remote, and Tooltip is the
+		// question, "Push main to…".
+		bool AsksWhichRemote = false;
+	};
+
+	struct NetworkButtons
+	{
+		ButtonText Fetch;
+		ButtonText Pull;
+		ButtonText Push;
+
+		// "fetched 5m ago", "fetched just now"; empty in a repository never fetched.
+		std::string FetchedAge;
+	};
+
+	// WARNING: The three keep their places and are disabled, with no count, until the branches and remotes are listed.
+	NetworkButtons DescribeNetworkButtons(const WindowBarInput& input, const NetworkState& state,
+										  std::optional<std::chrono::sys_seconds> lastFetch, std::chrono::sys_seconds now, bool gitFound);
+
+	enum class NetworkClick
+	{
+		None,
+		Fetch,
+		Pull,
+		Push,
+		Cancel
+	};
+
+	struct WindowBarClick
+	{
+		// The HEAD chip was clicked.
+		bool Head = false;
+		NetworkClick Network = NetworkClick::None;
+	};
 
 	struct SettledWindowBar
 	{
@@ -109,8 +164,11 @@ namespace Graphite {
 		// A read of the repository that failed, said at the bar's right end, cut to the room left and whole in its tooltip;
 		// empty otherwise. The bar's height holds it, so it never pushes the window's content down.
 		std::string_view Problem;
+
+		// Fetch, Pull and Push and the age of the last fetch, at the bar's right end before the problem; null draws none.
+		const NetworkButtons* Network = nullptr;
 	};
 
-	// One bar high across the available width, ending on an item. True when the HEAD chip was clicked.
-	bool DrawWindowBar(const WindowBarDrawing& drawing);
+	// One bar high across the available width, ending on an item. Says what was clicked.
+	WindowBarClick DrawWindowBar(const WindowBarDrawing& drawing);
 }

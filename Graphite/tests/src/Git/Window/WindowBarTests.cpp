@@ -8,7 +8,9 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <chrono>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -429,7 +431,7 @@ namespace {
 						 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
 
 			BarTop = ImGui::GetCursorScreenPos().y;
-			Clicked = Graphite::DrawWindowBar(Graphite::WindowBarDrawing{.Text = Text, .WorkingDirectory = kFolder, .Colours = Colours}) ||
+			Clicked = Graphite::DrawWindowBar(Graphite::WindowBarDrawing{.Text = Text, .WorkingDirectory = kFolder, .Colours = Colours}).Head ||
 					  Clicked;
 			ChipId = ImGui::GetID("##headChip");
 
@@ -518,5 +520,235 @@ TEST_CASE("Git window: a head chip shows a hover look and answers a click whethe
 
 		detached.Frames.Click(detached.ChipPoint, [&] { detached.Draw(); });
 		CHECK(detached.TakeClick());
+	}
+}
+
+namespace {
+
+	const std::chrono::sys_seconds kNow{std::chrono::seconds{1'800'000'000}};
+
+	Graphite::NetworkButtons Buttons(const Core::HeadState* head, const std::vector<Core::Branch>* branches,
+									 const std::vector<Core::Remote>* remotes, const Graphite::NetworkState& state = {},
+									 std::optional<std::chrono::sys_seconds> lastFetch = std::nullopt, bool gitFound = true)
+	{
+		return Graphite::DescribeNetworkButtons(Graphite::WindowBarInput{kFolder, head, branches, remotes, false}, state, lastFetch, kNow,
+												gitFound);
+	}
+
+	const std::vector<Core::Remote> kOrigin = {{"origin", "https://example.com/a.git"}};
+
+	constexpr const char* kGitMissingSentence =
+		"Fetch, Pull and Push need git, which was not found on PATH or where Git for Windows installs it.";
+
+	Core::Branch RemoteMain()
+	{
+		Core::Branch upstream;
+		upstream.Name = "origin/main";
+		upstream.FullName = "refs/remotes/origin/main";
+		upstream.Kind = Core::RefKind::Remote;
+		return upstream;
+	}
+}
+
+TEST_CASE("Window bar: the buttons keep their places and are disabled before the branches are listed")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 2, 3)};
+
+	const std::vector<Graphite::NetworkButtons> all = {Buttons(nullptr, nullptr, nullptr), Buttons(&head, nullptr, &kOrigin),
+													   Buttons(&head, &branches, nullptr)};
+
+	for (const Graphite::NetworkButtons& buttons : all)
+	{
+		CHECK(buttons.Fetch.Label == "Fetch");
+		CHECK(buttons.Pull.Label == "Pull");
+		CHECK(buttons.Push.Label == "Push");
+
+		for (const Graphite::ButtonText* button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
+		{
+			CHECK_FALSE(button->Enabled);
+			CHECK_FALSE(button->Running);
+			CHECK(button->Count.empty());
+		}
+	}
+}
+
+TEST_CASE("Window bar: each button says why it is disabled")
+{
+	const std::vector<Core::Remote> none;
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> noUpstream = {HeadBranch("main")};
+
+	// Fetch and Push: no remote.
+	Graphite::NetworkButtons buttons = Buttons(&head, &noUpstream, &none);
+	CHECK_FALSE(buttons.Fetch.Enabled);
+	CHECK(buttons.Fetch.Tooltip == "This repository has no remote.");
+	CHECK_FALSE(buttons.Push.Enabled);
+	CHECK(buttons.Push.Tooltip == "This repository has no remote.");
+
+	// Pull: no upstream.
+	buttons = Buttons(&head, &noUpstream, &kOrigin);
+	CHECK(buttons.Fetch.Enabled);
+	CHECK_FALSE(buttons.Pull.Enabled);
+	CHECK(buttons.Pull.Tooltip == "main has no upstream branch.");
+	CHECK(buttons.Push.Enabled);
+
+	// A detached HEAD.
+	Core::HeadState detached;
+	detached.Kind = Core::HeadKind::Detached;
+	detached.Commit = OidWithFirstByte(0xAB);
+	buttons = Buttons(&detached, &noUpstream, &kOrigin);
+	CHECK(buttons.Fetch.Enabled);
+	CHECK_FALSE(buttons.Pull.Enabled);
+	CHECK(buttons.Pull.Tooltip == "No branch is checked out.");
+	CHECK_FALSE(buttons.Push.Enabled);
+	CHECK(buttons.Push.Tooltip == "No branch is checked out.");
+
+	// An unborn HEAD.
+	Core::HeadState unborn;
+	unborn.Kind = Core::HeadKind::Unborn;
+	unborn.BranchName = "main";
+	buttons = Buttons(&unborn, &noUpstream, &kOrigin);
+	CHECK_FALSE(buttons.Pull.Enabled);
+	CHECK(buttons.Pull.Tooltip == "main has no upstream branch.");
+	CHECK_FALSE(buttons.Push.Enabled);
+	CHECK(buttons.Push.Tooltip == "main has no commits yet.");
+}
+
+TEST_CASE("Window bar: pull and push show the upstream distance")
+{
+	const Core::HeadState head = OnBranch("main");
+
+	std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 2, 1'234), RemoteMain()};
+	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin);
+
+	CHECK(buttons.Pull.Label == "Pull");
+	CHECK(buttons.Pull.Count == "1,234");
+	CHECK(buttons.Pull.Tooltip == "Pull origin/main into main");
+	CHECK(buttons.Push.Count == "2");
+	CHECK(buttons.Push.Tooltip == "Push 2 commits to origin");
+	CHECK_FALSE(buttons.Push.AsksWhichRemote);
+
+	branches = {Tracking(HeadBranch("main"), "origin/main", 1, 0), RemoteMain()};
+	buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK(buttons.Pull.Count.empty());
+	CHECK(buttons.Push.Tooltip == "Push 1 commit to origin");
+
+	branches = {Tracking(HeadBranch("main"), "origin/main", 0, 0), RemoteMain()};
+	buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK(buttons.Push.Count.empty());
+	CHECK(buttons.Push.Enabled);
+
+	// A distance that could not be measured says no count.
+	branches = {Tracking(HeadBranch("main"), "origin/main", 5, 5), RemoteMain()};
+	branches.front().DistanceKnown = false;
+	buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK(buttons.Pull.Count.empty());
+	CHECK(buttons.Push.Count.empty());
+}
+
+TEST_CASE("Window bar: push asks which remote only with several remotes and no upstream on one")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Remote> two = {{"origin", "u"}, {"backup", "v"}};
+	std::vector<Core::Branch> branches = {HeadBranch("main")};
+
+	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &two);
+	CHECK(buttons.Push.AsksWhichRemote);
+	CHECK(buttons.Push.Tooltip == "Push main to\xE2\x80\xA6");
+
+	// One remote: pushed there at once.
+	buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK_FALSE(buttons.Push.AsksWhichRemote);
+	CHECK(buttons.Push.Tooltip == "Push main to origin");
+
+	// An upstream on a remote answers the question.
+	branches = {Tracking(HeadBranch("main"), "origin/main", 0, 0), RemoteMain()};
+	CHECK_FALSE(Buttons(&head, &branches, &two).Push.AsksWhichRemote);
+
+	// An upstream that is a local branch does not.
+	Core::Branch local;
+	local.Name = "develop";
+	local.FullName = "refs/heads/develop";
+	branches = {Tracking(HeadBranch("main"), "develop", 0, 0), local};
+	CHECK(Buttons(&head, &branches, &two).Push.AsksWhichRemote);
+}
+
+TEST_CASE("Window bar: a running operation's button reads its progress and cancels on click, and the others are disabled")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 2, 3), RemoteMain()};
+
+	Graphite::NetworkState state;
+	state.Running = Graphite::NetworkOperation::Fetch;
+	state.Serial = 7;
+	state.Percent = 45;
+	state.Cancellable = true;
+
+	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin, state);
+	CHECK(buttons.Fetch.Label == "Fetching\xE2\x80\xA6 45%");
+	CHECK(buttons.Fetch.Running);
+	CHECK(buttons.Fetch.Enabled);
+	CHECK(buttons.Fetch.Tooltip == "Click to cancel");
+	CHECK(buttons.Fetch.Count.empty());
+
+	for (const Graphite::ButtonText* other : {&buttons.Pull, &buttons.Push})
+	{
+		CHECK_FALSE(other->Running);
+		CHECK_FALSE(other->Enabled);
+		CHECK(other->Count.empty());
+	}
+
+	state.Running = Graphite::NetworkOperation::Pull;
+	state.Percent.reset();
+	buttons = Buttons(&head, &branches, &kOrigin, state);
+	CHECK(buttons.Pull.Label == "Pulling\xE2\x80\xA6");
+	CHECK(buttons.Pull.Enabled);
+
+	// Pull's fast-forward cannot be stopped: the button says so by being disabled.
+	state.Cancellable = false;
+	buttons = Buttons(&head, &branches, &kOrigin, state);
+	CHECK(buttons.Pull.Running);
+	CHECK_FALSE(buttons.Pull.Enabled);
+
+	state.Running = Graphite::NetworkOperation::Push;
+	state.Cancellable = true;
+	buttons = Buttons(&head, &branches, &kOrigin, state);
+	CHECK(buttons.Push.Label == "Pushing\xE2\x80\xA6");
+
+	// The full history's fetch has no button of its own: all three wait.
+	state.Running = Graphite::NetworkOperation::FullHistory;
+	buttons = Buttons(&head, &branches, &kOrigin, state);
+
+	for (const Graphite::ButtonText* button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
+	{
+		CHECK_FALSE(button->Running);
+		CHECK_FALSE(button->Enabled);
+	}
+}
+
+TEST_CASE("Window bar: fetched age reads FETCH_HEAD's time")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main")};
+
+	CHECK(Buttons(&head, &branches, &kOrigin).FetchedAge.empty());
+	CHECK(Buttons(&head, &branches, &kOrigin, {}, kNow - std::chrono::seconds{5}).FetchedAge == "fetched just now");
+	CHECK(Buttons(&head, &branches, &kOrigin, {}, kNow - std::chrono::minutes{5}).FetchedAge == "fetched 5m ago");
+	CHECK(Buttons(&head, &branches, &kOrigin, {}, kNow - std::chrono::hours{3}).FetchedAge == "fetched 3h ago");
+	CHECK(Buttons(&head, &branches, &kOrigin, {}, kNow + std::chrono::minutes{5}).FetchedAge == "fetched just now");
+}
+
+TEST_CASE("Window bar: without git every button says git was not found")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 1, 1)};
+	const Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin, {}, std::nullopt, false);
+
+	for (const Graphite::ButtonText* button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
+	{
+		CHECK_FALSE(button->Enabled);
+		CHECK(button->Tooltip == kGitMissingSentence);
+		CHECK(button->Count.empty());
 	}
 }

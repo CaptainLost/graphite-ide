@@ -247,6 +247,9 @@ namespace Graphite {
 		// in a repository never fetched.
 		const std::optional<std::chrono::sys_seconds>& GetLastFetch() const { return m_LastFetch; }
 
+		// Whether git.exe was found, read beside every branch listing: Fetch, Pull and Push run it. False while unread.
+		bool IsGitFound() const { return m_GitFound; }
+
 		// Read beside every branch listing, for the window bar. Null while unread and after a failed read.
 		Core::Ref<const std::vector<Core::Remote>> GetRemotes() const { return m_Remotes.Get(); }
 		const std::optional<Core::Error>& GetRemotesError() const { return m_Remotes.GetError(); }
@@ -661,6 +664,7 @@ namespace Graphite {
 		GenerationSlot<std::optional<std::string>> m_UserEmail;
 		GenerationSlot<std::vector<Core::Remote>> m_Remotes;
 		std::optional<std::chrono::sys_seconds> m_LastFetch;
+		bool m_GitFound = false;
 		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
 		std::optional<std::vector<Core::Oid>> m_AuthorsHidden;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;

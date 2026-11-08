@@ -84,10 +84,10 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, LinesModel& lines, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
+	GitView::GitView(GitModel& model, LinesModel& lines, NetworkModel& network, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
 					 const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
 					 EditorBuffers& buffers, Core::EventBus& events)
-		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines), m_Worktrees(worktrees),
+		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines), m_Network(network), m_Worktrees(worktrees),
 		  m_Content(content), m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
 		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),

@@ -43,6 +43,7 @@ namespace Graphite {
 		constexpr int kChangesColumnCount = 2;
 
 		constexpr float kKeepFontSize = 0.0f;
+		constexpr const char* kPushRemotePopup = "##pushRemote";
 		constexpr float kVsPickerGap = 4.0f; // mockup px between the vs button and its popup
 
 		const std::vector<Core::Branch>& BranchesOrNone(const Core::Ref<const std::vector<Core::Branch>>& branches)
@@ -200,10 +201,24 @@ namespace Graphite {
 		// WARNING: Rebuilt only when what it describes changed: the checked-out branch is looked up in every branch.
 		const bool remotesFailed = m_Model.GetRemotesError().has_value();
 		const bool headFailed = !head && m_Model.GetHeadError().has_value();
-		const WindowBarSource source{head, branches, remotes, remotesFailed, headFailed, checkingOut, folder};
+		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+		const WindowBarSource source{head,
+									 branches,
+									 remotes,
+									 remotesFailed,
+									 headFailed,
+									 checkingOut,
+									 folder,
+									 m_Network.GetState(),
+									 m_Model.GetLastFetch(),
+									 m_Model.IsGitFound(),
+									 std::chrono::floor<std::chrono::minutes>(now).time_since_epoch().count()};
 
 		if (m_WindowBarSource != source)
 		{
+			m_NetworkButtons = DescribeNetworkButtons(WindowBarInput{folder, head.get(), branches.get(), remotes.get(), checkingOut.has_value()},
+													  source.Network, source.LastFetch, now, source.GitFound);
+
 			const std::optional<Core::Error>& remotesError = m_Model.GetRemotesError();
 			const std::string* remotesFailure = remotesFailed && !remotes ? &remotesError->Message : nullptr;
 
@@ -236,15 +251,21 @@ namespace Graphite {
 																	   .Log = FailureOf(m_Model.GetLogError()),
 																	   .Lines = FailureOf(m_Lines.GetError())});
 
-		if (DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
+		const WindowBarClick click = DrawWindowBar(WindowBarDrawing{.Text = m_WindowBarText,
 										   .WorkingDirectory = folder,
 										   .HeadFailure = showsHeadFailure ? std::string_view{headError->Message} : std::string_view{},
 										   .Colours = colours,
 										   .Bleed = ImGui::GetStyle().WindowPadding,
-										   .Problem = problem}))
+										   .Problem = problem,
+										   .Network = &m_NetworkButtons});
+
+		if (click.Head)
 		{
 			AnswerHeadChip();
 		}
+
+		AnswerNetworkClick(click.Network);
+		RenderPushRemoteMenu();
 
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
 		const std::optional<MainLineAsk> ask = MainLineToAsk(read.get(), m_MainLineDismissed);
@@ -379,6 +400,63 @@ namespace Graphite {
 							.MergedByContent = &mergedByContent,
 							.Tags = inputs.Tags.get(),
 							.TagsError = tagsError.has_value() ? &*tagsError : nullptr};
+	}
+
+	void GitView::AnswerNetworkClick(NetworkClick click)
+	{
+		switch (click)
+		{
+		case NetworkClick::Fetch:
+			m_Network.Fetch();
+			break;
+
+		case NetworkClick::Pull:
+			m_Network.Pull();
+			break;
+
+		case NetworkClick::Push:
+			if (m_NetworkButtons.Push.AsksWhichRemote)
+			{
+				ImGui::OpenPopup(kPushRemotePopup);
+				break;
+			}
+
+			m_Network.Push();
+			break;
+
+		case NetworkClick::Cancel:
+			// The serial of the state the button drew, so a click on an operation that has since ended, and another begun,
+			// cancels nothing.
+			m_Network.Cancel(m_WindowBarSource->Network.Serial);
+			break;
+
+		case NetworkClick::None:
+			break;
+		}
+	}
+
+	void GitView::RenderPushRemoteMenu()
+	{
+		if (!ImGui::BeginPopup(kPushRemotePopup, ImGuiWindowFlags_NoMove))
+		{
+			return;
+		}
+
+		ImGui::TextDisabled("%s", m_NetworkButtons.Push.Tooltip.c_str());
+		ImGui::Separator();
+
+		if (const Core::Ref<const std::vector<Core::Remote>> remotes = m_Model.GetRemotes())
+		{
+			for (const Core::Remote& remote : *remotes)
+			{
+				if (ImGui::MenuItem(remote.Name.c_str()))
+				{
+					m_Network.Push(remote.Name);
+				}
+			}
+		}
+
+		ImGui::EndPopup();
 	}
 
 	void GitView::AnswerHeadChip()

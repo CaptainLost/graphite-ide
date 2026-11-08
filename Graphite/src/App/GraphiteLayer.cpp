@@ -209,7 +209,7 @@ namespace Graphite {
 
 		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
-		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Worktrees, m_Content, m_GitWindowChanges,
+		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Network, m_Worktrees, m_Content, m_GitWindowChanges,
 																   m_ActiveScheme, m_EditorSettings, m_DiffWindows, m_Modals,
 																   m_DocumentBuffers, m_Events));
 		gitView->Subscribe();

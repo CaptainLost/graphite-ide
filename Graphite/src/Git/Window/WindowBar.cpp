@@ -6,7 +6,9 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
+#include "Git/Branches/BranchAge.h"
 #include "Git/Branches/BranchLookup.h"
+#include "Git/Network/NetworkText.h"
 #include "Theme/Palettes.h"
 #include "UI/FittedText.h"
 
@@ -15,6 +17,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 
 namespace Graphite {
@@ -43,6 +46,20 @@ namespace Graphite {
 		constexpr float kLighterShare = 0.4f;
 		constexpr float kAskTint = 0.15f;
 		constexpr float kKeepFontSize = 0.0f;
+
+		constexpr float kButtonSide = 8.0f;
+		constexpr float kButtonRounding = 5.0f;
+		constexpr float kButtonGap = 2.0f;
+		constexpr float kButtonInnerGap = 5.0f;
+		constexpr float kWhenText = 12.0f;
+		constexpr float kWhenGap = 8.0f;
+
+		// The widest age the bar says, so the buttons keep their place as the age changes.
+		constexpr const char* kWidestWhen = "fetched 99mo ago";
+
+		constexpr const char* kGitMissing =
+			"Fetch, Pull and Push need git, which was not found on PATH or where Git for Windows installs it.";
+		constexpr const char* kClickToCancel = "Click to cancel";
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kUnreadRemotes = "\xE2\x80\xA6";
@@ -164,6 +181,185 @@ namespace Graphite {
 				text.Remotes += remote.Name;
 				text.RemotesTooltip += remote.Url.empty() ? remote.Name : remote.Name + ": " + remote.Url;
 			}
+		}
+
+		std::string CommitsText(std::size_t count)
+		{
+			return Core::FormatCount(count) + (count == 1 ? " commit" : " commits");
+		}
+
+		// The remote an upstream lives on: the longest remote name that begins its full name, as a remote's name may hold a
+		// slash. Null for an upstream that is a local branch, which has no remote.
+		std::optional<std::string> RemoteOfUpstream(const Core::Branch& branch, const WindowBarInput& input)
+		{
+			if (!branch.Upstream.has_value())
+			{
+				return std::nullopt;
+			}
+
+			const Core::Branch* const upstream = RemoteBranchNamed(*input.Branches, *branch.Upstream);
+
+			if (upstream == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			std::optional<std::string> longest;
+
+			for (const Core::Remote& remote : *input.Remotes)
+			{
+				const bool holdsBranch = upstream->FullName.starts_with("refs/remotes/" + remote.Name + "/");
+
+				if (holdsBranch && (!longest.has_value() || remote.Name.size() > longest->size()))
+				{
+					longest = remote.Name;
+				}
+			}
+
+			return longest;
+		}
+
+		std::string FetchedText(std::chrono::sys_seconds lastFetch, std::chrono::sys_seconds now)
+		{
+			const std::string age = FormatBranchAge(lastFetch, now);
+
+			return age == "now" ? "fetched just now" : "fetched " + age + " ago";
+		}
+
+		void DescribeFetch(const WindowBarInput& input, ButtonText& fetch)
+		{
+			if (input.Remotes->empty())
+			{
+				fetch.Tooltip = NoRemoteText();
+				return;
+			}
+
+			std::string names;
+
+			for (const Core::Remote& remote : *input.Remotes)
+			{
+				names += (names.empty() ? "" : ", ") + remote.Name;
+			}
+
+			fetch.Enabled = true;
+			fetch.Tooltip = "Fetch every remote: " + names;
+		}
+
+		void DescribePull(const Core::Branch& branch, ButtonText& pull)
+		{
+			if (!branch.Upstream.has_value())
+			{
+				pull.Tooltip = NoUpstreamText(branch.Name);
+				return;
+			}
+
+			pull.Enabled = true;
+			pull.Tooltip = "Pull " + *branch.Upstream + " into " + branch.Name;
+
+			if (branch.DistanceKnown && branch.Behind > 0)
+			{
+				pull.Count = Core::FormatCount(branch.Behind);
+			}
+		}
+
+		void DescribePush(const Core::Branch& branch, const WindowBarInput& input, ButtonText& push)
+		{
+			const std::vector<Core::Remote>& remotes = *input.Remotes;
+
+			if (remotes.empty())
+			{
+				push.Tooltip = NoRemoteText();
+				return;
+			}
+
+			push.Enabled = true;
+			const std::optional<std::string> upstreamRemote = RemoteOfUpstream(branch, input);
+
+			if (upstreamRemote.has_value() && branch.DistanceKnown && branch.Ahead > 0)
+			{
+				push.Count = Core::FormatCount(branch.Ahead);
+				push.Tooltip = "Push " + CommitsText(branch.Ahead) + " to " + *upstreamRemote;
+				return;
+			}
+
+			if (upstreamRemote.has_value() || remotes.size() == 1)
+			{
+				push.Tooltip = "Push " + branch.Name + " to " + (upstreamRemote.has_value() ? *upstreamRemote : remotes.front().Name);
+				return;
+			}
+
+			// WARNING: A branch whose upstream is a local branch has none on a remote, so it asks too.
+			push.AsksWhichRemote = true;
+			push.Tooltip = "Push " + branch.Name + " to…";
+		}
+
+		// What the branch checked out lets Pull and Push do; both stay disabled, saying why, when no branch is checked out.
+		void DescribeCheckedOut(const WindowBarInput& input, NetworkButtons& buttons)
+		{
+			const Core::HeadState& head = *input.Head;
+
+			if (head.Kind == Core::HeadKind::Detached)
+			{
+				buttons.Pull.Tooltip = NoBranchText();
+				buttons.Push.Tooltip = NoBranchText();
+				return;
+			}
+
+			if (head.Kind == Core::HeadKind::Unborn)
+			{
+				buttons.Pull.Tooltip = NoUpstreamText(head.BranchName);
+				buttons.Push.Tooltip = head.BranchName + " has no commits yet.";
+				return;
+			}
+
+			const Core::Branch* const branch = BranchWithFullName(*input.Branches, Core::LocalBranchReference(head.BranchName));
+
+			if (branch == nullptr)
+			{
+				return;
+			}
+
+			DescribePull(*branch, buttons.Pull);
+			DescribePush(*branch, input, buttons.Push);
+		}
+
+		ButtonText& ButtonOf(NetworkButtons& buttons, NetworkOperation operation)
+		{
+			switch (operation)
+			{
+			case NetworkOperation::Pull:
+				return buttons.Pull;
+			case NetworkOperation::Push:
+				return buttons.Push;
+			case NetworkOperation::Fetch:
+			case NetworkOperation::FullHistory:
+				break;
+			}
+
+			return buttons.Fetch;
+		}
+
+		void ApplyRunning(const NetworkState& state, NetworkButtons& buttons)
+		{
+			for (ButtonText* const button : {&buttons.Fetch, &buttons.Pull, &buttons.Push})
+			{
+				button->Enabled = false;
+				button->Count.clear();
+				button->Tooltip.clear();
+				button->AsksWhichRemote = false;
+			}
+
+			// The full history's fetch has no button: all three wait for it.
+			if (*state.Running == NetworkOperation::FullHistory)
+			{
+				return;
+			}
+
+			ButtonText& running = ButtonOf(buttons, *state.Running);
+			running.Label = RunningText(state);
+			running.Running = true;
+			running.Enabled = state.Cancellable;
+			running.Tooltip = state.Cancellable ? kClickToCancel : "";
 		}
 
 		float Em(float mockupPixels)
@@ -317,6 +513,112 @@ namespace Graphite {
 			ShowTooltipOfLastItem(std::string{drawing.Problem});
 		}
 
+		struct ButtonLook
+		{
+			const ButtonText* Text;
+			const char* Icon;
+			const char* Id;
+		};
+
+		float ButtonWidth(const ButtonLook& look)
+		{
+			const float count = look.Text->Count.empty() ? 0.0f : Em(kButtonInnerGap) + WidthOf(look.Text->Count);
+
+			return 2.0f * Em(kButtonSide) + WidthOf(look.Icon) + Em(kButtonInnerGap) + WidthOf(look.Text->Label) + count;
+		}
+
+		float WhenWidth(const std::string& when)
+		{
+			Core::PushInterfaceFont(ImGui::GetFontSize() * kWhenText / kMockupFont);
+			const float width = std::max(WidthOf(when), WidthOf(kWidestWhen));
+			ImGui::PopFont();
+
+			return width;
+		}
+
+		// How far left the network part reaches when it ends at `right`.
+		float NetworkLeft(const NetworkButtons& network, const std::array<ButtonLook, 3>& looks, float right)
+		{
+			float width = WhenWidth(network.FetchedAge) + Em(kWhenGap);
+
+			for (const ButtonLook& look : looks)
+			{
+				width += ButtonWidth(look) + Em(kButtonGap);
+			}
+
+			return right - width;
+		}
+
+		// A button: its icon in the dim colour, its label, and its count in the match colour; a disabled one is all dim.
+		NetworkClick DrawNetworkButton(const WindowBarDrawing& drawing, const ButtonLook& look, ImVec2 topLeft, NetworkClick onClick)
+		{
+			const ButtonText& button = *look.Text;
+			const WindowBarColours& colours = drawing.Colours;
+			const float width = ButtonWidth(look);
+			const float height = Em(kChipHeight);
+
+			ImGui::SetCursorScreenPos(topLeft);
+			const bool clicked = ImGui::InvisibleButton(look.Id, ImVec2(width, height));
+			const bool hovered = ImGui::IsItemHovered() && button.Enabled;
+			ShowTooltipOfLastItem(button.Tooltip);
+
+			ImDrawList* const drawList = ImGui::GetWindowDrawList();
+
+			if (hovered)
+			{
+				drawList->AddRectFilled(topLeft, ImVec2(topLeft.x + width, topLeft.y + height), colours.ChipHoveredFill, Em(kButtonRounding));
+			}
+
+			const float textTop = topLeft.y + (height - ImGui::GetTextLineHeight()) * kHalf;
+			const ImU32 ink = button.Enabled ? ImGui::GetColorU32(ImGuiCol_Text) : colours.Dim;
+			float x = topLeft.x + Em(kButtonSide);
+
+			drawList->AddText(ImVec2(x, textTop), colours.Dim, look.Icon);
+			x += WidthOf(look.Icon) + Em(kButtonInnerGap);
+
+			drawList->AddText(ImVec2(x, textTop), ink, button.Label.c_str());
+			x += WidthOf(button.Label);
+
+			if (!button.Count.empty())
+			{
+				drawList->AddText(ImVec2(x + Em(kButtonInnerGap), textTop), button.Enabled ? colours.Match : colours.Dim, button.Count.c_str());
+			}
+
+			if (!clicked || !button.Enabled)
+			{
+				return NetworkClick::None;
+			}
+
+			return button.Running ? NetworkClick::Cancel : onClick;
+		}
+
+		// The three buttons from `left`, then the age of the last fetch, dim, in the room kept for the widest.
+		NetworkClick DrawNetwork(const WindowBarDrawing& drawing, const std::array<ButtonLook, 3>& looks, float left, float centreY)
+		{
+			const std::array<NetworkClick, 3> clicks{NetworkClick::Fetch, NetworkClick::Pull, NetworkClick::Push};
+			NetworkClick answer = NetworkClick::None;
+			float x = left;
+
+			for (std::size_t index = 0; index < looks.size(); ++index)
+			{
+				const NetworkClick clicked = DrawNetworkButton(drawing, looks[index], ImVec2(x, centreY - Em(kChipHeight) * kHalf), clicks[index]);
+				answer = clicked != NetworkClick::None ? clicked : answer;
+				x += ButtonWidth(looks[index]) + Em(kButtonGap);
+			}
+
+			const std::string& when = drawing.Network->FetchedAge;
+
+			if (!when.empty())
+			{
+				Core::PushInterfaceFont(ImGui::GetFontSize() * kWhenText / kMockupFont);
+				ImGui::GetWindowDrawList()->AddText(ImVec2(x + Em(kWhenGap), centreY - ImGui::GetTextLineHeight() * kHalf), drawing.Colours.Dim,
+													when.c_str());
+				ImGui::PopFont();
+			}
+
+			return answer;
+		}
+
 		// The remotes in a step smaller text, centred on `centreY`; returns the width it took.
 		float DrawRemotes(const WindowBarDrawing& drawing, float left, float centreY, float room)
 		{
@@ -354,6 +656,50 @@ namespace Graphite {
 		}
 
 		return text;
+	}
+
+	NetworkButtons DescribeNetworkButtons(const WindowBarInput& input, const NetworkState& state,
+										  std::optional<std::chrono::sys_seconds> lastFetch, std::chrono::sys_seconds now, bool gitFound)
+	{
+		NetworkButtons buttons;
+		buttons.Fetch.Label = "Fetch";
+		buttons.Pull.Label = "Pull";
+		buttons.Push.Label = "Push";
+
+		if (lastFetch.has_value())
+		{
+			buttons.FetchedAge = FetchedText(*lastFetch, now);
+		}
+
+		const bool listed = input.Branches != nullptr && input.Remotes != nullptr;
+
+		if (state.Running.has_value())
+		{
+			ApplyRunning(state, buttons);
+			return buttons;
+		}
+
+		if (!listed)
+		{
+			return buttons;
+		}
+
+		if (!gitFound)
+		{
+			buttons.Fetch.Tooltip = kGitMissing;
+			buttons.Pull.Tooltip = kGitMissing;
+			buttons.Push.Tooltip = kGitMissing;
+			return buttons;
+		}
+
+		DescribeFetch(input, buttons.Fetch);
+
+		if (input.Head != nullptr && !input.CheckingOut)
+		{
+			DescribeCheckedOut(input, buttons);
+		}
+
+		return buttons;
 	}
 
 	std::string HeadChipTooltip(const WindowBarText& text)
@@ -424,16 +770,28 @@ namespace Graphite {
 		return colours;
 	}
 
-	bool DrawWindowBar(const WindowBarDrawing& drawing)
+	WindowBarClick DrawWindowBar(const WindowBarDrawing& drawing)
 	{
 		const ImVec2 origin(ImGui::GetCursorScreenPos().x - drawing.Bleed.x, ImGui::GetCursorScreenPos().y - drawing.Bleed.y);
 		const float width = ImGui::GetContentRegionAvail().x + 2.0f * drawing.Bleed.x;
 		const float height = Em(kBarHeight);
 		const float side = Em(kBarSide);
 		const float gap = Em(kGap);
-		const float right = origin.x + width - side;
+		const float barRight = origin.x + width - side;
 		const float centreY = origin.y + height * kHalf;
 		const float lineHeight = ImGui::GetTextLineHeight();
+
+		const NetworkButtons* const network = drawing.Network;
+		const std::array<ButtonLook, 3> looks = network != nullptr
+			? std::array<ButtonLook, 3>{ButtonLook{&network->Fetch, ICON_LC_REFRESH_CW, "##networkFetch"},
+										ButtonLook{&network->Pull, ICON_LC_ARROW_DOWN, "##networkPull"},
+										ButtonLook{&network->Push, ICON_LC_ARROW_UP, "##networkPush"}}
+			: std::array<ButtonLook, 3>{};
+
+		// WARNING: The network part takes the right end, before the problem's text and the HEAD chip; its room is fixed by the
+		// widest age, so the buttons stay where they are as the age changes.
+		const float networkLeft = network != nullptr ? NetworkLeft(*network, looks, barRight) : barRight + gap;
+		const float right = networkLeft - gap;
 		const float room = right - (origin.x + side);
 
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
@@ -448,11 +806,17 @@ namespace Graphite {
 		drawList->AddLine(ImVec2(x, centreY - separatorHalf), ImVec2(x, centreY + separatorHalf), drawing.Colours.Rule);
 		x += 1.0f + gap;
 
-		const bool clicked = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), right - x);
+		WindowBarClick click;
+		click.Head = DrawHeadChip(drawing, ImVec2(x, centreY - Em(kChipHeight) * kHalf), right - x);
 
 		if (!drawing.Problem.empty())
 		{
 			DrawProblem(drawing, ImGui::GetItemRectMax().x + gap, right, centreY);
+		}
+
+		if (network != nullptr)
+		{
+			click.Network = DrawNetwork(drawing, looks, networkLeft, centreY);
 		}
 
 		// The bar is one item high however many it drew, so the cursor lands below it, as far down as without the bleed.
@@ -461,6 +825,6 @@ namespace Graphite {
 		ImGui::SetCursorScreenPos(ImVec2(origin.x + drawing.Bleed.x, origin.y));
 		ImGui::Dummy(ImVec2(width - 2.0f * drawing.Bleed.x, height + drawing.Bleed.y));
 
-		return clicked;
+		return click;
 	}
 }
