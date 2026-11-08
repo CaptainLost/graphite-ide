@@ -46,6 +46,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -515,8 +516,8 @@ namespace {
 			Settle();
 		}
 
-		// How many rows the history's list drew last frame: its commits and the Local changes, banner and fold rows.
-		int HistoryRowCount() const
+		// The history's list as drawn last frame; null when it drew none.
+		const ImGuiTable* HistoryTable() const
 		{
 			ImGuiContext& context = *ImGui::GetCurrentContext();
 
@@ -528,11 +529,18 @@ namespace {
 					std::strstr(table->OuterWindow->Name, WindowName) != nullptr &&
 					std::strstr(table->OuterWindow->Name, "##gitCommits") != nullptr)
 				{
-					return table->CurrentRow + 1;
+					return table;
 				}
 			}
 
-			return 0;
+			return nullptr;
+		}
+
+		// How many rows the history's list drew last frame: its commits and the Local changes, banner and fold rows.
+		int HistoryRowCount() const
+		{
+			const ImGuiTable* table = HistoryTable();
+			return table != nullptr ? table->CurrentRow + 1 : 0;
 		}
 
 		// Whether the history's header draws its vs button: the pointer goes along the header row until it is over it.
@@ -672,6 +680,86 @@ namespace {
 		read.Graph = Core::CreateRef<const Core::AncestryGraph>();
 		return read;
 	}
+
+	// main at its tip and beside it x, compared with main, whose history this shallow clone cuts off before the two meet.
+	Graphite::LineRead CutOffBranchRead()
+	{
+		LineReadBuilder builder;
+		const std::size_t main = builder.AddLocal("main", {.Head = true});
+		builder.MakeBase(main);
+		const std::size_t cutOff = builder.AddLocal("x", {.State = Core::BranchState::HistoryCutOff});
+		builder.Compare(cutOff, main);
+
+		Graphite::LineRead read = builder.Build();
+		read.Model.Branches.front().Kind = Core::ComparedKind::Base;
+		read.Graph = Core::CreateRef<const Core::AncestryGraph>();
+		return read;
+	}
+
+	// The window showing x of CutOffBranchRead, which git is found for, with its banner over its one commit.
+	void ShowCutOffBranch(GitWindow& window)
+	{
+		window.Port.Network.Setup.Git = std::filesystem::path{"git.exe"};
+		window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/x"});
+		window.Settle();
+	}
+
+	// The text the history's list drew last frame, line by line and without spaces.
+	std::vector<DrawnLine> HistoryText(const GitWindow& window)
+	{
+		const ImGuiTable* table = window.HistoryTable();
+		REQUIRE(table != nullptr);
+		return DrawnTextLines(*table->InnerWindow->DrawList, *window.Font);
+	}
+
+	// Inside the action at the end of the banner's message cell: x is not checked out, so the banner is the list's first
+	// row and its one commit the second, the last drawn.
+	ImVec2 BannerActionPoint(const GitWindow& window)
+	{
+		const ImGuiTable* table = window.HistoryTable();
+		REQUIRE(table != nullptr);
+		REQUIRE(window.HistoryRowCount() == 2);
+
+		int message = -1;
+
+		for (int column = 0; column < table->ColumnsCount; ++column)
+		{
+			if (std::string_view{ImGui::TableGetColumnName(table, column)} == "Message")
+			{
+				message = column;
+			}
+		}
+
+		REQUIRE(message >= 0);
+
+		constexpr float kInsideTheAction = 40.0f;
+		const float pitch = Graphite::ListRowPitch();
+		const float bannerTop = table->RowPosY1 - pitch;
+
+		return ImVec2(table->Columns[message].MaxX - kInsideTheAction, bannerTop + pitch * 0.5f);
+	}
+}
+
+TEST_CASE("Git window: a shallow clone's banner draws Fetch full history after its sentence")
+{
+	GitWindow window("CutOffBannerWindow", HeadOnMain(), {}, CutOffBranchRead());
+	ShowCutOffBranch(window);
+
+	const std::vector<DrawnLine> lines = HistoryText(window);
+	REQUIRE_FALSE(lines.empty());
+	CHECK(lines.front().Text.starts_with("Historycutoffhere"));
+	CHECK(lines.front().Text.ends_with("Fetchfullhistory"));
+}
+
+TEST_CASE("Git window: a click on a shallow clone's Fetch full history fetches the full history")
+{
+	GitWindow window("CutOffActionWindow", HeadOnMain(), {}, CutOffBranchRead());
+	ShowCutOffBranch(window);
+	REQUIRE(window.Port.Network.Calls.empty());
+
+	window.ClickAt(BannerActionPoint(window));
+
+	CHECK(window.Port.Network.Calls == std::vector<std::string>{"FetchFullHistory"});
 }
 
 TEST_CASE("Git window: clicking the head chip shows HEAD's history with its row selected and in view in that frame")

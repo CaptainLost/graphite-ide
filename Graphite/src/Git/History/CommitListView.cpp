@@ -11,6 +11,7 @@
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextMetrics.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/FileSystem/FileSystem.h"
 
@@ -18,7 +19,6 @@
 #include "Git/History/CommitDetails.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
-#include "Core/ImGui/TextButton.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/Lists/HighlightedRow.h"
@@ -1147,7 +1147,8 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(actionDisabled);
 
-		if (Core::SmallTextButton(action->c_str()) && !actionDisabled)
+		// A disabled button never reports a click.
+		if (Core::SmallTextButton(action->c_str()))
 		{
 			m_BannerActionClicked = true;
 		}

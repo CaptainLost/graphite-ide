@@ -368,7 +368,7 @@ namespace Graphite {
 						}});
 
 		RegisterNetworkCommands(m_Commands,
-								NetworkCommandServices{.Buttons = [this] { return DescribeNetworkButtonsNow(m_Git, m_Network, m_GitView->CurrentWait().CheckingOut.has_value()); },
+								NetworkCommandServices{.Buttons = [this] { return DescribeNetworkButtonsNow(m_Git, m_Network, m_GitView != nullptr && m_GitView->CurrentWait().CheckingOut.has_value()); },
 													   .Fetch = [this] { m_Network.Fetch(); },
 													   .Pull = [this] { m_Network.Pull(); },
 													   .Push = [this] { m_Network.Push(); }});
