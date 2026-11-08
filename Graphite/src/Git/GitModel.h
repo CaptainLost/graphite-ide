@@ -14,6 +14,7 @@
 #include "Git/GenerationSlot.h"
 #include "Git/GitPort.h"
 #include "Git/LruResultCache.h"
+#include "Git/Worktrees/WriteExpectation.h"
 
 #include <chrono>
 #include <cstddef>
@@ -305,10 +306,11 @@ namespace Graphite {
 		const std::optional<Core::Error>& GetHeadError() const { return m_Head.GetError(); }
 		const std::optional<Core::Error>& GetStashesError() const { return m_Stashes.GetError(); }
 
-		void RequestStage(std::vector<std::filesystem::path> paths);
-		void RequestUnstage(std::vector<std::filesystem::path> paths);
+		void RequestStage(std::vector<std::filesystem::path> paths, std::optional<WriteExpectation> expect = std::nullopt);
+		void RequestUnstage(std::vector<std::filesystem::path> paths, std::optional<WriteExpectation> expect = std::nullopt);
 		void RequestDiscard(DiscardRequest request);
-		void RequestCommit(Core::CommitRequest request);
+		// With an expectation the write checks the worktree against it first and is refused, never run, when it no longer holds.
+		void RequestCommit(Core::CommitRequest request, std::optional<WriteExpectation> expect = std::nullopt);
 
 		void RequestInit();
 
@@ -534,6 +536,8 @@ namespace Graphite {
 			CheckoutRequest Checkout;
 			FastForwardRequest FastForward;
 
+			std::optional<WriteExpectation> Expect;
+
 			std::uint64_t Generation = 0;
 
 			std::uint64_t Ticket = kNoTicket;
@@ -547,6 +551,9 @@ namespace Graphite {
 			std::optional<Core::CheckoutPlan> Plan;
 			std::optional<std::size_t> Unmerged;
 			std::optional<FastForwardAnswer> FastForward;
+
+			// The write was refused by its expectation or never ran for another reason; the screen still re-reads.
+			bool Refused = false;
 		};
 
 		void Enqueue(WriteJob job);

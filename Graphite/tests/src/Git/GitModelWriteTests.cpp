@@ -2,6 +2,7 @@
 
 #include "GitFixtures.h"
 #include "Git/GitModel.h"
+#include "Git/Worktrees/WriteExpectation.h"
 
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -20,7 +21,7 @@ namespace {
 	class WritePort final : public NetworkDoublePort
 	{
 	public:
-		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Status; }
+		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { ++StatusCalls; return Status; }
 
 		Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
 			const std::filesystem::path&) override
@@ -42,7 +43,7 @@ namespace {
 
 		Core::Result<std::optional<std::string>> ReadUserEmail() override { return std::optional<std::string>{}; }
 		Core::Result<std::vector<Core::Remote>> QueryRemotes() override { return std::vector<Core::Remote>{}; }
-		Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
+		Core::Result<Core::HeadState> QueryHead() override { return Head; }
 
 		Core::Result<void> Init() override { return Record("init", std::vector<std::filesystem::path>{}); }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
@@ -235,6 +236,9 @@ namespace {
 		}
 
 		Core::WorkingTreeStatus Status;
+		Core::HeadState Head;
+		int StatusCalls = 0;
+		std::string FailMessage;
 		Core::CheckoutPlan Plan;
 		Core::CheckoutOutcome CheckoutResult;
 		std::size_t Unmerged = 0;
@@ -277,7 +281,7 @@ namespace {
 				throw std::runtime_error("write port exploded");
 			}
 
-			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, kind + " failed"}}
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, FailMessage.empty() ? kind + " failed" : FailMessage}}
 						: Core::Result<void>::Ok();
 		}
 	};
@@ -1796,4 +1800,156 @@ TEST_CASE("A new write takes the place of the last one's confirmation")
 	model.OnUpdate(Core::Timestep{kNoTimePasses});
 
 	CHECK_FALSE(model.GetWriteReport().has_value());
+}
+namespace {
+
+	Graphite::WriteExpectation ExpectingMain()
+	{
+		Graphite::WriteExpectation expected;
+		expected.Kind = Core::HeadKind::Branch;
+		expected.BranchName = "main";
+		expected.Folder = "wt";
+		return expected;
+	}
+}
+
+TEST_CASE("Git model: a write whose expectation broke never reaches the port")
+{
+	WritePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "other";
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	Graphite::WriteExpectation expected = ExpectingMain();
+	expected.Staged = std::vector<std::filesystem::path>{};
+
+	model.RequestCommit({.Message = "one"}, expected);
+
+	CHECK(port.Calls.empty());
+	CHECK(port.StatusCalls == 0);
+
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Kind == Graphite::GitModel::WriteKind::Commit);
+	CHECK(failure->Error.Code == Core::ErrorCode::InvalidArgument);
+	CHECK(failure->Error.Message ==
+		  Graphite::RefusalMessage(Graphite::ExpectationBreak::OtherHead, Graphite::ExpectedWrite::Commit, "wt"));
+
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	CHECK(port.StatusCalls > 0);
+	CHECK(port.Calls.empty());
+	CHECK_FALSE(model.TakeCommitted().has_value());
+}
+
+TEST_CASE("Git model: a staged set that changed refuses a commit before the port sees it")
+{
+	WritePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "main";
+
+	Core::FileStatus staged;
+	staged.Path = "new.txt";
+	staged.Index = Core::StatusFlags::New;
+	port.Status.Entries.push_back(staged);
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	Graphite::WriteExpectation expected = ExpectingMain();
+	expected.Staged = std::vector<std::filesystem::path>{};
+
+	model.RequestCommit({.Message = "one"}, expected);
+
+	CHECK(port.Calls.empty());
+
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message.starts_with("Not committed: the staged files in wt"));
+}
+
+TEST_CASE("Git model: a write whose expectation held reaches the port")
+{
+	WritePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "main";
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	Graphite::WriteExpectation expected = ExpectingMain();
+	expected.Staged = std::vector<std::filesystem::path>{};
+
+	model.RequestCommit({.Message = "one"}, expected);
+	model.RequestStage({"a.txt"}, ExpectingMain());
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"commit:one", "stage:a.txt"});
+	CHECK_FALSE(model.TakeWriteError().has_value());
+}
+
+TEST_CASE("Git model: a stage and an unstage refuse on another branch, in their own words")
+{
+	WritePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "other";
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"}, ExpectingMain());
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.RequestUnstage({"a.txt"}, ExpectingMain());
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls.empty());
+
+	const std::optional<Graphite::GitModel::WriteFailure> first = model.TakeWriteError();
+	const std::optional<Graphite::GitModel::WriteFailure> second = model.TakeWriteError();
+	REQUIRE(first.has_value());
+	REQUIRE(second.has_value());
+	CHECK(first->Error.Message.starts_with("Not staged: "));
+	CHECK(second->Error.Message.starts_with("Not unstaged: "));
+}
+
+TEST_CASE("Git model: a locked index is reported as busy")
+{
+	WritePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "main";
+	port.Fail = true;
+	port.FailMessage = "failed to lock file 'wt/index.lock'";
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"}, ExpectingMain());
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == Graphite::BusyMessage("wt"));
+}
+
+TEST_CASE("Git model: a locked index without an expectation keeps libgit2's text")
+{
+	WritePort port;
+	port.Fail = true;
+	port.FailMessage = "failed to lock file 'index.lock'";
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "failed to lock file 'index.lock'");
 }

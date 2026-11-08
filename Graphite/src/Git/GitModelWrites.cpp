@@ -21,6 +21,42 @@ namespace Graphite {
 
 	namespace {
 
+		// Whether the worktree still is what the user saw when they asked for this write; the refusal when it is not.
+		std::optional<Core::Error> RefusalFor(GitPort& port, const GitModel::WriteKind kind, const WriteExpectation& expected, bool amend)
+		{
+			const Core::Result<Core::HeadState> head = port.QueryHead();
+
+			if (!head.HasValue())
+			{
+				return head.GetError();
+			}
+
+			const bool isCommit = kind == GitModel::WriteKind::Commit;
+			ExpectationBreak broken = CheckExpectation(expected, head.GetValue(), nullptr, amend);
+
+			if (broken == ExpectationBreak::None && isCommit)
+			{
+				const Core::Result<Core::WorkingTreeStatus> status = port.QueryStatus();
+
+				if (!status.HasValue())
+				{
+					return status.GetError();
+				}
+
+				broken = CheckExpectation(expected, head.GetValue(), &status.GetValue(), amend);
+			}
+
+			if (broken == ExpectationBreak::None)
+			{
+				return std::nullopt;
+			}
+
+			const ExpectedWrite write = isCommit ? ExpectedWrite::Commit
+				: kind == GitModel::WriteKind::Stage ? ExpectedWrite::Stage : ExpectedWrite::Unstage;
+
+			return Core::Error{Core::ErrorCode::InvalidArgument, RefusalMessage(broken, write, expected.Folder)};
+		}
+
 		// A folder that cannot be read counts as changed.
 		bool FolderChangedSince(GitPort& port, const std::filesystem::path& folder)
 		{
@@ -147,14 +183,14 @@ namespace Graphite {
 		}
 	}
 
-	void GitModel::RequestStage(std::vector<std::filesystem::path> paths)
+	void GitModel::RequestStage(std::vector<std::filesystem::path> paths, std::optional<WriteExpectation> expect)
 	{
-		Enqueue({.Kind = WriteKind::Stage, .Paths = std::move(paths)});
+		Enqueue({.Kind = WriteKind::Stage, .Paths = std::move(paths), .Expect = std::move(expect)});
 	}
 
-	void GitModel::RequestUnstage(std::vector<std::filesystem::path> paths)
+	void GitModel::RequestUnstage(std::vector<std::filesystem::path> paths, std::optional<WriteExpectation> expect)
 	{
-		Enqueue({.Kind = WriteKind::Unstage, .Paths = std::move(paths)});
+		Enqueue({.Kind = WriteKind::Unstage, .Paths = std::move(paths), .Expect = std::move(expect)});
 	}
 
 	void GitModel::RequestDiscard(DiscardRequest request)
@@ -162,9 +198,9 @@ namespace Graphite {
 		Enqueue({.Kind = WriteKind::Discard, .Discard = std::move(request)});
 	}
 
-	void GitModel::RequestCommit(Core::CommitRequest request)
+	void GitModel::RequestCommit(Core::CommitRequest request, std::optional<WriteExpectation> expect)
 	{
-		Enqueue({.Kind = WriteKind::Commit, .Commit = std::move(request)});
+		Enqueue({.Kind = WriteKind::Commit, .Commit = std::move(request), .Expect = std::move(expect)});
 	}
 
 	void GitModel::RequestInit()
@@ -614,6 +650,18 @@ namespace Graphite {
 
 		try
 		{
+			if (job.Expect.has_value())
+			{
+				const bool amend = job.Kind == WriteKind::Commit && job.Commit.Amend;
+
+				if (std::optional<Core::Error> refusal = RefusalFor(m_Port, job.Kind, *job.Expect, amend))
+				{
+					outcome.Failure = std::move(refusal);
+					outcome.Refused = true;
+					return outcome;
+				}
+			}
+
 			switch (job.Kind)
 			{
 			case WriteKind::Stage:
@@ -827,6 +875,13 @@ namespace Graphite {
 		catch (...)
 		{
 			outcome.Failure = Core::Error{Core::ErrorCode::IoFailure, "a write threw"};
+		}
+
+		const bool isLockedIndex = outcome.Failure.has_value() && IsIndexLocked(*outcome.Failure);
+
+		if (isLockedIndex && job.Expect.has_value())
+		{
+			outcome.Failure->Message = BusyMessage(job.Expect->Folder);
 		}
 
 		return outcome;
@@ -1070,7 +1125,7 @@ namespace Graphite {
 			}
 
 			const bool refreshesAfterFailure =
-				mayHaveWrittenSomeFiles || job.Kind == WriteKind::Discard || job.Kind == WriteKind::Checkout;
+				mayHaveWrittenSomeFiles || outcome.Refused || job.Kind == WriteKind::Discard || job.Kind == WriteKind::Checkout;
 			FailTicket(job.Ticket, refreshesAfterFailure);
 
 			if (refreshesAfterFailure)
