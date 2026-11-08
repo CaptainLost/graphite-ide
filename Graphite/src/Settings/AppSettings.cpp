@@ -30,6 +30,10 @@ namespace Graphite {
 
 	namespace {
 		constexpr const char* kLastFolderKey = "lastFolder";
+		constexpr const char* kRecentFoldersKey = "recentFolders";
+
+		// WARNING: '|' cannot appear in a Windows path, so it parts the folders in one string value.
+		constexpr char kRecentFolderSeparator = '|';
 
 		constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
 		constexpr const char* kExplorerFollowsActiveFileKey = "explorerFollowsActiveFile";
@@ -344,6 +348,69 @@ namespace Graphite {
 	void AppSettings::SetLastFolder(const std::filesystem::path& folder)
 	{
 		Set(kLastFolderKey, Core::ToUtf8(folder));
+	}
+
+	std::vector<std::filesystem::path> AppSettings::GetRecentFolders() const
+	{
+		std::vector<std::filesystem::path> folders;
+		const std::string stored = Get(kRecentFoldersKey);
+		std::size_t start = 0;
+
+		while (start < stored.size() && folders.size() < kRecentFolderCount)
+		{
+			const std::size_t end = stored.find(kRecentFolderSeparator, start);
+			const std::string_view one = std::string_view{stored}.substr(start, end == std::string::npos ? std::string::npos : end - start);
+
+			if (!one.empty())
+			{
+				folders.push_back(Core::FromUtf8(one));
+			}
+
+			if (end == std::string::npos)
+			{
+				break;
+			}
+
+			start = end + 1;
+		}
+
+		return folders;
+	}
+
+	void AppSettings::NoteRecentFolder(const std::filesystem::path& folder)
+	{
+		std::vector<std::filesystem::path> folders = GetRecentFolders();
+		std::erase_if(folders, [&folder](const std::filesystem::path& listed) { return Core::SamePath(listed, folder); });
+		folders.insert(folders.begin(), folder);
+
+		if (folders.size() > kRecentFolderCount)
+		{
+			folders.resize(kRecentFolderCount);
+		}
+
+		std::string stored;
+
+		for (const std::filesystem::path& listed : folders)
+		{
+			stored += (stored.empty() ? "" : std::string{kRecentFolderSeparator}) + Core::ToUtf8(listed);
+		}
+
+		Set(kRecentFoldersKey, stored);
+	}
+
+	void AppSettings::ForgetRecentFolder(const std::filesystem::path& folder)
+	{
+		std::vector<std::filesystem::path> folders = GetRecentFolders();
+		std::erase_if(folders, [&folder](const std::filesystem::path& listed) { return Core::SamePath(listed, folder); });
+
+		std::string stored;
+
+		for (const std::filesystem::path& listed : folders)
+		{
+			stored += (stored.empty() ? "" : std::string{kRecentFolderSeparator}) + Core::ToUtf8(listed);
+		}
+
+		Set(kRecentFoldersKey, stored);
 	}
 
 	std::string AppSettings::GetGitIgnoredDisplay() const

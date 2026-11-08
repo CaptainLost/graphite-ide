@@ -10,6 +10,7 @@
 #include "Editor/Breadcrumb.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
+#include "Editor/Navigation/LineTarget.h"
 #include "Editor/Navigation/SelectInDocument.h"
 #include "Editor/Overlays/LensWaiting.h"
 #include "Editor/EditorCommands.h"
@@ -61,7 +62,10 @@
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TabContextMenu.h"
+#include "Core/ImGui/TextInput.h"
+#include "Core/FileSystem/AtomicWrite.h"
 #include "Core/Platform/Clipboard.h"
+#include "Core/Platform/FileDialog.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
@@ -76,6 +80,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <chrono>
 #include <cstddef>
 #include <format>
@@ -866,7 +871,7 @@ namespace Graphite {
 			CopyToClipboard(m_Events, "file name", Core::ToUtf8(item.Path.filename()));
 		}
 
-		if (ImGui::MenuItem("Show in Explorer"))
+		if (ImGui::MenuItem("Reveal in File Explorer"))
 		{
 			if (const Core::Result<void> revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)
 			{
@@ -995,6 +1000,191 @@ namespace Graphite {
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
+
+		commands.Add({.Id = "editor.goToLine",
+					  .Label = "Go to Line...",
+					  .Run = [this] { AskGoToLine(); },
+					  .Enabled = [this] { return FindActiveTextItem() != nullptr; },
+					  .RepeatsWhileHeld = false});
+
+		keys.SetDefault("editor.goToLine", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_G)});
+
+		commands.Add({.Id = "document.saveAs",
+					  .Label = "Save As...",
+					  .Run = [this] { AskSaveAs(); },
+					  .Enabled = [this] { return FindActiveTextItem() != nullptr && !m_SaveAsDialog.IsOpen(); },
+					  .RunWhileDisabled = [this] { m_SaveAsDialog.BringToFront(); },
+					  .RepeatsWhileHeld = false});
+
+		commands.Add({.Id = "document.nextTab",
+					  .Label = "Next Tab",
+					  .Run = [this] { StepActiveTab(1); },
+					  .Enabled = [this] { return m_Documents.GetCount() > 1; }});
+
+		keys.SetDefault("document.nextTab", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_PageDown),
+											 .Alternates = {Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Tab)}});
+
+		commands.Add({.Id = "document.previousTab",
+					  .Label = "Previous Tab",
+					  .Run = [this] { StepActiveTab(-1); },
+					  .Enabled = [this] { return m_Documents.GetCount() > 1; }});
+
+		keys.SetDefault("document.previousTab",
+						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_PageUp),
+						 .Alternates = {Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Tab)}});
+	}
+
+	void DocumentWindows::AskSaveAs()
+	{
+		const Core::OpenItem* const item = FindActiveTextItem();
+
+		if (item == nullptr || item->Document == nullptr)
+		{
+			return;
+		}
+
+		const std::filesystem::path from = item->Path;
+
+		m_SaveAsDialog.Start([from] { return Core::FileDialog::PickSaveFile("Save As", from); },
+							 [this, from](const std::filesystem::path& picked) { SaveDocumentAs(from, picked); },
+							 [this](const Core::Error& error) { ReportFailure(Core::ToastKind::Error, "Cannot open the save dialog", error.Message); });
+	}
+
+	void DocumentWindows::SaveDocumentAs(const std::filesystem::path& from, const std::filesystem::path& to)
+	{
+		// An empty path is the dialog cancelled.
+		if (to.empty())
+		{
+			return;
+		}
+
+		const std::optional<std::size_t> index = m_Documents.Find(from);
+
+		if (!index || m_Documents.At(*index).Document == nullptr)
+		{
+			return;
+		}
+
+		if (Core::SamePath(from, to))
+		{
+			RequestSave(*index);
+			return;
+		}
+
+		const std::shared_ptr<Core::TextDocument> document = m_Documents.At(*index).Document;
+
+		if (const Core::Result<void> written = Core::WriteFileAtomically(to, document->EncodeToBytes()); !written)
+		{
+			ReportSaveFailure(to, written.GetError());
+			return;
+		}
+
+		// The edits now live in the new file, so the old tab goes without asking; a document another view still shows
+		// is put back to its file first, so nothing claims to hold changes it no longer has.
+		if (document->IsModified() && !Core::IsLastHolder(document))
+		{
+			static_cast<void>(document->ReloadFromDisk()); // a file gone from disk keeps its text and stays modified
+		}
+
+		m_Documents.Close(*index);
+
+		constexpr bool kPermanentTab = true;
+		RequestOpen(to, kPermanentTab);
+		SetTransientMessage(Core::ToUtf8(to.filename()) + " saved");
+	}
+
+	void DocumentWindows::StepActiveTab(int step)
+	{
+		const std::size_t count = m_Documents.GetCount();
+
+		if (count < 2)
+		{
+			return;
+		}
+
+		const std::size_t active = m_Documents.GetActiveIndex().value_or(0);
+		const std::size_t next = (active + count + static_cast<std::size_t>(step + static_cast<int>(count))) % count;
+
+		m_Documents.Activate(next);
+		m_Documents.At(next).PendingFocus = true;
+	}
+
+	void DocumentWindows::AskGoToLine()
+	{
+		const Core::OpenItem* const item = FindActiveTextItem();
+
+		if (item == nullptr || item->Document == nullptr)
+		{
+			return;
+		}
+
+		const Core::TextBuffer& buffer = item->Document->GetBuffer();
+		m_GoToLineText = std::to_string(buffer.ToPosition(item->Caret.Offset).Line + 1);
+		m_GoToLine.Ask(item->Path);
+	}
+
+	void DocumentWindows::RenderGoToLine()
+	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const std::filesystem::path* asked = m_GoToLine.Begin();
+		DialogLayout::AfterBegin();
+
+		if (asked == nullptr)
+		{
+			return;
+		}
+
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
+		const std::filesystem::path path = *asked;
+		const std::optional<std::size_t> index = m_Documents.Find(path);
+		Core::OpenItem* const item = index ? &m_Documents.At(*index) : nullptr;
+
+		if (item == nullptr || item->Document == nullptr)
+		{
+			m_GoToLine.Answer();
+			m_GoToLine.End();
+			return;
+		}
+
+		const Core::TextBuffer& buffer = item->Document->GetBuffer();
+		const std::size_t lineCount = buffer.GetLineCount();
+
+		DialogLayout::Text(std::format("Line, or line:column, from 1 to {}", lineCount));
+		DialogLayout::Gap();
+
+		if (ImGui::IsWindowAppearing())
+		{
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		const bool entered = Core::InputText("##goToLine", m_GoToLineText,
+											 ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+
+		const std::optional<LineTarget> target = ParseLineTarget(m_GoToLineText);
+
+		DialogLayout::Gap();
+
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow({.Label = "Go", .Enabled = target.has_value()});
+
+		if ((entered || choice == DialogLayout::Choice::Safe) && target.has_value())
+		{
+			// A line past the end lands on the last; a column past the line's end on its end.
+			const std::size_t line = std::min(target->Line, lineCount - 1);
+			const std::size_t offset = buffer.LineStart(line) + std::min(target->Column, buffer.LineLength(line));
+
+			item->Caret = Core::PlaceAt(buffer, item->Caret, offset, Core::SelectionChange::Collapse, item->TabWidth);
+			item->RowAimCaretOffset = Core::NoRowAim;
+			item->PendingScroll = true;
+			item->PendingFocus = true;
+			m_GoToLine.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_GoToLine.Answer();
+		}
+
+		m_GoToLine.End();
 	}
 
 	void DocumentWindows::OpenFind()
@@ -3183,6 +3373,8 @@ namespace Graphite {
 	void DocumentWindows::Render(const CommandContext& context, const EditorFrame& frame,
 								 ReferencesPanel& referencesPanel)
 	{
+		m_SaveAsDialog.Poll();
+
 		m_WorkspaceRoot = frame.WorkspaceRoot;
 		m_LineAuthor = frame.LineAuthor;
 		m_LineAuthorDelayMs = frame.LineAuthorDelayMs;
@@ -3210,6 +3402,7 @@ namespace Graphite {
 		RenderReloadConflict(danger);
 		RenderOverwriteConfirm(danger);
 		RenderCloseConfirm(danger);
+		RenderGoToLine();
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		// WARNING: Read before the documents draw. The bubble at the caret is the most passing thing an Escape closes,

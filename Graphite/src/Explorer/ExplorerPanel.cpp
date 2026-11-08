@@ -286,6 +286,33 @@ namespace Graphite {
 						  .Checked = [this, displayMode] { return m_Display == displayMode.Display; }});
 		}
 
+		// The File menu's way to the Explorer header's New File and New Folder, which show the folder's files to put
+		// the new one among.
+		const auto showFiles = [this] {
+			SetVisible(true);
+			if (m_Mode != Mode::Files)
+			{
+				SetMode(Mode::Files);
+			}
+			ImGui::SetWindowFocus(GetWindowName().c_str());
+		};
+
+		commands.Add({.Id = "explorer.newFile",
+					  .Label = "New File...",
+					  .Run = [this, showFiles] {
+						  showFiles();
+						  m_Files.NewFileInRoot();
+					  },
+					  .Enabled = [this] { return m_Workspace.IsOpen(); }});
+
+		commands.Add({.Id = "explorer.newFolder",
+					  .Label = "New Folder...",
+					  .Run = [this, showFiles] {
+						  showFiles();
+						  m_Files.NewFolderInRoot();
+					  },
+					  .Enabled = [this] { return m_Workspace.IsOpen(); }});
+
 		commands.Add({.Id = "explorer.followActiveFile",
 					  .Label = "Follow Active File",
 					  .Run = [this] { ApplyFollowsActiveFile(!m_FollowsActiveFile, kPersist); },

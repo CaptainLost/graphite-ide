@@ -221,6 +221,8 @@ namespace Graphite {
 		LoadSolution();
 
 		m_AppSettings.SetLastFolder(root);
+		m_AppSettings.NoteRecentFolder(root);
+		RefreshRecentFolderCommands();
 		m_Events.Publish(WorkspaceOpenedEvent{root});
 
 		APP_INFO("Workspace opened: '{}'", Core::ToUtf8(root));
@@ -941,6 +943,60 @@ namespace Graphite {
 					  .Enabled = [this] { return !IsDialogOpen(); },
 					  .DisabledNote = kFileDialogOpenNote,
 					  .RunWhileDisabled = [this] { m_Dialog.BringToFront(); }});
+
+		// One command per place in the list, relabelled as the list changes; a place with no folder leaves the group, so
+		// the Open Recent menu lists only the folders there are.
+		for (std::size_t place = 0; place < m_RecentFolderCommands.size(); ++place)
+		{
+			m_RecentFolderCommands[place] = commands.Add({.Id = std::format("workspace.openRecent.{}", place),
+														  .Label = {},
+														  .Run = [this, place] { OpenRecentFolder(place); }});
+		}
+
+		RefreshRecentFolderCommands();
+	}
+
+	void Workspace::RefreshRecentFolderCommands()
+	{
+		const std::vector<std::filesystem::path> folders = m_AppSettings.GetRecentFolders();
+
+		for (std::size_t place = 0; place < m_RecentFolderCommands.size(); ++place)
+		{
+			Core::Command* const command = m_RecentFolderCommands[place];
+
+			if (command == nullptr)
+			{
+				continue;
+			}
+
+			const bool listed = place < folders.size();
+			command->Label = listed ? Core::ToUtf8(folders[place]) : std::string{};
+			command->Group = listed ? kRecentFoldersGroup : std::string{};
+		}
+	}
+
+	void Workspace::OpenRecentFolder(std::size_t place)
+	{
+		const std::vector<std::filesystem::path> folders = m_AppSettings.GetRecentFolders();
+
+		if (place >= folders.size())
+		{
+			return;
+		}
+
+		std::error_code existsError;
+
+		if (!std::filesystem::is_directory(folders[place], existsError))
+		{
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open folder",
+											  std::format("'{}' is no longer there, so it was taken off Open Recent.",
+														  Core::ToUtf8(folders[place]))));
+			m_AppSettings.ForgetRecentFolder(folders[place]);
+			RefreshRecentFolderCommands();
+			return;
+		}
+
+		RequestOpenFolder(folders[place]);
 	}
 
 	void Workspace::ReportDialogFailure(const Core::Error& error)

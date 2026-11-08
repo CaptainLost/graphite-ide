@@ -43,6 +43,7 @@
 #include "Core/Base/Timestep.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/ToastStack.h"
+#include "Core/Platform/AsyncDialog.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
@@ -115,6 +116,7 @@ namespace Graphite {
 			  m_ReloadConflict(modals, kReloadConflictTitle),
 			  m_OverwriteConfirm(modals, kOverwriteConfirmTitle),
 			  m_CloseConfirm(modals, kCloseConfirmTitle),
+			  m_GoToLine(modals, kGoToLineTitle),
 			  m_Router(server, &DocumentWindows::FrameClock)
 		{
 		}
@@ -421,6 +423,18 @@ namespace Graphite {
 
 		void RenderCloseConfirm(const ImVec4& danger);
 
+		void AskGoToLine();
+
+		// Brings the tab `step` places after the active one to the front, round the ends, in the order the tabs opened.
+		void StepActiveTab(int step);
+
+		void AskSaveAs();
+
+		// Writes the document of `from` to `to`, opens `to` in its place and closes `from`'s tab, whose file is left as
+		// it was on disk.
+		void SaveDocumentAs(const std::filesystem::path& from, const std::filesystem::path& to);
+		void RenderGoToLine();
+
 		bool StillNeedsCloseConfirmation(const std::filesystem::path& path);
 
 
@@ -485,6 +499,7 @@ namespace Graphite {
 		static constexpr const char* kOverwriteConfirmTitle =
 			"Overwrite unsaved changes on disk?##EditorOverwriteConfirm";
 		static constexpr const char* kCloseConfirmTitle = "Unsaved changes##EditorCloseConfirm";
+		static constexpr const char* kGoToLineTitle = "Go to Line##EditorGoToLine";
 		static constexpr const char* kDefinitionChoicesTitle = "##EditorDefinitionChoices";
 
 		struct LargeFileQuestion
@@ -562,6 +577,13 @@ namespace Graphite {
 		ModalQuestion<OverwriteQuestion> m_OverwriteConfirm;
 
 		ModalQuestion<std::filesystem::path> m_CloseConfirm;
+
+		// The document Go to Line was asked for, and what is typed in its field.
+		ModalQuestion<std::filesystem::path> m_GoToLine;
+		std::string m_GoToLineText;
+
+		// The system's save dialog, which runs on a thread of its own and answers through Poll.
+		Core::AsyncDialog m_SaveAsDialog;
 
 		std::optional<std::filesystem::path> m_CloseRequested;
 

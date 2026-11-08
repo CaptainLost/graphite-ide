@@ -2,8 +2,10 @@
 
 #include "Core/Base/Base.h"
 
+#include "Settings/AppSettings.h"
 #include "Settings/WorkspaceSettings.h"
 
+#include "Core/Command/Command.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/DirectoryWatcher.h"
 #include "Core/FileSystem/FileTree.h"
@@ -13,6 +15,7 @@
 #include "Core/Platform/AsyncDialog.h"
 #include "Solution/SolutionReader.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -196,6 +199,9 @@ namespace Graphite {
 
 		void RegisterCommands(Core::CommandRegistry& commands);
 
+		// The File menu's Open Recent lists this group.
+		static constexpr const char* kRecentFoldersGroup = "workspace.recent";
+
 	private:
 		Core::FileNode* FindNode(const std::filesystem::path& path);
 		void RefreshChanged(const std::filesystem::path& directory);
@@ -240,6 +246,11 @@ namespace Graphite {
 		SolutionReading m_ReadSolution;
 
 		ReplaceGate m_ReplaceGate;
+
+		void RefreshRecentFolderCommands();
+		void OpenRecentFolder(std::size_t place);
+
+		std::array<Core::Command*, AppSettings::kRecentFolderCount> m_RecentFolderCommands{};
 		bool m_ReadingAgainAfterAThrow = false;
 		std::optional<Core::Repository> m_Repository;
 		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;

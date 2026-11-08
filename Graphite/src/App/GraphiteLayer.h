@@ -43,6 +43,7 @@
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
 #include "Persistence/UnsavedCopies.h"
+#include "Search/QuickOpen.h"
 #include "Review/FolderReviews.h"
 #include "Review/ReviewMenu.h"
 #include "Review/ReviewModel.h"
@@ -512,5 +513,12 @@ namespace Graphite {
 		Core::JobQueue m_UnsavedCopyWrites{kUnsavedCopyWorkers};
 		UnsavedCopies m_UnsavedCopies{UserDirectories::UnsavedCopiesDirectory(),
 									  [this](std::function<void()> job) { m_UnsavedCopyWrites.Submit(std::move(job)); }};
+
+		// Ctrl+P. Its listing job holds nothing of this layer, so it may outlive it.
+		QuickOpen m_QuickOpen{[this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
+							  [this](const std::filesystem::path& file) {
+								  constexpr bool kPermanentTab = true;
+								  m_DocumentWindows.RequestOpen(file, kPermanentTab);
+							  }};
 	};
 }

@@ -46,6 +46,12 @@ namespace Graphite {
 		std::filesystem::path GetLastFolder() const;
 		void SetLastFolder(const std::filesystem::path& folder);
 
+		// The folders opened last, the newest first, at most kRecentFolderCount, each once whatever its case.
+		static constexpr std::size_t kRecentFolderCount = 10;
+		std::vector<std::filesystem::path> GetRecentFolders() const;
+		void NoteRecentFolder(const std::filesystem::path& folder);
+		void ForgetRecentFolder(const std::filesystem::path& folder);
+
 		std::string GetGitIgnoredDisplay() const;
 		void SetGitIgnoredDisplay(std::string_view mode);
 
