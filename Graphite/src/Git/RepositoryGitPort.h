@@ -15,10 +15,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace Graphite {
@@ -134,8 +134,8 @@ namespace Graphite {
 	private:
 		Core::Result<Core::Repository*> RepositoryForThisThread();
 
-		// The setup as a run, or the outcome to answer when there is no git to run.
-		std::variant<Core::NetworkRun, Core::NetworkOutcome> NetworkRunForThisThread();
+		// Runs the operation with this thread's repository and git, or answers the failure that says why it cannot.
+		Core::NetworkOutcome WithNetworkRun(const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation);
 
 		// The repository of that generation of the root, or an error once the port has been pointed at a folder since.
 		Core::Result<Core::Repository*> RepositoryForThisThreadOf(std::uint64_t generation,

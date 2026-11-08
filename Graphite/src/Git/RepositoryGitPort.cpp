@@ -10,11 +10,23 @@
 #include <system_error>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 
 namespace Graphite {
 
 	namespace {
+
+		Core::NetworkOutcome NetworkFailure(const char* sentence)
+		{
+			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed, .Failure = {.Shown = sentence, .Copied = sentence}};
+		}
+
+		// WARNING: A configuration that cannot be read counts as set: the user's own transport is then kept, and a
+		// batch-mode ssh of ours would replace one we cannot see.
+		bool IsSshCommandConfigured(const Core::Repository& repository)
+		{
+			const Core::Result<bool> sshCommand = repository.IsSshCommandConfigured();
+			return !sshCommand.HasValue() || sshCommand.GetValue();
+		}
 
 		struct CachedRepository
 		{
@@ -1456,10 +1468,7 @@ namespace Graphite {
 		setup.WorkingDirectory = repository->GetWorkingDirectory();
 		setup.CommonGitDir = repository->CommonDirectory();
 
-		// WARNING: A configuration that cannot be read counts as set: the user's own transport is then kept, and a
-		// batch-mode ssh of ours would replace one we cannot see.
-		const Core::Result<bool> sshCommand = repository->IsSshCommandConfigured();
-		setup.SshCommandConfigured = !sshCommand.HasValue() || sshCommand.GetValue();
+		setup.SshCommandConfigured = IsSshCommandConfigured(*repository);
 
 		return setup;
 	}
@@ -1476,63 +1485,67 @@ namespace Graphite {
 		return Core::LastFetchTime(opened.GetValue()->CommonDirectory());
 	}
 
-	std::variant<Core::NetworkRun, Core::NetworkOutcome> RepositoryGitPort::NetworkRunForThisThread()
+	Core::NetworkOutcome RepositoryGitPort::WithNetworkRun(const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation)
 	{
-		const NetworkSetup setup = QueryNetworkSetup();
+		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
-		if (!setup.Git.has_value() || setup.WorkingDirectory.empty())
+		if (!opened.HasValue())
 		{
-			const std::string text = setup.Git.has_value() ? "the repository could not be opened" : "git was not found";
-			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed, .Failure = {.Shown = text, .Copied = text}};
+			return NetworkFailure("The folder is not a git repository.");
 		}
 
-		return Core::NetworkRun{.Git = *setup.Git, .WorkingDirectory = setup.WorkingDirectory,
-								.SshCommandConfigured = setup.SshCommandConfigured};
+		const Core::Repository* repository = opened.GetValue();
+
+		if (repository->GetWorkingDirectory().empty())
+		{
+			return NetworkFailure("This repository has no work tree.");
+		}
+
+		const std::optional<std::filesystem::path> git = Core::FindGit();
+
+		if (!git.has_value())
+		{
+			return NetworkFailure("git was not found");
+		}
+
+		const Core::NetworkRun run{.Git = *git,
+								   .WorkingDirectory = repository->GetWorkingDirectory(),
+								   .SshCommandConfigured = IsSshCommandConfigured(*repository)};
+
+		return operation(run);
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress)
 	{
-		const auto run = NetworkRunForThisThread();
-		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
-		return ready != nullptr ? Core::FetchAll(*ready, cancelled, progress) : std::get<Core::NetworkOutcome>(run);
+		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FetchAll(run, cancelled, progress); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 														const std::string& remote)
 	{
-		const auto run = NetworkRunForThisThread();
-		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
-		return ready != nullptr ? Core::FetchRemote(*ready, cancelled, progress, remote) : std::get<Core::NetworkOutcome>(run);
+		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FetchRemote(run, cancelled, progress, remote); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FetchFullHistory(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress)
 	{
-		const auto run = NetworkRunForThisThread();
-		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
-		return ready != nullptr ? Core::FetchFullHistory(*ready, cancelled, progress) : std::get<Core::NetworkOutcome>(run);
+		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FetchFullHistory(run, cancelled, progress); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FastForward(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 														const std::string& upstreamFullName)
 	{
-		const auto run = NetworkRunForThisThread();
-		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
-		return ready != nullptr ? Core::FastForward(*ready, cancelled, progress, upstreamFullName) : std::get<Core::NetworkOutcome>(run);
+		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FastForward(run, cancelled, progress, upstreamFullName); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 												   const std::string& remote, const std::optional<std::string>& upstreamBranch)
 	{
-		const auto run = NetworkRunForThisThread();
-		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
-		return ready != nullptr ? Core::PushTo(*ready, cancelled, progress, remote, upstreamBranch) : std::get<Core::NetworkOutcome>(run);
+		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::PushTo(run, cancelled, progress, remote, upstreamBranch); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 															  const std::string& remote)
 	{
-		const auto run = NetworkRunForThisThread();
-		const Core::NetworkRun* ready = std::get_if<Core::NetworkRun>(&run);
-		return ready != nullptr ? Core::SetRemoteHeadAuto(*ready, cancelled, progress, remote) : std::get<Core::NetworkOutcome>(run);
+		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::SetRemoteHeadAuto(run, cancelled, progress, remote); });
 	}
 }

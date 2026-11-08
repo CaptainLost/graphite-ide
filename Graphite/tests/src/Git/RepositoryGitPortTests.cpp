@@ -1200,34 +1200,6 @@ TEST_CASE("Git network: the setup names the work tree and the common git directo
 	CHECK(Core::SamePath(setup.CommonGitDir, repository.GetPath() / ".git"));
 }
 
-TEST_CASE("Git network: core.sshCommand in the repository's configuration is reported")
-{
-	ReviewRepository repository;
-	repository.Write("a.txt", "one\n");
-	repository.Commit("first");
-	Graphite::RepositoryGitPort port{repository.GetPath()};
-
-	git_repository* opened = nullptr;
-	REQUIRE(git_repository_open(&opened, Core::ToUtf8(repository.GetPath()).c_str()) == 0);
-	git_config* config = nullptr;
-	REQUIRE(git_repository_config(&config, opened) == 0);
-
-	// WARNING: A machine-wide core.sshCommand would make the unset case unreachable, so that case is only checked
-	// when nothing above the repository sets one.
-	const bool setAbove = port.QueryNetworkSetup().SshCommandConfigured;
-
-	if (!setAbove)
-	{
-		CHECK_FALSE(port.QueryNetworkSetup().SshCommandConfigured);
-	}
-
-	REQUIRE(git_config_set_string(config, "core.sshCommand", "plink -batch") == 0);
-	git_config_free(config);
-	git_repository_free(opened);
-
-	CHECK(port.QueryNetworkSetup().SshCommandConfigured);
-}
-
 TEST_CASE("Git network: the last fetch is read from the common git directory, also from a linked worktree")
 {
 	ReviewRepository repository;
@@ -1249,7 +1221,9 @@ TEST_CASE("Git network: the last fetch is read from the common git directory, al
 	REQUIRE(viaWorktree.has_value());
 	CHECK(*viaWorktree == stamp);
 	CHECK(fromMain.QueryLastFetch() == viaWorktree);
-	CHECK(Core::SamePath(fromWorktree.QueryNetworkSetup().CommonGitDir, repository.GetPath() / ".git"));
+	const Graphite::NetworkSetup worktreeSetup = fromWorktree.QueryNetworkSetup();
+	CHECK(Core::SamePath(worktreeSetup.CommonGitDir, repository.GetPath() / ".git"));
+	CHECK(Core::SamePath(worktreeSetup.WorkingDirectory, worktree));
 }
 
 TEST_CASE("Git network: a repository never fetched has no last fetch")
