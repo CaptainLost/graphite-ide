@@ -6,8 +6,11 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <windows.h>
 
@@ -25,6 +28,19 @@ namespace {
 		std::array<char, kReadChunkBytes> buffer{};
 
 		for (std::size_t bytesRead = process.Read(buffer); bytesRead != 0; bytesRead = process.Read(buffer))
+		{
+			text.append(buffer.data(), bytesRead);
+		}
+
+		return text;
+	}
+
+	std::string ReadAllErrors(Core::ChildProcess& process)
+	{
+		std::string text;
+		std::array<char, kReadChunkBytes> buffer{};
+
+		for (std::size_t bytesRead = process.ReadErrors(buffer); bytesRead != 0; bytesRead = process.ReadErrors(buffer))
 		{
 			text.append(buffer.data(), bytesRead);
 		}
@@ -270,4 +286,50 @@ TEST_CASE("Waiting for a child that keeps running gives up once the wait runs ou
 	CHECK_FALSE(exited);
 	CHECK(waited >= wait);
 	CHECK(child.IsRunning());
+}
+TEST_CASE("Child process: stderr is read apart from stdout when piped")
+{
+	const std::array<Core::EnvironmentVariable, 0> noEnvironment{};
+	const Core::ChildProcessOptions pipedErrors{.PipeErrors = true};
+
+	// Small enough to sit in either pipe's buffer, so reading one pipe to its end before the other cannot stall.
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo to-output& echo to-errors 1>&2"},
+													 std::filesystem::current_path(), noEnvironment, pipedErrors);
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	const std::string output = ReadAll(child);
+	const std::string errors = ReadAllErrors(child);
+
+	CHECK(output.find("to-output") != std::string::npos);
+	CHECK(output.find("to-errors") == std::string::npos);
+	CHECK(errors.find("to-errors") != std::string::npos);
+	CHECK(errors.find("to-output") == std::string::npos);
+}
+
+TEST_CASE("Child process: the exit code is known once the process ends")
+{
+	StartedChild exitingWithSeven = Core::ChildProcess::Start("cmd.exe", {"/c", "exit 7"}, std::filesystem::current_path());
+	REQUIRE(exitingWithSeven);
+	REQUIRE(exitingWithSeven.GetValue()->WaitForExit(std::chrono::seconds{30}));
+
+	CHECK(exitingWithSeven.GetValue()->GetExitCode() == std::optional<std::uint32_t>{7});
+
+	StartedChild exitingWithStillActive = Core::ChildProcess::Start("cmd.exe", {"/c", "exit 259"}, std::filesystem::current_path());
+	REQUIRE(exitingWithStillActive);
+	REQUIRE(exitingWithStillActive.GetValue()->WaitForExit(std::chrono::seconds{30}));
+
+	CHECK(exitingWithStillActive.GetValue()->GetExitCode() == std::optional<std::uint32_t>{259});
+
+	const std::vector<std::string> noArgumentsSoItWaitsOnItsInputForever;
+	StartedChild waiting = Core::ChildProcess::Start("cmd.exe", noArgumentsSoItWaitsOnItsInputForever, std::filesystem::current_path());
+	REQUIRE(waiting);
+	Core::ChildProcess& waitingChild = *waiting.GetValue();
+
+	CHECK_FALSE(waitingChild.GetExitCode().has_value());
+
+	waitingChild.Terminate();
+	REQUIRE(waitingChild.WaitForExit(std::chrono::seconds{30}));
+
+	CHECK(waitingChild.GetExitCode().has_value());
 }

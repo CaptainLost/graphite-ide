@@ -134,13 +134,69 @@ namespace Core {
 			writeEnd.Reset(createdWriteEnd);
 			return Result<void>::Ok();
 		}
+
+		// A windowed process normally has no stderr, and STARTF_USESTDHANDLES needs all three
+		// handles valid, so the child gets the null device rather than a null handle that fails far
+		// from here. A real console handle is duplicated, so that the copy is inheritable and
+		// closing it leaves this process's own stderr alone.
+		Result<void> ShareStdErrorWithChild(SECURITY_ATTRIBUTES& inheritable, UniqueHandle& childStdError)
+		{
+			const HANDLE processStdError = ::GetStdHandle(STD_ERROR_HANDLE);
+			const bool processHasNoStdError = processStdError == nullptr || processStdError == INVALID_HANDLE_VALUE;
+
+			if (processHasNoStdError)
+			{
+				childStdError.Reset(::CreateFileW(kNullDevice, GENERIC_WRITE,
+												  FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable,
+												  OPEN_EXISTING, kNoFlagsOrAttributes, nullptr));
+
+				if (!childStdError)
+				{
+					return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+								 .Message = "cannot open the null device for the child's stderr"};
+				}
+
+				return Result<void>::Ok();
+			}
+
+			HANDLE duplicate = nullptr;
+			const HANDLE currentProcess = ::GetCurrentProcess();
+
+			const BOOL duplicated = ::DuplicateHandle(currentProcess, processStdError, currentProcess, &duplicate, kDesiredAccessIgnored, kInheritable, DUPLICATE_SAME_ACCESS);
+
+			if (!duplicated)
+			{
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+							 .Message = "cannot duplicate the process's stderr for the child"};
+			}
+
+			childStdError.Reset(duplicate);
+			return Result<void>::Ok();
+		}
+
+		// ReadFile on a pipe blocks until at least one byte arrives or the writing end closes, so
+		// zero here always means the child is gone, never "nothing yet".
+		std::size_t ReadFromPipe(HANDLE readEnd, std::span<char> buffer)
+		{
+			DWORD bytesRead = 0;
+
+			const BOOL readSucceeded = ::ReadFile(readEnd, buffer.data(), static_cast<DWORD>(buffer.size()), &bytesRead, nullptr);
+
+			if (!readSucceeded)
+			{
+				return 0;
+			}
+
+			return static_cast<std::size_t>(bytesRead);
+		}
 	}
 #endif
 
 	Result<Scope<ChildProcess>> ChildProcess::Start([[maybe_unused]] const std::filesystem::path& program,
 													[[maybe_unused]] const std::vector<std::string>& arguments,
 													[[maybe_unused]] const std::filesystem::path& workingDirectory,
-													[[maybe_unused]] std::span<const EnvironmentVariable> environment)
+													[[maybe_unused]] std::span<const EnvironmentVariable> environment,
+													[[maybe_unused]] ChildProcessOptions options)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		std::wstring environmentBlock;
@@ -187,43 +243,31 @@ namespace Core {
 		::SetHandleInformation(childStdinWrite.Get(), HANDLE_FLAG_INHERIT, kClearedHandleFlags);
 		::SetHandleInformation(childStdoutRead.Get(), HANDLE_FLAG_INHERIT, kClearedHandleFlags);
 
-		// Stderr does not share the output pipe: callers parse stdout as a length-framed protocol,
-		// and the child's log lines would land inside message bodies. It goes where this process's
-		// own diagnostics go.
-		const HANDLE processStdError = ::GetStdHandle(STD_ERROR_HANDLE);
-		const bool processHasNoStdError = processStdError == nullptr || processStdError == INVALID_HANDLE_VALUE;
+		// Stderr never shares the output pipe: callers parse stdout as a length-framed protocol, and
+		// the child's log lines would land inside message bodies. Unless it gets a pipe of its own,
+		// it goes where this process's own diagnostics go.
 		UniqueHandle childStdError;
+		UniqueHandle childStdErrorRead;
 
-		// A windowed process normally has no stderr, and STARTF_USESTDHANDLES needs all three
-		// handles valid, so the child gets the null device rather than a null handle that fails far
-		// from here. A real console handle is duplicated, so that the copy is inheritable and
-		// closing it leaves this process's own stderr alone.
-		if (processHasNoStdError)
+		if (options.PipeErrors)
 		{
-			childStdError.Reset(::CreateFileW(kNullDevice, GENERIC_WRITE,
-											  FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable,
-											  OPEN_EXISTING, kNoFlagsOrAttributes, nullptr));
+			const Result<void> errorPipe = CreateInheritablePipe(inheritable, childStdErrorRead, childStdError, "cannot create the child's error pipe");
 
-			if (!childStdError)
+			if (!errorPipe)
 			{
-				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
-							 .Message = "cannot open the null device for the child's stderr"};
+				return errorPipe.GetError();
 			}
+
+			::SetHandleInformation(childStdErrorRead.Get(), HANDLE_FLAG_INHERIT, kClearedHandleFlags);
 		}
 		else
 		{
-			HANDLE duplicate = nullptr;
-			const HANDLE currentProcess = ::GetCurrentProcess();
+			const Result<void> sharedStdError = ShareStdErrorWithChild(inheritable, childStdError);
 
-			const BOOL duplicated = ::DuplicateHandle(currentProcess, processStdError, currentProcess, &duplicate, kDesiredAccessIgnored, kInheritable, DUPLICATE_SAME_ACCESS);
-
-			if (!duplicated)
+			if (!sharedStdError)
 			{
-				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
-							 .Message = "cannot duplicate the process's stderr for the child"};
+				return sharedStdError.GetError();
 			}
-
-			childStdError.Reset(duplicate);
 		}
 
 		// Without an explicit list CreateProcessW hands the child every inheritable handle this
@@ -325,6 +369,7 @@ namespace Core {
 		child->m_Process = std::move(processHandle);
 		child->m_ToChild = std::move(childStdinWrite);
 		child->m_FromChild = std::move(childStdoutRead);
+		child->m_ErrorsFromChild = std::move(childStdErrorRead);
 
 		return child;
 #else
@@ -341,21 +386,50 @@ namespace Core {
 	std::size_t ChildProcess::Read([[maybe_unused]] std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		DWORD bytesRead = 0;
+		return ReadFromPipe(m_FromChild.Get(), buffer);
+#else
+		return 0;
+#endif
+	}
 
-		// ReadFile on a pipe blocks until at least one byte arrives or the writing end closes, so
-		// zero here always means the child is gone, never "nothing yet".
-		const BOOL readSucceeded = ::ReadFile(m_FromChild.Get(), buffer.data(),
-											  static_cast<DWORD>(buffer.size()), &bytesRead, nullptr);
+	std::size_t ChildProcess::ReadErrors([[maybe_unused]] std::span<char> buffer)
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		CORE_ASSERT(m_ErrorsFromChild, "ReadErrors needs a child started with PipeErrors");
 
-		if (!readSucceeded)
+		if (!m_ErrorsFromChild)
 		{
 			return 0;
 		}
 
-		return static_cast<std::size_t>(bytesRead);
+		return ReadFromPipe(m_ErrorsFromChild.Get(), buffer);
 #else
 		return 0;
+#endif
+	}
+
+	std::optional<std::uint32_t> ChildProcess::GetExitCode() const
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		// WARNING: Asked only once the process handle has signalled: a program can exit with STILL_ACTIVE's own value,
+		// so the code alone cannot tell a running program from one that ended.
+		const bool ended = m_Process && ::WaitForSingleObject(m_Process.Get(), kPollWithoutWaiting) == WAIT_OBJECT_0;
+
+		if (!ended)
+		{
+			return std::nullopt;
+		}
+
+		DWORD exitCode = 0;
+
+		if (!::GetExitCodeProcess(m_Process.Get(), &exitCode))
+		{
+			return std::nullopt;
+		}
+
+		return static_cast<std::uint32_t>(exitCode);
+#else
+		return std::nullopt;
 #endif
 	}
 
