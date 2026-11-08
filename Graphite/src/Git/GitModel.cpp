@@ -94,6 +94,7 @@ namespace Graphite {
 		m_LastAuthorsRequest.reset();
 		m_AuthorsHidden.reset();
 		m_UserEmail.Clear();
+		m_HeadMessage.Clear();
 		m_Remotes.Clear();
 		m_LastFetch.reset();
 		m_ListedShallow = ShallowStamp{};
@@ -329,6 +330,33 @@ namespace Graphite {
 				{
 					m_UserEmail.Land(generation, std::move(result));
 				}
+			});
+		});
+	}
+
+	void GitModel::RequestHeadMessage()
+	{
+		const std::uint64_t generation = m_HeadMessage.Begin();
+
+		m_Submit([this, generation]() {
+			Core::LogRequest request;
+			request.MaxCount = 1;
+
+			const Core::Result<Core::LogPage> page = m_Port.QueryLog(request);
+			Core::Result<std::string> message = Core::Error{.Code = Core::ErrorCode::NotFound, .Message = "HEAD has no commit"};
+
+			if (!page.HasValue())
+			{
+				message = page.GetError();
+			}
+			else if (!page.GetValue().Commits.empty())
+			{
+				const Core::CommitSummary& head = page.GetValue().Commits.front();
+				message = head.Body.empty() ? head.Summary : head.Summary + "\n\n" + head.Body;
+			}
+
+			Deliver([this, generation, message = std::move(message)]() mutable {
+				m_HeadMessage.Land(generation, std::move(message));
 			});
 		});
 	}

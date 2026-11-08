@@ -94,6 +94,8 @@ namespace Graphite {
 		};
 
 		std::optional<AmendPushedQuestion> PushedLastCommit() const;
+
+		void FillAmendMessage(bool amendToggled);
 		void RenderAmendPushedConfirm();
 
 		void ResetStashDialog();
@@ -175,5 +177,11 @@ namespace Graphite {
 
 		const std::string m_AmendTitle;
 		ModalQuestion<AmendPushedQuestion> m_AmendQuestion;
+
+		// The head message held when Amend asked for it, so only a newer answer fills the box; and what was filled, so
+		// unticking Amend takes back only a message nobody edited.
+		Core::Ref<const std::string> m_AmendMessageAsked;
+		bool m_FillingAmendMessage = false;
+		std::string m_AmendMessageFilled;
 	};
 }

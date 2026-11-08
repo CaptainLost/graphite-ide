@@ -980,8 +980,49 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		ImGui::BeginDisabled(writesBlocked);
-		DrawTickBox("Amend", &m_Shared.Amend);
+		const bool amendToggled = DrawTickBox("Amend", &m_Shared.Amend);
 		ImGui::EndDisabled();
+
+		FillAmendMessage(amendToggled);
+	}
+
+	void ChangesView::FillAmendMessage(bool amendToggled)
+	{
+		// Amend starts from the last commit's message, so a typo is fixed rather than the message typed again; an empty
+		// box would keep it, but there is nothing to edit in one.
+		if (amendToggled && m_Shared.Amend && m_Shared.Message.empty())
+		{
+			m_Model.RequestHeadMessage();
+			m_AmendMessageAsked = m_Model.GetHeadMessage();
+			m_FillingAmendMessage = true;
+		}
+
+		// Unticked with the message as it was put there, the box goes back to empty, as it was before.
+		if (amendToggled && !m_Shared.Amend)
+		{
+			m_FillingAmendMessage = false;
+
+			if (!m_AmendMessageFilled.empty() && m_Shared.Message == m_AmendMessageFilled)
+			{
+				m_Shared.Message.clear();
+			}
+
+			m_AmendMessageFilled.clear();
+		}
+
+		const Core::Ref<const std::string> headMessage = m_Model.GetHeadMessage();
+		const bool answered = headMessage != nullptr && headMessage != m_AmendMessageAsked;
+
+		if (m_FillingAmendMessage && answered)
+		{
+			m_FillingAmendMessage = false;
+
+			if (m_Shared.Amend && m_Shared.Message.empty())
+			{
+				m_Shared.Message = *headMessage;
+				m_AmendMessageFilled = *headMessage;
+			}
+		}
 	}
 
 	Core::DiffTarget ChangesView::TargetForSection() const

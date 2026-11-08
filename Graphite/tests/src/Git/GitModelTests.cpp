@@ -3641,3 +3641,42 @@ TEST_CASE("Git window: a failed read of what a merge brought keeps its message u
 	CHECK(port.LogCalls == callsBefore + 1);
 	CHECK(model.GetBrought(merge) != nullptr);
 }
+
+namespace {
+
+	struct HeadWithMessage : EmptyGitPort
+	{
+		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
+		{
+			Asked.push_back(request);
+
+			Core::CommitSummary head;
+			head.Summary = "Fix the parser";
+			head.Body = "It dropped the last token.";
+
+			Core::LogPage page;
+			page.Commits.push_back(head);
+			return page;
+		}
+
+		std::vector<Core::LogRequest> Asked;
+	};
+}
+
+TEST_CASE("The head message is read as one commit of HEAD's history, summary and body together")
+{
+	HeadWithMessage port;
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	CHECK(model.GetHeadMessage() == nullptr);
+
+	model.RequestHeadMessage();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.GetHeadMessage() != nullptr);
+	CHECK(*model.GetHeadMessage() == "Fix the parser\n\nIt dropped the last token.");
+	REQUIRE(port.Asked.size() == 1);
+	CHECK(port.Asked.front().MaxCount == 1);
+	CHECK_FALSE(port.Asked.front().Ref.has_value());
+}

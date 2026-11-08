@@ -247,6 +247,11 @@ namespace Graphite {
 		// when git has none.
 		const std::optional<std::string>& GetUserEmail() const;
 
+		// The whole message of the commit HEAD names, read on request, for Amend to start from. Unset until read, and for
+		// a branch with no commit yet.
+		void RequestHeadMessage();
+		Core::Ref<const std::string> GetHeadMessage() const { return m_HeadMessage.Get(); }
+
 		// The time of the last fetch, from this window or a terminal, read with every branch listing. Empty while unread and
 		// in a repository never fetched.
 		const std::optional<std::chrono::sys_seconds>& GetLastFetch() const { return m_LastFetch; }
@@ -669,6 +674,7 @@ namespace Graphite {
 
 		GenerationSlot<BranchAuthors> m_BranchAuthors;
 		GenerationSlot<std::optional<std::string>> m_UserEmail;
+		GenerationSlot<std::string> m_HeadMessage;
 		GenerationSlot<std::vector<Core::Remote>> m_Remotes;
 		std::optional<std::chrono::sys_seconds> m_LastFetch;
 		bool m_GitFound = false;
