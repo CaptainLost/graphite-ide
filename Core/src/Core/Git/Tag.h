@@ -21,7 +21,8 @@ namespace Core {
 		Oid Target;
 
 		// An annotated tag's tagger time; a lightweight tag, or an annotated one without a tagger, takes the
-		// commit's committer time.
+		// commit's committer time. The last departs from git's `creatordate`, which is empty for an annotated tag without
+		// a tagger and sorts it as the oldest: a date of 1970 would read "made 56y ago".
 		std::chrono::sys_seconds When;
 
 		bool Annotated = false;

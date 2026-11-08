@@ -70,8 +70,9 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   unless the user closed them, so clearing a search or a fetch never hides the branch on screen. A shown tag's section
   and folder open the same way.
 - **Waiting.** Until the first read of the lines lands, one waiting row stands in for the sections that need it:
-  "Reading 3,448 branches…" once the branches are listed, "Reading branches…" before. The Tags section, once the tags
-  are listed, and the Stashes section are listed below it at once. A failed read or branch listing says so in that row ("Cannot read the branches' lines: …") with no loader
+  "Reading 3,448 branches…" once the branches are listed, "Reading branches…" before. The Tags section and the Stashes
+  section are listed below it together, once the tag list has landed or failed, which is with the branches; until then
+  neither is, so the Stashes never move down a row when the Tags header appears above them. The tag the window shows opens its section and folder while the lines are read, as it does after. A failed read or branch listing says so in that row ("Cannot read the branches' lines: …") with no loader
   beside it, since nothing is on its way. Once a read is in hand, a later failure leaves its rows on screen. The user's
   e-mail, which a row needs to say "you", is read beside every branch listing, so it never waits for the authors walk.
 - **Saved state** is the shown reference alone: `restore.gitWindow.ref`, a full name, empty for HEAD's history. The

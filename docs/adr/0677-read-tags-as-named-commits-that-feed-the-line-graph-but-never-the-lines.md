@@ -29,7 +29,9 @@ Read tags as named commits: listed with the branches, their commits walked into 
 branch tips, and never given to the line model.
 
 - **A tag's date** is an annotated tag's tagger time, and the commit's committer time for a lightweight tag or an
-  annotated one without a tagger: git's `creatordate`. A tag of a tag takes the outermost tagger. The listing is newest
+  annotated one without a tagger. A tag of a tag takes the outermost tagger. The last case departs from git's
+  `creatordate`, which is empty for an annotated tag without a tagger and sorts it as the oldest of all: the commit's
+  date is kept instead, since a date of 1970 would read "made 56y ago" in the sidebar and the line. The listing is newest
   first, then by name (`Core::Repository::QueryTags`).
 - **Tags are peeled to a commit.** Every `refs/tags/*` is followed through any number of tag objects. One that ends at
   a tree or a blob, one whose commit the object database lacks, and a symbolic ref under `refs/tags` are not listed. A
@@ -63,7 +65,9 @@ branch tips, and never given to the line model.
   the details' refs line.
 - **The "First tag" line** of a commit's details comes right under In bases and the source sentence: the label `First
   tag`, then the tag's pill and `made <age> ago` (`made just now` while the age reads `now`), or `no tag holds it yet`,
-  or `…` while no read is in hand. It is one line high in every state. It follows In bases: it is drawn wherever In
+  or `…` while no read is in hand or the read in hand was made from an older tag listing than the one shown (compared
+  by pointer, as In bases waits for a commit outside the read), or a dim `unknown`, with the reason in its tooltip,
+  once the line read has failed and none is held, as In bases says it. It is one line high in every state. It follows In bases: it is drawn wherever In
   bases is, a stash's details included, whenever the repository has tags. Whether it has is the tag listing's answer
   once the listing is in, so a fetch that deletes every tag takes the line away at once; before that, the read's.
 - **Window state.** A tag's full name restores its history. The restore waits for the tag listing, and a name no longer
