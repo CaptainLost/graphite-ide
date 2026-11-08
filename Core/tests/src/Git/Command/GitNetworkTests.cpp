@@ -473,6 +473,53 @@ TEST_CASE("Network: the last fetch time is FETCH_HEAD's")
 	CHECK(*fetched == expected);
 }
 
+TEST_CASE("Network: a remote named like an option is a remote, not an option")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	constexpr char kOptionLikeRemote[] = "-x";
+
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+
+	const std::filesystem::path bare = fixture.MakeBareRemote(kOptionLikeRemote);
+	const Core::NetworkRun run{.Git = *git, .WorkingDirectory = fixture.GetPath()};
+	const std::atomic<bool> neverCancelled{false};
+
+	const Core::NetworkOutcome firstPush = Core::PushTo(run, neverCancelled, IgnorePercent, kOptionLikeRemote, std::nullopt);
+	INFO(firstPush.Failure.Copied);
+	REQUIRE(firstPush.Result == Core::NetworkResult::Done);
+
+	fixture.Write("b.txt", "two\n");
+	const std::string second = fixture.Commit("two");
+
+	const Core::NetworkOutcome secondPush = Core::PushTo(run, neverCancelled, IgnorePercent, kOptionLikeRemote, std::string{kBranch});
+	INFO(secondPush.Failure.Copied);
+	REQUIRE(secondPush.Result == Core::NetworkResult::Done);
+
+	const Core::GitRun revParse{.Arguments = {"rev-parse", kBranch},
+								.WorkingDirectory = bare,
+								.Environment = Core::GitEnvironment(false)};
+	Core::Result<Core::GitOutput> pushedHead = Core::RunGit(*git, revParse, neverCancelled, IgnoreLine);
+	REQUIRE(pushedHead.HasValue());
+	CHECK(Trimmed(pushedHead.GetValue().Out) == second);
+
+	const Core::NetworkOutcome fetched = Core::FetchRemote(run, neverCancelled, IgnorePercent, kOptionLikeRemote);
+	INFO(fetched.Failure.Copied);
+	CHECK(fetched.Result == Core::NetworkResult::Done);
+
+	const Core::NetworkOutcome headSet = Core::SetRemoteHeadAuto(run, neverCancelled, IgnorePercent, kOptionLikeRemote);
+	INFO(headSet.Failure.Copied);
+	CHECK(headSet.Result == Core::NetworkResult::Done);
+}
+
 TEST_CASE("Network: a failed operation shows the last lines and copies the whole of stderr")
 {
 	const std::optional<std::filesystem::path> git = Core::FindGit();

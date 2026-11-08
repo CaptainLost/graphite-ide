@@ -129,7 +129,7 @@ namespace Core {
 	NetworkOutcome FetchRemote(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 							 const std::string& remote)
 	{
-		return RunToSuccess(run, cancelled, progress, {"fetch", remote, "--progress"});
+		return RunToSuccess(run, cancelled, progress, {"fetch", "--progress", "--", remote});
 	}
 
 	NetworkOutcome FetchFullHistory(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress)
@@ -148,16 +148,16 @@ namespace Core {
 	{
 		if (upstreamBranch.has_value())
 		{
-			return RunToSuccess(run, cancelled, progress, {"push", "--progress", remote, "HEAD:" + *upstreamBranch});
+			return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--", remote, "HEAD:" + *upstreamBranch});
 		}
 
-		return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--set-upstream", remote, "HEAD"});
+		return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--set-upstream", "--", remote, "HEAD"});
 	}
 
 	NetworkOutcome SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								   const std::string& remote)
 	{
-		return RunToSuccess(run, cancelled, progress, {"remote", "set-head", remote, "--auto"});
+		return RunToSuccess(run, cancelled, progress, {"remote", "set-head", "--auto", "--", remote});
 	}
 
 	NetworkHint HintOf(std::string_view errors)
