@@ -32,7 +32,7 @@
 #include "Git/History/ShownHistory.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/HeadInRead.h"
-#include "Git/Lines/LinesOnScreen.h"
+#include "Git/Lines/HeldLines.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/Network/NetworkModel.h"
 #include "Git/Sidebar/SidebarRows.h"
@@ -543,7 +543,7 @@ namespace Graphite {
 		bool m_MainLineDismissed = false;
 
 		// The read the sidebar and the history both draw, followed as each frame starts.
-		LinesOnScreen m_OnScreen;
+		HeldLines m_OnScreen;
 
 		SidebarView m_Sidebar;
 

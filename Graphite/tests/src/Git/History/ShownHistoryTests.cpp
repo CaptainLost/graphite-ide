@@ -3,7 +3,7 @@
 #include "Git/History/ShownHistory.h"
 
 #include "Git/Lines/LineReader.h"
-#include "Git/Lines/LinesOnScreen.h"
+#include "Git/Lines/HeldLines.h"
 
 #include "Core/Base/Base.h"
 #include "Core/Git/Head.h"
@@ -52,7 +52,7 @@ namespace {
 
 	struct Window
 	{
-		LinesOnScreen OnScreen;
+		HeldLines OnScreen;
 		std::optional<std::string> SelectedRef;
 		std::optional<Core::Oid> SelectedStash;
 		std::set<std::string> NewerShown;

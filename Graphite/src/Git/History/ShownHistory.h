@@ -2,7 +2,7 @@
 
 #include "Git/History/FoldRow.h"
 #include "Git/Lines/HeadInRead.h"
-#include "Git/Lines/LinesOnScreen.h"
+#include "Git/Lines/HeldLines.h"
 
 #include "Core/Git/Head.h"
 #include "Core/Git/Lines/LineModel.h"
@@ -19,7 +19,7 @@ namespace Graphite {
 	// WARNING: Holds everything by reference or pointer; it is made for one question and must not outlive what it names.
 	struct ShownHistoryInput
 	{
-		const LinesOnScreen& OnScreen;
+		const HeldLines& OnScreen;
 
 		const std::optional<std::string>& SelectedRef; // HEAD's history when empty and no stash is selected
 		const std::optional<Core::Oid>& SelectedStash;

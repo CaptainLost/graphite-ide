@@ -11,9 +11,10 @@
 
 namespace Graphite {
 
-	// The line read the Git window draws, with what is looked up in it. Followed once at the start of every frame the
-	// window is drawn, so the sidebar and the history read the same one, whichever of them is drawn or asked first.
-	class LinesOnScreen
+	// A line read held with what is looked up in it, taken again only when the read is another. The Git window follows the
+	// lines model's read into one as each frame starts, so the sidebar and the history read the same one whichever is
+	// drawn or asked first; the reviews follow it into one of their own.
+	class HeldLines
 	{
 	public:
 		// Takes `read` when it is not the read held; null lets go of the one held.

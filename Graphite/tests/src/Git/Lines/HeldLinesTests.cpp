@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/Lines/LinesOnScreen.h"
+#include "Git/Lines/HeldLines.h"
 
 #include "Git/Lines/LineReader.h"
 
@@ -30,9 +30,9 @@ namespace {
 	}
 }
 
-TEST_CASE("Git window: the lines on screen follow a new read and keep the one held")
+TEST_CASE("Git window: held lines follow a new read and keep the one held")
 {
-	LinesOnScreen onScreen;
+	HeldLines onScreen;
 
 	CHECK(onScreen.GetLines() == nullptr);
 	CHECK(onScreen.CheckedOutName().empty());

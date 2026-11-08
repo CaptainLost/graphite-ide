@@ -197,14 +197,14 @@ namespace Graphite {
 
 		m_DiffWindows.OnSetOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); };
 
-		m_ReviewWindows.OpenFile = [this](const std::filesystem::path& path) {
+		m_FolderReviews.Windows().OpenFile = [this](const std::filesystem::path& path) {
 			const bool permanentTab = true;
 			m_DocumentWindows.RequestOpen(path, permanentTab);
 		};
 
-		m_ReviewWindows.OnCopied = [this](std::string_view text) { ReportCopied(m_Events, "selection", text); };
-		m_ReviewWindows.OnSetDiffOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); };
-		m_ReviewWindows.CopyText = [this](std::string_view what, const std::string& text) {
+		m_FolderReviews.Windows().OnCopied = [this](std::string_view text) { ReportCopied(m_Events, "selection", text); };
+		m_FolderReviews.Windows().OnSetDiffOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); };
+		m_FolderReviews.Windows().CopyText = [this](std::string_view what, const std::string& text) {
 			CopyToClipboard(m_Events, what, text);
 		};
 
@@ -216,11 +216,11 @@ namespace Graphite {
 		gitView->Subscribe();
 		m_GitView = gitView;
 
-		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };
-		gitView->OnReviewMenuItem = [this](const ReviewMenuItem& item) { ApplyReviewMenuItem(item); };
+		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return m_FolderReviews.MenuOf(branch); };
+		gitView->OnReviewMenuItem = [this](const ReviewMenuItem& item) { m_FolderReviews.Apply(item); };
 
 		gitView->OnBranchRenamed = [this](const std::string& from, const std::string& to) {
-			m_ReviewWindows.NoteRename(from, to);
+			m_FolderReviews.NoteRename(from, to);
 		};
 
 		// WARNING: Fetch, Pull and Push run git, which runs the folder's hooks and the commands its config names, so a
@@ -524,10 +524,7 @@ namespace Graphite {
 		m_Folder.Add(Core::CreateScope<GitWindowOfFolder>(*m_GitView));
 		m_Folder.Add(Core::CreateScope<RepositoryOfFolder>(m_GitPort, [this] { LetGoOfOldRepositoryOnWriteAndNetworkWorkers(); }));
 		m_Folder.Add(Core::CreateScope<DiffsOfFolder>(m_DiffWindows));
-		m_Folder.Add(Core::CreateScope<ReviewsOfFolder>(ReviewParts{.Windows = m_ReviewWindows,
-																	.Model = m_Reviews,
-																	.Store = m_ReviewStore,
-																	.ReviewedBranches = m_ReviewedBranches}));
+		m_Folder.Add(Core::CreateScope<ReviewsOfFolder>(m_FolderReviews));
 	}
 
 	void GraphiteLayer::OpenStartupFolder()
@@ -559,14 +556,11 @@ namespace Graphite {
 		// published before a panel reads a snapshot.
 		m_Repository.Update(timestep);
 		ApplyNetworkResults();
-		FollowLinesIntoReviews();
 
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);
 
-		FollowBranchesIntoReviews();
-		m_Reviews.OnUpdate(timestep);
-		m_ReviewStore.Update(timestep);
+		m_FolderReviews.Update(timestep);
 
 		m_Panels.OnUpdate(timestep);
 		m_Terminals.Update();
@@ -613,128 +607,6 @@ namespace Graphite {
 		}
 	}
 
-	void GraphiteLayer::FollowBranchesIntoReviews()
-	{
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
-
-		// WARNING: GitModel replaces its snapshot only with a list it read whole, so a snapshot that lacks a branch means the branch is gone, never that the read failed.
-		if (branches == nullptr || branches == m_ReviewedBranches)
-		{
-			return;
-		}
-
-		m_ReviewedBranches = branches;
-
-		for (const BranchRename& rename : m_ReviewWindows.FollowBranches(*branches, m_Reviews))
-		{
-			m_ReviewStore.GetSessions().Rename(rename.From, rename.To);
-		}
-
-		m_ReviewStore.GetSessions().Prune(*branches);
-		m_Reviews.InvalidateRanges();
-	}
-
-	void GraphiteLayer::FollowLinesIntoReviews()
-	{
-		const Core::Ref<const LineRead> read = m_Lines.GetRead();
-
-		if (read == m_ReviewLinesRead)
-		{
-			return;
-		}
-
-		// WARNING: The lines view into the read, so they go before the pointer that keeps it alive is replaced.
-		m_ReviewLines.reset();
-		m_ReviewLinesRead = read;
-
-		if (!read)
-		{
-			return;
-		}
-
-		m_ReviewLines.emplace(*read);
-	}
-
-	ReviewMenu GraphiteLayer::ReviewMenuOfBranch(const Core::Branch& branch) const
-	{
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
-
-		if (branches == nullptr)
-		{
-			return ReviewMenu{};
-		}
-
-		return ReviewMenuFor(branch, *branches, m_ReviewStore.GetSessions(), m_ReviewLines ? &*m_ReviewLines : nullptr);
-	}
-
-	void GraphiteLayer::ApplyReviewMenuItem(const ReviewMenuItem& item)
-	{
-		switch (item.Action)
-		{
-		case ReviewAction::Start:
-			m_ReviewStore.GetSessions().Start(item.Branch, item.Base);
-			OpenReviewTab(item.Branch);
-			break;
-		case ReviewAction::Open:
-			OpenReviewTab(item.Branch);
-			break;
-		case ReviewAction::End:
-			m_ReviewWindows.AskToEnd(item.Branch);
-			break;
-		}
-	}
-
-	bool GraphiteLayer::OpenReviewDraft(const std::string& branch)
-	{
-		ReviewSessions& sessions = m_ReviewStore.GetSessions();
-
-		if (sessions.Find(branch) != nullptr)
-		{
-			return true;
-		}
-
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
-
-		if (branches == nullptr)
-		{
-			return false;
-		}
-
-		const std::optional<std::string> base = ReviewBaseOf(branch, *branches, sessions, m_ReviewLines ? &*m_ReviewLines : nullptr);
-
-		if (!base.has_value())
-		{
-			return false;
-		}
-
-		sessions.OpenDraft(branch, *base);
-		return true;
-	}
-
-	void GraphiteLayer::OpenReviewTab(const std::string& branch)
-	{
-		if (!OpenReviewDraft(branch))
-		{
-			return;
-		}
-
-		m_ReviewStore.GetSessions().Keep(branch);
-		m_ReviewWindows.Open(branch);
-	}
-
-	ReviewRenderInput GraphiteLayer::ReviewInputWith(const GitPalette& palette, const SyntaxPalette& syntax)
-	{
-		return ReviewRenderInput{.Model = m_Reviews,
-								 .Sessions = m_ReviewStore.GetSessions(),
-								 .Danger = DangerColourOf(m_ActiveScheme.Get()),
-								 .Palette = palette,
-								 .Syntax = syntax,
-								 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,
-								 .DiffOptions = m_EditorSettings.GetDiffViewOptions(),
-								 .CentreNode = m_DockSpace.GetCenterNodeId(),
-								 .CloseRequests = m_TabCloseRequests};
-	}
-
 	GlobalState GraphiteLayer::CaptureGlobalState()
 	{
 		GlobalState state;
@@ -765,7 +637,7 @@ namespace Graphite {
 		m_Content.Clear();
 
 		m_StateKeeper.Flush();
-		m_ReviewStore.Flush();
+		m_FolderReviews.Flush();
 
 		// WARNING: Flush after StateKeeper, whose flush hands the window state to the settings.
 		m_AppSettings.Flush();
@@ -1245,7 +1117,13 @@ namespace Graphite {
 		const GitPalette reviewPalette = ReadGitPalette(m_ActiveScheme.Get());
 		const SyntaxPalette reviewSyntax = ReadSyntaxPalette(m_ActiveScheme.Get());
 
-		m_ReviewWindows.Render(ReviewInputWith(reviewPalette, reviewSyntax));
+		m_FolderReviews.Render(ReviewLook{.Danger = DangerColourOf(m_ActiveScheme.Get()),
+										  .Palette = reviewPalette,
+										  .Syntax = reviewSyntax,
+										  .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,
+										  .DiffOptions = m_EditorSettings.GetDiffViewOptions(),
+										  .CentreNode = m_DockSpace.GetCenterNodeId(),
+										  .CloseRequests = m_TabCloseRequests});
 
 		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()),
 								m_TabCloseRequests);

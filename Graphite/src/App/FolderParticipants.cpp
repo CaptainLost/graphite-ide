@@ -6,9 +6,7 @@
 #include "Git/RepositoryGitPort.h"
 #include "Language/Server/LanguageServices.h"
 #include "Persistence/StateKeeper.h"
-#include "Review/ReviewModel.h"
-#include "Review/ReviewStore.h"
-#include "Review/ReviewWindows.h"
+#include "Review/FolderReviews.h"
 #include "Sessions/SessionWindows.h"
 #include "Terminal/TerminalWindows.h"
 
@@ -202,24 +200,21 @@ namespace Graphite {
 
 	void ReviewsOfFolder::LetGo(FolderExit)
 	{
-		m_Parts.Windows.CloseAll(m_Parts.Model);
-		m_Parts.Store.Close();
-		m_Parts.ReviewedBranches.reset();
+		m_Reviews.LetGo();
 	}
 
 	void ReviewsOfFolder::Arrive(const FolderArrival& arrival)
 	{
-		m_Parts.Store.Open(arrival.Root);
-		m_Parts.Windows.RestoreState(arrival.Restorable.Reviews, m_Parts.Store.GetSessions());
+		m_Reviews.Arrive(arrival.Root, arrival.Restorable.Reviews);
 	}
 
 	void ReviewsOfFolder::FollowMove(const std::filesystem::path&, const std::filesystem::path& to)
 	{
-		m_Parts.Store.MoveTo(to);
+		m_Reviews.FollowMove(to);
 	}
 
 	void ReviewsOfFolder::Capture(WorkspaceState& state) const
 	{
-		state.Reviews = m_Parts.Windows.CaptureState();
+		state.Reviews = m_Reviews.Capture();
 	}
 }

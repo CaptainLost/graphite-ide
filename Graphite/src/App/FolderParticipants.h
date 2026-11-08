@@ -18,12 +18,10 @@ namespace Graphite {
 
 	class DiffWindows;
 	class DocumentWindows;
+	class FolderReviews;
 	class GitView;
 	class LanguageServices;
 	class RepositoryGitPort;
-	class ReviewModel;
-	class ReviewStore;
-	class ReviewWindows;
 	class SessionWindows;
 	class StateKeeper;
 	class TerminalWindows;
@@ -152,18 +150,10 @@ namespace Graphite {
 		DiffWindows& m_Windows;
 	};
 
-	struct ReviewParts
-	{
-		ReviewWindows& Windows;
-		ReviewModel& Model;
-		ReviewStore& Store;
-		Core::Ref<const std::vector<Core::Branch>>& ReviewedBranches;
-	};
-
 	class ReviewsOfFolder final : public FolderParticipant
 	{
 	public:
-		explicit ReviewsOfFolder(ReviewParts parts) : m_Parts(parts) {}
+		explicit ReviewsOfFolder(FolderReviews& reviews) : m_Reviews(reviews) {}
 
 		void LetGo(FolderExit exit) override;
 		void Arrive(const FolderArrival& arrival) override;
@@ -171,6 +161,6 @@ namespace Graphite {
 		void Capture(WorkspaceState& state) const override;
 
 	private:
-		ReviewParts m_Parts;
+		FolderReviews& m_Reviews;
 	};
 }

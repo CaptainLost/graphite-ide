@@ -1,4 +1,4 @@
-#include "Git/Lines/LinesOnScreen.h"
+#include "Git/Lines/HeldLines.h"
 
 #include "Core/Git/Ref.h"
 
@@ -30,7 +30,7 @@ namespace Graphite {
 		}
 	}
 
-	void LinesOnScreen::Follow(Core::Ref<const LineRead> read)
+	void HeldLines::Follow(Core::Ref<const LineRead> read)
 	{
 		if (read == m_Read)
 		{
@@ -49,14 +49,14 @@ namespace Graphite {
 		m_HeadRef = CheckedOutRefOf(*m_Read);
 	}
 
-	void LinesOnScreen::Reset()
+	void HeldLines::Reset()
 	{
 		m_Lines.reset();
 		m_HeadRef.reset();
 		m_Read.reset();
 	}
 
-	std::string_view LinesOnScreen::CheckedOutName() const
+	std::string_view HeldLines::CheckedOutName() const
 	{
 		return m_Read && m_HeadRef.has_value() ? std::string_view{m_Read->Refs[*m_HeadRef].FullName} : std::string_view{};
 	}

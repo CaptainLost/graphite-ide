@@ -42,11 +42,9 @@
 #include "Sessions/SessionWindows.h"
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
+#include "Review/FolderReviews.h"
 #include "Review/ReviewMenu.h"
 #include "Review/ReviewModel.h"
-#include "Review/ReviewBase.h"
-#include "Review/ReviewStore.h"
-#include "Review/ReviewWindows.h"
 #include "Review/WorktreeWatch.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
@@ -217,23 +215,6 @@ namespace Graphite {
 		void InstallChosenServerFor(LanguageId language);
 
 		GlobalState CaptureGlobalState();
-
-		void FollowBranchesIntoReviews();
-
-		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
-
-		// Takes what the review bases and the own-authors walk need from a line read that has just landed.
-		void FollowLinesIntoReviews();
-		void ApplyReviewMenuItem(const ReviewMenuItem& item);
-
-		// Opens a draft against ReviewBaseOf's base for a branch with neither a draft nor a session. False while the
-		// branch still has neither: the branches are unread, or there is nothing to review it against.
-		bool OpenReviewDraft(const std::string& branch);
-
-		// The tab exists only with a kept session, so the draft is kept first.
-		void OpenReviewTab(const std::string& branch);
-
-		ReviewRenderInput ReviewInputWith(const GitPalette& palette, const SyntaxPalette& syntax);
 
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
@@ -442,14 +423,8 @@ namespace Graphite {
 		// WARNING: Declared after every model it updates and m_WriteConsequences, which it holds.
 		RepositorySession m_Repository{m_Git, m_WriteConsequences, m_Network, m_Lines, m_Worktrees, m_Content};
 
-		ReviewWindows m_ReviewWindows{m_Modals};
-		ReviewStore m_ReviewStore;
-
-		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
-
-		// WARNING: m_ReviewLines views into m_ReviewLinesRead, which it keeps alive; the two are replaced together.
-		Core::Ref<const LineRead> m_ReviewLinesRead;
-		std::optional<BranchLines> m_ReviewLines;
+		// WARNING: Declared after m_Git, m_Lines and m_Reviews, which it holds.
+		FolderReviews m_FolderReviews{m_Git, m_Lines, m_Reviews, m_Modals};
 
 		// WARNING: Declared before m_Panels, because SessionsPanel holds a reference to each and ClaudeSessionsPage to the settings.
 		// m_SessionWindows joins a worker per open session in its own destructor, and nothing it refers to is declared after it.
