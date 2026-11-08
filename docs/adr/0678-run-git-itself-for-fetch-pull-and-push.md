@@ -47,13 +47,25 @@ and say why; everything else works. An install outside those places is not found
   without `-batch` may then prompt on the hidden console, and the operation sits until the user cancels it.
 
 **The commands.**
-- Fetch: `git fetch --all --prune --progress`; a remote's default branch is recorded afterwards with
-  `git remote set-head <remote> --auto`.
+- Fetch: `git fetch --all --prune --progress`, one process for every remote. `--prune` is a call: the window shows a
+  branch as deleted on its remote only if the fetch removed the remote-tracking ref, and the cost is that a fetch
+  deletes remote-tracking refs the user might have wanted to look at. Tags follow git's default (tags that point into
+  the fetched history); a tag git would not fetch is not fetched. A remote's default branch is recorded afterwards, for
+  each remote that has no `refs/remotes/<remote>/HEAD`, with `git remote set-head <remote> --auto`; a change of the
+  server's default is not tracked, so after a rename on the server the old default stays until the user runs that
+  command.
+- Fetch full history: the "History cut off here" banner of a shallow clone gains **Fetch full history**, which runs
+  `git fetch --unshallow --progress` as a network operation with the same cancel and progress. Afterwards the graph
+  re-reads, as it already does when the shallow boundary moves. The cost is that the whole history comes down at once,
+  which on a large repository is a long, cancellable run.
 - Pull is two commands, `git fetch <remote> --progress` then `git merge --ff-only <upstream>`, never `git pull`: the
   user's `pull.rebase` and `pull.ff` would decide what it did, and the window cannot yet show a rebase or a merge in
   progress. A branch that cannot fast-forward is refused with nothing changed.
-- Push: `git push --progress <remote> HEAD:<upstream branch>`, or `--set-upstream <remote> HEAD` when there is no
-  upstream. Never forced, never with tags.
+- Push: `git push --progress <remote> HEAD:<upstream branch>` when the branch has an upstream. Without one the choice
+  depends on the remotes: with one, `git push --progress --set-upstream <remote> HEAD`; with several, the button opens a
+  menu, "Push <branch> to...", listing them by name in config order, because no remote is special, "origin" included;
+  with none, Push is disabled and says why. Never forced, never with tags. The cost is one more click for a branch
+  without an upstream in a repository with several remotes, and no way yet to force a push or send tags.
 - `--` goes before every remote name, so a remote named like an option is not read as one.
 
 **Running and stopping.**
@@ -67,6 +79,14 @@ and say why; everything else works. An install outside those places is not found
   fetch or push finishing is what the user asked for.
 - The fast-forward step of Pull is not cancellable: a half-updated tree is worse than a wait. Cancel is disabled, and
   the button reads `Pulling...`, once the merge starts.
+- Cancel ends the child and every process it started, which a job object does; Cancel is the running operation's own
+  button, which reads `Fetching... 45%`, `Pulling...` or `Pushing...` while it runs, and the other two buttons are
+  disabled.
+- Shutdown and a change of folder cancel the running operation, so the queue never blocks the exit. The cost is that a
+  fetch in flight when the user switches folders is lost and has to be started again.
+- Success is quiet: the status bar shows the done text for a few seconds ("Fetched", "Pulled 5 commits", "Pushed 2
+  commits") and there is no success toast. The cost is that a success is easy to miss; every failure is an error toast,
+  with the whole of stderr to copy.
 - Network operations run on their own one-job queue. Only Pull's fast-forward joins the write queue, so it never
   overlaps a commit, checkout or stash.
 
