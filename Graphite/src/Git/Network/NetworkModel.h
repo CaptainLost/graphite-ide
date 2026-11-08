@@ -75,8 +75,9 @@ namespace Graphite {
 		void Fetch();
 		void Pull();
 
-		// Without a remote: the upstream's, or the only remote when the branch has no upstream on one. A remote other than
-		// the upstream's becomes the branch's upstream, unless that upstream is a local branch, which is kept.
+		// Without a remote: the upstream's, or the only remote when the branch has no upstream on one. The branch goes to
+		// its upstream only when both have one name; otherwise, and on a remote other than the upstream's, it is published
+		// under its own name, which becomes its upstream, unless that upstream is a local branch, which is kept.
 		void Push(std::optional<std::string> remote = std::nullopt);
 
 		void FetchFullHistory();

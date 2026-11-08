@@ -673,6 +673,31 @@ TEST_CASE("Window bar: pull and push show the upstream distance")
 	CHECK(buttons.Push.Count.empty());
 }
 
+TEST_CASE("Window bar: push of a branch whose upstream has another name says it publishes the branch under its own name")
+{
+	const Core::HeadState head = OnBranch("my-fix");
+	std::vector<Core::Branch> branches = {Tracking(HeadBranch("my-fix"), "origin/main", 2, 0), RemoteMain()};
+
+	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK(buttons.Push.Enabled);
+	CHECK_FALSE(buttons.Push.AsksWhichRemote);
+	CHECK(buttons.Push.Tooltip == "Push my-fix to origin as origin/my-fix; it then tracks origin/my-fix instead of origin/main");
+
+	// The count is still the distance to the upstream, as the chip says it.
+	CHECK(buttons.Push.Count == "2");
+
+	// Nothing ahead says the same.
+	branches = {Tracking(HeadBranch("my-fix"), "origin/main", 0, 0), RemoteMain()};
+	CHECK(Buttons(&head, &branches, &kOrigin).Push.Tooltip ==
+		  "Push my-fix to origin as origin/my-fix; it then tracks origin/my-fix instead of origin/main");
+
+	// Names that differ only in case are two names, as git compares them.
+	const Core::HeadState otherCase = OnBranch("Main");
+	branches = {Tracking(HeadBranch("Main"), "origin/main", 1, 0), RemoteMain()};
+	CHECK(Buttons(&otherCase, &branches, &kOrigin).Push.Tooltip ==
+		  "Push Main to origin as origin/Main; it then tracks origin/Main instead of origin/main");
+}
+
 TEST_CASE("Window bar: push asks which remote only with several remotes and no upstream on one")
 {
 	const Core::HeadState head = OnBranch("main");

@@ -294,6 +294,17 @@ namespace Graphite {
 			push.Enabled = true;
 			const std::optional<std::string> upstreamRemote = RemoteOfUpstream(branch, input);
 
+			// WARNING: As Push does: a branch goes to an upstream of its own name alone, and is published under its own name
+			// otherwise. The count is still the distance to the upstream, as the chip says it.
+			const bool upstreamOfAnotherName = upstreamRemote.has_value() && *branch.Upstream != *upstreamRemote + "/" + branch.Name;
+
+			if (upstreamOfAnotherName)
+			{
+				push.Count = branch.DistanceKnown && branch.Ahead > 0 ? SlotCount(branch.Ahead) : std::string{};
+				push.Tooltip = PublishText(branch.Name, *upstreamRemote, branch.Upstream);
+				return;
+			}
+
 			if (upstreamRemote.has_value() && branch.DistanceKnown && branch.Ahead > 0)
 			{
 				push.Count = SlotCount(branch.Ahead);

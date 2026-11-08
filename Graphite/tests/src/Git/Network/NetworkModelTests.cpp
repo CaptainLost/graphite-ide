@@ -706,7 +706,7 @@ TEST_CASE("Network model: push with an upstream on a remote with a slash in its 
 {
 	InlineNetwork network;
 	network.Port.Remotes = {Core::Remote{.Name = "team"}, Core::Remote{.Name = "team/mirror"}};
-	network.Port.Branches = {CheckedOut(LocalBranch("main", "team/mirror/release/1.0", 4, 0)),
+	network.Port.Branches = {CheckedOut(LocalBranch("release/1.0", "team/mirror/release/1.0", 4, 0)),
 							 RemoteBranch("team/mirror", "release/1.0")};
 
 	network.Model.Push();
@@ -714,6 +714,49 @@ TEST_CASE("Network model: push with an upstream on a remote with a slash in its 
 
 	CHECK(network.Port.CallsSoFar() == Calls({"PushTo team/mirror release/1.0"}));
 	CHECK(network.Model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push, .Commits = 4}});
+}
+
+TEST_CASE("Network model: a branch whose upstream has another name is published under its own name, never onto the upstream")
+{
+	// As `git checkout -b my-fix origin/main` sets it up: HEAD:main would move the server's main to the branch's commits.
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("my-fix", "origin/main", 2, 0)), RemoteBranch("origin", "main")};
+
+	network.Model.Push();
+	network.Update();
+
+	CHECK(network.Port.CallsSoFar() == Calls({"PushTo origin (set upstream)"}));
+	CHECK(network.Model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push}});
+
+	// The upstream's remote named, as the bar's menu names one, changes nothing.
+	InlineNetwork named;
+	named.Port.Branches = network.Port.Branches;
+
+	named.Model.Push("origin");
+	named.Update();
+
+	CHECK(named.Port.CallsSoFar() == Calls({"PushTo origin (set upstream)"}));
+}
+
+TEST_CASE("Network model: a branch goes to its upstream only when the names are the same, compared exactly as git does")
+{
+	InlineNetwork same;
+	same.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 2, 0)), RemoteBranch("origin", "main")};
+
+	same.Model.Push();
+	same.Update();
+
+	CHECK(same.Port.CallsSoFar() == Calls({"PushTo origin main"}));
+	CHECK(same.Model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push, .Commits = 2}});
+
+	// Names that differ only in case are two names.
+	InlineNetwork otherCase;
+	otherCase.Port.Branches = {CheckedOut(LocalBranch("Main", "origin/main", 2, 0)), RemoteBranch("origin", "main")};
+
+	otherCase.Model.Push();
+	otherCase.Update();
+
+	CHECK(otherCase.Port.CallsSoFar() == Calls({"PushTo origin (set upstream)"}));
 }
 
 TEST_CASE("Network model: detach cancels and never blocks")

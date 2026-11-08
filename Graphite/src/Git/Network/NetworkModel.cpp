@@ -581,7 +581,10 @@ namespace Graphite {
 			return answer;
 		}
 
-		const bool toUpstream = upstreamRemote == target;
+		// WARNING: Only a branch of its upstream's own name, compared exactly, goes to the upstream, as git's own default
+		// push has it. A branch made from origin/main tracks origin/main, and HEAD:main would move the server's main to the
+		// branch's commits; any other branch is published under its own name and tracks that from then on.
+		const bool toUpstream = upstreamRemote == target && checkedOut.Name == NameOnRemote(upstream->FullName, *target);
 
 		if (!toUpstream)
 		{

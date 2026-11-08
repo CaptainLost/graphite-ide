@@ -539,6 +539,68 @@ TEST_CASE("Git network port: push without an upstream sets one")
 	CHECK(scene.Git(scene.WorkPath(), {"config", "branch.master.merge"}) == "refs/heads/master");
 }
 
+TEST_CASE("Git network port: push of a branch whose upstream has another name publishes it under its own name")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+	const std::string serverMaster = scene.Git(scene.Bare(), {"rev-parse", kBranch});
+
+	// As git sets it up by default: a branch made from origin/master tracks origin/master.
+	scene.Git(scene.WorkPath(), {"checkout", "-q", "-b", "my-fix", "origin/master"});
+	REQUIRE(scene.Git(scene.WorkPath(), {"rev-parse", "--abbrev-ref", "my-fix@{upstream}"}) == "origin/master");
+	scene.Work().Write("fix.txt", "the fix\n");
+	scene.Work().Commit("the fix");
+
+	Graphite::RepositoryGitPort port{scene.WorkPath()};
+	ModelsOverPort models{port, scene.WorkPath()};
+	models.Network.Push();
+	models.RunToEnd();
+
+	const std::optional<Graphite::NetworkFailureReport> failure = models.Network.TakeFailure();
+	INFO((failure.has_value() ? failure->Copied : std::string{}));
+	REQUIRE_FALSE(failure.has_value());
+	CHECK(scene.Git(scene.Bare(), {"rev-parse", "refs/heads/my-fix"}) == scene.Head());
+	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == serverMaster);
+	CHECK(scene.Git(scene.WorkPath(), {"rev-parse", "--abbrev-ref", "my-fix@{upstream}"}) == "origin/my-fix");
+}
+
+TEST_CASE("Git network port: push of a branch of its upstream's name sends its commits to the upstream")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+	scene.Work().Write("b.txt", "two\n");
+	scene.Work().Commit("two");
+
+	Graphite::RepositoryGitPort port{scene.WorkPath()};
+	ModelsOverPort models{port, scene.WorkPath()};
+	models.Network.Push();
+	models.RunToEnd();
+
+	const std::optional<Graphite::NetworkFailureReport> failure = models.Network.TakeFailure();
+	INFO((failure.has_value() ? failure->Copied : std::string{}));
+	REQUIRE_FALSE(failure.has_value());
+	CHECK(models.Network.TakeDone() ==
+		  std::optional<Graphite::NetworkDone>{Graphite::NetworkDone{.Operation = Graphite::NetworkOperation::Push, .Commits = 1}});
+	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Head());
+	CHECK(scene.Git(scene.WorkPath(), {"rev-parse", "--abbrev-ref", "master@{upstream}"}) == "origin/master");
+}
+
 TEST_CASE("Git network port: setting the remote's head creates refs/remotes/<remote>/HEAD")
 {
 	const std::optional<std::filesystem::path> git = Core::FindGit();

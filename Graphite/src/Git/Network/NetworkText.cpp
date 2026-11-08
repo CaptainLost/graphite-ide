@@ -237,6 +237,19 @@ namespace Graphite {
 		return "No branch is checked out.";
 	}
 
+	std::string PublishText(const std::string& branch, const std::string& remote, const std::optional<std::string>& upstream)
+	{
+		const std::string published = remote + "/" + branch;
+		std::string text = "Push " + branch + " to " + remote + " as " + published;
+
+		if (upstream.has_value() && *upstream != published)
+		{
+			text += "; it then tracks " + published + " instead of " + *upstream;
+		}
+
+		return text;
+	}
+
 	std::string FailureMessage(NetworkOperation operation, const Core::NetworkFailure& failure, const NetworkNames& names)
 	{
 		if (operation == NetworkOperation::Pull)
