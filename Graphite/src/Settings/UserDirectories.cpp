@@ -151,6 +151,12 @@ namespace Graphite {
 		return directory;
 	}
 
+	// WARNING: Local, not roaming: a copy names a file on this machine. Not created here: the first copy creates it.
+	std::filesystem::path UserDirectories::UnsavedCopiesDirectory()
+	{
+		return GetRoots().Local / "unsaved";
+	}
+
 	std::filesystem::path UserDirectories::LogFile()
 	{
 		static const std::filesystem::path file = EnsuredDirectory(GetRoots().Local / "logs") / "graphite.log";

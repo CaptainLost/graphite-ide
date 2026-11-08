@@ -41,6 +41,7 @@
 #include "Sessions/SessionWindows.h"
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
+#include "Persistence/UnsavedCopies.h"
 #include "Review/FolderReviews.h"
 #include "Review/ReviewMenu.h"
 #include "Review/ReviewModel.h"
@@ -145,6 +146,9 @@ namespace Graphite {
 		static std::int64_t SystemClockSeconds();
 
 		void OpenStartupFolder();
+
+		// Opens a tab for each document given its unsaved changes back and says which came back and which could not.
+		void ShowPutBackUnsaved(const PutBackUnsaved& putBack);
 
 		void RouteShortcuts(Core::Event& event, Core::TypingTarget typingTarget);
 
@@ -468,5 +472,12 @@ namespace Graphite {
 			[](const std::filesystem::path& root, const WorkspaceState& state) {
 				WorkspaceSettings{root}.SaveState(state);
 			}};
+
+		// One worker, so a copy's write and its deletion land in the order asked. Declared before m_UnsavedCopies, so
+		// what it was asked last is done after it is gone.
+		static constexpr std::size_t kUnsavedCopyWorkers = 1;
+		Core::JobQueue m_UnsavedCopyWrites{kUnsavedCopyWorkers};
+		UnsavedCopies m_UnsavedCopies{UserDirectories::UnsavedCopiesDirectory(),
+									  [this](std::function<void()> job) { m_UnsavedCopyWrites.Submit(std::move(job)); }};
 	};
 }

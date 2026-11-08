@@ -316,7 +316,13 @@ namespace Graphite {
 		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
 		m_AnalysisCoordinator.GetPass().SetEnabled(m_AnalysisSettings.IsEnabled());
 
+		// WARNING: Put back before OpenStartupFolder, so a restored tab of the folder takes the document holding the unsaved
+		// changes instead of reading the file, and a large file is never read twice.
+		const PutBackUnsaved putBack = PutBack(m_Documents.GetStore(), m_UnsavedCopies.ClaimLeftBehind());
+
 		OpenStartupFolder();
+
+		ShowPutBackUnsaved(putBack);
 
 		// WARNING: Build the menu tree last, after every command is registered: the tree names ids, and one built earlier would draw disabled entries showing raw ids.
 		m_MenuTree = BuildMenuTree();
@@ -548,6 +554,62 @@ namespace Graphite {
 		}
 	}
 
+	void GraphiteLayer::ShowPutBackUnsaved(const PutBackUnsaved& putBack)
+	{
+		constexpr std::size_t kNamesShown = 4;
+
+		const auto listNames = [](const std::vector<std::string>& names) {
+			std::string listed;
+
+			for (std::size_t index = 0; index < names.size() && index < kNamesShown; ++index)
+			{
+				listed += index == 0 ? "" : ", ";
+				listed += names[index];
+			}
+
+			if (names.size() > kNamesShown)
+			{
+				listed += std::format(" and {} more", names.size() - kNamesShown);
+			}
+
+			return listed;
+		};
+
+		std::vector<std::string> putBackNames;
+
+		for (const std::shared_ptr<Core::TextDocument>& document : putBack.Documents)
+		{
+			m_DocumentWindows.OpenPutBack(document->GetPath());
+
+			if (document->IsModified())
+			{
+				putBackNames.push_back(Core::ToUtf8(document->GetPath().filename()));
+			}
+		}
+
+		if (!putBackNames.empty())
+		{
+			m_Events.Publish(ToastEvent{
+				.Kind = Core::ToastKind::Warning,
+				.Title = "Unsaved changes brought back",
+				.Message = std::format("Graphite did not close normally last time. The unsaved changes to {} are back in "
+									   "their tabs; Undo there goes back to the file on disk.",
+									   listNames(putBackNames))});
+		}
+
+		for (const PutBackUnsaved::Failure& failure : putBack.Failures)
+		{
+			const std::string message = std::format("{}. The changes are kept in {} for the next launch.", failure.Reason,
+													Core::ToUtf8(failure.Copy.KeptIn));
+
+			m_Events.Publish(ToastEvent{.Kind = Core::ToastKind::Error,
+										.Title = std::format("Cannot bring back the unsaved changes to {}",
+															 Core::ToUtf8(failure.Copy.Path.filename())),
+										.Message = message,
+										.CopyText = message});
+		}
+	}
+
 	void GraphiteLayer::OnUpdate(Core::Timestep timestep)
 	{
 		m_Workspace.Update();
@@ -581,6 +643,7 @@ namespace Graphite {
 			m_Workspace.IsOpen() ? std::optional<WorkspaceState>{m_Folder.Capture()} : std::nullopt;
 
 		m_StateKeeper.Observe(timestep.GetSeconds(), globalState, workspaceState);
+		m_UnsavedCopies.Observe(timestep.GetSeconds(), m_Documents.GetStore());
 	}
 
 	void GraphiteLayer::UpdateFocusReload(Core::Timestep timestep)
@@ -638,6 +701,17 @@ namespace Graphite {
 
 		m_StateKeeper.Flush();
 		m_FolderReviews.Flush();
+
+		// The reader answered for every unsaved change when the close question was answered or nothing was modified; an
+		// exit nobody asked about, such as the session ending, keeps them for the next launch.
+		if (m_CloseApproved || !m_DocumentWindows.HasModifiedDocuments())
+		{
+			m_UnsavedCopies.Discard();
+		}
+		else
+		{
+			m_UnsavedCopies.KeepForNextLaunch(m_Documents.GetStore());
+		}
 
 		// WARNING: Flush after StateKeeper, whose flush hands the window state to the settings.
 		m_AppSettings.Flush();

@@ -124,6 +124,10 @@ namespace Graphite {
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
 
+		// A permanent tab opened without the large-file question: the unsaved changes put back into its document are
+		// reason enough to read it.
+		void OpenPutBack(const std::filesystem::path& path) { LoadConfirmed(path, true); }
+
 		void LandFinishedLoads();
 
 		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }

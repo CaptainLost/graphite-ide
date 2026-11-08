@@ -17,6 +17,7 @@ namespace Graphite {
 		static std::filesystem::path ServersDirectory();
 		static std::filesystem::path ServerTemporaryFilesDirectory();
 		static std::filesystem::path GitRepositoriesDirectory();
+		static std::filesystem::path UnsavedCopiesDirectory();
 
 		static void Redirect(std::filesystem::path root);
 

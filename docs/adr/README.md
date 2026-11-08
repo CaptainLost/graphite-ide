@@ -713,4 +713,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0681](0681-keep-repositorygitport-s-forwarding-bodies-thread-local-handles-and-one-gitport.md) | Keep RepositoryGitPort's forwarding bodies, thread-local handles and one GitPort | rejected | 2026-11-08 |
 | [0682](0682-keep-each-stored-file-s-policy-in-the-module-that-owns-the-file.md) | Keep each stored file's policy in the module that owns the file | rejected | 2026-11-08 |
 | [0683](0683-clear-libgit2-s-last-error-by-hand-before-a-call-whose-failure-is-judged.md) | Clear libgit2's last error by hand before a call whose failure is judged | accepted | 2026-11-08 |
+| [0684](0684-copy-unsaved-changes-aside-so-a-crash-or-a-kill-does-not-lose-them.md) | Copy unsaved changes aside so a crash or a kill does not lose them | proposed | 2026-11-08 |
 <!-- /adr-index -->
