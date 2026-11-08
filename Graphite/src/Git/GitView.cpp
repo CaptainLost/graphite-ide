@@ -100,14 +100,12 @@ namespace Graphite {
 		ConnectViews();
 	}
 
-	void GitView::OnUpdate(Core::Timestep timestep)
+	void GitView::OnUpdate(Core::Timestep)
 	{
 		const bool panelOnScreen = HasBeenDrawnOnLatestFrame();
 		m_Worktrees.SetOnScreen(panelOnScreen);
 
 		m_Content.SetOnScreen(panelOnScreen);
-		m_Content.Follow(m_Lines.GetRead());
-		m_Content.OnUpdate(timestep);
 
 		// WARNING: Begin hands the modal gate back, and it only runs from OnImGuiRender, which is
 		// skipped for a panel that is hidden or behind another tab. An undrawn panel withdraws its

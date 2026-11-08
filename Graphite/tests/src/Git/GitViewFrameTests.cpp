@@ -20,10 +20,12 @@
 #include "Git/Lines/LinesModel.h"
 #include "Git/Lines/LinesPort.h"
 #include "Git/Network/NetworkModel.h"
+#include "Git/RepositorySession.h"
 #include "Git/Sidebar/SidebarView.h"
 #include "Git/Window/WindowBar.h"
 #include "Git/Worktrees/WorktreePort.h"
 #include "Git/Worktrees/WorktreesModel.h"
+#include "Git/WriteConsequences.h"
 #include "Theme/ActiveScheme.h"
 #include "Theme/GitPalette.h"
 #include "UI/Dialogs/ModalGate.h"
@@ -277,12 +279,7 @@ namespace {
 		{
 			const Core::Timestep noTime{0.0f};
 
-			Model.OnUpdate(noTime);
-			Network.OnUpdate(noTime);
-			Lines.Follow(Model.GetBranches(), Model.GetBranchListingGeneration(), Model.GetTags());
-			Lines.OnUpdate(noTime);
-			Worktrees.Follow(Model.GetBranches(), Model.GetWorkingDirectory());
-			Worktrees.OnUpdate(noTime);
+			Repository.Update(noTime);
 			View.OnUpdate(noTime);
 
 			Frames.Next([this] {
@@ -651,6 +648,8 @@ namespace {
 		Graphite::ActiveScheme Scheme;
 		Graphite::ChangesShared Shared;
 		Graphite::ChangesView Changes{Model, Modals, Buffers, Scheme, Events, Shared, "window"};
+		Graphite::WriteConsequences Writes{Model, Buffers, Shared, [](const Graphite::GitModel::WriteFailure&) {}, [] {}};
+		Graphite::RepositorySession Repository{Model, Writes, Network, Lines, Worktrees, Content};
 		TempAppSettings Settings;
 		Graphite::EditorSettings EditorPreferences{Settings.Get()};
 		Graphite::DiffWindows Diffs;

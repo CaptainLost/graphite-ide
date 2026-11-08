@@ -26,6 +26,7 @@
 #include "Git/Lines/LinesModel.h"
 #include "Git/Network/NetworkModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Git/RepositorySession.h"
 #include "Git/WriteConsequences.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Hex/HexFiles.h"
@@ -222,7 +223,7 @@ namespace Graphite {
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
 
 		// Takes what the review bases and the own-authors walk need from a line read that has just landed.
-		void FollowLinesIntoReviewsAndAuthors();
+		void FollowLinesIntoReviews();
 		void ApplyReviewMenuItem(const ReviewMenuItem& item);
 
 		// Opens a draft against ReviewBaseOf's base for a branch with neither a draft nor a session. False while the
@@ -437,6 +438,9 @@ namespace Graphite {
 												  m_ChangeMarkers.Invalidate();
 												  m_Blame.Invalidate();
 											  }};
+
+		// WARNING: Declared after every model it updates and m_WriteConsequences, which it holds.
+		RepositorySession m_Repository{m_Git, m_WriteConsequences, m_Network, m_Lines, m_Worktrees, m_Content};
 
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;

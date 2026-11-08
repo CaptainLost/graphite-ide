@@ -555,25 +555,11 @@ namespace Graphite {
 	{
 		m_Workspace.Update();
 
-		// WARNING: Update the model before the panels, so it applies whatever a worker finished this frame and any workspace event just published before a panel reads a snapshot.
-		m_Git.OnUpdate(timestep);
-
-		// WARNING: Right after the model, whatever is on screen: an expected write must be registered before the watcher
-		// reports it, and the watcher never sees `.git/` when the workspace is a subfolder of the repository or a linked
-		// worktree, so writes made by this process reach the change markers and blame only from here.
-		m_WriteConsequences.Apply();
-
-		// WARNING: After the git model, whose update applies Pull's fast-forward for the network model to take.
-		m_Network.OnUpdate(timestep);
+		// WARNING: Before the panels, so the models apply whatever a worker finished this frame and any workspace event just
+		// published before a panel reads a snapshot.
+		m_Repository.Update(timestep);
 		ApplyNetworkResults();
-
-		// WARNING: Here, not in the Git window, so the lines are read as soon as a folder's branches are, whether or not
-		// the window is on screen.
-		m_Lines.Follow(m_Git.GetBranches(), m_Git.GetBranchListingGeneration(), m_Git.GetTags());
-		m_Lines.OnUpdate(timestep);
-		m_Worktrees.Follow(m_Git.GetBranches(), m_Git.GetWorkingDirectory());
-		m_Worktrees.OnUpdate(timestep);
-		FollowLinesIntoReviewsAndAuthors();
+		FollowLinesIntoReviews();
 
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);
@@ -648,7 +634,7 @@ namespace Graphite {
 		m_Reviews.InvalidateRanges();
 	}
 
-	void GraphiteLayer::FollowLinesIntoReviewsAndAuthors()
+	void GraphiteLayer::FollowLinesIntoReviews()
 	{
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
 
@@ -667,7 +653,6 @@ namespace Graphite {
 		}
 
 		m_ReviewLines.emplace(*read);
-		m_Git.SetAuthorsHidden(BaseTipsOf(*read));
 	}
 
 	ReviewMenu GraphiteLayer::ReviewMenuOfBranch(const Core::Branch& branch) const
