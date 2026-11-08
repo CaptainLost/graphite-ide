@@ -355,8 +355,8 @@ namespace Graphite {
 		}
 		else
 		{
-			m_SidebarRows = BuildStashRows(inputs.Stashes.get(), failedStashRead, inputs.Tags.get(), failedTagRead,
-											  inputs.Search, m_OpenByUser);
+			m_SidebarRows = BuildRowsWithoutLines(inputs.Stashes.get(), failedStashRead, inputs.Tags.get(), failedTagRead,
+											  inputs.Search, m_OpenByUser, inputs.ShownRef);
 		}
 
 		m_SidebarBuiltFrom = std::move(inputs);

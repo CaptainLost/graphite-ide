@@ -410,11 +410,11 @@ TEST_CASE("Git window: while the lines are read only the stashes are listed")
 	const std::vector<Core::StashEntry> stashes = {{.Index = 0, .Message = "On main: Parser WIP"}, {.Index = 1, .Message = "On a: docs"}};
 	const std::map<std::string, bool> noneClosed;
 
-	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes 2", "stash 0", "stash 1"});
-	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, &kNoTags, nullptr, "docs", noneClosed)) == Lines{"# stashes 1/2", "stash 1"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&stashes, nullptr, &kNoTags, nullptr, {}, noneClosed, {})) == Lines{"# stashes 2", "stash 0", "stash 1"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&stashes, nullptr, &kNoTags, nullptr, "docs", noneClosed, {})) == Lines{"# stashes 1/2", "stash 1"});
 
 	const std::map<std::string, bool> closed = {{"stashes", false}};
-	CHECK(Describe(noLines, BuildStashRows(&stashes, nullptr, &kNoTags, nullptr, {}, closed)) == Lines{"# stashes 2 closed"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&stashes, nullptr, &kNoTags, nullptr, {}, closed, {})) == Lines{"# stashes 2 closed"});
 }
 
 TEST_CASE("Git window: the stashes section says when its list is read, failed or empty")
@@ -425,16 +425,16 @@ TEST_CASE("Git window: the stashes section says when its list is read, failed or
 	const std::vector<Core::StashEntry> none;
 	const Core::Error failure{Core::ErrorCode::IoFailure, "refs/stash is locked"};
 
-	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes", "? Loading stashes"});
-	CHECK(Describe(noLines, BuildStashRows(nullptr, &failure, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes", "! refs/stash is locked"});
-	CHECK(Describe(noLines, BuildStashRows(&stashes, &failure, &kNoTags, nullptr, {}, noneClosed)) ==
+	CHECK(Describe(noLines, BuildRowsWithoutLines(nullptr, nullptr, &kNoTags, nullptr, {}, noneClosed, {})) == Lines{"# stashes", "? Loading stashes"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(nullptr, &failure, &kNoTags, nullptr, {}, noneClosed, {})) == Lines{"# stashes", "! refs/stash is locked"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&stashes, &failure, &kNoTags, nullptr, {}, noneClosed, {})) ==
 		  Lines{"# stashes 1", "! refs/stash is locked", "stash 0"});
-	CHECK(Describe(noLines, BuildStashRows(&none, nullptr, &kNoTags, nullptr, {}, noneClosed)) == Lines{"# stashes 0", "! No stashes"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&none, nullptr, &kNoTags, nullptr, {}, noneClosed, {})) == Lines{"# stashes 0", "! No stashes"});
 
 	// A closed section says nothing, and a search with no stash to match leaves the section out.
 	const std::map<std::string, bool> closed = {{"stashes", false}};
-	CHECK(Describe(noLines, BuildStashRows(nullptr, nullptr, &kNoTags, nullptr, {}, closed)) == Lines{"# stashes closed"});
-	CHECK(BuildStashRows(nullptr, nullptr, &kNoTags, nullptr, "parser", noneClosed).empty());
+	CHECK(Describe(noLines, BuildRowsWithoutLines(nullptr, nullptr, &kNoTags, nullptr, {}, closed, {})) == Lines{"# stashes closed"});
+	CHECK(BuildRowsWithoutLines(nullptr, nullptr, &kNoTags, nullptr, "parser", noneClosed, {}).empty());
 }
 
 TEST_CASE("Git window: search finds merged branches that are hidden")
@@ -563,7 +563,7 @@ TEST_CASE("Git window: search with authors read but none for a tip falls back to
 TEST_CASE("Git window: a failed stashes read leaves the count's place empty and the section says what failed")
 {
 	const Core::Error error{.Message = "cannot read stashes"};
-	const std::vector<SidebarRow> rows = BuildStashRows(nullptr, &error, &kNoTags, nullptr, "", {});
+	const std::vector<SidebarRow> rows = BuildRowsWithoutLines(nullptr, &error, &kNoTags, nullptr, "", {}, {});
 
 	REQUIRE(rows.size() == 2);
 	CHECK(rows[0].Kind == SidebarRowKind::Section);
@@ -1481,8 +1481,31 @@ TEST_CASE("Sidebar: while the lines are read the tags are listed with the stashe
 	const std::vector<Core::Tag> tags = {TagNamed("v2"), TagNamed("v1")};
 	const std::map<std::string, bool> opened = {{"tags", true}};
 
-	CHECK(Describe(noLines, BuildStashRows(&kNoStashes, nullptr, &tags, nullptr, {}, opened)) ==
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, &tags, nullptr, {}, opened, {})) ==
 		  Lines{"# tags 2", "tag v2", "tag v1", "# stashes 0", "! No stashes"});
-	CHECK(Describe(noLines, BuildStashRows(&kNoStashes, nullptr, nullptr, nullptr, {}, opened)) ==
+
+	// The shown tag opens its section and its folder while the lines are read, as it does once they are.
+	const std::vector<Core::Tag> foldered = {TagNamed("v2"), TagNamed("release/1.0")};
+	const std::map<std::string, bool> noneClosed;
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, &foldered, nullptr, {}, noneClosed, "refs/tags/release/1.0")) ==
+		  Lines{"# tags 2", "tag v2", "> release/ 1", "  tag 1.0", "# stashes 0", "! No stashes"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, &foldered, nullptr, {}, noneClosed, {})).size() == 3);
+}
+
+TEST_CASE("Sidebar: while the lines are read the stashes wait for the tag list, so the two arrive in one frame")
+{
+	const LineRead noLines = LineReadBuilder{}.Build();
+	const std::map<std::string, bool> noneClosed;
+	const Core::Error failure{Core::ErrorCode::IoFailure, "packed-refs is locked"};
+	const std::vector<Core::Tag> tags = {TagNamed("v1")};
+
+	// Stashes in hand, tag list not: nothing is listed, so nothing moves when the Tags header appears.
+	CHECK(BuildRowsWithoutLines(&kNoStashes, nullptr, nullptr, nullptr, {}, noneClosed, {}).empty());
+	CHECK(BuildRowsWithoutLines(nullptr, nullptr, nullptr, nullptr, {}, noneClosed, {}).empty());
+
+	// A listing that landed, even empty, or one that failed, lets both sections in at once.
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, &kNoTags, nullptr, {}, noneClosed, {})) ==
 		  Lines{"# stashes 0", "! No stashes"});
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, nullptr, &failure, {}, noneClosed, {})).front() == "# tags closed");
+	CHECK(Describe(noLines, BuildRowsWithoutLines(&kNoStashes, nullptr, &tags, nullptr, {}, noneClosed, {})).back() == "! No stashes");
 }

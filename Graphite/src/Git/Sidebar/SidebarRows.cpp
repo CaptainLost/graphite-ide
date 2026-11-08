@@ -83,8 +83,15 @@ namespace Graphite {
 				return std::move(m_Rows);
 			}
 
-			std::vector<SidebarRow> BuildStashes()
+			std::vector<SidebarRow> BuildWithoutLines()
 			{
+				// The Stashes wait for the tags, which are listed with the branches: the two sections arrive in one frame, so
+				// the Stashes never move down a row when the Tags header appears above them.
+				if (m_Input.Tags == nullptr && m_Input.TagsError == nullptr)
+				{
+					return {};
+				}
+
 				AddTags();
 				AddStashes();
 				return std::move(m_Rows);
@@ -586,7 +593,7 @@ namespace Graphite {
 
 				// The section and the folder holding the shown tag open unless the user closed them, so a tag the user looks
 				// at is never out of sight.
-				const Core::Tag* const shownTag = tags != nullptr && m_Input.ShownRef.starts_with(Core::kTagPrefix)
+				const Core::Tag* const shownTag = tags != nullptr && IsTagName(m_Input.ShownRef)
 													  ? TagWithFullName(*tags, m_Input.ShownRef)
 													  : nullptr;
 				const std::string_view shownFolder = shownTag != nullptr ? FolderOfTagName(shownTag->Name) : std::string_view{};
@@ -900,9 +907,10 @@ namespace Graphite {
 		return reveal;
 	}
 
-	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
+	std::vector<SidebarRow> BuildRowsWithoutLines(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   const std::vector<Core::Tag>* tags, const Core::Error* tagsError,
-										   std::string_view search, const std::map<std::string, bool>& openByUser)
+										   std::string_view search, const std::map<std::string, bool>& openByUser,
+													 std::string_view shownRef)
 	{
 		static const LineRead kNoLines;
 		static const std::set<std::string> kNoneShowingMerged;
@@ -914,8 +922,9 @@ namespace Graphite {
 								 .OpenByUser = openByUser,
 								 .ShowingMerged = kNoneShowingMerged,
 								 .StashesError = stashesError,
+								 .ShownRef = shownRef,
 								 .Tags = tags,
 								 .TagsError = tagsError};
-		return Builder{input}.BuildStashes();
+		return Builder{input}.BuildWithoutLines();
 	}
 }

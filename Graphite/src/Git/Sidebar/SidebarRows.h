@@ -211,8 +211,10 @@ namespace Graphite {
 	std::optional<HeadRowReveal> RevealHeadRow(const Core::HeadState* head, const SidebarInput& input);
 
 	// The rows that need no line model, for while the lines are read: the Tags and Stashes sections, as BuildSidebarRows
-	// lists them.
-	std::vector<SidebarRow> BuildStashRows(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
+	// lists them. Nothing is listed until the tag list has landed or failed, so the two sections arrive in one frame and
+	// the Stashes never move down a row when the Tags appear. The shown ref opens the section and folder holding it.
+	std::vector<SidebarRow> BuildRowsWithoutLines(const std::vector<Core::StashEntry>* stashes, const Core::Error* stashesError,
 										   const std::vector<Core::Tag>* tags, const Core::Error* tagsError,
-										   std::string_view search, const std::map<std::string, bool>& openByUser);
+										   std::string_view search, const std::map<std::string, bool>& openByUser,
+													 std::string_view shownRef);
 }

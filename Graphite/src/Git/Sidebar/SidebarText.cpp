@@ -620,8 +620,8 @@ namespace Graphite {
 
 	SidebarRowText DescribeTagRow(const Core::Tag& tag, std::chrono::sys_seconds now, const std::chrono::time_zone* zone)
 	{
+		// No Head: the row draws its label, the tag's name, itself.
 		SidebarRowText text;
-		text.Head = tag.Name;
 		text.Right = FormatBranchAge(tag.When, now);
 		text.Tooltip = tag.FullName + "\n" + FormattedTimestamp(tag.When, zone);
 
