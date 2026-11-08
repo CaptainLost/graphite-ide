@@ -6,9 +6,9 @@
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
-#include <chrono>
 #include <optional>
 #include <system_error>
 #include <unordered_map>
@@ -1366,6 +1366,11 @@ namespace Graphite {
 		if (headTime.HasValue())
 		{
 			activity.HeadCommit = headTime.GetValue();
+		}
+		else if (headTime.GetError().Code != Core::ErrorCode::NotFound)
+		{
+			// Only an unborn HEAD has no commit time; anything else is a failed read, not an absence.
+			return headTime.GetError();
 		}
 
 		return activity;

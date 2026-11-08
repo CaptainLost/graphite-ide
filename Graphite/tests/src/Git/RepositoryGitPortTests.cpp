@@ -1256,24 +1256,40 @@ TEST_CASE("Repository port: a worktree count names its newest changed file's tim
 	CHECK(*count.GetValue().NewestChange == later);
 }
 
+// Guards that a status read through the port's cached per-thread handle reflects an index another process rewrote:
+// staging a modification of a tracked file keeps the index the same size, so only a reload on the file's changed stamp
+// (libgit2's status does this) or an explicit refresh shows it.
 TEST_CASE("Repository port: a file staged by another process shows staged at once")
 {
 	ReviewRepository repository;
 	const std::filesystem::path worktree = AddCommittedWorktree(repository);
-	ReviewRepository::WriteFileAt(worktree / "n.txt", "n\n");
+	ReviewRepository::WriteFileAt(worktree / "a.txt", "two\n");
 
 	Graphite::RepositoryGitPort port{worktree};
 	const Core::Result<Core::WorkingTreeStatus> before = port.QueryStatus();
 	REQUIRE(before.HasValue());
 	REQUIRE(before.GetValue().Entries.size() == 1);
-	CHECK(before.GetValue().Entries.front().IsUntracked);
+	CHECK(before.GetValue().Entries.front().Index == Core::StatusFlags::None);
+	CHECK(before.GetValue().Entries.front().WorkTree == Core::StatusFlags::Modified);
 
-	StageInOtherHandle(worktree, "n.txt");
+	StageInOtherHandle(worktree, "a.txt");
 
 	const Core::Result<Core::WorkingTreeStatus> after = port.QueryStatus();
 	REQUIRE(after.HasValue());
 	REQUIRE(after.GetValue().Entries.size() == 1);
-	CHECK(after.GetValue().Entries.front().Index == Core::StatusFlags::New);
+	CHECK(after.GetValue().Entries.front().Index == Core::StatusFlags::Modified);
+	CHECK(after.GetValue().Entries.front().WorkTree == Core::StatusFlags::None);
+}
+
+TEST_CASE("Repository port: an unborn HEAD leaves the activity's commit time unset")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const Core::Result<Graphite::WorktreeActivity> activity = port.QueryActivity(repo.GetPath());
+
+	REQUIRE(activity.HasValue());
+	CHECK_FALSE(activity.GetValue().HeadCommit.has_value());
 }
 
 TEST_CASE("Repository port: a held index.lock makes Stage fail as locked")
