@@ -7,6 +7,7 @@
 #include "Core/Platform/Win32Owners.h"
 #include "Core/Platform/Win32Error.h"
 #include "Core/Platform/Win32Io.h"
+#include "Core/Platform/Win32Process.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -549,21 +550,7 @@ namespace Core {
 	std::optional<std::uint32_t> PseudoConsole::GetExitCode() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// WARNING: Asked only once the process handle has signalled: a program can exit with STILL_ACTIVE's own value,
-		// so the code alone cannot tell a running program from one that ended.
-		if (!m_Process || IsRunning())
-		{
-			return std::nullopt;
-		}
-
-		DWORD exitCode = 0;
-
-		if (!::GetExitCodeProcess(m_Process.Get(), &exitCode))
-		{
-			return std::nullopt;
-		}
-
-		return static_cast<std::uint32_t>(exitCode);
+		return ExitCodeOnceEnded(m_Process.Get());
 #else
 		return std::nullopt;
 #endif
