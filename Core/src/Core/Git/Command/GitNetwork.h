@@ -61,7 +61,7 @@ namespace Core {
 	NetworkOutcome FetchFullHistory(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress);
 
 	// Never git pull: the user's pull.rebase and pull.ff would decide what it did. Refuses, changing nothing, when the
-	// branch cannot be moved by a fast-forward or the move would overwrite local changes.
+	// branch cannot be moved by a fast-forward or the move would overwrite local changes, whatever merge.autoStash says.
 	NetworkOutcome FastForward(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 							 const std::string& upstreamFullName);
 

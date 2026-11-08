@@ -16,6 +16,7 @@
 #include "Git/GitModel.h"
 #include "Git/Lines/LineReader.h"
 #include "Git/Lines/LinesModel.h"
+#include "Git/Network/NetworkModel.h"
 #include "Review/ReviewRepository.h"
 #include "Workspace/Workspace.h"
 
@@ -28,6 +29,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -192,6 +194,39 @@ namespace {
 		std::filesystem::path m_Bare;
 		std::filesystem::path m_Peer;
 	};
+
+	// The window's git and network models over the port, every job answered where it is asked: an operation asked runs as
+	// the bar's buttons run it, its fast-forward included.
+	class ModelsOverPort
+	{
+	public:
+		ModelsOverPort(Graphite::RepositoryGitPort& port, const std::filesystem::path& root) : Port(port) { Git.SetRoot(root); }
+
+		// The frames until the operation asked has ended.
+		void RunToEnd()
+		{
+			constexpr int kMostFrames = 20;
+			constexpr float kFrameSeconds = 0.016f;
+
+			for (int frame = 0; frame < kMostFrames && Network.GetState().Running.has_value(); ++frame)
+			{
+				Git.OnUpdate(Core::Timestep{kFrameSeconds});
+				Network.OnUpdate(Core::Timestep{kFrameSeconds});
+			}
+
+			REQUIRE_FALSE(Network.GetState().Running.has_value());
+		}
+
+		Graphite::RepositoryGitPort& Port;
+		Graphite::GitModel Git{Port, RunJobsInline()};
+		Graphite::NetworkModel Network{Port, Git, RunJobsInline()};
+	};
+
+	std::string ReadText(const std::filesystem::path& path)
+	{
+		std::ifstream file{path, std::ios::binary};
+		return std::string{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
+	}
 
 	// The port's line read of the branches it lists now, given the graph of the read before (null loads the store's).
 	Graphite::LineRead ReadLinesThrough(Graphite::RepositoryGitPort& port, Core::Ref<const Core::AncestryGraph> graph, std::int64_t now)
@@ -438,6 +473,39 @@ TEST_CASE("Git network port: fast-forward moves the branch and the work tree to 
 	REQUIRE(forwarded.Result == Core::NetworkResult::Done);
 	CHECK(scene.Head() == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 	CHECK(std::filesystem::exists(scene.WorkPath() / "b.txt"));
+}
+
+TEST_CASE("Git network port: pull refuses to overwrite local changes where merge.autoStash is set, and stashes nothing")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+	const std::string publishedHead = scene.Head();
+	scene.PeerCommitsAndPushes("a.txt", "changed by the peer\n");
+
+	// The repository's own config asks merge to stash local changes and put them back over the merge's.
+	scene.Git(scene.WorkPath(), {"config", "merge.autoStash", "true"});
+	scene.Work().Write("a.txt", "my unsaved work\n");
+
+	Graphite::RepositoryGitPort port{scene.WorkPath()};
+	ModelsOverPort models{port, scene.WorkPath()};
+	models.Network.Pull();
+	models.RunToEnd();
+
+	const std::optional<Graphite::NetworkFailureReport> failure = models.Network.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Operation == Graphite::NetworkOperation::Pull);
+	CHECK(failure->Error.Message == "Commit or stash your changes to these files first:\na.txt");
+	CHECK(scene.Git(scene.WorkPath(), {"stash", "list"}).empty());
+	CHECK(scene.Head() == publishedHead);
+	CHECK(ReadText(scene.WorkPath() / "a.txt") == "my unsaved work\n");
 }
 
 TEST_CASE("Git network port: push sends the branch to its upstream branch")

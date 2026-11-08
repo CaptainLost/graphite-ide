@@ -140,7 +140,9 @@ namespace Core {
 	NetworkOutcome FastForward(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 							 const std::string& upstreamFullName)
 	{
-		return RunToSuccess(run, cancelled, progress, {"merge", "--ff-only", upstreamFullName});
+		// WARNING: --no-autostash, so a user's merge.autoStash never stashes local changes and lays them back over the merge
+		// as a conflict that the window cannot show: the merge refuses instead, changing nothing.
+		return RunToSuccess(run, cancelled, progress, {"merge", "--ff-only", "--no-autostash", upstreamFullName});
 	}
 
 	NetworkOutcome PushTo(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
