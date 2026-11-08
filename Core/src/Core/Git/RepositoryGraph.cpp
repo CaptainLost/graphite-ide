@@ -154,6 +154,16 @@ namespace Core {
 		return m_Handle != nullptr && git_repository_is_shallow(m_Handle.get()) == 1;
 	}
 
+	std::unordered_set<Oid> Repository::ShallowBoundary() const
+	{
+		if (m_Handle == nullptr)
+		{
+			return {};
+		}
+
+		return ReadShallowBoundary(CommonDirectory());
+	}
+
 	std::filesystem::path Repository::CommonDirectory() const
 	{
 		if (m_Handle == nullptr)

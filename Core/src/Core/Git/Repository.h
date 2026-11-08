@@ -27,6 +27,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 struct git_odb_backend;
@@ -129,6 +130,10 @@ namespace Core {
 		Result<std::vector<GraphCommit>> ReadGraphCommits(const GraphReadRequest& request) const;
 
 		bool IsShallow() const;
+
+		// The commits the shallow file names, whose parents this repository does not have; none for a whole clone.
+		// ReadGraphCommits returns each of them cut.
+		std::unordered_set<Oid> ShallowBoundary() const;
 
 		// The git directory every worktree of this repository shares (git_repository_commondir).
 		std::filesystem::path CommonDirectory() const;

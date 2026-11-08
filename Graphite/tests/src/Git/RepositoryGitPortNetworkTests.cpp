@@ -770,3 +770,40 @@ TEST_CASE("Git network port: a clone deepened while a ref moves is read once, ho
 	port.SetRoot({});
 	port.LetGoOfHandlesNoLongerCurrent();
 }
+
+TEST_CASE("Git network port: a clone deepened by one commit in a terminal reads the commits that were cut at the next repository change")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	TempDirectory cloneDirectory;
+	const std::filesystem::path shallow = ForkedShallowClone(scene, cloneDirectory, "2");
+	const std::optional<Core::Oid> fork = Core::Oid::FromHex(scene.Git(scene.WorkPath(), {"rev-parse", "topic~2"}));
+	REQUIRE(fork.has_value());
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{shallow, storeRoot.GetPath()};
+	WindowOverPort window{port, shallow};
+	REQUIRE(window.StateOf("refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::HistoryCutOff});
+	REQUIRE_FALSE(window.Lines.HoldsCommit(*fork));
+
+	// One commit deeper, from outside the window: the fork comes in, and the clone stays shallow below it.
+	const std::string refsBefore = scene.Git(shallow, {"for-each-ref"});
+	scene.Git(shallow, {"fetch", "-q", "--deepen=1"});
+	REQUIRE(scene.Git(shallow, {"for-each-ref"}) == refsBefore);
+	REQUIRE(scene.Git(shallow, {"rev-parse", "--is-shallow-repository"}) == "true");
+
+	window.NoticeRepositoryChange();
+
+	CHECK(window.Lines.HoldsCommit(*fork));
+	CHECK(window.StateOf("refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::NotMerged});
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
+}

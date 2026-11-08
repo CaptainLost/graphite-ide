@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -166,6 +167,24 @@ TEST_CASE("Lines: a shallow boundary comes back cut and without parents")
 	REQUIRE(tip != nullptr);
 	CHECK_FALSE(tip->ParentsCut);
 	CHECK(tip->Parents.size() == 1);
+}
+
+TEST_CASE("Lines: the shallow boundary is the commits the shallow file names, and a whole clone has none")
+{
+	GitFixture repo;
+	repo.Write("a.txt", "1");
+	repo.Commit("first");
+	repo.Write("a.txt", "2");
+	const std::string second = repo.Commit("second");
+
+	{
+		const Core::Repository whole = OpenRepositoryAt(repo.GetPath());
+		CHECK(whole.ShallowBoundary().empty());
+	}
+
+	repo.MarkShallow(second);
+	const Core::Repository repository = OpenRepositoryAt(repo.GetPath());
+	CHECK(repository.ShallowBoundary() == std::unordered_set<Core::Oid>{OidFromHex(second)});
 }
 
 TEST_CASE("Lines: remote names are listed in name order")

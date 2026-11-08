@@ -34,11 +34,13 @@ namespace Graphite {
 			return best;
 		}
 
-		bool HasCutCommit(const Core::AncestryGraph& graph)
+		// A commit the graph holds cut that the repository's shallow file no longer names: a fetch, here or in a terminal,
+		// deepened the clone past it, all the way or by some commits.
+		bool HasCommitCutNoLonger(const Core::AncestryGraph& graph, const std::unordered_set<Core::Oid>& shallowBoundary)
 		{
 			for (Core::AncestryGraph::Index commit = 0; commit < graph.Size(); ++commit)
 			{
-				if (graph.ParentsCutAt(commit))
+				if (graph.ParentsCutAt(commit) && !shallowBoundary.contains(graph.IdOf(commit)))
 				{
 					return true;
 				}
@@ -384,8 +386,8 @@ namespace Graphite {
 		WorkingGraph graph = input.Graph != nullptr ? WorkingGraph{input.Graph} : WorkingGraph{LoadGraph(store.Graph).value_or(Core::AncestryGraph{})};
 		bool graphChanged = false;
 
-		// Once the repository is deepened the cut commits would stay cut for ever, so the whole graph is read again.
-		if (!repository.IsShallow() && HasCutCommit(graph.Get()))
+		// Once the repository is deepened the commits cut before would stay cut for ever, so the whole graph is read again.
+		if (HasCommitCutNoLonger(graph.Get(), repository.ShallowBoundary()))
 		{
 			graph.StartAfresh();
 			graphChanged = true;
