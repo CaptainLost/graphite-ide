@@ -387,6 +387,42 @@ TEST_CASE("Network: push without an upstream sets one")
 	CHECK(scene.Git(scene.Work(), {"config", "branch.master.merge"}) == "refs/heads/master");
 }
 
+TEST_CASE("Network: push sends no tag, to its upstream or setting one, even where push.followTags is set")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	constexpr std::int64_t kTaggerTime = 1767225600;
+
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+	scene.Git(scene.Work(), {"config", "push.followTags", "true"});
+
+	scene.Fixture().Write("local.txt", "mine\n");
+	const std::string tagged = scene.Fixture().Commit("local");
+	scene.Fixture().TagAnnotated("v1", tagged, kTaggerTime, "v1\n");
+
+	const std::atomic<bool> neverCancelled{false};
+	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch}).Result == Core::NetworkResult::Done);
+	REQUIRE(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == tagged);
+	CHECK(scene.Git(scene.Bare(), {"tag", "--list"}).empty());
+
+	scene.Fixture().Branch("side");
+	scene.Fixture().Checkout("side");
+	scene.Fixture().Write("side.txt", "side\n");
+	const std::string sideTagged = scene.Fixture().Commit("side");
+	scene.Fixture().TagAnnotated("v2", sideTagged, kTaggerTime, "v2\n");
+
+	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::nullopt).Result == Core::NetworkResult::Done);
+	REQUIRE(scene.Git(scene.Bare(), {"rev-parse", "side"}) == sideTagged);
+	CHECK(scene.Git(scene.Bare(), {"tag", "--list"}).empty());
+}
+
 TEST_CASE("Network: a push the remote rejects as not a fast-forward is a failure with the rejected hint")
 {
 	const std::optional<std::filesystem::path> git = Core::FindGit();

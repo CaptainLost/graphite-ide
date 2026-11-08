@@ -146,12 +146,14 @@ namespace Core {
 	NetworkOutcome PushTo(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 						const std::string& remote, const std::optional<std::string>& upstreamBranch)
 	{
+		// WARNING: --no-follow-tags, so the user's push.followTags never sends the tags on the commits pushed.
 		if (upstreamBranch.has_value())
 		{
-			return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--", remote, "HEAD:" + *upstreamBranch});
+			return RunToSuccess(run, cancelled, progress,
+								{"push", "--progress", "--no-follow-tags", "--", remote, "HEAD:" + *upstreamBranch});
 		}
 
-		return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--set-upstream", "--", remote, "HEAD"});
+		return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--no-follow-tags", "--set-upstream", "--", remote, "HEAD"});
 	}
 
 	NetworkOutcome SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,

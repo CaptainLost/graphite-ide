@@ -65,7 +65,8 @@ namespace Core {
 	NetworkOutcome FastForward(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 							 const std::string& upstreamFullName);
 
-	// Never forces and never sends tags. An empty upstreamBranch pushes HEAD with --set-upstream.
+	// Never forces and never sends tags, whatever push.followTags says. An empty upstreamBranch pushes HEAD with
+	// --set-upstream.
 	NetworkOutcome PushTo(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 						const std::string& remote, const std::optional<std::string>& upstreamBranch);
 
