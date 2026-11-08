@@ -82,9 +82,20 @@ namespace Graphite {
 		std::string FetchedAge;
 	};
 
+	// Whether the buttons may run git at all.
+	struct NetworkAccess
+	{
+		bool GitFound = false;
+
+		// The open folder is trusted. git runs the folder's hooks and the commands its config names, so in restricted
+		// mode none of the three runs (ADR 0532, as ADR 0678 amends it).
+		bool FolderTrusted = false;
+	};
+
 	// WARNING: The three keep their places and are disabled, with no count, until the branches and remotes are listed.
 	NetworkButtons DescribeNetworkButtons(const WindowBarInput& input, const NetworkState& state,
-										  std::optional<std::chrono::sys_seconds> lastFetch, std::chrono::sys_seconds now, bool gitFound);
+										  std::optional<std::chrono::sys_seconds> lastFetch, std::chrono::sys_seconds now,
+										  NetworkAccess access);
 
 	enum class NetworkClick
 	{

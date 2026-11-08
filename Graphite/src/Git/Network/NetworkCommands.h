@@ -38,8 +38,8 @@ namespace Graphite {
 	// "Choose the remote from Push in the Git window."
 	std::string ChooseRemoteFromBarText();
 
-	// The buttons as the window bar draws them now.
-	NetworkButtons DescribeNetworkButtonsNow(const GitModel& git, const NetworkModel& network, bool checkingOut);
+	// The buttons as the window bar draws them now, for a folder trusted or not.
+	NetworkButtons DescribeNetworkButtonsNow(const GitModel& git, const NetworkModel& network, bool checkingOut, bool folderTrusted);
 
 	struct NetworkCommandServices
 	{

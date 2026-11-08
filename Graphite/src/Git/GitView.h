@@ -101,6 +101,11 @@ namespace Graphite {
 
 		std::function<void(const std::string& from, const std::string& to)> OnBranchRenamed;
 
+		// Whether the open folder is trusted, asked each frame, so trusting it enables Fetch, Pull, Push and the banner's
+		// Fetch full history at once: git runs the folder's hooks and the commands its config names. Unset counts as
+		// trusted, as an unset root permission does for the language server.
+		std::function<bool()> IsFolderTrusted;
+
 		GitWindowState CaptureWindowState() const;
 
 		// Applied through RefToRestore once the branches, or for a tag the tags, are known.
@@ -551,6 +556,7 @@ namespace Graphite {
 			NetworkState State;
 			std::optional<std::chrono::sys_seconds> LastFetch;
 			bool GitFound = false;
+			bool FolderTrusted = false;
 			std::int64_t NowMinutes = 0;
 
 			friend bool operator==(const NetworkSource&, const NetworkSource&) = default;

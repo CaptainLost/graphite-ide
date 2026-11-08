@@ -45,11 +45,17 @@ namespace {
 	}
 
 	NetworkButtons Describe(const Core::HeadState& head, const std::vector<Core::Branch>& branches,
-							const std::vector<Core::Remote>& remotes, const NetworkState& state = {}, bool gitFound = true)
+							const std::vector<Core::Remote>& remotes, const NetworkState& state = {}, bool gitFound = true,
+							bool folderTrusted = true)
 	{
 		return Graphite::DescribeNetworkButtons(Graphite::WindowBarInput{kFolder, &head, &branches, &remotes, false}, state,
-												std::nullopt, kNow, gitFound);
+												std::nullopt, kNow,
+												Graphite::NetworkAccess{.GitFound = gitFound, .FolderTrusted = folderTrusted});
 	}
+
+	constexpr const char* kFolderNotTrustedSentence =
+		"Fetch, Pull and Push run git, which runs this folder's hooks and the commands its git config names. Trust the folder "
+		"to use them.";
 
 	struct Registered
 	{
@@ -214,6 +220,36 @@ TEST_CASE("Commands: Fetch full history is disabled for Fetch's own reasons in F
 		const NetworkState running{.Running = operation, .Serial = 3, .Cancellable = true};
 		CHECK_FALSE(Graphite::CommandStateOfFullHistory(Describe(head, branches, remotes, running), running).Enabled);
 	}
+}
+
+TEST_CASE("Commands: in a folder not trusted the three commands and Fetch full history are disabled, saying why")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main", "origin/main", 1, 2)};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+	constexpr bool kGitFound = true;
+	constexpr bool kNotTrusted = false;
+	const NetworkButtons untrusted = Describe(head, branches, remotes, {}, kGitFound, kNotTrusted);
+
+	Registered registered(untrusted);
+	CHECK_FALSE(registered.EnabledNow("git.fetch"));
+	CHECK_FALSE(registered.EnabledNow("git.pull"));
+	CHECK_FALSE(registered.EnabledNow("git.push"));
+	CHECK(Graphite::CommandStateOfFetch(untrusted).Note == kFolderNotTrustedSentence);
+	CHECK(Graphite::CommandStateOfPull(untrusted).Note == kFolderNotTrustedSentence);
+	CHECK(Graphite::CommandStateOfPush(untrusted).Note == kFolderNotTrustedSentence);
+
+	const Graphite::NetworkCommandState fullHistory = Graphite::CommandStateOfFullHistory(untrusted, NetworkState{});
+	CHECK_FALSE(fullHistory.Enabled);
+	CHECK(fullHistory.Note == kFolderNotTrustedSentence);
+
+	// Trusted, the same repository runs all four.
+	const NetworkButtons trusted = Describe(head, branches, remotes);
+	Registered trustedCommands(trusted);
+	CHECK(trustedCommands.EnabledNow("git.fetch"));
+	CHECK(trustedCommands.EnabledNow("git.pull"));
+	CHECK(trustedCommands.EnabledNow("git.push"));
+	CHECK(Graphite::CommandStateOfFullHistory(trusted, NetworkState{}).Enabled);
 }
 
 TEST_CASE("Commands: running one starts its operation")

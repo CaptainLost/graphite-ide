@@ -66,6 +66,9 @@ namespace Graphite {
 
 		constexpr const char* kGitMissing =
 			"Fetch, Pull and Push need git, which was not found on PATH or where Git for Windows installs it.";
+		constexpr const char* kFolderNotTrusted =
+			"Fetch, Pull and Push run git, which runs this folder's hooks and the commands its git config names. Trust the "
+			"folder to use them.";
 		constexpr const char* kClickToCancel = "Click to cancel";
 		constexpr const char* kLastStepTooltip = "Pulling\xE2\x80\xA6 the last step cannot be cancelled";
 
@@ -845,7 +848,8 @@ namespace Graphite {
 	}
 
 	NetworkButtons DescribeNetworkButtons(const WindowBarInput& input, const NetworkState& state,
-										  std::optional<std::chrono::sys_seconds> lastFetch, std::chrono::sys_seconds now, bool gitFound)
+										  std::optional<std::chrono::sys_seconds> lastFetch, std::chrono::sys_seconds now,
+										  NetworkAccess access)
 	{
 		NetworkButtons buttons;
 		buttons.Fetch.Label = "Fetch";
@@ -859,11 +863,17 @@ namespace Graphite {
 
 		const bool listed = input.Branches != nullptr && input.Remotes != nullptr;
 
-		if (listed && !gitFound)
+		if (listed && !access.GitFound)
 		{
 			buttons.Fetch.Tooltip = kGitMissing;
 			buttons.Pull.Tooltip = kGitMissing;
 			buttons.Push.Tooltip = kGitMissing;
+		}
+		else if (listed && !access.FolderTrusted)
+		{
+			buttons.Fetch.Tooltip = kFolderNotTrusted;
+			buttons.Pull.Tooltip = kFolderNotTrusted;
+			buttons.Push.Tooltip = kFolderNotTrusted;
 		}
 		else if (listed)
 		{

@@ -223,6 +223,10 @@ namespace Graphite {
 			m_ReviewWindows.NoteRename(from, to);
 		};
 
+		// WARNING: Fetch, Pull and Push run git, which runs the folder's hooks and the commands its config names, so a
+		// folder in restricted mode runs none of them (ADR 0678 amends ADR 0532).
+		gitView->IsFolderTrusted = [this] { return IsOpenFolderTrusted(); };
+
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_DocumentBuffers, m_ActiveScheme, m_DiffWindows,
 													 m_Events, m_ChangesShared));
 
@@ -368,7 +372,7 @@ namespace Graphite {
 						}});
 
 		RegisterNetworkCommands(m_Commands,
-								NetworkCommandServices{.Buttons = [this] { return DescribeNetworkButtonsNow(m_Git, m_Network, m_GitView != nullptr && m_GitView->CurrentWait().CheckingOut.has_value()); },
+								NetworkCommandServices{.Buttons = [this] { return DescribeNetworkButtonsNow(m_Git, m_Network, m_GitView != nullptr && m_GitView->CurrentWait().CheckingOut.has_value(), IsOpenFolderTrusted()); },
 													   .Fetch = [this] { m_Network.Fetch(); },
 													   .Pull = [this] { m_Network.Pull(); },
 													   .Push = [this] { m_Network.Push(); }});
@@ -1495,6 +1499,11 @@ namespace Graphite {
 			m_LanguagePromptsDismissedUntilRestart.insert(prompt.Language);
 			break;
 		}
+	}
+
+	bool GraphiteLayer::IsOpenFolderTrusted() const
+	{
+		return m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot());
 	}
 
 	void GraphiteLayer::RenderRestrictedModeBar(bool trusted)

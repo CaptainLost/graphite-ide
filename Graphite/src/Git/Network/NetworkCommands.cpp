@@ -54,7 +54,7 @@ namespace Graphite {
 		return StateOf(buttons.Fetch);
 	}
 
-	NetworkButtons DescribeNetworkButtonsNow(const GitModel& git, const NetworkModel& network, bool checkingOut)
+	NetworkButtons DescribeNetworkButtonsNow(const GitModel& git, const NetworkModel& network, bool checkingOut, bool folderTrusted)
 	{
 		const Core::Ref<const Core::HeadState> head = git.GetHead();
 		const Core::Ref<const std::vector<Core::Branch>> branches = git.GetBranches();
@@ -62,7 +62,8 @@ namespace Graphite {
 		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 		return DescribeNetworkButtons(WindowBarInput{git.GetWorkingDirectory(), head.get(), branches.get(), remotes.get(), checkingOut},
-									  network.GetState(), network.ShownLastFetch(git.GetLastFetch()), now, git.IsGitFound());
+									  network.GetState(), network.ShownLastFetch(git.GetLastFetch()), now,
+									  NetworkAccess{.GitFound = git.IsGitFound(), .FolderTrusted = folderTrusted});
 	}
 
 	void RegisterNetworkCommands(Core::CommandRegistry& commands, NetworkCommandServices services)

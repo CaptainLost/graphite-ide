@@ -782,6 +782,35 @@ TEST_CASE("Git window: a click on a shallow clone's Fetch full history fetches t
 	CHECK(window.Port.Network.Calls == std::vector<std::string>{"FetchFullHistory"});
 }
 
+TEST_CASE("Git window: in a folder not trusted Fetch and Fetch full history run nothing, and trusting the folder enables both at once")
+{
+	GitWindow window("UntrustedNetworkWindow", HeadOnMain(), {}, CutOffBranchRead());
+	bool trusted = false;
+	window.View.IsFolderTrusted = [&trusted] { return trusted; };
+	ShowCutOffBranch(window);
+
+	window.ClickAt(BannerActionPoint(window));
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+	window.Settle(2);
+
+	CHECK(window.Port.Network.Calls.empty());
+	CHECK_FALSE(window.Network.GetState().Running.has_value());
+
+	// The trust is read each frame: nothing else changes, and both run.
+	trusted = true;
+	window.Settle(2);
+
+	window.ClickAt(BannerActionPoint(window));
+	CHECK(window.Port.Network.Calls == std::vector<std::string>{"FetchFullHistory"});
+
+	window.Settle(2);
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+	REQUIRE(window.Port.Network.Calls.size() >= 2);
+	CHECK(window.Port.Network.Calls[1] == "FetchAll");
+}
+
 TEST_CASE("Git window: without a remote a shallow clone's Fetch full history is disabled, as Fetch is, and a click fetches nothing")
 {
 	GitWindow window("CutOffNoRemoteWindow", HeadOnMain(), {}, CutOffBranchRead());

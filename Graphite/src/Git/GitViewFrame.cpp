@@ -203,15 +203,17 @@ namespace Graphite {
 		const bool headFailed = !head && m_Model.GetHeadError().has_value();
 		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 		const WindowBarSource source{head, branches, remotes, remotesFailed, headFailed, checkingOut, folder};
+		const bool folderTrusted = !IsFolderTrusted || IsFolderTrusted();
 		const NetworkSource networkSource{m_Network.GetState(), m_Network.ShownLastFetch(m_Model.GetLastFetch()), m_Model.IsGitFound(),
-										  std::chrono::floor<std::chrono::minutes>(now).time_since_epoch().count()};
+										  folderTrusted, std::chrono::floor<std::chrono::minutes>(now).time_since_epoch().count()};
 
 		// WARNING: A percent changes the buttons and nothing else, so the bar's text, which looks the checked-out branch up
 		// among every branch, is not described again for it.
 		if (m_WindowBarSource != source || m_NetworkSource != networkSource)
 		{
 			m_NetworkButtons = DescribeNetworkButtons(WindowBarInput{folder, head.get(), branches.get(), remotes.get(), checkingOut.has_value()},
-													  networkSource.State, networkSource.LastFetch, now, networkSource.GitFound);
+													  networkSource.State, networkSource.LastFetch, now,
+													  NetworkAccess{.GitFound = networkSource.GitFound, .FolderTrusted = networkSource.FolderTrusted});
 			m_NetworkSource = networkSource;
 		}
 

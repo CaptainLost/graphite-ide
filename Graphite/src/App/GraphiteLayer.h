@@ -158,6 +158,9 @@ namespace Graphite {
 
 		void RenderRestrictedModeBar(bool trusted);
 
+		// A folder is open and trusted. Fetch, Pull and Push read it each time, so trusting the folder enables them at once.
+		bool IsOpenFolderTrusted() const;
+
 		void RenderLanguageSupportBar(const LanguagePrompt& prompt);
 
 		void RenderTrustParentConfirm();

@@ -51,6 +51,9 @@ namespace {
 	constexpr char kBranch[] = "main";
 	constexpr char kRemote[] = "origin";
 
+	// The folders are the acceptance's own, made for it, so the buttons are read as in a folder the user trusts.
+	constexpr bool kFolderTrusted = true;
+
 	// The app's frame, and the waits of a case that only needs its operation to land.
 	constexpr float kFrameSeconds = 1.0f / 60.0f;
 	constexpr std::chrono::milliseconds kFramePeriod{16};
@@ -332,7 +335,7 @@ namespace {
 
 			Git.OnUpdate(Core::Timestep{kFrameSeconds});
 			Network.OnUpdate(Core::Timestep{kFrameSeconds});
-			const Graphite::NetworkButtons buttons = Graphite::DescribeNetworkButtonsNow(Git, Network, false);
+			const Graphite::NetworkButtons buttons = Graphite::DescribeNetworkButtonsNow(Git, Network, false, kFolderTrusted);
 			const Graphite::NetworkActivity activity = Graphite::DescribeNetworkActivity(Network.GetState(), Network.GetShownDone());
 
 			// Kept, so nothing of the words is left unmade.
@@ -798,7 +801,7 @@ TEST_CASE("Network acceptance: push sends the branch's commits to its upstream" 
 
 	AppNetwork app{work, scene.Store()};
 	app.List();
-	const Graphite::NetworkButtons buttons = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false);
+	const Graphite::NetworkButtons buttons = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted);
 	MESSAGE("push button: [", buttons.Push.Label, "] count [", buttons.Push.Count, "] tooltip [", buttons.Push.Tooltip, "]");
 	CHECK(buttons.Push.Count == "2");
 	CHECK(buttons.Push.Tooltip == "Push 2 commits to origin");
@@ -826,7 +829,7 @@ TEST_CASE("Network acceptance: push with no upstream and two remotes asks which,
 
 	AppNetwork app{work, scene.Store()};
 	app.List();
-	const Graphite::NetworkButtons asking = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false);
+	const Graphite::NetworkButtons asking = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted);
 	MESSAGE("push button: [", asking.Push.Label, "] tooltip [", asking.Push.Tooltip, "] asks ", asking.Push.AsksWhichRemote);
 	CHECK(asking.Push.Enabled);
 	CHECK(asking.Push.AsksWhichRemote);
@@ -845,7 +848,7 @@ TEST_CASE("Network acceptance: push with no upstream and two remotes asks which,
 	CHECK(scene.Git.Run(work, {"config", "branch.feature.merge"}) == "refs/heads/feature");
 
 	app.List();
-	const Graphite::NetworkButtons after = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false);
+	const Graphite::NetworkButtons after = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted);
 	MESSAGE("push button after: [", after.Push.Label, "] tooltip [", after.Push.Tooltip, "]");
 	CHECK_FALSE(after.Push.AsksWhichRemote);
 }
@@ -892,7 +895,7 @@ TEST_CASE("Network acceptance: a remote at a path that does not exist fails each
 
 	AppNetwork app{work, scene.Store()};
 	app.List();
-	const std::string ageBefore = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge;
+	const std::string ageBefore = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted).FetchedAge;
 	MESSAGE("before: ", ageBefore);
 
 	for (const Graphite::NetworkOperation operation :
@@ -909,7 +912,7 @@ TEST_CASE("Network acceptance: a remote at a path that does not exist fails each
 
 		// git wrote FETCH_HEAD before it found no repository there; the bar keeps the age of the fetch that ended well.
 		app.List();
-		const std::string age = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge;
+		const std::string age = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted).FetchedAge;
 		MESSAGE("after it: ", age);
 		CHECK(age == ageBefore);
 	}
@@ -917,7 +920,7 @@ TEST_CASE("Network acceptance: a remote at a path that does not exist fails each
 	// FETCH_HEAD's time changing again, as a fetch in a terminal changes it, is shown.
 	std::filesystem::last_write_time(fetchHead, std::filesystem::file_time_type::clock::now() - std::chrono::minutes{30});
 	app.List();
-	const std::string ageAfterTerminal = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge;
+	const std::string ageAfterTerminal = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted).FetchedAge;
 	MESSAGE("after a terminal's fetch: ", ageAfterTerminal);
 	CHECK(ageAfterTerminal != ageBefore);
 	CHECK_FALSE(ageAfterTerminal.empty());
@@ -999,7 +1002,7 @@ TEST_CASE("Network acceptance: cancel during a fetch made slow by a large reposi
 		// git wrote FETCH_HEAD before it was cancelled; a clone never fetched still shows no age.
 		app.List();
 		CHECK(app.Git.GetLastFetch().has_value());
-		CHECK(Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge.empty());
+		CHECK(Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted).FetchedAge.empty());
 
 		// The next fetch of the same clone runs to its end, and its age is shown.
 		app.Network.Fetch();
@@ -1009,7 +1012,7 @@ TEST_CASE("Network acceptance: cancel during a fetch made slow by a large reposi
 		CHECK_FALSE(next.Done->Cancelled);
 		CHECK(scene.Git.HasRef(work, "refs/remotes/origin/main"));
 		app.List();
-		CHECK(Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge == "fetched just now");
+		CHECK(Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false, kFolderTrusted).FetchedAge == "fetched just now");
 	}
 
 	SUBCASE("through the port, and every process git started ends")

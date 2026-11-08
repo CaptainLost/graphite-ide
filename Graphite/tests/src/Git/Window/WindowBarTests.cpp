@@ -534,16 +534,20 @@ namespace {
 
 	Graphite::NetworkButtons Buttons(const Core::HeadState* head, const std::vector<Core::Branch>* branches,
 									 const std::vector<Core::Remote>* remotes, const Graphite::NetworkState& state = {},
-									 std::optional<std::chrono::sys_seconds> lastFetch = std::nullopt, bool gitFound = true)
+									 std::optional<std::chrono::sys_seconds> lastFetch = std::nullopt, bool gitFound = true,
+									 bool folderTrusted = true)
 	{
 		return Graphite::DescribeNetworkButtons(Graphite::WindowBarInput{kFolder, head, branches, remotes, false}, state, lastFetch, kNow,
-												gitFound);
+												Graphite::NetworkAccess{.GitFound = gitFound, .FolderTrusted = folderTrusted});
 	}
 
 	const std::vector<Core::Remote> kOrigin = {{"origin", "https://example.com/a.git"}};
 
 	constexpr const char* kGitMissingSentence =
 		"Fetch, Pull and Push need git, which was not found on PATH or where Git for Windows installs it.";
+	constexpr const char* kFolderNotTrustedSentence =
+		"Fetch, Pull and Push run git, which runs this folder's hooks and the commands its git config names. Trust the folder "
+		"to use them.";
 
 	Core::Branch RemoteMain()
 	{
@@ -820,6 +824,38 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 
 	CHECK(buttons.Pull.Count == "3");
 	CHECK(buttons.Push.Count == "2");
+}
+
+TEST_CASE("Window bar: in a folder not trusted every button is disabled and says why, and trusted they are enabled")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 1, 1), RemoteMain()};
+	constexpr bool kGitFound = true;
+	constexpr bool kNotTrusted = false;
+
+	const Graphite::NetworkButtons untrusted = Buttons(&head, &branches, &kOrigin, {}, std::nullopt, kGitFound, kNotTrusted);
+
+	for (const Graphite::ButtonText* button : {&untrusted.Fetch, &untrusted.Pull, &untrusted.Push})
+	{
+		CHECK_FALSE(button->Enabled);
+		CHECK(button->Tooltip == kFolderNotTrustedSentence);
+		CHECK_FALSE(button->AsksWhichRemote);
+	}
+
+	const Graphite::NetworkButtons trusted = Buttons(&head, &branches, &kOrigin);
+
+	for (const Graphite::ButtonText* button : {&trusted.Fetch, &trusted.Pull, &trusted.Push})
+	{
+		CHECK(button->Enabled);
+	}
+
+	// An operation that runs when the folder's trust is taken back can still be cancelled.
+	const Graphite::NetworkState fetching{.Running = Graphite::NetworkOperation::Fetch, .Serial = 1, .Cancellable = true};
+	const Graphite::NetworkButtons revoked = Buttons(&head, &branches, &kOrigin, fetching, std::nullopt, kGitFound, kNotTrusted);
+	CHECK(revoked.Fetch.Running);
+	CHECK(revoked.Fetch.Enabled);
+	CHECK_FALSE(revoked.Pull.Enabled);
+	CHECK_FALSE(revoked.Push.Enabled);
 }
 
 TEST_CASE("Window bar: fetched age reads FETCH_HEAD's time")
