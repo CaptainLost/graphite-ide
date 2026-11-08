@@ -63,9 +63,11 @@ and say why; everything else works. An install outside those places is not found
   progress. A branch that cannot fast-forward is refused with nothing changed.
 - Push: `git push --progress <remote> HEAD:<upstream branch>` when the branch has an upstream. Without one the choice
   depends on the remotes: with one, `git push --progress --set-upstream <remote> HEAD`; with several, the button opens a
-  menu, "Push <branch> to...", listing them by name in config order, because no remote is special, "origin" included;
-  with none, Push is disabled and says why. Never forced, never with tags. The cost is one more click for a branch
-  without an upstream in a repository with several remotes, and no way yet to force a push or send tags.
+  menu, "Push <branch> to...", listing them by name in the order the sidebar lists them, which is the names' order,
+  because no remote is special, "origin" included, and no name is read for meaning; with none, Push is disabled and says
+  why. Fetch's tooltip names the remotes in the same order. Never forced, never with tags. The cost is one more click for
+  a branch without an upstream in a repository with several remotes, a remote added first that is not necessarily listed
+  first, and no way yet to force a push or send tags.
 - `--` goes before every remote name, so a remote named like an option is not read as one.
 
 **Running and stopping.**
@@ -82,6 +84,10 @@ and say why; everything else works. An install outside those places is not found
 - Cancel ends the child and every process it started, which a job object does; Cancel is the running operation's own
   button, which reads `Fetching... 45%`, `Pulling...` or `Pushing...` while it runs, and the other two buttons are
   disabled.
+- The percent is git's own. `git fetch --all` with several remotes starts one fetch per remote and passes `--progress`
+  to none of them, so they print no progress: such a Fetch shows the busy mark without a percent. Fetching remote by
+  remote would show one, at the cost of the single process this decision keeps for every remote. With one remote, and
+  for Pull's fetch, Push and Fetch full history, the percent is shown.
 - Shutdown and a change of folder cancel the running operation, so the queue never blocks the exit. The cost is that a
   fetch in flight when the user switches folders is lost and has to be started again.
 - Success is quiet: the status bar shows the done text for a few seconds ("Fetched", "Pulled 5 commits", "Pushed 2
@@ -117,6 +123,8 @@ what 0491 objected to. The dependency on git is real but limited to three button
 - A cancel can end a sign-in browser opened during that run.
 - The cancel flag is polled every 50 ms, so a cancel takes up to that long.
 - Pull's last step cannot be stopped.
+- A Fetch of several remotes shows no percent, only the busy mark.
+- The push menu lists the remotes by name, not in the order they were added.
 - Git Credential Manager still shows its own window, which is a separate program.
 - Pull cannot merge or rebase for now: a diverged branch is a terminal step.
 - The server's renamed default branch is not followed, since that needs `remote.<r>.followRemoteHEAD=always`, which would
