@@ -83,7 +83,7 @@ namespace {
 	}
 }
 
-TEST_CASE("Git window: a tag's history has no line, even beside a branch of the same short name that has one")
+TEST_CASE("Git window: a full name is looked up, never a short one, so a ref the read lacks has no line")
 {
 	for (const Core::BranchState state : {Core::BranchState::NotMerged, Core::BranchState::MergedByHistory, Core::BranchState::NoOwnCommits})
 	{

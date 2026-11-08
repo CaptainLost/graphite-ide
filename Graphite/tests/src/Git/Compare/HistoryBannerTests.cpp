@@ -46,7 +46,7 @@ namespace {
 	}
 }
 
-TEST_CASE("Git window: a tag has no vs label and no banner, even beside a branch of the same short name that has both")
+TEST_CASE("Git window: a full name is looked up, never a short one, so a ref the read lacks gets no vs label and no banner")
 {
 	Scene scene = MakeScene();
 	scene.Line().State = Core::BranchState::MergedByHistory;
