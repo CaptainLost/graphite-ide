@@ -6,6 +6,8 @@
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
 
+#include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <system_error>
 #include <unordered_map>
@@ -28,10 +30,41 @@ namespace Graphite {
 			return !sshCommand.HasValue() || sshCommand.GetValue();
 		}
 
+		// The repository's shallow file as a handle found it: absent, or its size and last write.
+		struct ShallowStamp
+		{
+			bool Exists = false;
+			std::uintmax_t Size = 0;
+			std::filesystem::file_time_type Written{};
+
+			friend bool operator==(const ShallowStamp&, const ShallowStamp&) = default;
+		};
+
+		// One look at the file's attributes. A file that cannot be looked at counts as absent: at worst a handle is opened
+		// once more.
+		ShallowStamp ShallowStampOf(const std::filesystem::path& shallowFile)
+		{
+			std::error_code error;
+			const std::filesystem::directory_entry entry{shallowFile, error};
+
+			if (error || !entry.exists(error))
+			{
+				return ShallowStamp{};
+			}
+
+			return ShallowStamp{.Exists = true, .Size = entry.file_size(error), .Written = entry.last_write_time(error)};
+		}
+
 		struct CachedRepository
 		{
 			Core::Repository Repo;
 			std::uint64_t Generation;
+
+			// WARNING: libgit2 keeps every commit it has parsed, and one parsed while the clone was shallow keeps its cut
+			// parents after a fetch deepens the clone, whoever ran it. A handle whose shallow file has changed since it was
+			// opened is dropped, so the history and the lines are read from the commits as they are now.
+			std::filesystem::path ShallowFile;
+			ShallowStamp Shallow;
 		};
 
 		using HandleMap = std::unordered_map<std::string, CachedRepository>;
@@ -177,7 +210,13 @@ namespace Graphite {
 		if (cachedEntry != handlesByRoot.end())
 		{
 			auto& [cachedRoot, cachedRepository] = *cachedEntry;
-			return &cachedRepository.Repo;
+
+			if (cachedRepository.Shallow == ShallowStampOf(cachedRepository.ShallowFile))
+			{
+				return &cachedRepository.Repo;
+			}
+
+			handlesByRoot.erase(cachedEntry);
 		}
 
 		Core::Result<Core::Repository> opened = Core::Repository::Open(Core::FromUtf8(root), writes);
@@ -192,7 +231,12 @@ namespace Graphite {
 
 		++m_OpenCount;
 
-		std::pair<HandleMap::iterator, bool> insertion = handlesByRoot.emplace(root, CachedRepository{std::move(opened).GetValue(), generation});
+		// Taken before the handle has parsed a commit: a change after it is one the handle may have missed, and drops it.
+		std::filesystem::path shallowFile = opened.GetValue().CommonDirectory() / "shallow";
+		const ShallowStamp shallow = ShallowStampOf(shallowFile);
+
+		std::pair<HandleMap::iterator, bool> insertion =
+			handlesByRoot.emplace(root, CachedRepository{std::move(opened).GetValue(), generation, std::move(shallowFile), shallow});
 		auto& [insertedEntry, wasInserted] = insertion;
 		auto& [insertedRoot, insertedRepository] = *insertedEntry;
 		return &insertedRepository.Repo;

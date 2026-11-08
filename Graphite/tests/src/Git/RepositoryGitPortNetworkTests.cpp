@@ -7,6 +7,8 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Command/GitExecutable.h"
 #include "Core/Git/Command/GitRunner.h"
+#include "Core/Git/Lines/LineModel.h"
+#include "Git/Lines/LineReader.h"
 #include "Review/ReviewRepository.h"
 
 #include <git2.h>
@@ -14,6 +16,8 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -195,6 +199,34 @@ namespace {
 		std::filesystem::path m_Bare;
 		std::filesystem::path m_Peer;
 	};
+
+	// The port's line read of the branches it lists now, given the graph of the read before (null loads the store's).
+	Graphite::LineRead ReadLinesThrough(Graphite::RepositoryGitPort& port, Core::Ref<const Core::AncestryGraph> graph, std::int64_t now)
+	{
+		Core::Result<std::vector<Core::Branch>> branches = port.QueryBranches();
+		REQUIRE(branches.HasValue());
+		const Core::Ref<const std::vector<Core::Branch>> snapshot = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue());
+
+		Core::Result<Graphite::LineRead> read =
+			port.ReadLines(port.RepositoryNow(), Graphite::LineReadInput{.Branches = snapshot, .Graph = std::move(graph), .Now = now});
+		INFO((read.HasValue() ? std::string{} : read.GetError().Message));
+		REQUIRE(read.HasValue());
+		return std::move(read).GetValue();
+	}
+
+	// The state the read gives the branch named `fullName`; empty when it has no line for it.
+	std::optional<Core::BranchState> LineStateOf(const Graphite::LineRead& read, const std::string& fullName)
+	{
+		for (const Core::BranchLine& line : read.Model.Branches)
+		{
+			if (read.Refs[line.Ref].FullName == fullName)
+			{
+				return line.State;
+			}
+		}
+
+		return std::nullopt;
+	}
 
 	// Where libgit2 looks for configuration files, pointed at an empty folder for as long as it lives, so that a
 	// core.sshCommand of the machine's or the user's cannot reach a test.
@@ -422,6 +454,92 @@ TEST_CASE("Git network port: full history deepens a shallow clone")
 	INFO(deepened.Failure.Copied);
 	REQUIRE(deepened.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(shallow, {"rev-list", "--count", "HEAD"}) == std::to_string(kHistoryLength));
+}
+
+TEST_CASE("Git network port: once the full history is fetched, the port reads the commits the shallow clone lacked")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+
+	for (int commitIndex = 1; commitIndex < kHistoryLength; ++commitIndex)
+	{
+		scene.Work().Write("a.txt", "change " + std::to_string(commitIndex) + "\n");
+		scene.Work().Commit("change " + std::to_string(commitIndex));
+	}
+
+	TempDirectory cloneDirectory;
+	scene.Git(cloneDirectory.GetPath(), {"clone", "--depth", "1", "file:///" + ForwardSlashes(scene.WorkPath()), "shallow"});
+	const std::filesystem::path shallow = cloneDirectory.GetPath() / "shallow";
+
+	// The history read while the clone is shallow, through the port's handle of this thread.
+	Graphite::RepositoryGitPort port{shallow};
+	const Core::Result<Core::LogPage> before = port.QueryLog(Core::LogRequest{});
+	REQUIRE(before.HasValue());
+	REQUIRE(before.GetValue().Commits.size() == 1);
+
+	const std::atomic<bool> neverCancelled{false};
+	const Core::NetworkOutcome deepened = port.FetchFullHistory(neverCancelled, IgnorePercent);
+	INFO(deepened.Failure.Copied);
+	REQUIRE(deepened.Result == Core::NetworkResult::Done);
+
+	const Core::Result<Core::LogPage> after = port.QueryLog(Core::LogRequest{});
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue().Commits.size() == static_cast<std::size_t>(kHistoryLength));
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
+}
+
+TEST_CASE("Git network port: once the full history is fetched, a branch cut off from its line is read as forked from it")
+{
+	constexpr std::int64_t kNow = 1800000000;
+
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	// topic forks from master's first commit; a clone one commit deep has neither side's history down to the fork.
+	NetworkScene scene{*git};
+	scene.Git(scene.WorkPath(), {"branch", "topic"});
+	scene.Work().Write("a.txt", "master's change\n");
+	scene.Work().Commit("master's change");
+	scene.Git(scene.WorkPath(), {"checkout", "-q", "topic"});
+	scene.Work().Write("b.txt", "topic's change\n");
+	scene.Work().Commit("topic's change");
+	scene.Git(scene.WorkPath(), {"checkout", "-q", kBranch});
+
+	TempDirectory cloneDirectory;
+	scene.Git(cloneDirectory.GetPath(),
+			  {"clone", "--depth", "1", "--no-single-branch", "file:///" + ForwardSlashes(scene.WorkPath()), "shallow"});
+	const std::filesystem::path shallow = cloneDirectory.GetPath() / "shallow";
+
+	TempDirectory storeRoot;
+	Graphite::RepositoryGitPort port{shallow, storeRoot.GetPath()};
+	const Graphite::LineRead before = ReadLinesThrough(port, nullptr, kNow);
+	REQUIRE(LineStateOf(before, "refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::HistoryCutOff});
+
+	const std::atomic<bool> neverCancelled{false};
+	const Core::NetworkOutcome deepened = port.FetchFullHistory(neverCancelled, IgnorePercent);
+	INFO(deepened.Failure.Copied);
+	REQUIRE(deepened.Result == Core::NetworkResult::Done);
+
+	// As the lines model asks it: with the graph of the read before.
+	const Graphite::LineRead after = ReadLinesThrough(port, before.Graph, kNow);
+	CHECK(LineStateOf(after, "refs/remotes/origin/topic") == std::optional<Core::BranchState>{Core::BranchState::NotMerged});
+
+	port.SetRoot({});
+	port.LetGoOfHandlesNoLongerCurrent();
 }
 
 TEST_CASE("Git network port: a folder that is not a repository fails with a plain sentence, whether or not git exists")
