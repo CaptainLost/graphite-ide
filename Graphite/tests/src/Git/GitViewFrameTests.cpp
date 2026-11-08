@@ -896,3 +896,71 @@ TEST_CASE("Git view: a stash's details draw First tag right under In bases, as e
 	CHECK(LineStartingWith(withoutTags, "Inbasesinnobaseyet").has_value());
 	CHECK_FALSE(LineStartingWith(withoutTags, "Firsttag").has_value());
 }
+
+TEST_CASE("Git view: a tag and a branch of one short name are restored in turn, each with its own row, pills and details")
+{
+	// x is a branch merged into main; the tag x is on a commit of its own.
+	GitWindow window("SameNameWindow", HeadOnMain(), {TagAt("x", OidWithFirstByte(40))}, MergedBranchRead());
+	window.Settle();
+	const Graphite::GitPalette palette = Graphite::ReadGitPalette(window.Scheme.Get());
+
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/tags/x"});
+	window.Settle();
+	REQUIRE(window.View.CaptureWindowState().Ref == "refs/tags/x");
+	const std::optional<float> tagRow = window.SelectedRowMiddle();
+	REQUIRE(tagRow.has_value());
+	CHECK(window.DrawsInColourIn("##gitCommits", palette.RefTagFill));
+	CHECK_FALSE(window.DrawsInColourIn("##gitCommits", palette.RefLocalFill));
+	CHECK(LineStartingWith(window.DetailsText(), "Firsttag").has_value());
+
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/x"});
+	window.Settle();
+	REQUIRE(window.View.CaptureWindowState().Ref == "refs/heads/x");
+	const std::optional<float> branchRow = window.SelectedRowMiddle();
+	REQUIRE(branchRow.has_value());
+	CHECK(window.DrawsInColourIn("##gitCommits", palette.RefLocalFill));
+	CHECK_FALSE(window.DrawsInColourIn("##gitCommits", palette.RefTagFill));
+	CHECK(LineStartingWith(window.DetailsText(), "Firsttag").has_value());
+
+	// The branch's row is above the tag's, which is in the Tags section below Yours: two rows, each selected by itself.
+	CHECK(*branchRow < *tagRow);
+
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/tags/x"});
+	window.Settle();
+	REQUIRE(window.SelectedRowMiddle().has_value());
+	CHECK(*window.SelectedRowMiddle() == doctest::Approx(*tagRow));
+	CHECK(window.DrawsInColourIn("##gitCommits", palette.RefTagFill));
+	CHECK_FALSE(window.DrawsInColourIn("##gitCommits", palette.RefLocalFill));
+}
+
+namespace {
+
+	// Whether the sidebar draws a selected row and its middle is inside the part of the list on screen.
+	bool SelectedRowIsInView(const GitWindow& window)
+	{
+		const std::optional<float> middle = window.SelectedRowMiddle();
+		const ImGuiWindow* rows = window.SidebarRows();
+
+		return middle.has_value() && rows != nullptr && *middle >= rows->Scroll.y &&
+			   *middle <= rows->Scroll.y + rows->InnerRect.GetHeight();
+	}
+}
+
+TEST_CASE("Git view: an opening with a restored tag in a closed folder opens its section and folder, while the lines are read and after")
+{
+	GitWindow window("TagInFolderWindow", HeadOnMain(), {TagAt("release/1.0", OidWithFirstByte(40)), TagAt("v2", OidWithFirstByte(41))},
+					 MergedBranchRead());
+	window.HoldsLineReads = true;
+	window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/tags/release/1.0"});
+	window.Settle();
+	REQUIRE(window.Lines.GetRead() == nullptr);
+
+	// Neither the Tags section nor the folder was opened by the user, yet the tag's row is drawn selected and in view.
+	REQUIRE(window.View.CaptureWindowState().Ref == "refs/tags/release/1.0");
+	CHECK(SelectedRowIsInView(window));
+
+	window.ReleaseLineReads();
+	REQUIRE(window.Lines.GetRead() != nullptr);
+	CHECK(window.View.CaptureWindowState().Ref == "refs/tags/release/1.0");
+	CHECK(SelectedRowIsInView(window));
+}
