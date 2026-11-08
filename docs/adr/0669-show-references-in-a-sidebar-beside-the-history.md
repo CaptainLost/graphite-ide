@@ -33,14 +33,18 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   - **One section per remote**, "not on this computer": its branches except the bases and those that are one row with
     a local branch, merged ones (by history, or by content once a check found it) behind "N merged hidden · Show",
     grouped by activity past 15.
+  - **Tags**, closed by default: one-line rows, newest first, folded by the first segment of their names
+    ([0677](0677-read-tags-as-named-commits-that-feed-the-line-graph-but-never-the-lines.md)). There is no Tags section
+    while the tags are unread or when the repository has none.
   - **Stashes**.
 
-  A search field above them matches every word against a branch's name and its authors.
-- **Rows** are rebuilt only when what they are built from changes: the line read, the stash list, the authors (held as
+  A search field above them matches every word against a branch's name and its authors, and against a tag's name; it
+  opens the Tags section and its folders, and each section's header counts `n of total`.
+- **Rows** are rebuilt only when what they are built from changes: the line read, the stash list, the tag list, the authors (held as
   they were when a search began, for as long as it runs), the search text, a section, group or merged-branches choice,
   the shown branch, or the window drawn again after a frame it was not. Remote branches are grouped by activity against the read's time, never the clock's, so a row
   moves to an older group only with a new read. Only the rows in view are described and drawn. A branch row shows its
-  history, a stash row the stash's; a base row its local copy's when the copy is checked out or has commits of its
+  history, a stash row the stash's, a tag row the tag's; a base row its local copy's when the copy is checked out or has commits of its
   own, else the base's, and its menu is the local copy's whenever there is one, its lines items acting on the base. A
   section or group row opens or closes; "in Yours" opens Yours and scrolls to it. A right-click opens the ref menu
   ([0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md)) or the stash menu. A menu whose
@@ -63,16 +67,18 @@ Draw the Git window as a sidebar of every reference and stash beside the history
   so the snapshot taken at the new read hides what it hid before, no hidden row comes back and no mark turns `…`; a
   verdict the job does not keep turns pending in place, and the row goes or comes back only at the next such moment.
 - **The shown branch stays listed**: its row is listed even when merged, and the group or quiet bases holding it open
-  unless the user closed them, so clearing a search or a fetch never hides the branch on screen.
+  unless the user closed them, so clearing a search or a fetch never hides the branch on screen. A shown tag's section
+  and folder open the same way.
 - **Waiting.** Until the first read of the lines lands, one waiting row stands in for the sections that need it:
-  "Reading 3,448 branches…" once the branches are listed, "Reading branches…" before. The Stashes section is listed below
-  it at once. A failed read or branch listing says so in that row ("Cannot read the branches' lines: …") with no loader
+  "Reading 3,448 branches…" once the branches are listed, "Reading branches…" before. The Tags section, once the tags
+  are listed, and the Stashes section are listed below it at once. A failed read or branch listing says so in that row ("Cannot read the branches' lines: …") with no loader
   beside it, since nothing is on its way. Once a read is in hand, a later failure leaves its rows on screen. The user's
   e-mail, which a row needs to say "you", is read beside every branch listing, so it never waits for the authors walk.
 - **Saved state** is the shown reference alone: `restore.gitWindow.ref`, a full name, empty for HEAD's history. The
   old `restore.gitWindow.view` and `restore.gitWindow.branch` are neither read nor written, so a folder saved with them
-  opens on HEAD's history; nothing is migrated. A restored reference waits for the branches, and one that is gone
-  shows HEAD's history (`RefToRestore`). A selected stash is not kept.
+  opens on HEAD's history; nothing is migrated. A restored reference waits for the branches, a restored tag for the
+  tags, and one that is gone shows HEAD's history (`RefToRestore`, `RestoreWaitsForListing`). A selected stash is not
+  kept.
 - **Removed:** the Work cards and their facts, the threads and their header, the navigator, the branch table, the
   review embedded in the window and the review progress the cards and threads showed. The branch menu's "Review" and
   "Open review" open the review tab, keeping a draft as a session first.
