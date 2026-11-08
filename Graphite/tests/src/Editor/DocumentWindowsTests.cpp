@@ -1780,6 +1780,5 @@ TEST_CASE("Saving a read-only document writes nothing and says so")
 
 	const std::optional<std::string> message = drawn.Windows.GetStatusMessage();
 	REQUIRE(message.has_value());
-	CHECK(message->find("read-only") != std::string::npos);
-	CHECK(message->find(" saved") == std::string::npos);
+	CHECK(*message == "legacy.txt is read-only and was not saved");
 }
