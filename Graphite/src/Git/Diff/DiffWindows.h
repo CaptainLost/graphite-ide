@@ -72,7 +72,8 @@ namespace Graphite {
 	private:
 		struct Entry;
 
-		static void FollowFile(Entry& entry, const GitModel& model);
+		// False once the working tree no longer lists the file: the tab has nothing left to show and closes.
+		static bool FollowFile(Entry& entry, const GitModel& model);
 
 		struct Entry
 		{

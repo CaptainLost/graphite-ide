@@ -322,18 +322,25 @@ namespace Graphite {
 		};
 	}
 
-	void DiffWindows::FollowFile(Entry& entry, const GitModel& model)
+	bool DiffWindows::FollowFile(Entry& entry, const GitModel& model)
 	{
 		if (entry.Body.Diff.Commit.has_value())
 		{
-			return;
+			return true;
 		}
 
 		const Core::Ref<const Core::WorkingTreeStatus> status = model.GetStatus();
 
 		if (!status)
 		{
-			return;
+			return true;
+		}
+
+		// A file the status no longer lists has nothing left to show on either side: it was committed, or its change
+		// discarded, and a tab saying "has no staged changes" is only in the way.
+		if (FindFileStatus(*status, entry.Body.Diff.Path) == nullptr)
+		{
+			return false;
 		}
 
 		const std::optional<Core::DiffTarget> target =
@@ -341,7 +348,7 @@ namespace Graphite {
 
 		if (!target.has_value())
 		{
-			return;
+			return true;
 		}
 
 		entry.Body.Diff.Target = *target;
@@ -350,6 +357,7 @@ namespace Graphite {
 		// docked again and raised, or it would float loose and lose the reader's place.
 		entry.Window.Fresh = true;
 		entry.Window.Focus = true;
+		return true;
 	}
 
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
@@ -386,7 +394,12 @@ namespace Graphite {
 
 			// WARNING: Following the file comes before the name is taken, because the name is the
 			// window: a tab that moves to the other side is a different window from this frame on.
-			FollowFile(entry, model);
+			if (!FollowFile(entry, model))
+			{
+				entry.Body.Texts.ForgetFailure(model);
+				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(tabIndex));
+				continue;
+			}
 
 			const std::string windowName = DiffWindowName(entry.Body.Diff);
 

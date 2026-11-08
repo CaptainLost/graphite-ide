@@ -396,3 +396,50 @@ TEST_CASE("A working-tree diff whose texts could not be read says why beside the
 	REQUIRE(model.GetWorkingTreeTextsFailure(request).has_value());
 	CHECK(model.GetWorkingTreeTextsFailure(request)->Message == "access denied");
 }
+namespace {
+
+	// The working tree holds a change to a.txt and nothing else.
+	struct OnlyAChanged : EmptyGitPort
+	{
+		Core::Result<Core::WorkingTreeStatus> QueryStatus() override
+		{
+			Core::FileStatus file;
+			file.Path = "a.txt";
+			file.Index = Core::StatusFlags::Modified;
+			return WorkingTreeStatusOf({file});
+		}
+	};
+}
+
+TEST_CASE("A working-tree tab closes once the status lists its file no more, as after a commit")
+{
+	ImGuiFrames frames;
+	OnlyAChanged port;
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(model.GetStatus() != nullptr);
+
+	const Graphite::GitPalette palette;
+	const Graphite::SyntaxPalette syntax;
+	Core::TabCloseRequests closeRequests;
+	Graphite::DiffWindows windows;
+	constexpr ImU32 kNoSelectionColour = 0;
+	const Graphite::DiffViewOptions options;
+	constexpr unsigned int kNoCentreNode = 0;
+
+	const Graphite::OpenDiff stillChanged{.Commit = std::nullopt, .Target = Core::DiffTarget::IndexToHead, .Path = "a.txt"};
+	const Graphite::OpenDiff committed{.Commit = std::nullopt, .Target = Core::DiffTarget::IndexToHead, .Path = "b.txt"};
+	const Graphite::OpenDiff commit = Diff(1, "b.txt");
+	windows.Open(stillChanged);
+	windows.Open(committed);
+	windows.Open(commit);
+
+	frames.Next([&] { windows.Render(model, palette, syntax, kNoSelectionColour, options, kNoCentreNode, closeRequests); });
+	closeRequests.EndFrame();
+
+	CHECK(windows.IsOpen(stillChanged));
+	CHECK_FALSE(windows.IsOpen(committed));
+	CHECK(windows.IsOpen(commit));
+}
