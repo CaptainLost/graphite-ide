@@ -203,7 +203,7 @@ namespace Graphite {
 		const bool headFailed = !head && m_Model.GetHeadError().has_value();
 		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 		const WindowBarSource source{head, branches, remotes, remotesFailed, headFailed, checkingOut, folder};
-		const NetworkSource networkSource{m_Network.GetState(), m_Model.GetLastFetch(), m_Model.IsGitFound(),
+		const NetworkSource networkSource{m_Network.GetState(), m_Network.ShownLastFetch(m_Model.GetLastFetch()), m_Model.IsGitFound(),
 										  std::chrono::floor<std::chrono::minutes>(now).time_since_epoch().count()};
 
 		// WARNING: A percent changes the buttons and nothing else, so the bar's text, which looks the checked-out branch up

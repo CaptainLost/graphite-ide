@@ -15,10 +15,12 @@
 #include "Git/Network/NetworkState.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -93,6 +95,12 @@ namespace Graphite {
 		// The last done or cancelled operation, for GitModel::kWriteConfirmationSeconds after it ended, as a write's.
 		std::optional<NetworkDone> GetShownDone() const;
 
+		// The time of the last fetch to show, given FETCH_HEAD's as listed: git writes FETCH_HEAD before it reaches the
+		// remote, so a fetch of this window's that failed or was cancelled has moved it. While the listed time is the one
+		// such a fetch left, the time from before it is shown; any other listed time is a fetch that ended, from here or a
+		// terminal, and is shown as it is.
+		std::optional<std::chrono::sys_seconds> ShownLastFetch(std::optional<std::chrono::sys_seconds> listed) const;
+
 		void OnUpdate(Core::Timestep timestep);
 
 		// Cancels the running operation, waits for its job to end, which takes at most the runner's poll and the job's own
@@ -122,12 +130,22 @@ namespace Graphite {
 			std::filesystem::path WorkingDirectory;
 		};
 
+		// FETCH_HEAD's time just before a fetch's git ran and just after it ended.
+		struct FetchTimes
+		{
+			std::optional<std::chrono::sys_seconds> Before;
+			std::optional<std::chrono::sys_seconds> After;
+		};
+
 		// What a job hands to the UI thread. A refusal before git ran is a failure whose words are the sentence.
 		struct JobAnswer
 		{
 			Core::NetworkOutcome Outcome;
 			std::optional<std::size_t> Commits;
 			NetworkNames Names;
+
+			// Set when the job ran a fetch: Fetch's, Pull's or the full history's.
+			std::optional<FetchTimes> Fetched;
 
 			// Set by Pull's job: the merge to ask once its fetch is done.
 			std::optional<PullTarget> FastForward;
@@ -170,7 +188,11 @@ namespace Graphite {
 		// Any thread: called with git's percent while it counts.
 		void NotePercent(int percent);
 
+		// Runs one of the port's fetches, reading FETCH_HEAD's time around it into the answer.
+		void RunFetchOf(JobAnswer& answer, const std::function<Core::NetworkOutcome()>& fetch);
+
 		void Land(std::uint64_t folder, const JobAnswer& answer);
+		void NoteFetchEnded(const JobAnswer& answer);
 		void LandFastForward(const FastForwardAnswer& answer);
 		void Finish(const Core::NetworkOutcome& outcome, std::optional<std::size_t> commits);
 		void ShowDone(const NetworkDone& done);
@@ -202,6 +224,10 @@ namespace Graphite {
 
 		std::optional<NetworkDone> m_Shown;
 		float m_ShownSecondsLeft = 0.0f;
+
+		// Set by a fetch of this window's that failed or was cancelled after git wrote FETCH_HEAD: After is the time it left,
+		// Before the last good fetch's. Cleared by a fetch that ends well and by Detach.
+		std::optional<FetchTimes> m_UnfinishedFetch;
 
 		static constexpr int kNoPercent = -1;
 

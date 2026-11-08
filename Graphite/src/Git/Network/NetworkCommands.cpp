@@ -51,7 +51,7 @@ namespace Graphite {
 		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 		return DescribeNetworkButtons(WindowBarInput{git.GetWorkingDirectory(), head.get(), branches.get(), remotes.get(), checkingOut},
-									  network.GetState(), git.GetLastFetch(), now, git.IsGitFound());
+									  network.GetState(), network.ShownLastFetch(git.GetLastFetch()), now, git.IsGitFound());
 	}
 
 	void RegisterNetworkCommands(Core::CommandRegistry& commands, NetworkCommandServices services)

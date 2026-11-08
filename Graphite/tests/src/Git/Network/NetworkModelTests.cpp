@@ -106,6 +106,10 @@ namespace {
 		// The checked-out branch's tip at each push, in order.
 		std::vector<Core::Oid> PushedTips;
 
+		// FETCH_HEAD's time once a fetch has started: git writes the file before it reaches the remote, so a fetch that then
+		// fails or is cancelled has written it too. Unchanged when unset.
+		std::optional<std::chrono::sys_seconds> FetchHeadWrittenAt;
+
 		std::string Held;
 		std::atomic<bool> HeldEntered{false};
 		std::atomic<bool> HeldReleased{false};
@@ -213,6 +217,13 @@ namespace {
 			{
 				const std::lock_guard<std::mutex> callsLock{m_CallsMutex};
 				m_Calls.push_back(std::move(call));
+			}
+
+			const bool fetches = name.starts_with("Fetch");
+
+			if (fetches && FetchHeadWrittenAt.has_value())
+			{
+				Network.LastFetch = FetchHeadWrittenAt;
 			}
 
 			const std::map<std::string, Core::NetworkOutcome>::const_iterator set = Outcomes.find(name);
@@ -1105,4 +1116,121 @@ TEST_CASE("Network model: pull refuses when the working directory cannot be read
 	REQUIRE(failure.has_value());
 	CHECK(failure->Error.Message == "the folder is gone");
 	CHECK(network.Port.CallsSoFar().empty());
+}
+
+namespace {
+
+	// FETCH_HEAD's times: a fetch that ended well, one a fetch that then failed or was cancelled wrote, and a later one, as
+	// a fetch in a terminal writes.
+	constexpr std::chrono::sys_seconds kGoodFetch{std::chrono::seconds{1800000000}};
+	constexpr std::chrono::sys_seconds kWrittenByFailure = kGoodFetch + std::chrono::minutes{10};
+	constexpr std::chrono::sys_seconds kWrittenLater = kGoodFetch + std::chrono::minutes{20};
+
+	Core::NetworkOutcome Unreachable()
+	{
+		return Failed("fatal: 'C:/nowhere.git' does not appear to be a git repository",
+					  "fatal: 'C:/nowhere.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n");
+	}
+}
+
+TEST_CASE("Network model: a failed fetch that wrote FETCH_HEAD keeps the age of the fetch before it shown")
+{
+	InlineNetwork network;
+	network.Port.Network.LastFetch = kGoodFetch;
+	network.Port.FetchHeadWrittenAt = kWrittenByFailure;
+	network.Port.Outcomes["FetchAll"] = Unreachable();
+
+	CHECK(network.Model.ShownLastFetch(kGoodFetch) == std::optional<std::chrono::sys_seconds>{kGoodFetch});
+
+	network.Model.Fetch();
+	network.Update();
+	REQUIRE(network.Model.TakeFailure().has_value());
+
+	// The listing reads the time the failed fetch wrote; the bar keeps the good fetch's.
+	CHECK(network.Model.ShownLastFetch(kWrittenByFailure) == std::optional<std::chrono::sys_seconds>{kGoodFetch});
+
+	// FETCH_HEAD's time changing again, as a fetch in a terminal changes it, is shown.
+	CHECK(network.Model.ShownLastFetch(kWrittenLater) == std::optional<std::chrono::sys_seconds>{kWrittenLater});
+
+	// Another folder knows nothing of this one's fetches.
+	network.Model.Detach();
+	CHECK(network.Model.ShownLastFetch(kWrittenByFailure) == std::optional<std::chrono::sys_seconds>{kWrittenByFailure});
+}
+
+TEST_CASE("Network model: a cancelled fetch that wrote FETCH_HEAD keeps the age of the fetch before it shown")
+{
+	ThreadedNetwork network;
+	network.Port.Network.LastFetch = kGoodFetch;
+	network.Port.FetchHeadWrittenAt = kWrittenByFailure;
+	network.Port.Held = "FetchAll";
+
+	network.Model.Fetch();
+	REQUIRE(network.Port.WaitUntilHeldEntered());
+	network.Model.Cancel(network.Model.GetState().Serial);
+
+	const std::optional<NetworkDone> done = network.WaitForDone();
+	REQUIRE(done.has_value());
+	REQUIRE(done->Cancelled);
+
+	CHECK(network.Model.ShownLastFetch(kWrittenByFailure) == std::optional<std::chrono::sys_seconds>{kGoodFetch});
+	CHECK(network.Model.ShownLastFetch(kWrittenLater) == std::optional<std::chrono::sys_seconds>{kWrittenLater});
+}
+
+TEST_CASE("Network model: a fetch that ends well shows its own time, and failures in a row keep the last good one's")
+{
+	InlineNetwork network;
+	network.Port.Network.LastFetch = kGoodFetch;
+	network.Port.Outcomes["FetchAll"] = Unreachable();
+
+	network.Port.FetchHeadWrittenAt = kWrittenByFailure;
+	network.Model.Fetch();
+	network.Update();
+	REQUIRE(network.Model.TakeFailure().has_value());
+
+	const std::chrono::sys_seconds writtenBySecondFailure = kWrittenByFailure + std::chrono::minutes{1};
+	network.Port.FetchHeadWrittenAt = writtenBySecondFailure;
+	network.Model.Fetch();
+	network.Update();
+	REQUIRE(network.Model.TakeFailure().has_value());
+	CHECK(network.Model.ShownLastFetch(writtenBySecondFailure) == std::optional<std::chrono::sys_seconds>{kGoodFetch});
+
+	network.Port.Outcomes.erase("FetchAll");
+	network.Port.FetchHeadWrittenAt = kWrittenLater;
+	network.Model.Fetch();
+	network.Update();
+	REQUIRE(network.Model.TakeDone().has_value());
+	CHECK(network.Model.ShownLastFetch(kWrittenLater) == std::optional<std::chrono::sys_seconds>{kWrittenLater});
+}
+
+TEST_CASE("Network model: pull's fetch counts as a fetch, failed or ended well, and a fetch that never wrote FETCH_HEAD changes nothing")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 0)), RemoteBranch("origin", "main")};
+	network.Port.Network.LastFetch = kGoodFetch;
+	network.Port.FetchHeadWrittenAt = kWrittenByFailure;
+	network.Port.Outcomes["FetchRemote"] = Unreachable();
+
+	network.Model.Pull();
+	network.Update();
+	REQUIRE(network.Model.TakeFailure().has_value());
+	CHECK(network.Model.ShownLastFetch(kWrittenByFailure) == std::optional<std::chrono::sys_seconds>{kGoodFetch});
+
+	// A failure that left FETCH_HEAD as it was keeps what is shown as it was.
+	network.Port.FetchHeadWrittenAt.reset();
+	network.Model.Pull();
+	network.Update();
+	REQUIRE(network.Model.TakeFailure().has_value());
+	CHECK(network.Model.ShownLastFetch(kWrittenByFailure) == std::optional<std::chrono::sys_seconds>{kGoodFetch});
+
+	network.Port.Outcomes.erase("FetchRemote");
+	network.Port.FetchHeadWrittenAt = kWrittenLater;
+	network.Model.Pull();
+
+	for (int frame = 0; frame < 4; ++frame)
+	{
+		network.Update();
+	}
+
+	REQUIRE(network.Model.TakeDone().has_value());
+	CHECK(network.Model.ShownLastFetch(kWrittenLater) == std::optional<std::chrono::sys_seconds>{kWrittenLater});
 }

@@ -871,11 +871,19 @@ TEST_CASE("Network acceptance: a remote at a path that does not exist fails each
 	const std::filesystem::path server = scene.Server("server");
 	scene.Peer(server, "peer");
 	const std::filesystem::path work = scene.Clone(Core::ToUtf8(server), "work ż");
+
+	// A fetch that ended well two hours ago.
+	scene.Git.Run(work, {"fetch", "-q", kRemote});
+	const std::filesystem::path fetchHead = work / ".git" / "FETCH_HEAD";
+	std::filesystem::last_write_time(fetchHead, std::filesystem::file_time_type::clock::now() - std::chrono::hours{2});
+
 	scene.Git.Run(work, {"remote", "set-url", kRemote, Core::ToUtf8(scene.Folder() / "nowhere.git")});
 	scene.Git.CommitFile(work, "mine.txt", "mine\n");
 
 	AppNetwork app{work, scene.Store()};
 	app.List();
+	const std::string ageBefore = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge;
+	MESSAGE("before: ", ageBefore);
 
 	for (const Graphite::NetworkOperation operation :
 		 {Graphite::NetworkOperation::Fetch, Graphite::NetworkOperation::Pull, Graphite::NetworkOperation::Push})
@@ -888,7 +896,21 @@ TEST_CASE("Network acceptance: a remote at a path that does not exist fails each
 		CHECK(landing.Failure->Operation == operation);
 		CHECK(landing.Failure->Error.Message.find("does not appear to be a git repository") != std::string::npos);
 		CHECK(landing.Failure->Copied.find("Could not read from remote repository") != std::string::npos);
+
+		// git wrote FETCH_HEAD before it found no repository there; the bar keeps the age of the fetch that ended well.
+		app.List();
+		const std::string age = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge;
+		MESSAGE("after it: ", age);
+		CHECK(age == ageBefore);
 	}
+
+	// FETCH_HEAD's time changing again, as a fetch in a terminal changes it, is shown.
+	std::filesystem::last_write_time(fetchHead, std::filesystem::file_time_type::clock::now() - std::chrono::minutes{30});
+	app.List();
+	const std::string ageAfterTerminal = Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge;
+	MESSAGE("after a terminal's fetch: ", ageAfterTerminal);
+	CHECK(ageAfterTerminal != ageBefore);
+	CHECK_FALSE(ageAfterTerminal.empty());
 }
 
 TEST_CASE("Network acceptance: fetch full history deepens a clone made with --depth 5" * doctest::skip())
@@ -963,13 +985,20 @@ TEST_CASE("Network acceptance: cancel during a fetch made slow by a large reposi
 		CHECK_FALSE(app.Network.GetState().Running.has_value());
 		CHECK(cancelMilliseconds < kMostCancelMilliseconds);
 
-		// The next fetch of the same clone runs to its end.
+		// git wrote FETCH_HEAD before it was cancelled; a clone never fetched still shows no age.
+		app.List();
+		CHECK(app.Git.GetLastFetch().has_value());
+		CHECK(Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge.empty());
+
+		// The next fetch of the same clone runs to its end, and its age is shown.
 		app.Network.Fetch();
 		const Landing next = app.RunToEnd();
 		MESSAGE("the next fetch: ", Describe(next), " in ", next.Milliseconds, " ms");
 		REQUIRE(next.Done.has_value());
 		CHECK_FALSE(next.Done->Cancelled);
 		CHECK(scene.Git.HasRef(work, "refs/remotes/origin/main"));
+		app.List();
+		CHECK(Graphite::DescribeNetworkButtonsNow(app.Git, app.Network, false).FetchedAge == "fetched just now");
 	}
 
 	SUBCASE("through the port, and every process git started ends")

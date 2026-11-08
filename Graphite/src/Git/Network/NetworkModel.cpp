@@ -253,6 +253,16 @@ namespace Graphite {
 		return m_Shown;
 	}
 
+	std::optional<std::chrono::sys_seconds> NetworkModel::ShownLastFetch(std::optional<std::chrono::sys_seconds> listed) const
+	{
+		if (m_UnfinishedFetch.has_value() && listed == m_UnfinishedFetch->After)
+		{
+			return m_UnfinishedFetch->Before;
+		}
+
+		return listed;
+	}
+
 	void NetworkModel::OnUpdate(Core::Timestep timestep)
 	{
 		// WARNING: Before the deliveries are drained, so a done text shown this frame keeps its full time.
@@ -290,6 +300,7 @@ namespace Graphite {
 		m_Failures.clear();
 		m_Shown.reset();
 		m_ShownSecondsLeft = 0.0f;
+		m_UnfinishedFetch.reset();
 		m_Percent.store(kNoPercent);
 	}
 
@@ -428,7 +439,7 @@ namespace Graphite {
 
 		JobAnswer answer;
 		answer.Names.Remote = OnlyRemoteOf(remotes);
-		answer.Outcome = m_Port.FetchAll(cancelled, m_Progress);
+		RunFetchOf(answer, [&] { return m_Port.FetchAll(cancelled, m_Progress); });
 
 		if (answer.Outcome.Result == Core::NetworkResult::Done)
 		{
@@ -444,9 +455,16 @@ namespace Graphite {
 
 		JobAnswer answer;
 		answer.Names.Remote = listed.HasValue() ? OnlyRemoteOf(listed.GetValue()) : std::nullopt;
-		answer.Outcome = m_Port.FetchFullHistory(cancelled, m_Progress);
+		RunFetchOf(answer, [&] { return m_Port.FetchFullHistory(cancelled, m_Progress); });
 
 		return answer;
+	}
+
+	void NetworkModel::RunFetchOf(JobAnswer& answer, const std::function<Core::NetworkOutcome()>& fetch)
+	{
+		const std::optional<std::chrono::sys_seconds> before = m_Port.QueryLastFetch();
+		answer.Outcome = fetch();
+		answer.Fetched = FetchTimes{.Before = before, .After = m_Port.QueryLastFetch()};
 	}
 
 	void NetworkModel::RecordRemoteDefaults(const std::vector<Core::Remote>& remotes, const std::atomic<bool>& cancelled)
@@ -521,7 +539,7 @@ namespace Graphite {
 		// An upstream that is a local branch is up to date already, with nothing to fetch.
 		if (answer.Names.Remote.has_value())
 		{
-			answer.Outcome = m_Port.FetchRemote(cancelled, m_Progress, *answer.Names.Remote);
+			RunFetchOf(answer, [&] { return m_Port.FetchRemote(cancelled, m_Progress, *answer.Names.Remote); });
 		}
 
 		return answer;
@@ -596,6 +614,7 @@ namespace Graphite {
 			return;
 		}
 
+		NoteFetchEnded(answer);
 		m_Running->Names = answer.Names;
 
 		const bool fetchedForPull = answer.FastForward.has_value() && answer.Outcome.Result == Core::NetworkResult::Done;
@@ -619,6 +638,31 @@ namespace Graphite {
 		m_Git.RequestFastForward(FastForwardRequest{.Branch = answer.FastForward->BranchFullName,
 													.Upstream = answer.FastForward->UpstreamFullName,
 													.WorkingDirectory = answer.FastForward->WorkingDirectory});
+	}
+
+	void NetworkModel::NoteFetchEnded(const JobAnswer& answer)
+	{
+		if (!answer.Fetched.has_value())
+		{
+			return;
+		}
+
+		if (answer.Outcome.Result == Core::NetworkResult::Done)
+		{
+			m_UnfinishedFetch.reset();
+			return;
+		}
+
+		const FetchTimes& times = *answer.Fetched;
+
+		if (times.Before == times.After)
+		{
+			return;
+		}
+
+		// After failures in a row, the time before the first of them is the last good fetch's.
+		const bool followsAnother = m_UnfinishedFetch.has_value() && m_UnfinishedFetch->After == times.Before;
+		m_UnfinishedFetch = FetchTimes{.Before = followsAnother ? m_UnfinishedFetch->Before : times.Before, .After = times.After};
 	}
 
 	void NetworkModel::LandFastForward(const FastForwardAnswer& answer)
