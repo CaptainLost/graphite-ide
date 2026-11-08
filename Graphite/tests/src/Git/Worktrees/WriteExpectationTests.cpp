@@ -138,3 +138,15 @@ TEST_CASE("Write expectation: only libgit2's index lock failure counts as busy")
 	CHECK(IsIndexLocked(Core::Error{Core::ErrorCode::IoFailure, "failed to lock file '.git/worktrees/x/index.lock'"}));
 	CHECK_FALSE(IsIndexLocked(Core::Error{Core::ErrorCode::IoFailure, "stage failed"}));
 }
+
+TEST_CASE("Write expectation: a detached HEAD that moved refuses every write")
+{
+	WriteExpectation expected = Expecting(Detached(1));
+	expected.Staged = std::vector<std::filesystem::path>{};
+	const Core::WorkingTreeStatus status = StatusWithStaged({});
+
+	CHECK(CheckExpectation(expected, Detached(2), nullptr, false) == ExpectationBreak::OtherHead);
+	CHECK(CheckExpectation(expected, Detached(2), &status, false) == ExpectationBreak::OtherHead);
+	CHECK(CheckExpectation(expected, Detached(2), &status, true) == ExpectationBreak::OtherHead);
+	CHECK(CheckExpectation(expected, Detached(1), &status, false) == ExpectationBreak::None);
+}

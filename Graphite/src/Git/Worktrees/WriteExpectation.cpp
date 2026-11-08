@@ -58,7 +58,10 @@ namespace Graphite {
 	ExpectationBreak CheckExpectation(const WriteExpectation& expected, const Core::HeadState& now,
 									  const Core::WorkingTreeStatus* statusNow, bool amend)
 	{
-		if (now.Kind != expected.Kind || now.BranchName != expected.BranchName)
+		// A detached HEAD has no branch to commit on top of, so a different commit is a different place.
+		const bool detachedMoved = expected.Kind == Core::HeadKind::Detached && now.Commit != expected.Head;
+
+		if (now.Kind != expected.Kind || now.BranchName != expected.BranchName || detachedMoved)
 		{
 			return ExpectationBreak::OtherHead;
 		}
