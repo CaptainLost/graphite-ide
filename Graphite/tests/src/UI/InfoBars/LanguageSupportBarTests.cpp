@@ -43,7 +43,7 @@ TEST_CASE("A language without a chosen server asks for one")
 		{.Language = Graphite::LanguageId::CSharp, .Choice = Graphite::ChooseServer(Graphite::LanguageId::CSharp, std::nullopt)});
 
 	REQUIRE(prompt.has_value());
-	CHECK(prompt->Message == "No C# language support. Choose a language server to enable go to definition, completion and diagnostics.");
+	CHECK(prompt->Message == "No C# language support. Choose a language server to enable go to definition, references and diagnostics.");
 	CHECK(prompt->Buttons == Buttons{Graphite::LanguageBarChoice::Configure, Graphite::LanguageBarChoice::NotNow});
 	CHECK(prompt->Language == Graphite::LanguageId::CSharp);
 }
@@ -201,6 +201,6 @@ TEST_CASE("C++ with no server chosen offers to choose one")
 									   .State = Graphite::ServerState::NotConfigured});
 
 	REQUIRE(prompt.has_value());
-	CHECK(prompt->Message == "No C++ language support. Choose a language server to enable go to definition, completion and diagnostics.");
+	CHECK(prompt->Message == "No C++ language support. Choose a language server to enable go to definition, references and diagnostics.");
 	CHECK(prompt->Buttons == Buttons{Graphite::LanguageBarChoice::Configure, Graphite::LanguageBarChoice::NotNow});
 }

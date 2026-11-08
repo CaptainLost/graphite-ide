@@ -68,9 +68,9 @@ namespace Graphite {
 			switch (choice.Kind)
 			{
 			case ServerChoiceKind::NotConfigured:
-				return "Choose a server to enable go to definition, completion and diagnostics.";
+				return "Choose a server to enable go to definition, references and diagnostics.";
 			case ServerChoiceKind::Off:
-				return "Files are coloured, but there is no go to definition, completion or diagnostics.";
+				return "Files are coloured, but there is no go to definition, references or diagnostics.";
 			case ServerChoiceKind::Chosen:
 				break;
 			}

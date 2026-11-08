@@ -170,7 +170,7 @@ namespace Graphite {
 		if (LanguageHasServers(language))
 		{
 			return "No language server is chosen for " + name +
-				   ", so go to definition, completion and diagnostics are unavailable here. Choose one in Settings, under "
+				   ", so go to definition, references and diagnostics are unavailable here. Choose one in Settings, under "
 				   "Languages. Syntax highlighting does not depend on a server and is unaffected.";
 		}
 

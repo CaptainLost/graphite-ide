@@ -102,7 +102,7 @@ namespace Graphite {
 		case ServerChoiceKind::NotConfigured:
 			return LanguagePrompt{.Language = inputs.Language,
 								  .Message = std::format("No {} language support. Choose a language server to enable go to definition, "
-														 "completion and diagnostics.",
+														 "references and diagnostics.",
 														 LanguageDisplayName(inputs.Language)),
 								  .Buttons = {LanguageBarChoice::Configure, LanguageBarChoice::NotNow}};
 		case ServerChoiceKind::Chosen:
