@@ -86,7 +86,7 @@ namespace Core {
 			const ProgressSink& m_Progress;
 		};
 
-		Result<void> RunToSuccess(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+		NetworkOutcome RunToSuccess(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								  std::vector<std::string> arguments)
 		{
 			const GitRun gitRun{.Arguments = std::move(arguments),
@@ -100,43 +100,50 @@ namespace Core {
 
 			if (!finished)
 			{
-				return finished.GetError();
+				if (finished.GetError().Code == ErrorCode::Cancelled)
+				{
+					return NetworkOutcome{.Result = NetworkResult::Cancelled};
+				}
+
+				const std::string& startError = finished.GetError().Message;
+				return NetworkOutcome{.Result = NetworkResult::Failed,
+									  .Failure = {.Shown = startError, .Copied = startError, .Hint = NetworkHint::None}};
 			}
 
 			const GitOutput& output = finished.GetValue();
 
 			if (output.ExitCode != 0)
 			{
-				return NetworkError(output);
+				return NetworkOutcome{.Result = NetworkResult::Failed, .Failure = DescribeFailure(output)};
 			}
 
-			return Result<void>::Ok();
+			return NetworkOutcome{};
 		}
 	}
 
-	Result<void> FetchAll(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress)
+	NetworkOutcome FetchAll(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress)
 	{
 		return RunToSuccess(run, cancelled, progress, {"fetch", "--all", "--prune", "--progress"});
 	}
 
-	Result<void> FetchRemote(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+	NetworkOutcome FetchRemote(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 							 const std::string& remote)
 	{
 		return RunToSuccess(run, cancelled, progress, {"fetch", remote, "--progress"});
 	}
 
-	Result<void> FetchFullHistory(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress)
+	NetworkOutcome FetchFullHistory(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress)
 	{
 		return RunToSuccess(run, cancelled, progress, {"fetch", "--unshallow", "--progress"});
 	}
 
-	Result<void> FastForward(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+	NetworkOutcome FastForward(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 							 const std::string& upstreamFullName)
 	{
 		return RunToSuccess(run, cancelled, progress, {"merge", "--ff-only", upstreamFullName});
 	}
 
-	Result<void> PushTo(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+	NetworkOutcome PushTo(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 						const std::string& remote, const std::optional<std::string>& upstreamBranch)
 	{
 		if (upstreamBranch.has_value())
@@ -147,7 +154,7 @@ namespace Core {
 		return RunToSuccess(run, cancelled, progress, {"push", "--progress", "--set-upstream", remote, "HEAD"});
 	}
 
-	Result<void> SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
+	NetworkOutcome SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								   const std::string& remote)
 	{
 		return RunToSuccess(run, cancelled, progress, {"remote", "set-head", remote, "--auto"});
@@ -191,10 +198,6 @@ namespace Core {
 		return failure;
 	}
 
-	Error NetworkError(const GitOutput& output)
-	{
-		return Error{.Code = ErrorCode::IoFailure, .Message = DescribeFailure(output).Shown};
-	}
 
 	std::optional<std::chrono::sys_seconds> LastFetchTime(const std::filesystem::path& commonGitDir)
 	{

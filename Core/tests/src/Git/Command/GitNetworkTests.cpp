@@ -162,12 +162,10 @@ TEST_CASE("Network: a failure shows the hint first and git's last six lines, and
 	CHECK(failure.Shown.find("line 4") == std::string::npos);
 	CHECK(failure.Shown.find("Receiving") == std::string::npos);
 
-	const Core::Error error = Core::NetworkError(output);
-	CHECK(error.Code == Core::ErrorCode::IoFailure);
-	CHECK(error.Message == failure.Shown);
 
 	const Core::GitOutput plain{.ExitCode = 1, .Out = {}, .Errors = "fatal: no luck\n"};
-	CHECK(Core::NetworkError(plain).Message == "fatal: no luck");
+	CHECK(Core::DescribeFailure(plain).Shown == "fatal: no luck");
+	CHECK(Core::DescribeFailure(plain).Hint == Core::NetworkHint::None);
 }
 
 TEST_CASE("Network: fetch all brings every remote's new commits and prunes a deleted branch")
@@ -188,7 +186,7 @@ TEST_CASE("Network: fetch all brings every remote's new commits and prunes a del
 	scene.Git(scene.Work(), {"push", kRemote, "master:topic"});
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchAll(scene.Run(), neverCancelled, IgnorePercent).HasValue());
+	REQUIRE(Core::FetchAll(scene.Run(), neverCancelled, IgnorePercent).Result == Core::NetworkResult::Done);
 	REQUIRE(scene.GitAnyway(scene.Work(), {"rev-parse", "--verify", "refs/remotes/origin/topic"}).ExitCode == 0);
 
 	scene.PeerCommitsAndPushes("b.txt", "two\n");
@@ -196,8 +194,8 @@ TEST_CASE("Network: fetch all brings every remote's new commits and prunes a del
 	scene.Git(scene.Peer(), {"remote", "add", "second", Core::ToUtf8(second)});
 	scene.Git(scene.Peer(), {"push", "second", kBranch});
 
-	const Core::Result<void> fetched = Core::FetchAll(scene.Run(), neverCancelled, IgnorePercent);
-	REQUIRE(fetched.HasValue());
+	const Core::NetworkOutcome fetched = Core::FetchAll(scene.Run(), neverCancelled, IgnorePercent);
+	REQUIRE(fetched.Result == Core::NetworkResult::Done);
 
 	const std::string peerHead = scene.Git(scene.Peer(), {"rev-parse", "HEAD"});
 	CHECK(scene.Git(scene.Work(), {"rev-parse", "refs/remotes/origin/master"}) == peerHead);
@@ -222,10 +220,10 @@ TEST_CASE("Network: a fetch leaves a remote with its default branch")
 	scene.Git(scene.Work(), {"config", "remote.origin.followRemoteHEAD", "never"});
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).HasValue());
+	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).Result == Core::NetworkResult::Done);
 	CHECK(scene.GitAnyway(scene.Work(), {"symbolic-ref", "refs/remotes/origin/HEAD"}).ExitCode != 0);
 
-	REQUIRE(Core::SetRemoteHeadAuto(scene.Run(), neverCancelled, IgnorePercent, kRemote).HasValue());
+	REQUIRE(Core::SetRemoteHeadAuto(scene.Run(), neverCancelled, IgnorePercent, kRemote).Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.Work(), {"symbolic-ref", "refs/remotes/origin/HEAD"}) == kUpstream);
 }
 
@@ -244,8 +242,8 @@ TEST_CASE("Network: fast-forward moves the branch and the work tree to the upstr
 	scene.PeerCommitsAndPushes("b.txt", "two\n");
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).HasValue());
-	REQUIRE(Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream).HasValue());
+	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).Result == Core::NetworkResult::Done);
+	REQUIRE(Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream).Result == Core::NetworkResult::Done);
 
 	CHECK(scene.Head() == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 	CHECK(std::filesystem::exists(scene.Work() / "b.txt"));
@@ -269,13 +267,12 @@ TEST_CASE("Network: fast-forward refuses a diverged branch and changes nothing")
 	const std::string localHead = scene.Fixture().Commit("local");
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).HasValue());
+	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).Result == Core::NetworkResult::Done);
 
-	const Core::Result<void> forwarded = Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream);
+	const Core::NetworkOutcome forwarded = Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream);
 
-	REQUIRE_FALSE(forwarded.HasValue());
-	CHECK(forwarded.GetError().Code == Core::ErrorCode::IoFailure);
-	CHECK_FALSE(forwarded.GetError().Message.empty());
+	REQUIRE(forwarded.Result == Core::NetworkResult::Failed);
+	CHECK_FALSE(forwarded.Failure.Shown.empty());
 	CHECK(scene.Head() == localHead);
 	CHECK_FALSE(std::filesystem::exists(scene.Work() / "b.txt"));
 }
@@ -298,12 +295,12 @@ TEST_CASE("Network: fast-forward refuses to overwrite local changes and keeps th
 	scene.Fixture().Write("a.txt", "my unsaved work\n");
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).HasValue());
+	REQUIRE(Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote).Result == Core::NetworkResult::Done);
 
-	const Core::Result<void> forwarded = Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream);
+	const Core::NetworkOutcome forwarded = Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream);
 
-	REQUIRE_FALSE(forwarded.HasValue());
-	CHECK(forwarded.GetError().Message.find("a.txt") != std::string::npos);
+	REQUIRE(forwarded.Result == Core::NetworkResult::Failed);
+	CHECK(forwarded.Failure.Shown.find("a.txt") != std::string::npos);
 	CHECK(scene.Head() == publishedHead);
 	CHECK(ReadWithoutCarriageReturns(scene.Work() / "a.txt") == "my unsaved work\n");
 }
@@ -325,7 +322,7 @@ TEST_CASE("Network: push sends the branch to its upstream")
 	scene.Fixture().Commit("local");
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch}).HasValue());
+	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch}).Result == Core::NetworkResult::Done);
 
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Head());
 }
@@ -343,7 +340,7 @@ TEST_CASE("Network: push without an upstream sets one")
 	NetworkScene scene{*git};
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::nullopt).HasValue());
+	REQUIRE(Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::nullopt).Result == Core::NetworkResult::Done);
 
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Head());
 	CHECK(scene.Git(scene.Work(), {"config", "branch.master.remote"}) == kRemote);
@@ -368,11 +365,10 @@ TEST_CASE("Network: a push the remote rejects as not a fast-forward is a failure
 	scene.Fixture().Commit("local");
 
 	const std::atomic<bool> neverCancelled{false};
-	const Core::Result<void> pushed = Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
+	const Core::NetworkOutcome pushed = Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
 
-	REQUIRE_FALSE(pushed.HasValue());
-	CHECK(pushed.GetError().Code == Core::ErrorCode::IoFailure);
-	CHECK(pushed.GetError().Message.starts_with("The remote has commits that this branch lacks."));
+	REQUIRE(pushed.Result == Core::NetworkResult::Failed);
+	CHECK(pushed.Failure.Shown.starts_with("The remote has commits that this branch lacks."));
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 }
 
@@ -395,13 +391,12 @@ TEST_CASE("Network: a remote that cannot be reached is a plain failure with git'
 
 	const Core::NetworkRun run{.Git = *git, .WorkingDirectory = fixture.GetPath()};
 	const std::atomic<bool> neverCancelled{false};
-	const Core::Result<void> fetched = Core::FetchAll(run, neverCancelled, IgnorePercent);
+	const Core::NetworkOutcome fetched = Core::FetchAll(run, neverCancelled, IgnorePercent);
 
-	REQUIRE_FALSE(fetched.HasValue());
-	CHECK(fetched.GetError().Code == Core::ErrorCode::IoFailure);
-	CHECK(fetched.GetError().Message.find("fatal") != std::string::npos);
-	CHECK(fetched.GetError().Message.find("Pull first") == std::string::npos);
-	CHECK(fetched.GetError().Message.find("could not sign in") == std::string::npos);
+	REQUIRE(fetched.Result == Core::NetworkResult::Failed);
+	CHECK(fetched.Failure.Shown.find("fatal") != std::string::npos);
+	CHECK(fetched.Failure.Shown.find("Pull first") == std::string::npos);
+	CHECK(fetched.Failure.Shown.find("could not sign in") == std::string::npos);
 }
 
 TEST_CASE("Network: full history deepens a shallow clone")
@@ -440,7 +435,7 @@ TEST_CASE("Network: full history deepens a shallow clone")
 
 	const Core::NetworkRun run{.Git = *git, .WorkingDirectory = shallow};
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchFullHistory(run, neverCancelled, IgnorePercent).HasValue());
+	REQUIRE(Core::FetchFullHistory(run, neverCancelled, IgnorePercent).Result == Core::NetworkResult::Done);
 
 	CHECK(scene.Git(shallow, {"rev-list", "--count", "HEAD"}) == std::to_string(kHistoryLength));
 	CHECK_FALSE(std::filesystem::exists(shallow / ".git" / "shallow"));
@@ -463,7 +458,7 @@ TEST_CASE("Network: the last fetch time is FETCH_HEAD's")
 	CHECK_FALSE(Core::LastFetchTime(gitDirectory).has_value());
 
 	const std::atomic<bool> neverCancelled{false};
-	REQUIRE(Core::FetchAll(scene.Run(), neverCancelled, IgnorePercent).HasValue());
+	REQUIRE(Core::FetchAll(scene.Run(), neverCancelled, IgnorePercent).Result == Core::NetworkResult::Done);
 
 	const std::optional<std::chrono::sys_seconds> fetched = Core::LastFetchTime(gitDirectory);
 	REQUIRE(fetched.has_value());
@@ -476,4 +471,63 @@ TEST_CASE("Network: the last fetch time is FETCH_HEAD's")
 	const std::chrono::sys_seconds expected = std::chrono::floor<std::chrono::seconds>(
 		std::chrono::clock_cast<std::chrono::system_clock>(std::filesystem::last_write_time(fetchHead)));
 	CHECK(*fetched == expected);
+}
+
+TEST_CASE("Network: a failed operation shows the last lines and copies the whole of stderr")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+
+	TempDirectory nowhere;
+	fixture.AddRemoteWithUrl(kRemote, Core::ToUtf8(nowhere.GetPath() / "missing"));
+
+	const Core::NetworkRun run{.Git = *git, .WorkingDirectory = fixture.GetPath()};
+	const std::atomic<bool> neverCancelled{false};
+	const Core::NetworkOutcome fetched = Core::FetchAll(run, neverCancelled, IgnorePercent);
+
+	REQUIRE(fetched.Result == Core::NetworkResult::Failed);
+	CHECK(fetched.Failure.Hint == Core::NetworkHint::None);
+	CHECK(fetched.Failure.Copied.find("fatal") != std::string::npos);
+	CHECK(fetched.Failure.Copied.size() > fetched.Failure.Shown.size());
+
+	const std::size_t lastLineStart = fetched.Failure.Shown.rfind('\n');
+	const std::string lastShownLine =
+		lastLineStart == std::string::npos ? fetched.Failure.Shown : fetched.Failure.Shown.substr(lastLineStart + 1);
+	CHECK(fetched.Failure.Copied.find(lastShownLine) != std::string::npos);
+}
+
+TEST_CASE("Network: a run cancelled before git exits is cancelled, and a git that cannot start is a failure")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	GitFixture fixture;
+
+	const std::atomic<bool> alreadyCancelled{true};
+	const Core::NetworkRun real{.Git = *git, .WorkingDirectory = fixture.GetPath()};
+	const Core::NetworkOutcome cancelled = Core::FetchAll(real, alreadyCancelled, IgnorePercent);
+	CHECK(cancelled.Result == Core::NetworkResult::Cancelled);
+	CHECK(cancelled.Failure.Shown.empty());
+
+	TempDirectory nowhere;
+	const std::atomic<bool> neverCancelled{false};
+	const Core::NetworkRun missing{.Git = nowhere.GetPath() / "no-git.exe", .WorkingDirectory = fixture.GetPath()};
+	const Core::NetworkOutcome unstarted = Core::FetchAll(missing, neverCancelled, IgnorePercent);
+	REQUIRE(unstarted.Result == Core::NetworkResult::Failed);
+	CHECK_FALSE(unstarted.Failure.Shown.empty());
+	CHECK(unstarted.Failure.Shown == unstarted.Failure.Copied);
 }
