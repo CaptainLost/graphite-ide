@@ -18,6 +18,7 @@
 #include "Git/History/CommitDetails.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
+#include "Core/ImGui/TextButton.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/Lists/HighlightedRow.h"
@@ -551,7 +552,13 @@ namespace Graphite {
 		m_ScrollTarget.reset();
 		m_ScrollToTop = false;
 		m_FoldClicked = false;
+		m_BannerActionClicked = false;
 		m_LocalChangesClicked = false;
+	}
+
+	bool CommitListView::TakeBannerActionClick()
+	{
+		return std::exchange(m_BannerActionClicked, false);
 	}
 
 	bool CommitListView::TakeFoldClick()
@@ -757,7 +764,7 @@ namespace Graphite {
 						RenderNoteRow(marks.Waiting);
 						break;
 					case CommitRowKind::Banner:
-						RenderBannerRow(*marks.Banner);
+						RenderBannerRow(*marks.Banner, marks.BannerAction, marks.BannerActionDisabled);
 						break;
 					case CommitRowKind::Commit:
 					{
@@ -1114,13 +1121,38 @@ namespace Graphite {
 		}
 	}
 
-	void CommitListView::RenderBannerRow(const std::string& banner)
+	void CommitListView::RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled)
 	{
 		// The row is tinted as the banner above the list was, and says the sentence in the message column.
 		ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_FrameBg));
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
-		DrawFittedCell(banner, ImGui::GetColorU32(ImGuiCol_Text), kNoHighlight);
-		ImGui::SetItemTooltip("%s", banner.c_str());
+
+		if (!action.has_value())
+		{
+			DrawFittedCell(banner, ImGui::GetColorU32(ImGuiCol_Text), kNoHighlight);
+			ImGui::SetItemTooltip("%s", banner.c_str());
+			return;
+		}
+
+		// The action keeps its place at the row's end; the sentence is cut to what is left.
+		const float actionWidth = ImGui::CalcTextSize(action->c_str()).x + 2.0f * ImGui::GetStyle().FramePadding.x;
+		const float gap = MockupPixels(kMessagePiecesGap);
+		const bool drewSentence = DrawFittedCell(banner, ImGui::GetColorU32(ImGuiCol_Text), kNoHighlight, actionWidth + gap);
+
+		if (drewSentence)
+		{
+			ImGui::SetItemTooltip("%s", banner.c_str());
+			ImGui::SameLine(kNoOffset, gap);
+		}
+
+		ImGui::BeginDisabled(actionDisabled);
+
+		if (Core::SmallTextButton(action->c_str()) && !actionDisabled)
+		{
+			m_BannerActionClicked = true;
+		}
+
+		ImGui::EndDisabled();
 	}
 
 	void CommitListView::RenderNoteRow(const std::optional<std::string>& waiting)

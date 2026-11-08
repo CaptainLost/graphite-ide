@@ -75,6 +75,13 @@ namespace Graphite {
 		// tooltip. Empty for none.
 		std::optional<std::string> Banner;
 
+		// A word after the banner's sentence that does something when clicked, answered by TakeBannerActionClick. Only with
+		// a Banner.
+		std::optional<std::string> BannerAction;
+
+		// The action is drawn disabled and a click on it is not reported.
+		bool BannerActionDisabled = false;
+
 		// Set in the Merges history: an opened merge lists the commits it brought, which this answers (null while they
 		// are being read), instead of its files.
 		std::function<Core::Ref<const Core::LogPage>(const Core::Oid&)> BroughtOf;
@@ -152,6 +159,9 @@ namespace Graphite {
 
 		// Whether the fold row, or the Local changes row, was clicked since the last ask; each click is answered once.
 		bool TakeFoldClick();
+
+		// Whether the banner's action was clicked since the last ask; answered once.
+		bool TakeBannerActionClick();
 		bool TakeLocalChangesClick();
 
 		void SetActionsEnabled(bool enabled) { m_ActionsEnabled = enabled; }
@@ -185,7 +195,7 @@ namespace Graphite {
 		void RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre);
 
 		void RenderFoldRow(const FoldRow& fold);
-		void RenderBannerRow(const std::string& banner);
+		void RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled);
 
 		void RenderNoteRow(const std::optional<std::string>& waiting);
 
@@ -206,6 +216,7 @@ namespace Graphite {
 		std::optional<Core::Oid> m_HoveredCommit;
 
 		bool m_FoldClicked = false;
+		bool m_BannerActionClicked = false;
 		bool m_LocalChangesClicked = false;
 
 		std::optional<CommitAction> m_CommitAction;

@@ -12,11 +12,16 @@ namespace Graphite {
 	// of another remote's default, history cut off, or no common history.
 	std::optional<std::string> HistoryBannerFor(const VsInput& input);
 
+	// The word of the action the banner offers, or none: a shallow clone's "History cut off here" offers
+	// "Fetch full history".
+	std::optional<std::string> HistoryBannerActionFor(const VsInput& input);
+
 	// What the history header says of the shown reference's line: the vs label and the banner.
 	struct HeaderWords
 	{
 		VsLabel Label;
 		std::optional<std::string> Banner;
+		std::optional<std::string> BannerAction; // set only with a Banner
 	};
 
 	struct DrawnHeaderWords

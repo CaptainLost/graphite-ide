@@ -224,3 +224,29 @@ TEST_CASE("Git window: a branch the check found not merged gets no banner")
 
 	CHECK_FALSE(BannerWithContent(scene, Core::ContentVerdict{}).has_value());
 }
+
+TEST_CASE("History banner: a shallow clone's banner offers Fetch full history")
+{
+	Scene scene = MakeScene();
+
+	scene.Line().State = Core::BranchState::HistoryCutOff;
+	const BranchLines lines(scene.Read);
+	const VsInput input{scene.Read, lines, "refs/heads/feature", std::nullopt};
+
+	CHECK(Graphite::HistoryBannerActionFor(input) == std::optional<std::string>{"Fetch full history"});
+}
+
+TEST_CASE("History banner: no other banner offers an action")
+{
+	Scene scene = MakeScene();
+
+	for (const Core::BranchState state : {Core::BranchState::NoCommonHistory, Core::BranchState::MergedByHistory,
+										  Core::BranchState::NoOwnCommits, Core::BranchState::NotMerged})
+	{
+		scene.Line().State = state;
+		const BranchLines lines(scene.Read);
+		const VsInput input{scene.Read, lines, "refs/heads/feature", std::nullopt};
+
+		CHECK_FALSE(Graphite::HistoryBannerActionFor(input).has_value());
+	}
+}

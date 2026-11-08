@@ -913,6 +913,7 @@ namespace Graphite {
 
 		VsLabel label;
 		std::optional<std::string> banner;
+		std::optional<std::string> bannerAction;
 
 		// The label and the banner come in the update that shows the rows under them, which waits for the distance they
 		// count, so the three arrive together and the label at its final width.
@@ -921,12 +922,14 @@ namespace Graphite {
 			const std::optional<ContentMark> content = ShownContentMark();
 			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef),
 								content.has_value() ? content->Verdict : std::nullopt};
-			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input)};
+			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input),
+								 .BannerAction = HistoryBannerActionFor(input)};
 			const bool waits = HeaderWordsWait(MeasuresShownDistance(*read, shownRef), RowsOfLineShown(), ShownContentWaits());
 			const HeaderWords& words = HeaderWordsToDraw(fresh, waits, shownRef, m_DrawnHeaderWords);
 
 			label = words.Label;
 			banner = words.Banner;
+			bannerAction = words.BannerAction;
 
 			if (!waits)
 			{
@@ -1070,6 +1073,7 @@ namespace Graphite {
 
 		// Drawn by the list, under the Local changes row, which is on screen before the banner can come.
 		m_HistoryBanner = banner;
+		m_HistoryBannerAction = bannerAction;
 
 		DrawVsPicker();
 	}

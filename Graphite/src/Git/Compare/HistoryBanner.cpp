@@ -84,6 +84,26 @@ namespace Graphite {
 		return measuring || contentPending || !rowsOfLineShown;
 	}
 
+	std::optional<std::string> HistoryBannerActionFor(const VsInput& input)
+	{
+		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);
+
+		// The same lines HistoryBannerFor passes over: a picked line and an old copy have banners of their own.
+		if (input.Lines.PickedLineOf(shown).has_value() || input.Lines.OldCopyNamed(shown) != nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const Core::BranchLine* const line = input.Lines.LineOf(shown);
+
+		if (line != nullptr && line->State == Core::BranchState::HistoryCutOff)
+		{
+			return std::string{"Fetch full history"};
+		}
+
+		return std::nullopt;
+	}
+
 	std::optional<std::string> HistoryBannerFor(const VsInput& input)
 	{
 		const std::string_view shown = input.Lines.ShownAs(input.ShownRef);

@@ -641,3 +641,52 @@ TEST_CASE("Git window: an opened merge whose commits could not be read is follow
 	history.ClickRow(2, kRowCount);
 	CHECK(history.View.GetSelectedCommit() == std::optional<Core::Oid>{history.Page.Commits[1].Id});
 }
+
+namespace {
+
+	constexpr const char* kCutOffBanner = "History cut off here: this clone is shallow, so the commit it shares with its line is not on this computer.";
+
+	// The banner row is the first of the list; the action stands at the end of the message column, where the sentence gives way.
+	ImVec2 BannerActionPoint(const MarkedHistory& history)
+	{
+		const ImGuiTable* table = history.Table();
+		REQUIRE(table != nullptr);
+
+		const int message = ColumnNamed(*table, "Message");
+		REQUIRE(message >= 0);
+
+		constexpr float kInsideTheAction = 40.0f;
+		const float pitch = ListRowPitch();
+		const float firstRowTop = table->RowPosY1 - pitch;
+
+		return ImVec2(table->Columns[message].MaxX - kInsideTheAction, firstRowTop + pitch * 0.5f);
+	}
+}
+
+TEST_CASE("History banner: a click on Fetch full history is reported once")
+{
+	MarkedHistory history("BannerActionHistory", 1);
+	history.Marks.Banner = kCutOffBanner;
+	history.Marks.BannerAction = "Fetch full history";
+
+	history.Settle();
+	CHECK_FALSE(history.View.TakeBannerActionClick());
+
+	history.Frames.Click(BannerActionPoint(history), [&] { history.Draw(); });
+
+	CHECK(history.View.TakeBannerActionClick());
+	CHECK_FALSE(history.View.TakeBannerActionClick());
+}
+
+TEST_CASE("History banner: while a network operation runs Fetch full history does nothing")
+{
+	MarkedHistory history("BannerActionBusyHistory", 1);
+	history.Marks.Banner = kCutOffBanner;
+	history.Marks.BannerAction = "Fetch full history";
+	history.Marks.BannerActionDisabled = true;
+
+	history.Settle();
+	history.Frames.Click(BannerActionPoint(history), [&] { history.Draw(); });
+
+	CHECK_FALSE(history.View.TakeBannerActionClick());
+}

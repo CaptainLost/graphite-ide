@@ -1219,6 +1219,11 @@ namespace Graphite {
 		{
 			ToggleNewerShown();
 		}
+
+		if (m_Commits.TakeBannerActionClick())
+		{
+			m_Network.FetchFullHistory();
+		}
 	}
 
 	void GitView::SelectOpenedStart()
@@ -1406,6 +1411,10 @@ namespace Graphite {
 			}
 
 			marks.Banner = m_HistoryBanner;
+			marks.BannerAction = m_HistoryBanner.has_value() ? m_HistoryBannerAction : std::nullopt;
+
+			// WARNING: Any network operation holds it, the full history's own included: a second fetch would only wait.
+			marks.BannerActionDisabled = m_Network.GetState().Running.has_value();
 			const HistoryMarks broughtMarks = BroughtMarks();
 			marks.BroughtOf = broughtMarks.BroughtOf;
 			marks.BroughtFailure = broughtMarks.BroughtFailure;

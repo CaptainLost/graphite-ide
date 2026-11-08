@@ -25,6 +25,7 @@
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
+#include "Git/Network/NetworkCommands.h"
 #include "Git/Network/NetworkText.h"
 #include "Git/WriteFailureTitle.h"
 
@@ -365,6 +366,12 @@ namespace Graphite {
 							m_Terminals.RequestRedock();
 							APP_INFO("Layout restored to the default");
 						}});
+
+		RegisterNetworkCommands(m_Commands,
+								NetworkCommandServices{.Buttons = [this] { return DescribeNetworkButtonsNow(m_Git, m_Network, m_GitView->CurrentWait().CheckingOut.has_value()); },
+													   .Fetch = [this] { m_Network.Fetch(); },
+													   .Pull = [this] { m_Network.Pull(); },
+													   .Push = [this] { m_Network.Push(); }});
 
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",

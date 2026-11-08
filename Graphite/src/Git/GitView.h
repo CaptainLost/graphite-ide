@@ -593,6 +593,7 @@ namespace Graphite {
 
 		// The banner the header found this frame, which the list draws as a row.
 		std::optional<std::string> m_HistoryBanner;
+		std::optional<std::string> m_HistoryBannerAction;
 
 		// What the shown reference is compared with: opened by the header's vs button and the sidebar's bases link.
 		VsPickerView m_VsPicker;
