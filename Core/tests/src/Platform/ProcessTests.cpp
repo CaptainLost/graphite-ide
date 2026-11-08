@@ -5,10 +5,13 @@
 
 #include <doctest/doctest.h>
 
+#include "ScopedEnvironmentVariable.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <string>
 
 using namespace Core;
 
@@ -75,6 +78,20 @@ TEST_CASE("A set environment variable comes back as the path it names, wide char
 
 	const wchar_t* const emptyValueRemovesTheVariable = L"";
 	_wputenv_s(L"GRAPHITE_TESTS_PATH", emptyValueRemovesTheVariable);
+}
+
+TEST_CASE("A set environment variable comes back as its text, and an unset or empty one as none")
+{
+	const ScopedEnvironmentVariable command(L"GRAPHITE_TESTS_COMMAND", L"ssh -o BatchMode=yes ł");
+	const ScopedEnvironmentVariable empty(L"GRAPHITE_TESTS_EMPTY", L"");
+	const ScopedEnvironmentVariable unset(L"GRAPHITE_TESTS_UNSET", std::nullopt);
+	REQUIRE(command.WasSet());
+	REQUIRE(empty.WasSet());
+	REQUIRE(unset.WasSet());
+
+	CHECK(Core::EnvironmentValue(L"GRAPHITE_TESTS_COMMAND") == std::optional<std::wstring>{L"ssh -o BatchMode=yes ł"});
+	CHECK_FALSE(Core::EnvironmentValue(L"GRAPHITE_TESTS_EMPTY").has_value());
+	CHECK_FALSE(Core::EnvironmentValue(L"GRAPHITE_TESTS_UNSET").has_value());
 }
 
 TEST_CASE("A program on PATH is found and a missing one is not")

@@ -236,7 +236,7 @@ namespace Core {
 			{.Name = kLocaleName, .Value = kUntranslatedLocale},
 		};
 
-		const bool sshCommandInherited = EnvironmentPath(kSshCommandWideName).has_value();
+		const bool sshCommandInherited = EnvironmentValue(kSshCommandWideName).has_value();
 
 		if (!sshCommandConfigured && !sshCommandInherited)
 		{

@@ -81,7 +81,7 @@ namespace Core {
 #endif
 	}
 
-	std::optional<std::filesystem::path> EnvironmentPath([[maybe_unused]] const wchar_t* name)
+	std::optional<std::wstring> EnvironmentValue([[maybe_unused]] const wchar_t* name)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		// GetEnvironmentVariableW counts the terminator when it reports the length and leaves it out when it copies the value.
@@ -106,10 +106,22 @@ namespace Core {
 		}
 
 		value.resize(charactersWritten);
-		return std::filesystem::path{value};
+		return value;
 #else
 		return std::nullopt;
 #endif
+	}
+
+	std::optional<std::filesystem::path> EnvironmentPath(const wchar_t* name)
+	{
+		const std::optional<std::wstring> value = EnvironmentValue(name);
+
+		if (!value.has_value())
+		{
+			return std::nullopt;
+		}
+
+		return std::filesystem::path{*value};
 	}
 
 	Result<std::filesystem::path> HomeDirectory()
