@@ -36,8 +36,8 @@ namespace Graphite {
 	// the branch has an upstream of another name, "; it then tracks origin/my-fix instead of origin/main".
 	std::string PublishText(const std::string& branch, const std::string& remote, const std::optional<std::string>& upstream);
 
-	// A failure's message: the hint's sentence naming the remote and the branch when they are known, in place of Core's,
-	// which names neither; for Pull's local changes, the files git listed anywhere in its errors, ten at most.
+	// A failure's message: the hint's sentence, naming the remote and the branch when they are known, then git's last six
+	// lines; for Pull's local changes, the files git listed, ten at most.
 	std::string FailureMessage(NetworkOperation operation, const Core::NetworkFailure& failure, const NetworkNames& names);
 
 	NetworkActivity DescribeNetworkActivity(const NetworkState& state, const std::optional<NetworkDone>& shown);

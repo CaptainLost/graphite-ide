@@ -155,7 +155,7 @@ TEST_CASE("Network: the hints are read from git's words")
 	CHECK(Core::HintOf("fatal: unable to access") == Core::NetworkHint::None);
 }
 
-TEST_CASE("Network: a failure shows the hint first and git's last six lines, and copies all of stderr")
+TEST_CASE("Network: a failure gives the hint and git's lines without its progress, and keeps all of stderr")
 {
 	std::string errors;
 
@@ -165,21 +165,39 @@ TEST_CASE("Network: a failure shows the hint first and git's last six lines, and
 	}
 
 	errors += "Receiving objects:  45% (9/20)\rReceiving objects: 100% (20/20), done.\n";
-	errors += "Host key verification failed.\n";
+	errors += "\nHost key verification failed.\r\n";
 
 	const Core::GitOutput output{.ExitCode = 128, .Out = {}, .Errors = errors};
 	const Core::NetworkFailure failure = Core::DescribeFailure(output);
 
 	CHECK(failure.Hint == Core::NetworkHint::SignIn);
-	CHECK(failure.Copied == errors);
-	CHECK(failure.Shown.starts_with("Git could not sign in."));
-	CHECK(failure.Shown.ends_with("line 9\nHost key verification failed."));
-	CHECK(failure.Shown.find("line 4") == std::string::npos);
-	CHECK(failure.Shown.find("Receiving") == std::string::npos);
+	CHECK(failure.Errors == errors);
+	REQUIRE(failure.Lines.size() == 10);
+	CHECK(failure.Lines.front() == "line 1");
+	CHECK(failure.Lines[8] == "line 9");
+	CHECK(failure.Lines.back() == "Host key verification failed.");
+	CHECK(failure.WouldOverwrite.empty());
 
 	const Core::GitOutput plain{.ExitCode = 1, .Out = {}, .Errors = "fatal: no luck\n"};
-	CHECK(Core::DescribeFailure(plain).Shown == "fatal: no luck");
+	CHECK(Core::DescribeFailure(plain).Lines == std::vector<std::string>{"fatal: no luck"});
 	CHECK(Core::DescribeFailure(plain).Hint == Core::NetworkHint::None);
+}
+
+TEST_CASE("Network: a failure lists the files a merge would overwrite, tracked and untracked")
+{
+	const std::string errors = "error: Your local changes to the following files would be overwritten by merge:\r\n"
+							   "\ta.txt\r\n"
+							   "\tsrc/b.txt\r\n"
+							   "Please commit your changes or stash them before you merge.\r\n"
+							   "error: The following untracked working tree files would be overwritten by merge:\n"
+							   "\tnew.txt\n"
+							   "Please move or remove them before you merge.\n"
+							   "Aborting\n";
+
+	const Core::NetworkFailure failure = Core::DescribeFailure(Core::GitOutput{.ExitCode = 1, .Out = {}, .Errors = errors});
+
+	CHECK(failure.WouldOverwrite == std::vector<std::string>{"a.txt", "src/b.txt", "new.txt"});
+	CHECK(failure.Lines.back() == "Aborting");
 }
 
 TEST_CASE("Network: fetch all brings every remote's new commits and prunes a deleted branch")
@@ -246,7 +264,7 @@ TEST_CASE("Network: a fetch acts on the folder's repository whatever repository 
 		fetched = Core::FetchRemote(scene.Run(), neverCancelled, IgnorePercent, kRemote);
 	}
 
-	INFO(fetched.Failure.Copied);
+	INFO(fetched.Failure.Errors);
 	REQUIRE(fetched.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.Work(), {"rev-parse", kUpstream}) == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 	CHECK(scene.GitAnyway(elsewhere.GetPath(), {"rev-parse", "--verify", kUpstream}).ExitCode != 0);
@@ -321,7 +339,7 @@ TEST_CASE("Network: fast-forward refuses a diverged branch and changes nothing")
 	const Core::NetworkOutcome forwarded = Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream);
 
 	REQUIRE(forwarded.Result == Core::NetworkResult::Failed);
-	CHECK_FALSE(forwarded.Failure.Shown.empty());
+	CHECK_FALSE(forwarded.Failure.Lines.empty());
 	CHECK(scene.Head() == localHead);
 	CHECK_FALSE(std::filesystem::exists(scene.Work() / "b.txt"));
 }
@@ -349,7 +367,7 @@ TEST_CASE("Network: fast-forward refuses to overwrite local changes and keeps th
 	const Core::NetworkOutcome forwarded = Core::FastForward(scene.Run(), neverCancelled, IgnorePercent, kUpstream);
 
 	REQUIRE(forwarded.Result == Core::NetworkResult::Failed);
-	CHECK(forwarded.Failure.Shown.find("a.txt") != std::string::npos);
+	CHECK(forwarded.Failure.WouldOverwrite == std::vector<std::string>{"a.txt"});
 	CHECK(scene.Head() == publishedHead);
 	CHECK(ReadWithoutCarriageReturns(scene.Work() / "a.txt") == "my unsaved work\n");
 }
@@ -453,7 +471,7 @@ TEST_CASE("Network: a push the remote rejects as not a fast-forward is a failure
 	const Core::NetworkOutcome pushed = Core::PushTo(scene.Run(), neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
 
 	REQUIRE(pushed.Result == Core::NetworkResult::Failed);
-	CHECK(pushed.Failure.Shown.starts_with("The remote has commits that this branch lacks."));
+	CHECK(pushed.Failure.Hint == Core::NetworkHint::Rejected);
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 }
 
@@ -480,9 +498,8 @@ TEST_CASE("Network: a remote that cannot be reached is a plain failure with git'
 	const Core::NetworkOutcome fetched = Core::FetchAll(run, neverCancelled, IgnorePercent);
 
 	REQUIRE(fetched.Result == Core::NetworkResult::Failed);
-	CHECK(fetched.Failure.Shown.find("fatal") != std::string::npos);
-	CHECK(fetched.Failure.Shown.find("Pull first") == std::string::npos);
-	CHECK(fetched.Failure.Shown.find("could not sign in") == std::string::npos);
+	CHECK(fetched.Failure.Hint == Core::NetworkHint::None);
+	CHECK(std::ranges::any_of(fetched.Failure.Lines, [](const std::string& line) { return line.starts_with("fatal"); }));
 }
 
 TEST_CASE("Network: full history deepens a shallow clone")
@@ -581,14 +598,14 @@ TEST_CASE("Network: a remote named like an option is a remote, not an option")
 	const std::atomic<bool> neverCancelled{false};
 
 	const Core::NetworkOutcome firstPush = Core::PushTo(run, neverCancelled, IgnorePercent, kOptionLikeRemote, std::nullopt);
-	INFO(firstPush.Failure.Copied);
+	INFO(firstPush.Failure.Errors);
 	REQUIRE(firstPush.Result == Core::NetworkResult::Done);
 
 	fixture.Write("b.txt", "two\n");
 	const std::string second = fixture.Commit("two");
 
 	const Core::NetworkOutcome secondPush = Core::PushTo(run, neverCancelled, IgnorePercent, kOptionLikeRemote, std::string{kBranch});
-	INFO(secondPush.Failure.Copied);
+	INFO(secondPush.Failure.Errors);
 	REQUIRE(secondPush.Result == Core::NetworkResult::Done);
 
 	const Core::GitRun revParse{.Arguments = {"rev-parse", kBranch},
@@ -599,15 +616,15 @@ TEST_CASE("Network: a remote named like an option is a remote, not an option")
 	CHECK(Trimmed(pushedHead.GetValue().Out) == second);
 
 	const Core::NetworkOutcome fetched = Core::FetchRemote(run, neverCancelled, IgnorePercent, kOptionLikeRemote);
-	INFO(fetched.Failure.Copied);
+	INFO(fetched.Failure.Errors);
 	CHECK(fetched.Result == Core::NetworkResult::Done);
 
 	const Core::NetworkOutcome headSet = Core::SetRemoteHeadAuto(run, neverCancelled, IgnorePercent, kOptionLikeRemote);
-	INFO(headSet.Failure.Copied);
+	INFO(headSet.Failure.Errors);
 	CHECK(headSet.Result == Core::NetworkResult::Done);
 }
 
-TEST_CASE("Network: a failed operation shows the last lines and copies the whole of stderr")
+TEST_CASE("Network: a failed operation gives git's lines and keeps the whole of stderr")
 {
 	const std::optional<std::filesystem::path> git = Core::FindGit();
 
@@ -631,13 +648,13 @@ TEST_CASE("Network: a failed operation shows the last lines and copies the whole
 
 	REQUIRE(fetched.Result == Core::NetworkResult::Failed);
 	CHECK(fetched.Failure.Hint == Core::NetworkHint::None);
-	CHECK(fetched.Failure.Copied.find("fatal") != std::string::npos);
-	CHECK(fetched.Failure.Copied.size() > fetched.Failure.Shown.size());
+	CHECK(fetched.Failure.Errors.find("fatal") != std::string::npos);
+	REQUIRE_FALSE(fetched.Failure.Lines.empty());
 
-	const std::size_t lastLineStart = fetched.Failure.Shown.rfind('\n');
-	const std::string lastShownLine =
-		lastLineStart == std::string::npos ? fetched.Failure.Shown : fetched.Failure.Shown.substr(lastLineStart + 1);
-	CHECK(fetched.Failure.Copied.find(lastShownLine) != std::string::npos);
+	for (const std::string& line : fetched.Failure.Lines)
+	{
+		CHECK(fetched.Failure.Errors.find(line) != std::string::npos);
+	}
 }
 
 TEST_CASE("Network: core.sshCommand counts as set when git reads one, empty or through an include libgit2 cannot follow")
@@ -701,15 +718,15 @@ TEST_CASE("Network: a run cancelled before git exits is cancelled, and a git tha
 	const Core::NetworkRun real{.Git = *git, .WorkingDirectory = fixture.GetPath()};
 	const Core::NetworkOutcome cancelled = Core::FetchAll(real, alreadyCancelled, IgnorePercent);
 	CHECK(cancelled.Result == Core::NetworkResult::Cancelled);
-	CHECK(cancelled.Failure.Shown.empty());
+	CHECK(cancelled.Failure.Lines.empty());
 
 	TempDirectory nowhere;
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkRun missing{.Git = nowhere.GetPath() / "no-git.exe", .WorkingDirectory = fixture.GetPath()};
 	const Core::NetworkOutcome unstarted = Core::FetchAll(missing, neverCancelled, IgnorePercent);
 	REQUIRE(unstarted.Result == Core::NetworkResult::Failed);
-	CHECK_FALSE(unstarted.Failure.Shown.empty());
-	CHECK(unstarted.Failure.Shown == unstarted.Failure.Copied);
+	CHECK_FALSE(unstarted.Failure.Errors.empty());
+	CHECK(unstarted.Failure.Lines == std::vector<std::string>{unstarted.Failure.Errors});
 }
 
 TEST_CASE("Network: cancelling a fetch while git runs ends it and everything it started")
@@ -797,7 +814,7 @@ TEST_CASE("Network: cancelling a fetch while git runs ends it and everything it 
 	CHECK(stillRunning);
 	CHECK(heldWhileRunning);
 	CHECK(outcome.Result == Core::NetworkResult::Cancelled);
-	CHECK(outcome.Failure.Shown.empty());
+	CHECK(outcome.Failure.Lines.empty());
 
 	// Every process the fetch started has the directory as its current one until it ends.
 	bool released = false;

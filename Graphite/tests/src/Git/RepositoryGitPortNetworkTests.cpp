@@ -397,7 +397,7 @@ TEST_CASE("Git network port: fetch all brings new commits and prunes a deleted b
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome fetched = port.FetchAll(neverCancelled, IgnorePercent);
 
-	INFO(fetched.Failure.Copied);
+	INFO(fetched.Failure.Errors);
 	REQUIRE(fetched.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.WorkPath(), {"rev-parse", "refs/remotes/origin/master"}) == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 	CHECK(scene.GitAnyway(scene.WorkPath(), {"rev-parse", "--verify", "refs/remotes/origin/topic"}).ExitCode != 0);
@@ -428,7 +428,7 @@ TEST_CASE("Git network port: fetch one remote leaves the others as they were")
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome fetched = port.FetchRemote(neverCancelled, IgnorePercent, "second");
 
-	INFO(fetched.Failure.Copied);
+	INFO(fetched.Failure.Errors);
 	REQUIRE(fetched.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.WorkPath(), {"rev-parse", "refs/remotes/second/master"}) == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 	CHECK(scene.Git(scene.WorkPath(), {"rev-parse", "refs/remotes/origin/master"}) == before);
@@ -453,7 +453,7 @@ TEST_CASE("Git network port: fast-forward moves the branch and the work tree to 
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome forwarded = port.FastForward(neverCancelled, IgnorePercent, "refs/remotes/origin/master");
 
-	INFO(forwarded.Failure.Copied);
+	INFO(forwarded.Failure.Errors);
 	REQUIRE(forwarded.Result == Core::NetworkResult::Done);
 	CHECK(scene.Head() == scene.Git(scene.Peer(), {"rev-parse", "HEAD"}));
 	CHECK(std::filesystem::exists(scene.WorkPath() / "b.txt"));
@@ -511,7 +511,7 @@ TEST_CASE("Git network port: push sends the branch to its upstream branch")
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome pushed = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
 
-	INFO(pushed.Failure.Copied);
+	INFO(pushed.Failure.Errors);
 	REQUIRE(pushed.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Head());
 }
@@ -532,7 +532,7 @@ TEST_CASE("Git network port: push without an upstream sets one")
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome pushed = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::nullopt);
 
-	INFO(pushed.Failure.Copied);
+	INFO(pushed.Failure.Errors);
 	REQUIRE(pushed.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == scene.Head());
 	CHECK(scene.Git(scene.WorkPath(), {"config", "branch.master.remote"}) == kRemote);
@@ -623,7 +623,7 @@ TEST_CASE("Git network port: setting the remote's head creates refs/remotes/<rem
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome headSet = port.SetRemoteHeadAuto(neverCancelled, IgnorePercent, kRemote);
 
-	INFO(headSet.Failure.Copied);
+	INFO(headSet.Failure.Errors);
 	REQUIRE(headSet.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(scene.WorkPath(), {"symbolic-ref", "refs/remotes/origin/HEAD"}) == "refs/remotes/origin/master");
 }
@@ -656,7 +656,7 @@ TEST_CASE("Git network port: full history deepens a shallow clone")
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome deepened = port.FetchFullHistory(neverCancelled, IgnorePercent);
 
-	INFO(deepened.Failure.Copied);
+	INFO(deepened.Failure.Errors);
 	REQUIRE(deepened.Result == Core::NetworkResult::Done);
 	CHECK(scene.Git(shallow, {"rev-list", "--count", "HEAD"}) == std::to_string(kHistoryLength));
 }
@@ -694,7 +694,7 @@ TEST_CASE("Git network port: once the full history is fetched, the port reads th
 
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome deepened = port.FetchFullHistory(neverCancelled, IgnorePercent);
-	INFO(deepened.Failure.Copied);
+	INFO(deepened.Failure.Errors);
 	REQUIRE(deepened.Result == Core::NetworkResult::Done);
 	CHECK(port.GetOpenCount() == 1);
 
@@ -745,7 +745,7 @@ TEST_CASE("Git network port: once the full history is fetched, a branch cut off 
 
 	const std::atomic<bool> neverCancelled{false};
 	const Core::NetworkOutcome deepened = port.FetchFullHistory(neverCancelled, IgnorePercent);
-	INFO(deepened.Failure.Copied);
+	INFO(deepened.Failure.Errors);
 	REQUIRE(deepened.Result == Core::NetworkResult::Done);
 
 	// As the lines model asks it: with the graph of the read before.
@@ -765,8 +765,8 @@ TEST_CASE("Git network port: a folder that is not a repository fails with a plai
 	const Core::NetworkOutcome fetched = port.FetchAll(neverCancelled, IgnorePercent);
 
 	REQUIRE(fetched.Result == Core::NetworkResult::Failed);
-	CHECK(fetched.Failure.Shown == "The folder is not a git repository.");
-	CHECK(fetched.Failure.Copied == fetched.Failure.Shown);
+	CHECK(fetched.Failure.Lines == std::vector<std::string>{"The folder is not a git repository."});
+	CHECK(fetched.Failure.Errors == "The folder is not a git repository.");
 	CHECK(fetched.Failure.Hint == Core::NetworkHint::None);
 
 	const Graphite::NetworkSetup setup = port.QueryNetworkSetup();
@@ -788,8 +788,8 @@ TEST_CASE("Git network port: a bare repository fails saying it has no work tree"
 	const Core::NetworkOutcome pushed = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::nullopt);
 
 	REQUIRE(pushed.Result == Core::NetworkResult::Failed);
-	CHECK(pushed.Failure.Shown == "This repository has no work tree.");
-	CHECK(pushed.Failure.Copied == pushed.Failure.Shown);
+	CHECK(pushed.Failure.Lines == std::vector<std::string>{"This repository has no work tree."});
+	CHECK(pushed.Failure.Errors == "This repository has no work tree.");
 }
 
 TEST_CASE("Git network port: a core.sshCommand set only through an includeIf hasconfig include keeps ssh out of batch mode")
@@ -821,7 +821,7 @@ TEST_CASE("Git network port: a core.sshCommand set only through an includeIf has
 	scene.Work().Write("b.txt", "two\n");
 	scene.Work().Commit("two");
 	const Core::NetworkOutcome first = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
-	INFO(first.Failure.Copied);
+	INFO(first.Failure.Errors);
 	REQUIRE(first.Result == Core::NetworkResult::Done);
 	REQUIRE(ReadText(seen) == "ssh -o BatchMode=yes");
 
@@ -837,7 +837,7 @@ TEST_CASE("Git network port: a core.sshCommand set only through an includeIf has
 	scene.Work().Write("c.txt", "three\n");
 	scene.Work().Commit("three");
 	const Core::NetworkOutcome second = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
-	INFO(second.Failure.Copied);
+	INFO(second.Failure.Errors);
 	REQUIRE(second.Result == Core::NetworkResult::Done);
 	CHECK(ReadText(seen) == "unset");
 }

@@ -20,7 +20,7 @@ namespace Graphite {
 		Core::NetworkOutcome FailedWith(const std::string& sentence)
 		{
 			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed,
-										.Failure = {.Shown = sentence, .Copied = sentence, .Hint = Core::NetworkHint::None}};
+										.Failure = {.Lines = {sentence}, .Errors = sentence}};
 		}
 
 		// "refs/remotes/<remote>/", where git keeps the remote's branches.
@@ -725,7 +725,7 @@ namespace Graphite {
 			m_Failures.push_back(NetworkFailureReport{
 				.Operation = operation,
 				.Error = Core::Error{Core::ErrorCode::IoFailure, FailureMessage(operation, outcome.Failure, names)},
-				.Copied = outcome.Failure.Copied});
+				.Copied = outcome.Failure.Errors});
 			break;
 		}
 

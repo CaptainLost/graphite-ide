@@ -76,10 +76,11 @@ namespace {
 		return branch;
 	}
 
-	Core::NetworkOutcome Failed(std::string shown, std::string copied, Core::NetworkHint hint = Core::NetworkHint::None)
+	// As Core describes a git that exited 1 with `errors` on its stderr.
+	Core::NetworkOutcome Failed(const std::string& errors)
 	{
 		return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed,
-									.Failure = {.Shown = std::move(shown), .Copied = std::move(copied), .Hint = hint}};
+									.Failure = Core::DescribeFailure(Core::GitOutput{.ExitCode = 1, .Out = {}, .Errors = errors})};
 	}
 
 	// A repository whose branches, remotes and network answers a test sets. Each network call is recorded by its name and
@@ -437,14 +438,11 @@ TEST_CASE("Network model: a failure keeps git's words and the hint first")
 	InlineNetwork network;
 	network.Port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 1, 0)), RemoteBranch("origin", "main")};
 
-	const std::string shown = "The remote has commits that this branch lacks. Pull first, or merge in a terminal.\n"
-							  " ! [rejected]        main -> main (fetch first)\n"
-							  "error: failed to push some refs to 'C:/server.git'";
 	const std::string copied = "To C:/server.git\n"
 							   " ! [rejected]        main -> main (fetch first)\n"
 							   "error: failed to push some refs to 'C:/server.git'\n"
 							   "hint: Updates were rejected because the remote contains work that you do not\n";
-	network.Port.Outcomes["PushTo"] = Failed(shown, copied, Core::NetworkHint::Rejected);
+	network.Port.Outcomes["PushTo"] = Failed(copied);
 
 	network.Model.Push();
 	network.Update();
@@ -453,8 +451,10 @@ TEST_CASE("Network model: a failure keeps git's words and the hint first")
 	REQUIRE(failure.has_value());
 	CHECK(failure->Operation == NetworkOperation::Push);
 	CHECK(failure->Error.Message == "origin has commits that main lacks. Pull first, or merge in a terminal.\n"
+									"To C:/server.git\n"
 									" ! [rejected]        main -> main (fetch first)\n"
-									"error: failed to push some refs to 'C:/server.git'");
+									"error: failed to push some refs to 'C:/server.git'\n"
+									"hint: Updates were rejected because the remote contains work that you do not");
 	CHECK(failure->Copied == copied);
 	CHECK_FALSE(network.Model.TakeDone().has_value());
 	CHECK_FALSE(network.Model.GetShownDone().has_value());
@@ -478,7 +478,7 @@ TEST_CASE("Network model: a fetch that failed records no default branch")
 {
 	InlineNetwork network;
 	network.Port.Branches = {RemoteBranch("origin", "main")};
-	network.Port.Outcomes["FetchAll"] = Failed("fatal: unable to access", "fatal: unable to access\n");
+	network.Port.Outcomes["FetchAll"] = Failed("fatal: unable to access\n");
 
 	network.Model.Fetch();
 	network.Update();
@@ -635,7 +635,7 @@ TEST_CASE("Network model: pull's local-changes failure lists the files git named
 							   "\ta.txt\n"
 							   "Please commit your changes or stash them before you merge.\n"
 							   "Aborting\n";
-	network.Port.Outcomes["FastForward"] = Failed("Please commit your changes or stash them before you merge.\nAborting", errors);
+	network.Port.Outcomes["FastForward"] = Failed(errors);
 
 	network.Model.Pull();
 	network.Update();
@@ -1201,8 +1201,7 @@ namespace {
 
 	Core::NetworkOutcome Unreachable()
 	{
-		return Failed("fatal: 'C:/nowhere.git' does not appear to be a git repository",
-					  "fatal: 'C:/nowhere.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n");
+		return Failed("fatal: 'C:/nowhere.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n");
 	}
 }
 

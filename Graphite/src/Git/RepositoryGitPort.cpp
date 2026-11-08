@@ -19,7 +19,7 @@ namespace Graphite {
 
 		Core::NetworkOutcome NetworkFailure(const char* sentence)
 		{
-			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed, .Failure = {.Shown = sentence, .Copied = sentence}};
+			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed, .Failure = {.Lines = {sentence}, .Errors = sentence}};
 		}
 
 		std::filesystem::path ShallowFileOf(const Core::Repository& repository)

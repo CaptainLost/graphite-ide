@@ -946,8 +946,8 @@ TEST_CASE("Git window: after a fetch that failed once git had written FETCH_HEAD
 	window.Port.Network.FetchHeadWrittenAt = now - std::chrono::minutes{1};
 	window.Port.Network.Outcome = Core::NetworkOutcome{
 		.Result = Core::NetworkResult::Failed,
-		.Failure = {.Shown = "fatal: 'C:/server.git' does not appear to be a git repository",
-					.Copied = "fatal: 'C:/server.git' does not appear to be a git repository\n"}};
+		.Failure = {.Lines = {"fatal: 'C:/server.git' does not appear to be a git repository"},
+					.Errors = "fatal: 'C:/server.git' does not appear to be a git repository\n"}};
 
 	REQUIRE(window.PointAt(window.FetchId));
 	window.Click();

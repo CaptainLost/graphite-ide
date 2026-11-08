@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <vector>
 
 using Graphite::NetworkDone;
 using Graphite::NetworkNames;
@@ -17,26 +18,21 @@ namespace {
 
 	const std::string kEllipsis = "\xE2\x80\xA6";
 
-	constexpr char kCoreRejectedSentence[] = "The remote has commits that this branch lacks. Pull first, or merge in a terminal.";
-	constexpr char kCoreSignInSentence[] =
-		"Git could not sign in. Run `git fetch` once in a terminal to enter credentials or accept the host key, or add your "
-		"key to ssh-agent.";
-
-	Core::NetworkFailure FailureWithHint(Core::NetworkHint hint, const std::string& sentence, const std::string& gitLines)
+	Core::NetworkFailure FailureWithHint(Core::NetworkHint hint, const std::string& gitLine)
 	{
-		return Core::NetworkFailure{.Shown = sentence + "\n" + gitLines, .Copied = "the whole of stderr", .Hint = hint};
+		return Core::NetworkFailure{.Hint = hint, .Lines = {gitLine}, .Errors = "the whole of stderr"};
 	}
 
-	std::string LocalChangesStderr(std::size_t fileCount)
+	std::vector<std::string> FileNames(std::size_t fileCount)
 	{
-		std::string errors = "error: Your local changes to the following files would be overwritten by merge:\n";
+		std::vector<std::string> files;
 
 		for (std::size_t file = 1; file <= fileCount; ++file)
 		{
-			errors += "\tfile" + std::to_string(file) + ".txt\n";
+			files.push_back("file" + std::to_string(file) + ".txt");
 		}
 
-		return errors + "Please commit your changes or stash them before you merge.\nAborting\n";
+		return files;
 	}
 }
 
@@ -87,47 +83,60 @@ TEST_CASE("Network text: the sentences said when an operation cannot go on name 
 		  "main is no longer checked out, so Pull did not merge origin/main.");
 }
 
-TEST_CASE("Network text: a rejected push names the remote and the branch in place of the general sentence")
+TEST_CASE("Network text: a rejected push names the remote and the branch, and says the general sentence when they are not known")
 {
 	const Core::NetworkFailure failure =
-		FailureWithHint(Core::NetworkHint::Rejected, kCoreRejectedSentence, " ! [rejected]        main -> main (fetch first)");
+		FailureWithHint(Core::NetworkHint::Rejected, " ! [rejected]        main -> main (fetch first)");
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Push, failure, NetworkNames{.Remote = "origin", .Branch = "main"}) ==
 		  "origin has commits that main lacks. Pull first, or merge in a terminal.\n ! [rejected]        main -> main (fetch first)");
 
-	CHECK(Graphite::FailureMessage(NetworkOperation::Push, failure, NetworkNames{}) == failure.Shown);
+	CHECK(Graphite::FailureMessage(NetworkOperation::Push, failure, NetworkNames{}) ==
+		  "The remote has commits that this branch lacks. Pull first, or merge in a terminal.\n ! [rejected]        main -> main "
+		  "(fetch first)");
 }
 
-TEST_CASE("Network text: a failed sign-in names the remote when it is known and keeps the general sentence when not")
+TEST_CASE("Network text: a failed sign-in names the remote when it is known and says the general sentence when not")
 {
-	const Core::NetworkFailure failure =
-		FailureWithHint(Core::NetworkHint::SignIn, kCoreSignInSentence, "git@example.com: Permission denied (publickey).");
+	const Core::NetworkFailure failure = FailureWithHint(Core::NetworkHint::SignIn, "git@example.com: Permission denied (publickey).");
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{.Remote = "upstream"}) ==
 		  "Git could not sign in to upstream. Run `git fetch` once in a terminal to enter credentials or accept the host key, or "
 		  "add your key to ssh-agent.\ngit@example.com: Permission denied (publickey).");
 
-	CHECK(Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{}) == failure.Shown);
+	CHECK(Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{}) ==
+		  "Git could not sign in. Run `git fetch` once in a terminal to enter credentials or accept the host key, or add your "
+		  "key to ssh-agent.\ngit@example.com: Permission denied (publickey).");
 }
 
 TEST_CASE("Network text: a failure without a hint is git's words as they are")
 {
-	const Core::NetworkFailure failure{.Shown = "fatal: 'nowhere' does not appear to be a git repository",
-									   .Copied = "fatal: 'nowhere' does not appear to be a git repository\n"};
+	const Core::NetworkFailure failure{.Lines = {"fatal: 'nowhere' does not appear to be a git repository"},
+									   .Errors = "fatal: 'nowhere' does not appear to be a git repository\n"};
 
-	CHECK(Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{.Remote = "origin"}) == failure.Shown);
+	CHECK(Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{.Remote = "origin"}) ==
+		  "fatal: 'nowhere' does not appear to be a git repository");
 }
 
-TEST_CASE("Network text: pull's local-changes failure lists the files git named across the whole of its errors")
+TEST_CASE("Network text: a failure shows git's last six lines under the sentence")
 {
-	const std::string errors = "error: Your local changes to the following files would be overwritten by merge:\n"
-							   "\ta.txt\n"
-							   "Please commit your changes or stash them before you merge.\n"
-							   "error: The following untracked working tree files would be overwritten by merge:\n"
-							   "\tsrc/new file.txt\r\n"
-							   "Please move or remove them before you merge.\n"
-							   "Aborting\n";
-	const Core::NetworkFailure failure{.Shown = "Please move or remove them before you merge.\nAborting", .Copied = errors};
+	Core::NetworkFailure failure{.Hint = Core::NetworkHint::SignIn};
+
+	for (int line = 1; line <= 9; ++line)
+	{
+		failure.Lines.push_back("line " + std::to_string(line));
+	}
+
+	const std::string message = Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{.Remote = "origin"});
+
+	CHECK(message.starts_with("Git could not sign in to origin."));
+	CHECK(message.ends_with("\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9"));
+	CHECK(message.find("line 3") == std::string::npos);
+}
+
+TEST_CASE("Network text: pull's local-changes failure lists the files the merge would overwrite")
+{
+	const Core::NetworkFailure failure{.Lines = {"Aborting"}, .WouldOverwrite = {"a.txt", "src/new file.txt"}};
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Pull, failure, NetworkNames{}) ==
 		  "Commit or stash your changes to these files first:\na.txt\nsrc/new file.txt");
@@ -135,21 +144,21 @@ TEST_CASE("Network text: pull's local-changes failure lists the files git named 
 
 TEST_CASE("Network text: pull's local-changes failure lists ten files and counts the rest")
 {
-	const Core::NetworkFailure failure{.Shown = "Aborting", .Copied = LocalChangesStderr(13)};
+	const Core::NetworkFailure failure{.Lines = {"Aborting"}, .WouldOverwrite = FileNames(13)};
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Pull, failure, NetworkNames{}) ==
 		  "Commit or stash your changes to these files first:\nfile1.txt\nfile2.txt\nfile3.txt\nfile4.txt\nfile5.txt\nfile6.txt\n"
 		  "file7.txt\nfile8.txt\nfile9.txt\nfile10.txt\nand 3 more");
 
-	const Core::NetworkFailure tenFiles{.Shown = "Aborting", .Copied = LocalChangesStderr(10)};
+	const Core::NetworkFailure tenFiles{.Lines = {"Aborting"}, .WouldOverwrite = FileNames(10)};
 	const std::string tenListed = Graphite::FailureMessage(NetworkOperation::Pull, tenFiles, NetworkNames{});
 
 	CHECK(tenListed.ends_with("\nfile10.txt"));
 }
 
-TEST_CASE("Network text: only pull reads a list of local changes, which only a merge prints")
+TEST_CASE("Network text: only pull lists local changes, which only a merge refuses over")
 {
-	const Core::NetworkFailure failure{.Shown = "Aborting", .Copied = LocalChangesStderr(2)};
+	const Core::NetworkFailure failure{.Lines = {"Aborting"}, .WouldOverwrite = FileNames(2)};
 
 	CHECK(Graphite::FailureMessage(NetworkOperation::Fetch, failure, NetworkNames{}) == "Aborting");
 }

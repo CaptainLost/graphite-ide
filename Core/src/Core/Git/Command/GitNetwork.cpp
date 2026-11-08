@@ -13,12 +13,8 @@ namespace Core {
 
 	namespace {
 
-		constexpr std::size_t kShownStderrLines = 6;
-
-		constexpr char kRejectedSentence[] = "The remote has commits that this branch lacks. Pull first, or merge in a terminal.";
-		constexpr char kSignInSentence[] =
-			"Git could not sign in. Run `git fetch` once in a terminal to enter credentials or accept the host key, or add "
-			"your key to ssh-agent.";
+		// Ends the line above each list of files git refuses to overwrite: tracked changes and untracked files alike.
+		constexpr std::string_view kOverwrittenByMerge = "would be overwritten by merge:";
 
 		bool Contains(std::string_view text, std::string_view part)
 		{
@@ -49,19 +45,31 @@ namespace Core {
 			return lines;
 		}
 
-		const char* SentenceOf(NetworkHint hint)
+		// git lists each file it would overwrite on a line of its own, indented by a tab, below the line saying so.
+		std::vector<std::string> FilesMergeWouldOverwrite(const std::vector<std::string>& lines)
 		{
-			switch (hint)
+			std::vector<std::string> files;
+			bool inList = false;
+
+			for (const std::string& line : lines)
 			{
-			case NetworkHint::Rejected:
-				return kRejectedSentence;
-			case NetworkHint::SignIn:
-				return kSignInSentence;
-			case NetworkHint::None:
-				break;
+				if (Contains(line, kOverwrittenByMerge))
+				{
+					inList = true;
+					continue;
+				}
+
+				const bool listsFile = inList && line.starts_with('\t');
+
+				if (listsFile)
+				{
+					files.push_back(line.substr(1));
+				}
+
+				inList = listsFile;
 			}
 
-			return "";
+			return files;
 		}
 
 		// Reads each progress line on the runner's thread and hands its percent on.
@@ -107,8 +115,7 @@ namespace Core {
 				}
 
 				const std::string& startError = finished.GetError().Message;
-				return NetworkOutcome{.Result = NetworkResult::Failed,
-									  .Failure = {.Shown = startError, .Copied = startError, .Hint = NetworkHint::None}};
+				return NetworkOutcome{.Result = NetworkResult::Failed, .Failure = {.Lines = {startError}, .Errors = startError}};
 			}
 
 			const GitOutput& output = finished.GetValue();
@@ -202,21 +209,9 @@ namespace Core {
 	{
 		NetworkFailure failure;
 		failure.Hint = HintOf(output.Errors);
-		failure.Copied = output.Errors;
-		failure.Shown = SentenceOf(failure.Hint);
-
-		const std::vector<std::string> lines = MessageLines(output.Errors);
-		const std::size_t firstShown = lines.size() > kShownStderrLines ? lines.size() - kShownStderrLines : 0;
-
-		for (std::size_t lineIndex = firstShown; lineIndex < lines.size(); ++lineIndex)
-		{
-			if (!failure.Shown.empty())
-			{
-				failure.Shown += '\n';
-			}
-
-			failure.Shown += lines[lineIndex];
-		}
+		failure.Lines = MessageLines(output.Errors);
+		failure.WouldOverwrite = FilesMergeWouldOverwrite(failure.Lines);
+		failure.Errors = output.Errors;
 
 		return failure;
 	}

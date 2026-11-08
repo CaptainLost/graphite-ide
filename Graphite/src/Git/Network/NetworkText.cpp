@@ -14,8 +14,8 @@ namespace Graphite {
 		constexpr const char* kEllipsis = "…";
 		constexpr std::size_t kListedLocalChanges = 10;
 
-		// Ends the line above each list of files git refuses to overwrite: tracked changes and untracked files alike.
-		constexpr std::string_view kOverwrittenByMerge = "would be overwritten by merge:";
+		// git's last lines, under the sentence: the ones that say why, after its hints and advice.
+		constexpr std::size_t kShownGitLines = 6;
 
 		// WARNING: No default, so an operation added later is a warning here, and warnings fail the build.
 		const char* NameOf(NetworkOperation operation)
@@ -62,80 +62,39 @@ namespace Graphite {
 			return std::string{verb} + ' ' + Core::FormatCount(*commits) + (*commits == 1 ? " commit" : " commits");
 		}
 
-		std::string RejectedText(const std::string& remote, const std::string& branch)
+		// The remote and the branch are named when they are known; git's output does not say which is meant.
+		std::string RejectedText(const NetworkNames& names)
 		{
-			return remote + " has commits that " + branch + " lacks. Pull first, or merge in a terminal.";
-		}
-
-		std::string SignInText(const std::string& remote)
-		{
-			return "Git could not sign in to " + remote +
-				   ". Run `git fetch` once in a terminal to enter credentials or accept the host key, or add your key to "
-				   "ssh-agent.";
-		}
-
-		// WARNING: Core's shown text has its hint's sentence alone on the first line, before git's own lines.
-		std::string WithFirstLineReplaced(const std::string& shown, const std::string& sentence)
-		{
-			const std::size_t firstLineEnd = shown.find('\n');
-
-			if (firstLineEnd == std::string::npos)
+			if (names.Remote.has_value() && names.Branch.has_value())
 			{
-				return sentence;
+				return *names.Remote + " has commits that " + *names.Branch + " lacks. Pull first, or merge in a terminal.";
 			}
 
-			return sentence + shown.substr(firstLineEnd);
+			return "The remote has commits that this branch lacks. Pull first, or merge in a terminal.";
 		}
 
-		// Split on '\n', each without the '\r' a Windows line end leaves.
-		std::vector<std::string> LinesOf(std::string_view text)
+		std::string SignInText(const NetworkNames& names)
 		{
-			std::vector<std::string> lines;
-			std::size_t lineStart = 0;
+			const std::string signIn = names.Remote.has_value() ? "Git could not sign in to " + *names.Remote : "Git could not sign in";
 
-			while (lineStart < text.size())
-			{
-				const std::size_t lineEnd = text.find('\n', lineStart);
-				const std::size_t end = lineEnd == std::string_view::npos ? text.size() : lineEnd;
-				std::string_view line = text.substr(lineStart, end - lineStart);
-
-				if (line.ends_with('\r'))
-				{
-					line.remove_suffix(1);
-				}
-
-				lines.emplace_back(line);
-				lineStart = end + 1;
-			}
-
-			return lines;
+			return signIn + ". Run `git fetch` once in a terminal to enter credentials or accept the host key, or add your key to "
+							"ssh-agent.";
 		}
 
-		// git lists each file it would overwrite on a line of its own, indented by a tab, below the line saying so.
-		std::vector<std::string> FilesMergeWouldOverwrite(std::string_view errors)
+		// WARNING: No default, so a hint added later is a warning here, and warnings fail the build.
+		std::string SentenceOf(Core::NetworkHint hint, const NetworkNames& names)
 		{
-			std::vector<std::string> files;
-			bool inList = false;
-
-			for (const std::string& line : LinesOf(errors))
+			switch (hint)
 			{
-				if (line.find(kOverwrittenByMerge) != std::string::npos)
-				{
-					inList = true;
-					continue;
-				}
-
-				const bool listsFile = inList && line.starts_with('\t');
-
-				if (listsFile)
-				{
-					files.push_back(line.substr(1));
-				}
-
-				inList = listsFile;
+			case Core::NetworkHint::Rejected:
+				return RejectedText(names);
+			case Core::NetworkHint::SignIn:
+				return SignInText(names);
+			case Core::NetworkHint::None:
+				break;
 			}
 
-			return files;
+			return {};
 		}
 
 		std::string LocalChangesText(const std::vector<std::string>& files)
@@ -258,31 +217,25 @@ namespace Graphite {
 
 	std::string FailureMessage(NetworkOperation operation, const Core::NetworkFailure& failure, const NetworkNames& names)
 	{
-		if (operation == NetworkOperation::Pull)
+		if (operation == NetworkOperation::Pull && !failure.WouldOverwrite.empty())
 		{
-			const std::vector<std::string> files = FilesMergeWouldOverwrite(failure.Copied);
+			return LocalChangesText(failure.WouldOverwrite);
+		}
 
-			if (!files.empty())
+		std::string message = SentenceOf(failure.Hint, names);
+		const std::size_t firstShown = failure.Lines.size() > kShownGitLines ? failure.Lines.size() - kShownGitLines : 0;
+
+		for (std::size_t lineIndex = firstShown; lineIndex < failure.Lines.size(); ++lineIndex)
+		{
+			if (!message.empty())
 			{
-				return LocalChangesText(files);
+				message += '\n';
 			}
+
+			message += failure.Lines[lineIndex];
 		}
 
-		const bool namesRejection = failure.Hint == Core::NetworkHint::Rejected && names.Remote.has_value() && names.Branch.has_value();
-
-		if (namesRejection)
-		{
-			return WithFirstLineReplaced(failure.Shown, RejectedText(*names.Remote, *names.Branch));
-		}
-
-		const bool namesSignIn = failure.Hint == Core::NetworkHint::SignIn && names.Remote.has_value();
-
-		if (namesSignIn)
-		{
-			return WithFirstLineReplaced(failure.Shown, SignInText(*names.Remote));
-		}
-
-		return failure.Shown;
+		return message;
 	}
 
 	NetworkActivity DescribeNetworkActivity(const NetworkState& state, const std::optional<NetworkDone>& shown)

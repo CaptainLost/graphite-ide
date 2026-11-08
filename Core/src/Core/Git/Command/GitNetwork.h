@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Core {
 
@@ -28,12 +29,21 @@ namespace Core {
 		SignIn
 	};
 
-	// Shown is the hint sentence, when there is one, then git's last six lines; Copied is the whole of git's stderr.
+	// Why a command failed, in git's words only: the sentences said to the user, and how many of git's lines they show,
+	// are the application's, which knows the remote and the branch meant.
 	struct NetworkFailure
 	{
-		std::string Shown;
-		std::string Copied;
 		NetworkHint Hint = NetworkHint::None;
+
+		// git's stderr lines that say why, in order, without its progress lines and blank lines; the start error alone
+		// when git never ran.
+		std::vector<std::string> Lines;
+
+		// The files a merge refused to overwrite, tracked and untracked alike, as git listed them.
+		std::vector<std::string> WouldOverwrite;
+
+		// The whole of git's stderr, or the start error when git never ran.
+		std::string Errors;
 	};
 
 	enum class NetworkResult
@@ -83,7 +93,6 @@ namespace Core {
 
 	NetworkHint HintOf(std::string_view errors);
 
-	// The hint sentence names no branch or remote, since git's output does not say which is meant.
 	NetworkFailure DescribeFailure(const GitOutput& output);
 
 	// The mtime of FETCH_HEAD in the common git dir (a linked worktree's own git dir has none); empty when never fetched.

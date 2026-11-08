@@ -1075,7 +1075,7 @@ TEST_CASE("Network acceptance: what the UI thread's frames cost and how often gi
 		const Core::NetworkOutcome outcome = port.FetchAll(neverCancelled, sink);
 		const double seconds = Milliseconds(std::chrono::steady_clock::now() - start) / 1000.0;
 
-		REQUIRE_MESSAGE(outcome.Result == Core::NetworkResult::Done, outcome.Failure.Copied);
+		REQUIRE_MESSAGE(outcome.Result == Core::NetworkResult::Done, outcome.Failure.Errors);
 		MESSAGE("port: fetch of the large server in ", seconds, " s; git's percent lines ", progress.Calls.load(), " (",
 				static_cast<double>(progress.Calls.load()) / seconds, " a second), changes of the percent ", progress.Changes.load(),
 				" (", static_cast<double>(progress.Changes.load()) / seconds, " a second)");
