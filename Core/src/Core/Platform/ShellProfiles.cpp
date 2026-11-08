@@ -134,21 +134,8 @@ namespace Core {
 
 		std::filesystem::path GitBashFromRegistry()
 		{
-			const InstallerKey machineWideInstall{.Root = HKEY_LOCAL_MACHINE, .SubKey = L"SOFTWARE\\GitForWindows"};
-			const InstallerKey perUserInstallWithoutAdmin{.Root = HKEY_CURRENT_USER, .SubKey = L"SOFTWARE\\GitForWindows"};
-			const InstallerKey thirtyTwoBitInstallSeenFromSixtyFourBitProcess{.Root = HKEY_LOCAL_MACHINE, .SubKey = L"SOFTWARE\\WOW6432Node\\GitForWindows"};
-
-			const InstallerKey installerKeys[] = {machineWideInstall, perUserInstallWithoutAdmin, thirtyTwoBitInstallSeenFromSixtyFourBitProcess};
-
-			for (const InstallerKey& installerKey : installerKeys)
+			for (const std::filesystem::path& installRoot : GitForWindowsInstallRoots())
 			{
-				const std::filesystem::path installRoot = ReadRegistryInstallPath(installerKey.Root, installerKey.SubKey);
-
-				if (installRoot.empty())
-				{
-					continue;
-				}
-
 				const std::filesystem::path gitBash = GitBashUnder(installRoot);
 
 				if (PathExists(gitBash))
@@ -234,6 +221,42 @@ namespace Core {
 		return {};
 	}
 
+	std::vector<std::filesystem::path> GitForWindowsInstallRoots()
+	{
+		std::vector<std::filesystem::path> installRoots;
+
+#ifdef CORE_PLATFORM_WINDOWS
+		const InstallerKey machineWideInstall{.Root = HKEY_LOCAL_MACHINE, .SubKey = L"SOFTWARE\\GitForWindows"};
+		const InstallerKey perUserInstallWithoutAdmin{.Root = HKEY_CURRENT_USER, .SubKey = L"SOFTWARE\\GitForWindows"};
+		const InstallerKey thirtyTwoBitInstallSeenFromSixtyFourBitProcess{.Root = HKEY_LOCAL_MACHINE, .SubKey = L"SOFTWARE\\WOW6432Node\\GitForWindows"};
+
+		const InstallerKey installerKeys[] = {machineWideInstall, perUserInstallWithoutAdmin, thirtyTwoBitInstallSeenFromSixtyFourBitProcess};
+
+		for (const InstallerKey& installerKey : installerKeys)
+		{
+			std::filesystem::path installRoot = ReadRegistryInstallPath(installerKey.Root, installerKey.SubKey);
+
+			if (!installRoot.empty())
+			{
+				installRoots.push_back(std::move(installRoot));
+			}
+		}
+#endif
+
+		return installRoots;
+	}
+
+	std::filesystem::path DefaultGitForWindowsRoot()
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		const std::filesystem::path programFiles = EnvironmentPath(L"ProgramFiles").value_or(std::filesystem::path{});
+
+		return JoinIfPresent(programFiles, "Git");
+#else
+		return {};
+#endif
+	}
+
 	std::vector<ShellProfile> DiscoverShells()
 	{
 		std::vector<ShellProfile> shells;
@@ -261,9 +284,11 @@ namespace Core {
 		{
 			gitBash = GitBashFromPath();
 		}
-		if (gitBash.empty())
+
+		const std::filesystem::path defaultGitRoot = DefaultGitForWindowsRoot();
+		if (gitBash.empty() && !defaultGitRoot.empty())
 		{
-			gitBash = JoinIfPresent(programFiles, GitBashUnder("Git"));
+			gitBash = GitBashUnder(defaultGitRoot);
 		}
 
 		// Git Bash reads its profile only as a login shell; without --login the prompt is a bare
