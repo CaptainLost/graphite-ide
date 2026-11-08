@@ -3,6 +3,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Git/GitModel.h"
 #include "Git/Network/NetworkModel.h"
+#include "Git/Network/NetworkText.h"
 
 #include <chrono>
 #include <utility>
@@ -41,6 +42,16 @@ namespace Graphite {
 		}
 
 		return StateOf(buttons.Push);
+	}
+
+	NetworkCommandState CommandStateOfFullHistory(const NetworkButtons& buttons, const NetworkState& state)
+	{
+		if (state.Running.has_value())
+		{
+			return NetworkCommandState{.Enabled = false, .Note = RunningText(state)};
+		}
+
+		return StateOf(buttons.Fetch);
 	}
 
 	NetworkButtons DescribeNetworkButtonsNow(const GitModel& git, const NetworkModel& network, bool checkingOut)

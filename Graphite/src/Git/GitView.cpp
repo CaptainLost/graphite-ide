@@ -23,6 +23,7 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
+#include "Git/Network/NetworkCommands.h"
 #include "Git/Tags/TagLookup.h"
 #include "UI/SplitResults.h"
 #include "UI/ToastEvent.h"
@@ -1413,8 +1414,11 @@ namespace Graphite {
 			marks.Banner = m_HistoryBanner;
 			marks.BannerAction = m_HistoryBanner.has_value() ? m_HistoryBannerAction : std::nullopt;
 
-			// WARNING: Any network operation holds it, the full history's own included: a second fetch would only wait.
-			marks.BannerActionDisabled = m_Network.GetState().Running.has_value();
+			// WARNING: Any network operation holds it, the full history's own included: a second fetch would only wait. So
+			// does whatever disables Fetch, the bar's buttons as drawn this frame, since it is a fetch.
+			const NetworkCommandState fullHistory = CommandStateOfFullHistory(m_NetworkButtons, m_Network.GetState());
+			marks.BannerActionDisabled = !fullHistory.Enabled;
+			marks.BannerActionNote = fullHistory.Note;
 			const HistoryMarks broughtMarks = BroughtMarks();
 			marks.BroughtOf = broughtMarks.BroughtOf;
 			marks.BroughtFailure = broughtMarks.BroughtFailure;

@@ -764,7 +764,7 @@ namespace Graphite {
 						RenderNoteRow(marks.Waiting);
 						break;
 					case CommitRowKind::Banner:
-						RenderBannerRow(*marks.Banner, marks.BannerAction, marks.BannerActionDisabled);
+						RenderBannerRow(*marks.Banner, marks.BannerAction, marks.BannerActionDisabled, marks.BannerActionNote);
 						break;
 					case CommitRowKind::Commit:
 					{
@@ -1121,7 +1121,8 @@ namespace Graphite {
 		}
 	}
 
-	void CommitListView::RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled)
+	void CommitListView::RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled,
+										 const std::string& actionNote)
 	{
 		// The row is tinted as the banner above the list was, and says the sentence in the message column.
 		ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_FrameBg));
@@ -1154,6 +1155,12 @@ namespace Graphite {
 		}
 
 		ImGui::EndDisabled();
+
+		// After EndDisabled, so the reason is not drawn dimmed with the button; the tooltip still finds the button disabled.
+		if (actionDisabled && !actionNote.empty())
+		{
+			ImGui::SetItemTooltip("%s", actionNote.c_str());
+		}
 	}
 
 	void CommitListView::RenderNoteRow(const std::optional<std::string>& waiting)

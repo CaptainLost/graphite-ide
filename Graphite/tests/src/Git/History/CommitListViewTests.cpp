@@ -4,6 +4,7 @@
 #include "UI/Lists/ListRow.h"
 
 #include "DrawnColours.h"
+#include "DrawnText.h"
 #include "ImGuiFrames.h"
 
 #include "Core/Base/Base.h"
@@ -24,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 using namespace Graphite;
 
@@ -676,6 +678,46 @@ TEST_CASE("History banner: a click on Fetch full history is reported once")
 
 	CHECK(history.View.TakeBannerActionClick());
 	CHECK_FALSE(history.View.TakeBannerActionClick());
+}
+
+TEST_CASE("History banner: a disabled Fetch full history says why in its tooltip, and without a reason shows none")
+{
+	// Long past the delay a tooltip waits for, with the pointer still.
+	constexpr int kHoverFrames = 40;
+	constexpr const char* kTooltipWindow = "##Tooltip_00";
+
+	for (const bool withReason : {true, false})
+	{
+		MarkedHistory history(withReason ? "BannerActionNoteHistory" : "BannerActionNoNoteHistory", 1);
+		history.Marks.Banner = kCutOffBanner;
+		history.Marks.BannerAction = "Fetch full history";
+		history.Marks.BannerActionDisabled = true;
+		history.Marks.BannerActionNote = withReason ? "This repository has no remote." : "";
+		history.Settle();
+
+		const ImVec2 point = BannerActionPoint(history);
+		ImGui::GetIO().AddMousePosEvent(point.x, point.y);
+		ImFontBaked* font = nullptr;
+
+		for (int frame = 0; frame < kHoverFrames; ++frame)
+		{
+			history.Frames.Next([&] {
+				history.Draw();
+				font = ImGui::GetFontBaked();
+			});
+		}
+
+		const ImGuiWindow* tooltip = ImGui::FindWindowByName(kTooltipWindow);
+		const bool shown = tooltip != nullptr && tooltip->Active;
+		CHECK(shown == withReason);
+
+		if (shown)
+		{
+			REQUIRE(font != nullptr);
+			const std::vector<DrawnLine> lines = DrawnTextLines(*tooltip->DrawList, *font);
+			CHECK(std::ranges::any_of(lines, [](const DrawnLine& line) { return line.Text == "Thisrepositoryhasnoremote."; }));
+		}
+	}
 }
 
 TEST_CASE("History banner: while a network operation runs Fetch full history does nothing")

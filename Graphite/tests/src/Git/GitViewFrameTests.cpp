@@ -728,12 +728,14 @@ namespace {
 		return read;
 	}
 
-	// The window showing x of CutOffBranchRead, which git is found for, with its banner over its one commit.
-	void ShowCutOffBranch(GitWindow& window)
+	// The window showing x of CutOffBranchRead, which git is found for, with its banner over its one commit; by default
+	// the repository has a remote to fetch the full history from.
+	void ShowCutOffBranch(GitWindow& window, std::vector<Core::Remote> remotes = {{"origin", "C:/server.git"}})
 	{
 		window.Port.Network.Setup.Git = std::filesystem::path{"git.exe"};
+		window.Port.Remotes = std::move(remotes);
 		window.View.RestoreWindowState(Graphite::GitWindowState{.Ref = "refs/heads/x"});
-		window.Settle();
+		window.ListAgain();
 	}
 
 	// The text the history's list drew last frame, line by line and without spaces.
@@ -778,6 +780,18 @@ TEST_CASE("Git window: a click on a shallow clone's Fetch full history fetches t
 	window.ClickAt(BannerActionPoint(window));
 
 	CHECK(window.Port.Network.Calls == std::vector<std::string>{"FetchFullHistory"});
+}
+
+TEST_CASE("Git window: without a remote a shallow clone's Fetch full history is disabled, as Fetch is, and a click fetches nothing")
+{
+	GitWindow window("CutOffNoRemoteWindow", HeadOnMain(), {}, CutOffBranchRead());
+	ShowCutOffBranch(window, {});
+
+	window.ClickAt(BannerActionPoint(window));
+	window.Settle(2);
+
+	CHECK(window.Port.Network.Calls.empty());
+	CHECK_FALSE(window.Network.GetState().Running.has_value());
 }
 
 TEST_CASE("Git window: a running full history shows as the running Fetch button, and a click on it cancels the full history")

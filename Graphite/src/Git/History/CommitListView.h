@@ -82,6 +82,9 @@ namespace Graphite {
 		// The action is drawn disabled and a click on it is not reported.
 		bool BannerActionDisabled = false;
 
+		// Why the action is disabled, said in its tooltip; empty for nothing to say.
+		std::string BannerActionNote;
+
 		// Set in the Merges history: an opened merge lists the commits it brought, which this answers (null while they
 		// are being read), instead of its files.
 		std::function<Core::Ref<const Core::LogPage>(const Core::Oid&)> BroughtOf;
@@ -195,7 +198,8 @@ namespace Graphite {
 		void RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre);
 
 		void RenderFoldRow(const FoldRow& fold);
-		void RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled);
+		void RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled,
+							 const std::string& actionNote);
 
 		void RenderNoteRow(const std::optional<std::string>& waiting);
 

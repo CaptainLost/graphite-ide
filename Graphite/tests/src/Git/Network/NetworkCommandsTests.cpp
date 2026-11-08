@@ -45,10 +45,10 @@ namespace {
 	}
 
 	NetworkButtons Describe(const Core::HeadState& head, const std::vector<Core::Branch>& branches,
-							const std::vector<Core::Remote>& remotes, const NetworkState& state = {})
+							const std::vector<Core::Remote>& remotes, const NetworkState& state = {}, bool gitFound = true)
 	{
 		return Graphite::DescribeNetworkButtons(Graphite::WindowBarInput{kFolder, &head, &branches, &remotes, false}, state,
-												std::nullopt, kNow, true);
+												std::nullopt, kNow, gitFound);
 	}
 
 	struct Registered
@@ -172,6 +172,48 @@ TEST_CASE("Commands: a disabled command says what the bar's button says")
 	CHECK(Graphite::CommandStateOfPull(buttons).Note == buttons.Pull.Tooltip);
 	CHECK_FALSE(Graphite::CommandStateOfPull(buttons).Note.empty());
 	CHECK(Graphite::CommandStateOfFetch(buttons).Note.empty());
+}
+
+TEST_CASE("Commands: Fetch full history is disabled for Fetch's own reasons in Fetch's words, and while any operation runs")
+{
+	const Core::HeadState head = OnBranch("main");
+	const std::vector<Core::Branch> branches = {HeadBranch("main", "origin/main", 1, 2)};
+	const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}};
+	const std::vector<Core::Remote> none;
+	const NetworkState idle;
+
+	const Graphite::NetworkCommandState ready = Graphite::CommandStateOfFullHistory(Describe(head, branches, remotes), idle);
+	CHECK(ready.Enabled);
+	CHECK(ready.Note.empty());
+
+	const Graphite::NetworkCommandState noRemote = Graphite::CommandStateOfFullHistory(Describe(head, branches, none), idle);
+	CHECK_FALSE(noRemote.Enabled);
+	CHECK(noRemote.Note == "This repository has no remote.");
+
+	constexpr bool kGitMissing = false;
+	const Graphite::NetworkCommandState noGit =
+		Graphite::CommandStateOfFullHistory(Describe(head, branches, remotes, idle, kGitMissing), idle);
+	CHECK_FALSE(noGit.Enabled);
+	CHECK(noGit.Note == "Fetch, Pull and Push need git, which was not found on PATH or where Git for Windows installs it.");
+
+	// Any operation running holds it, the full history's own included, and says which runs.
+	const NetworkState pulling{.Running = NetworkOperation::Pull, .Serial = 1, .Cancellable = true};
+	const Graphite::NetworkCommandState whilePulling =
+		Graphite::CommandStateOfFullHistory(Describe(head, branches, remotes, pulling), pulling);
+	CHECK_FALSE(whilePulling.Enabled);
+	CHECK(whilePulling.Note == "Pulling\xE2\x80\xA6");
+
+	const NetworkState deepening{.Running = NetworkOperation::FullHistory, .Serial = 2, .Percent = 45, .Cancellable = true};
+	const Graphite::NetworkCommandState whileDeepening =
+		Graphite::CommandStateOfFullHistory(Describe(head, branches, remotes, deepening), deepening);
+	CHECK_FALSE(whileDeepening.Enabled);
+	CHECK(whileDeepening.Note == "Fetching full history\xE2\x80\xA6 45%");
+
+	for (const NetworkOperation operation : {NetworkOperation::Fetch, NetworkOperation::Push})
+	{
+		const NetworkState running{.Running = operation, .Serial = 3, .Cancellable = true};
+		CHECK_FALSE(Graphite::CommandStateOfFullHistory(Describe(head, branches, remotes, running), running).Enabled);
+	}
 }
 
 TEST_CASE("Commands: running one starts its operation")

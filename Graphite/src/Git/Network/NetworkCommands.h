@@ -31,6 +31,10 @@ namespace Graphite {
 	NetworkCommandState CommandStateOfPull(const NetworkButtons& buttons);
 	NetworkCommandState CommandStateOfPush(const NetworkButtons& buttons);
 
+	// The history banner's Fetch full history, which is a fetch: disabled for Fetch's own reasons (git missing, no remote, a
+	// folder not trusted), in Fetch's words, and while any operation runs, the full history's own included, saying which.
+	NetworkCommandState CommandStateOfFullHistory(const NetworkButtons& buttons, const NetworkState& state);
+
 	// "Choose the remote from Push in the Git window."
 	std::string ChooseRemoteFromBarText();
 
