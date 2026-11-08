@@ -117,7 +117,6 @@ TEST_CASE("Commit details view: the First tag line has the same height pending, 
 TEST_CASE("Commit details view: the First tag line comes right after In bases and the source sentence, before the refs")
 {
 	Graphite::GitPalette palette;
-	palette.GutterAdded = IM_COL32(40, 200, 90, 255);
 	palette.RefTagFill = IM_COL32(210, 150, 30, 255);
 	palette.RefTagText = IM_COL32(20, 20, 20, 255);
 	palette.RefLocalFill = IM_COL32(40, 90, 210, 255);

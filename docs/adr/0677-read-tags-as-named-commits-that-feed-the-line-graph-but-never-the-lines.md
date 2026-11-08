@@ -86,7 +86,7 @@ details never wait on a job of their own.
 - The first tag of 800 sampled commits equals `git for-each-ref --contains <c> --sort=creatordate --count=1 refs/tags`,
   five of them ties of the same second that both break by name.
 - The first-tag pass costs 0.17 ms on the web framework's 50,808 commits and 0.78 ms on the code editor's 196,763
-  (Release); the details show the answer with the read, in its first frame.
+  (Release). First tag is part of the read, so it lands in the frame the read lands, with no job of its own.
 - The sidebar's rows for 4,133 tags, the section open, build in under 1 ms, and a search over them in under 2 ms.
 
 ### Negative
@@ -99,6 +99,9 @@ details never wait on a job of their own.
 - A fetch that only adds, moves or deletes tags reruns the whole line read on a worker (11 ms on the web framework, 130
   ms on the code editor) and hands a new read to every follower; on the UI thread that is under 5 ms. While it runs, a
   commit outside the read says `…` in In bases, since the new read may hold it.
+- A commit only a tag reaches is now in the read's graph, so at an opening its In bases reads `…` until the read and
+  its bases job land (about 0.75 s on the web framework), as every other commit in the graph already does: no model is
+  kept on disk. Before tags were read, such a commit was outside the graph and said `in no base yet` at once.
 - Folders nest one level only, so a deeper name such as `release/1.x/1.2` shows `1.x/1.2` in its row of the `release/`
   folder.
 
