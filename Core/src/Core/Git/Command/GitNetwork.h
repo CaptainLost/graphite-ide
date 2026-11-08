@@ -13,7 +13,7 @@
 
 namespace Core {
 
-	// The git to run and the repository to run it in. SshCommandConfigured is the repository's core.sshCommand.
+	// The git to run and the repository to run it in. SshCommandConfigured is IsSshCommandConfigured's answer for it.
 	struct NetworkRun
 	{
 		std::filesystem::path Git;
@@ -73,6 +73,13 @@ namespace Core {
 	// Records which branch the remote calls its default, as refs/remotes/<remote>/HEAD.
 	NetworkOutcome SetRemoteHeadAuto(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								   const std::string& remote);
+
+	// Whether git, run in `workingDirectory`, reads a core.sshCommand, asked of git itself: one set through an include that
+	// libgit2 cannot follow, such as includeIf "hasconfig:remote.*.url:…", counts. Set even when empty. Any answer but
+	// git's "not set" counts as set, a run cancelled or that cannot start included, so a batch-mode ssh of ours never
+	// replaces one the user may have.
+	bool IsSshCommandConfigured(const std::filesystem::path& git, const std::filesystem::path& workingDirectory,
+								const std::atomic<bool>& cancelled);
 
 	NetworkHint HintOf(std::string_view errors);
 

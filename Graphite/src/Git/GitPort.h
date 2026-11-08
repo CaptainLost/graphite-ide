@@ -52,7 +52,6 @@ namespace Graphite {
 	struct NetworkSetup
 	{
 		std::optional<std::filesystem::path> Git;
-		bool SshCommandConfigured = false;
 		std::filesystem::path WorkingDirectory;
 		std::filesystem::path CommonGitDir;
 	};

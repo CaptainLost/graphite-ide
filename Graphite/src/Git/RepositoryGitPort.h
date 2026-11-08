@@ -135,8 +135,10 @@ namespace Graphite {
 	private:
 		Core::Result<Core::Repository*> RepositoryForThisThread();
 
-		// Runs the operation with this thread's repository and git, or answers the failure that says why it cannot.
-		Core::NetworkOutcome WithNetworkRun(const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation);
+		// Runs the operation with this thread's repository and git, or answers the failure that says why it cannot. Asks git
+		// first whether core.sshCommand is set, which is one short run of git's own before each operation's.
+		Core::NetworkOutcome WithNetworkRun(const std::atomic<bool>& cancelled,
+											const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation);
 
 		// The repository of that generation of the root, or an error once the port has been pointed at a folder since.
 		Core::Result<Core::Repository*> RepositoryForThisThreadOf(std::uint64_t generation,

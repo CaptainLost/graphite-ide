@@ -64,6 +64,44 @@ namespace {
 		return text;
 	}
 
+	std::optional<std::wstring> ReadVariable(const wchar_t* name)
+	{
+		const DWORD lengthWithTerminator = ::GetEnvironmentVariableW(name, nullptr, 0);
+
+		if (lengthWithTerminator == 0)
+		{
+			return std::nullopt;
+		}
+
+		std::wstring value(lengthWithTerminator, L'\0');
+		value.resize(::GetEnvironmentVariableW(name, value.data(), lengthWithTerminator));
+		return value;
+	}
+
+	void RestoreVariable(const wchar_t* name, const std::optional<std::wstring>& value)
+	{
+		::SetEnvironmentVariableW(name, value.has_value() ? value->c_str() : nullptr);
+	}
+
+	// One of this process's variables taken away for as long as it lives, and put back after.
+	class ClearedVariable
+	{
+	public:
+		explicit ClearedVariable(const wchar_t* name) : m_Name(name), m_Previous(ReadVariable(name))
+		{
+			::SetEnvironmentVariableW(name, nullptr);
+		}
+
+		~ClearedVariable() { RestoreVariable(m_Name, m_Previous); }
+
+		ClearedVariable(const ClearedVariable&) = delete;
+		ClearedVariable& operator=(const ClearedVariable&) = delete;
+
+	private:
+		const wchar_t* m_Name;
+		std::optional<std::wstring> m_Previous;
+	};
+
 	// For as long as it lives, every git this process starts reads no system config and an empty global one, so nothing
 	// of the machine's or the user's (init.defaultBranch, push.default, url.insteadOf) changes what a test sees.
 	class EmptyGitConfig
@@ -74,41 +112,22 @@ namespace {
 			m_GlobalConfig = m_Directory.GetPath() / "empty-global-gitconfig";
 			std::ofstream{m_GlobalConfig};
 
-			m_PreviousNoSystem = Read(L"GIT_CONFIG_NOSYSTEM");
-			m_PreviousGlobal = Read(L"GIT_CONFIG_GLOBAL");
+			m_PreviousNoSystem = ReadVariable(L"GIT_CONFIG_NOSYSTEM");
+			m_PreviousGlobal = ReadVariable(L"GIT_CONFIG_GLOBAL");
 			::SetEnvironmentVariableW(L"GIT_CONFIG_NOSYSTEM", L"1");
 			::SetEnvironmentVariableW(L"GIT_CONFIG_GLOBAL", m_GlobalConfig.c_str());
 		}
 
 		~EmptyGitConfig()
 		{
-			Restore(L"GIT_CONFIG_NOSYSTEM", m_PreviousNoSystem);
-			Restore(L"GIT_CONFIG_GLOBAL", m_PreviousGlobal);
+			RestoreVariable(L"GIT_CONFIG_NOSYSTEM", m_PreviousNoSystem);
+			RestoreVariable(L"GIT_CONFIG_GLOBAL", m_PreviousGlobal);
 		}
 
 		EmptyGitConfig(const EmptyGitConfig&) = delete;
 		EmptyGitConfig& operator=(const EmptyGitConfig&) = delete;
 
 	private:
-		static std::optional<std::wstring> Read(const wchar_t* name)
-		{
-			const DWORD lengthWithTerminator = ::GetEnvironmentVariableW(name, nullptr, 0);
-
-			if (lengthWithTerminator == 0)
-			{
-				return std::nullopt;
-			}
-
-			std::wstring value(lengthWithTerminator, L'\0');
-			value.resize(::GetEnvironmentVariableW(name, value.data(), lengthWithTerminator));
-			return value;
-		}
-
-		static void Restore(const wchar_t* name, const std::optional<std::wstring>& value)
-		{
-			::SetEnvironmentVariableW(name, value.has_value() ? value->c_str() : nullptr);
-		}
-
 		TempDirectory m_Directory;
 		std::filesystem::path m_GlobalConfig;
 		std::optional<std::wstring> m_PreviousNoSystem;
@@ -352,41 +371,6 @@ namespace {
 		Core::EventBus Events;
 		Graphite::GitModel Model{Port, RunJobsInline()};
 		Graphite::LinesModel Lines{*this, RunJobsInline(), FixedNow};
-	};
-
-	// Where libgit2 looks for configuration files, pointed at an empty folder for as long as it lives, so that a
-	// core.sshCommand of the machine's or the user's cannot reach a test.
-	class NoConfigAboveRepository
-	{
-	public:
-		NoConfigAboveRepository()
-		{
-			git_libgit2_init();
-			Point(m_Empty.GetPath());
-		}
-
-		~NoConfigAboveRepository()
-		{
-			Point(nullptr);
-			git_libgit2_shutdown();
-		}
-
-		NoConfigAboveRepository(const NoConfigAboveRepository&) = delete;
-		NoConfigAboveRepository& operator=(const NoConfigAboveRepository&) = delete;
-
-	private:
-		static void Point(const std::filesystem::path& folder) { Point(Core::ToUtf8(folder).c_str()); }
-
-		static void Point(const char* folder)
-		{
-			for (const git_config_level_t level : {GIT_CONFIG_LEVEL_SYSTEM, GIT_CONFIG_LEVEL_XDG, GIT_CONFIG_LEVEL_GLOBAL,
-												 GIT_CONFIG_LEVEL_PROGRAMDATA})
-			{
-				git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, static_cast<int>(level), folder);
-			}
-		}
-
-		TempDirectory m_Empty;
 	};
 }
 
@@ -746,25 +730,54 @@ TEST_CASE("Git network port: a bare repository fails saying it has no work tree"
 	CHECK(pushed.Failure.Copied == pushed.Failure.Shown);
 }
 
-TEST_CASE("Git network port: core.sshCommand is reported when set and not when unset, whatever the machine configures")
+TEST_CASE("Git network port: a core.sshCommand set only through an includeIf hasconfig include keeps ssh out of batch mode")
 {
-	const NoConfigAboveRepository noConfigAbove;
-	ReviewRepository repository;
-	repository.Write("a.txt", "one\n");
-	repository.Commit("first");
-	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const std::optional<std::filesystem::path> git = Core::FindGit();
 
-	CHECK_FALSE(port.QueryNetworkSetup().SshCommandConfigured);
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
 
-	git_repository* opened = nullptr;
-	REQUIRE(git_repository_open(&opened, Core::ToUtf8(repository.GetPath()).c_str()) == 0);
-	git_config* config = nullptr;
-	REQUIRE(git_repository_config(&config, opened) == 0);
-	REQUIRE(git_config_set_string(config, "core.sshCommand", "plink -batch") == 0);
-	git_config_free(config);
-	git_repository_free(opened);
+	const ClearedVariable noInheritedSshCommand{L"GIT_SSH_COMMAND"};
+	const ClearedVariable noInheritedSshProgram{L"GIT_SSH"};
 
-	CHECK(port.QueryNetworkSetup().SshCommandConfigured);
+	NetworkScene scene{*git};
+	scene.PublishMaster();
+
+	// The pre-push hook runs with git's own environment and writes down the GIT_SSH_COMMAND git was given.
+	TempDirectory notes;
+	const std::filesystem::path seen = notes.GetPath() / "ssh-command-seen.txt";
+	ReviewRepository::WriteFileAt(scene.WorkPath() / ".git" / "hooks" / "pre-push",
+								  "#!/bin/sh\nprintf '%s' \"${GIT_SSH_COMMAND-unset}\" > '" + ForwardSlashes(seen) + "'\n");
+
+	Graphite::RepositoryGitPort port{scene.WorkPath()};
+	const std::atomic<bool> neverCancelled{false};
+
+	// With no ssh command anywhere, ssh is put in batch mode.
+	scene.Work().Write("b.txt", "two\n");
+	scene.Work().Commit("two");
+	const Core::NetworkOutcome first = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
+	INFO(first.Failure.Copied);
+	REQUIRE(first.Result == Core::NetworkResult::Done);
+	REQUIRE(ReadText(seen) == "ssh -o BatchMode=yes");
+
+	// A per-organisation key, included for remotes of one URL: libgit2 cannot follow hasconfig, git does. The remote it
+	// matches is never contacted.
+	const std::filesystem::path organisation = notes.GetPath() / "organisation.gitconfig";
+	ReviewRepository::WriteFileAt(organisation, "[core]\n\tsshCommand = ssh -i organisation-key\n");
+	scene.Git(scene.WorkPath(), {"remote", "add", "organisation", "file:///nowhere/organisation/repository.git"});
+	scene.Git(scene.WorkPath(), {"config", "includeIf.hasconfig:remote.*.url:file:///nowhere/organisation/**.path",
+								 ForwardSlashes(organisation)});
+	REQUIRE(scene.Git(scene.WorkPath(), {"config", "--get", "core.sshCommand"}) == "ssh -i organisation-key");
+
+	scene.Work().Write("c.txt", "three\n");
+	scene.Work().Commit("three");
+	const Core::NetworkOutcome second = port.PushTo(neverCancelled, IgnorePercent, kRemote, std::string{kBranch});
+	INFO(second.Failure.Copied);
+	REQUIRE(second.Result == Core::NetworkResult::Done);
+	CHECK(ReadText(seen) == "unset");
 }
 
 TEST_CASE("Git network port: a clone deepened in a terminal, no ref moved, is read afresh at the next repository change")

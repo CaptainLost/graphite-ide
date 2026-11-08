@@ -22,14 +22,6 @@ namespace Graphite {
 			return Core::NetworkOutcome{.Result = Core::NetworkResult::Failed, .Failure = {.Shown = sentence, .Copied = sentence}};
 		}
 
-		// WARNING: A configuration that cannot be read counts as set: the user's own transport is then kept, and a
-		// batch-mode ssh of ours would replace one we cannot see.
-		bool IsSshCommandConfigured(const Core::Repository& repository)
-		{
-			const Core::Result<bool> sshCommand = repository.IsSshCommandConfigured();
-			return !sshCommand.HasValue() || sshCommand.GetValue();
-		}
-
 		std::filesystem::path ShallowFileOf(const Core::Repository& repository)
 		{
 			return repository.CommonDirectory() / "shallow";
@@ -1507,8 +1499,6 @@ namespace Graphite {
 		setup.WorkingDirectory = repository->GetWorkingDirectory();
 		setup.CommonGitDir = repository->CommonDirectory();
 
-		setup.SshCommandConfigured = IsSshCommandConfigured(*repository);
-
 		return setup;
 	}
 
@@ -1536,7 +1526,8 @@ namespace Graphite {
 		return ShallowStampOf(ShallowFileOf(*opened.GetValue()));
 	}
 
-	Core::NetworkOutcome RepositoryGitPort::WithNetworkRun(const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation)
+	Core::NetworkOutcome RepositoryGitPort::WithNetworkRun(const std::atomic<bool>& cancelled,
+														   const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation)
 	{
 		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
@@ -1559,44 +1550,47 @@ namespace Graphite {
 			return NetworkFailure("git was not found");
 		}
 
-		const Core::NetworkRun run{.Git = *git,
-								   .WorkingDirectory = repository->GetWorkingDirectory(),
-								   .SshCommandConfigured = IsSshCommandConfigured(*repository)};
+		// WARNING: Asked of git, not read through libgit2, which cannot follow every include git does: an ssh command it
+		// missed would be replaced by our batch-mode one, and the user's key with it.
+		const Core::NetworkRun run{
+			.Git = *git,
+			.WorkingDirectory = repository->GetWorkingDirectory(),
+			.SshCommandConfigured = Core::IsSshCommandConfigured(*git, repository->GetWorkingDirectory(), cancelled)};
 
 		return operation(run);
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FetchAll(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress)
 	{
-		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FetchAll(run, cancelled, progress); });
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::FetchAll(run, cancelled, progress); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FetchRemote(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 														const std::string& remote)
 	{
-		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FetchRemote(run, cancelled, progress, remote); });
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::FetchRemote(run, cancelled, progress, remote); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FetchFullHistory(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress)
 	{
-		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FetchFullHistory(run, cancelled, progress); });
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::FetchFullHistory(run, cancelled, progress); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::FastForward(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 														const std::string& upstreamFullName)
 	{
-		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::FastForward(run, cancelled, progress, upstreamFullName); });
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::FastForward(run, cancelled, progress, upstreamFullName); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::PushTo(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 												   const std::string& remote, const std::optional<std::string>& upstreamBranch)
 	{
-		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::PushTo(run, cancelled, progress, remote, upstreamBranch); });
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::PushTo(run, cancelled, progress, remote, upstreamBranch); });
 	}
 
 	Core::NetworkOutcome RepositoryGitPort::SetRemoteHeadAuto(const std::atomic<bool>& cancelled, const Core::ProgressSink& progress,
 															  const std::string& remote)
 	{
-		return WithNetworkRun([&](const Core::NetworkRun& run) { return Core::SetRemoteHeadAuto(run, cancelled, progress, remote); });
+		return WithNetworkRun(cancelled, [&](const Core::NetworkRun& run) { return Core::SetRemoteHeadAuto(run, cancelled, progress, remote); });
 	}
 }

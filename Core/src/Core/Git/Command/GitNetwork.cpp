@@ -3,6 +3,7 @@
 #include "Core/Git/Command/GitNetwork.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -162,6 +163,24 @@ namespace Core {
 								   const std::string& remote)
 	{
 		return RunToSuccess(run, cancelled, progress, {"remote", "set-head", "--auto", "--", remote});
+	}
+
+	bool IsSshCommandConfigured(const std::filesystem::path& git, const std::filesystem::path& workingDirectory,
+								const std::atomic<bool>& cancelled)
+	{
+		// git config --get exits 1 for a key no config sets.
+		constexpr std::uint32_t kNotSet = 1;
+
+		// This run reaches no remote, so whether its own environment would put ssh in batch mode does not matter.
+		constexpr bool kSshNotUsed = true;
+
+		const GitRun query{.Arguments = {"config", "--get", "core.sshCommand"},
+						   .WorkingDirectory = workingDirectory,
+						   .Environment = GitEnvironment(kSshNotUsed)};
+		const std::function<void(std::string_view)> noProgress;
+		const Result<GitOutput> answered = RunGit(git, query, cancelled, noProgress);
+
+		return !answered.HasValue() || answered.GetValue().ExitCode != kNotSet;
 	}
 
 	NetworkHint HintOf(std::string_view errors)

@@ -10,6 +10,7 @@
 #include "ScopedEnvironmentVariable.h"
 #include "TempDirectory.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -49,6 +50,14 @@ namespace {
 			text.pop_back();
 		}
 
+		return text;
+	}
+
+	// As git's config reads a path on Windows: UTF-8, with forward slashes, which it takes as no escape.
+	std::string ForwardSlashes(const std::filesystem::path& path)
+	{
+		std::string text = Core::ToUtf8(path);
+		std::replace(text.begin(), text.end(), '\\', '/');
 		return text;
 	}
 
@@ -629,6 +638,50 @@ TEST_CASE("Network: a failed operation shows the last lines and copies the whole
 	const std::string lastShownLine =
 		lastLineStart == std::string::npos ? fetched.Failure.Shown : fetched.Failure.Shown.substr(lastLineStart + 1);
 	CHECK(fetched.Failure.Copied.find(lastShownLine) != std::string::npos);
+}
+
+TEST_CASE("Network: core.sshCommand counts as set when git reads one, empty or through an include libgit2 cannot follow")
+{
+	const std::optional<std::filesystem::path> git = Core::FindGit();
+
+	if (!git.has_value())
+	{
+		MESSAGE(kSkippedWithoutGit);
+		return;
+	}
+
+	NetworkScene scene{*git};
+	const std::atomic<bool> neverCancelled{false};
+
+	CHECK_FALSE(Core::IsSshCommandConfigured(*git, scene.Work(), neverCancelled));
+
+	scene.Git(scene.Work(), {"config", "core.sshCommand", ""});
+	CHECK(Core::IsSshCommandConfigured(*git, scene.Work(), neverCancelled));
+
+	scene.Git(scene.Work(), {"config", "core.sshCommand", "plink -batch"});
+	CHECK(Core::IsSshCommandConfigured(*git, scene.Work(), neverCancelled));
+	scene.Git(scene.Work(), {"config", "--unset", "core.sshCommand"});
+	REQUIRE_FALSE(Core::IsSshCommandConfigured(*git, scene.Work(), neverCancelled));
+
+	// Only for the remotes of one URL, which this repository has; the remote is never contacted.
+	TempDirectory includes;
+	const std::filesystem::path organisation = includes.GetPath() / "organisation.gitconfig";
+	{
+		std::ofstream file{organisation, std::ios::binary};
+		file << "[core]\n\tsshCommand = ssh -i organisation-key\n";
+	}
+
+	scene.Git(scene.Work(), {"remote", "add", "organisation", "file:///nowhere/organisation/repository.git"});
+	scene.Git(scene.Work(), {"config", "includeIf.hasconfig:remote.*.url:file:///nowhere/organisation/**.path",
+							 ForwardSlashes(organisation)});
+	CHECK(Core::IsSshCommandConfigured(*git, scene.Work(), neverCancelled));
+
+	// No answer is not "not set": the user's own transport is kept.
+	scene.Git(scene.Work(), {"remote", "remove", "organisation"});
+	REQUIRE_FALSE(Core::IsSshCommandConfigured(*git, scene.Work(), neverCancelled));
+	const std::atomic<bool> cancelled{true};
+	CHECK(Core::IsSshCommandConfigured(*git, scene.Work(), cancelled));
+	CHECK(Core::IsSshCommandConfigured(scene.Work() / "no-such-git.exe", scene.Work(), neverCancelled));
 }
 
 TEST_CASE("Network: a run cancelled before git exits is cancelled, and a git that cannot start is a failure")

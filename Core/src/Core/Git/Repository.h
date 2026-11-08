@@ -147,9 +147,6 @@ namespace Core {
 		// Empty when no configuration level sets user.email, or sets it blank.
 		Result<std::optional<std::string>> ReadUserEmail() const;
 
-		// True when any configuration level sets core.sshCommand, to anything.
-		Result<bool> IsSshCommandConfigured() const;
-
 		// No encoding is assumed. NotFound when the commit's tree has no such path, which is the
 		// ordinary answer for the older side of an added file.
 		Result<std::string> ReadBlob(const std::filesystem::path& path, const Oid& revision) const;
