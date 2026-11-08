@@ -714,4 +714,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0682](0682-keep-each-stored-file-s-policy-in-the-module-that-owns-the-file.md) | Keep each stored file's policy in the module that owns the file | rejected | 2026-11-08 |
 | [0683](0683-clear-libgit2-s-last-error-by-hand-before-a-call-whose-failure-is-judged.md) | Clear libgit2's last error by hand before a call whose failure is judged | accepted | 2026-11-08 |
 | [0684](0684-copy-unsaved-changes-aside-so-a-crash-or-a-kill-does-not-lose-them.md) | Copy unsaved changes aside so a crash or a kill does not lose them | proposed | 2026-11-08 |
+| [0685](0685-close-every-file-when-another-folder-replaces-the-open-one-asking-first-about-unsaved-changes.md) | Close every file when another folder replaces the open one, asking first about unsaved changes | proposed | 2026-11-08 |
 <!-- /adr-index -->

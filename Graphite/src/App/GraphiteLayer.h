@@ -118,7 +118,8 @@ namespace Graphite {
 		enum class ClosePurpose
 		{
 			ExitApplication,
-			CloseWorkspace
+			CloseWorkspace,
+			ReplaceFolder
 		};
 
 		struct DroppedWorkspace
@@ -181,6 +182,9 @@ namespace Graphite {
 
 		void FinishClose(ClosePurpose purpose);
 
+		// The workspace's replace gate: opens the next folder at once when no file has unsaved changes, else asks first.
+		void AskBeforeReplacingFolder(std::function<void()> open);
+
 		void RenderCloseConfirm();
 
 		bool ConfirmationStillNeeded(ClosePurpose purpose);
@@ -225,6 +229,11 @@ namespace Graphite {
 		float m_SecondsInBackground = 0.0f;
 
 		bool m_CloseApproved = false;
+
+		// What opens the next folder: held while the question about unsaved changes is asked, and run at the start of the
+		// next update once it is answered, outside every window being drawn.
+		std::function<void()> m_PendingReplace;
+		std::function<void()> m_ApprovedReplace;
 
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::filesystem::path m_InitialFolder;

@@ -297,11 +297,6 @@ namespace Graphite {
 
 		const Core::OpenOutcome outcome = m_Documents.Open(path, tabKind);
 
-		if (DocumentState* const state = FindState(path))
-		{
-			state->CarriedOver = false;
-		}
-
 		if (outcome != Core::OpenOutcome::NeedsConfirmation)
 		{
 			return;
@@ -324,11 +319,6 @@ namespace Graphite {
 			}
 
 			const DocumentState* const kept = FindState(item.Path);
-
-			if (kept != nullptr && kept->CarriedOver)
-			{
-				continue;
-			}
 
 			if (Core::IsLoading(item))
 			{
@@ -364,8 +354,7 @@ namespace Graphite {
 
 		const std::optional<std::size_t> activeIndex = m_Documents.GetActiveIndex();
 
-		if (activeIndex && IsKeptAcrossRestart(m_Documents.At(*activeIndex)) &&
-			!IsCarriedOver(m_Documents.At(*activeIndex).Path))
+		if (activeIndex && IsKeptAcrossRestart(m_Documents.At(*activeIndex)))
 		{
 			state.Active = m_Documents.At(*activeIndex).Path;
 		}
@@ -373,23 +362,10 @@ namespace Graphite {
 		return state;
 	}
 
-	void DocumentWindows::CarryOverOpenDocuments()
-	{
-		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
-		{
-			StateFor(m_Documents.At(index).Path).CarriedOver = true;
-		}
-	}
-
 	void DocumentWindows::RestoreState(const WorkspaceState& state)
 	{
 		for (const TabState& tab : state.Tabs)
 		{
-			if (DocumentState* const kept = FindState(tab.Path))
-			{
-				kept->CarriedOver = false;
-			}
-
 			std::error_code fileCheckError;
 
 			if (!std::filesystem::is_regular_file(tab.Path, fileCheckError))
@@ -582,25 +558,6 @@ namespace Graphite {
 		const std::vector<std::string> oldIdentities = CurrentIdentities(m_Documents);
 
 		m_Documents.RewritePaths(from, to);
-
-		std::vector<std::filesystem::path> carriedOver;
-
-		for (auto& [path, state] : m_States)
-		{
-			if (state.CarriedOver && Core::RelativeTo(path, from))
-			{
-				carriedOver.push_back(path);
-				state.CarriedOver = false;
-			}
-		}
-
-		for (const std::filesystem::path& path : carriedOver)
-		{
-			const std::optional<std::filesystem::path> relative = Core::RelativeTo(path, from);
-			const std::filesystem::path movedPath = *relative == "." ? to : to / *relative;
-
-			StateFor(movedPath).CarriedOver = true;
-		}
 
 		const std::vector<std::string> newIdentities = CurrentIdentities(m_Documents);
 
@@ -1740,13 +1697,6 @@ namespace Graphite {
 		DocumentState* const state = FindState(path);
 
 		return state != nullptr && state->Lens ? &*state->Lens : nullptr;
-	}
-
-	bool DocumentWindows::IsCarriedOver(const std::filesystem::path& path) const
-	{
-		const DocumentState* const state = FindState(path);
-
-		return state != nullptr && state->CarriedOver;
 	}
 
 	DocumentWindows::LensState* DocumentWindows::LensFor(const Core::OpenItem& item)

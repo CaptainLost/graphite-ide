@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -625,4 +626,69 @@ TEST_CASE("An .slnx hides the .sln of the same name in the folder whatever the c
 	REQUIRE(workspace.OpenFolder(temp.GetPath()));
 
 	CHECK(workspace.GetSolutionCandidates() == std::vector<std::filesystem::path>{newer});
+}
+
+TEST_CASE("A folder asked for goes through the replace gate and opens only when the gate runs it")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path first = temp.MakeDirectory("first");
+	const std::filesystem::path second = temp.MakeDirectory("second");
+	REQUIRE(workspace.OpenFolder(first));
+
+	std::vector<std::function<void()>> held;
+	workspace.SetReplaceGate([&held](std::function<void()> open) { held.push_back(std::move(open)); });
+
+	workspace.RequestOpenFolder(second);
+	REQUIRE(held.size() == 1);
+	CHECK(Core::SamePath(workspace.GetRoot(), first));
+
+	held.front()();
+	CHECK(Core::SamePath(workspace.GetRoot(), second));
+}
+
+TEST_CASE("A folder the gate never runs leaves the open folder as it was")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path first = temp.MakeDirectory("first");
+	REQUIRE(workspace.OpenFolder(first));
+
+	workspace.SetReplaceGate([](std::function<void()>) {});
+	workspace.RequestOpenFolder(temp.MakeDirectory("second"));
+
+	CHECK(Core::SamePath(workspace.GetRoot(), first));
+}
+
+TEST_CASE("A solution outside the open folder goes through the replace gate and one inside it does not")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path first = temp.MakeDirectory("first");
+	const std::filesystem::path inside = temp.MakeFile("first/Inside.slnx", "<Solution />");
+	const std::filesystem::path outside = temp.MakeFile("second/Outside.slnx", "<Solution />");
+	REQUIRE(workspace.OpenFolder(first));
+
+	int gated = 0;
+	workspace.SetReplaceGate([&gated](std::function<void()> open) {
+		++gated;
+		open();
+	});
+
+	workspace.RequestOpenSolution(inside);
+	CHECK(gated == 0);
+	CHECK(Core::SamePath(workspace.GetRoot(), first));
+
+	workspace.RequestOpenSolution(outside);
+	CHECK(gated == 1);
+	CHECK(Core::SamePath(workspace.GetRoot(), outside.parent_path()));
 }

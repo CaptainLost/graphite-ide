@@ -288,6 +288,8 @@ namespace Graphite {
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
 
+		m_Workspace.SetReplaceGate([this](std::function<void()> open) { AskBeforeReplacingFolder(std::move(open)); });
+
 		const GlobalState stored = m_AppSettings.GetGlobalState();
 
 		for (const auto& [id, visible] : stored.PanelVisibility)
@@ -612,6 +614,11 @@ namespace Graphite {
 
 	void GraphiteLayer::OnUpdate(Core::Timestep timestep)
 	{
+		if (std::function<void()> replace = std::exchange(m_ApprovedReplace, {}))
+		{
+			replace();
+		}
+
 		m_Workspace.Update();
 
 		// WARNING: Before the panels, so the models apply whatever a worker finished this frame and any workspace event just
@@ -1306,16 +1313,11 @@ namespace Graphite {
 			break;
 
 		case DropTarget::Folder:
-			// OpenFolder reports its own failures.
-			static_cast<void>(m_Workspace.OpenFolder(dropped.Root));
+			m_Workspace.RequestOpenFolder(dropped.Root);
 			break;
 
 		case DropTarget::Solution:
-			// Logged only: OpenSolution reports every failure in a toast itself.
-			if (const Core::Result<void> opened = m_Workspace.OpenSolution(dropped.Root); !opened)
-			{
-				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
-			}
+			m_Workspace.RequestOpenSolution(dropped.Root);
 			break;
 		}
 	}
@@ -1623,7 +1625,29 @@ namespace Graphite {
 		case ClosePurpose::CloseWorkspace:
 			m_Workspace.Close();
 			break;
+
+		case ClosePurpose::ReplaceFolder:
+			m_ApprovedReplace = std::exchange(m_PendingReplace, {});
+			break;
 		}
+	}
+
+	void GraphiteLayer::AskBeforeReplacingFolder(std::function<void()> open)
+	{
+		if (!m_DocumentWindows.HasModifiedDocuments())
+		{
+			open();
+			return;
+		}
+
+		// WARNING: One close question at a time, as RequestCloseConfirmation keeps it: the one already asked goes on.
+		if (m_CloseQuestion.IsAsked())
+		{
+			return;
+		}
+
+		m_PendingReplace = std::move(open);
+		m_CloseQuestion.Ask(ClosePurpose::ReplaceFolder);
 	}
 
 	bool GraphiteLayer::ConfirmationStillNeeded(ClosePurpose purpose)
@@ -1695,7 +1719,9 @@ namespace Graphite {
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
 		const ClosePurpose purpose = *asked;
 
-		DialogLayout::Text("These files have unsaved changes:");
+		DialogLayout::Text(purpose == ClosePurpose::ReplaceFolder
+							   ? "Opening another folder closes every open file. These have unsaved changes:"
+							   : "These files have unsaved changes:");
 		DialogLayout::Gap();
 
 		ListModifiedDocuments();
@@ -1721,6 +1747,7 @@ namespace Graphite {
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
 		{
+			m_PendingReplace = {};
 			m_CloseQuestion.Answer();
 		}
 

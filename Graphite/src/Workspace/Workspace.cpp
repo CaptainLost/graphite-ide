@@ -295,6 +295,45 @@ namespace Graphite {
 		std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end(), ListsSolutionBefore);
 	}
 
+	void Workspace::RequestOpenFolder(const std::filesystem::path& folderPath)
+	{
+		const auto open = [this, folderPath] {
+			// OpenFolder reports its own failure and leaves the current folder open.
+			static_cast<void>(OpenFolder(folderPath));
+		};
+
+		if (!m_ReplaceGate)
+		{
+			open();
+			return;
+		}
+
+		m_ReplaceGate(open);
+	}
+
+	void Workspace::RequestOpenSolution(const std::filesystem::path& solutionPath)
+	{
+		const auto open = [this, solutionPath] {
+			// Logged only: OpenSolution reports every failure in a toast itself.
+			if (const Core::Result<void> opened = OpenSolution(solutionPath); !opened)
+			{
+				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+			}
+		};
+
+		// A solution inside the open folder is only selected, and closes nothing.
+		std::error_code absoluteError;
+		const std::filesystem::path absolute = std::filesystem::absolute(solutionPath, absoluteError);
+
+		if (!m_ReplaceGate || (!absoluteError && IsInsideRoot(absolute.lexically_normal())))
+		{
+			open();
+			return;
+		}
+
+		m_ReplaceGate(open);
+	}
+
 	Core::Result<void> Workspace::RefuseToOpenSolution(Core::Error error)
 	{
 		m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open solution", error.Message));
@@ -912,10 +951,7 @@ namespace Graphite {
 
 		workspace.GetDialog().Start(
 			[] { return Core::FileDialog::PickFolder("Open Folder"); },
-			[&workspace](const std::filesystem::path& picked) {
-				// OpenFolder reports its own failure and leaves the current folder open.
-				static_cast<void>(workspace.OpenFolder(picked));
-			},
+			[&workspace](const std::filesystem::path& picked) { workspace.RequestOpenFolder(picked); },
 			[&workspace](const Core::Error& error) { workspace.ReportDialogFailure(error); });
 	}
 
@@ -933,14 +969,7 @@ namespace Graphite {
 
 		workspace.GetDialog().Start(
 			[filters] { return Core::FileDialog::PickFile("Open Solution", filters); },
-			[&workspace](const std::filesystem::path& picked) {
-				const Core::Result<void> opened = workspace.OpenSolution(picked);
-
-				if (!opened)
-				{
-					APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
-				}
-			},
+			[&workspace](const std::filesystem::path& picked) { workspace.RequestOpenSolution(picked); },
 			[&workspace](const Core::Error& error) { workspace.ReportDialogFailure(error); });
 	}
 }

@@ -134,8 +134,6 @@ namespace Graphite {
 
 		WorkspaceState CaptureState() const;
 
-		void CarryOverOpenDocuments();
-
 		void RestoreState(const WorkspaceState& state);
 
 		void FollowMove(const std::filesystem::path& from, const std::filesystem::path& to);
@@ -245,8 +243,6 @@ namespace Graphite {
 		const DocumentState* FindState(const std::filesystem::path& path) const;
 
 		LensState* FindLens(const std::filesystem::path& path);
-
-		bool IsCarriedOver(const std::filesystem::path& path) const;
 
 	public:
 		bool IsAnalysing(const std::filesystem::path& path) const;
@@ -601,8 +597,6 @@ namespace Graphite {
 			std::optional<WrapGeometry> PaneWrapWhileRead;
 
 			std::optional<ReadWrap> WrapHandedToRead;
-
-			bool CarriedOver = false;
 
 			CaretScreenPosition CaretScreen;
 

@@ -130,6 +130,17 @@ namespace Graphite {
 
 		Core::Result<void> OpenSolution(const std::filesystem::path& solutionPath);
 
+		// Given what opens the next folder, runs it now, after the reader has answered for the open files' unsaved
+		// changes, or never, when they cancel.
+		using ReplaceGate = std::function<void(std::function<void()> open)>;
+
+		void SetReplaceGate(ReplaceGate gate) { m_ReplaceGate = std::move(gate); }
+
+		// Open Folder and Open Solution as the reader asks for them: through the gate, since the next folder closes
+		// every open file.
+		void RequestOpenFolder(const std::filesystem::path& folderPath);
+		void RequestOpenSolution(const std::filesystem::path& solutionPath);
+
 		void Close();
 
 		void Update();
@@ -227,6 +238,8 @@ namespace Graphite {
 		WatcherStart m_StartWatcher;
 		Core::LatestAnswer<SolutionRead> m_SolutionRead;
 		SolutionReading m_ReadSolution;
+
+		ReplaceGate m_ReplaceGate;
 		bool m_ReadingAgainAfterAThrow = false;
 		std::optional<Core::Repository> m_Repository;
 		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;

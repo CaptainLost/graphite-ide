@@ -55,17 +55,11 @@ namespace Graphite {
 	{
 	}
 
-	void DocumentsOfFolder::LetGo(FolderExit exit)
+	// WARNING: Every file closes, whether the folder closes or another replaces it: the reader was asked about unsaved
+	// changes before either, and a tab carried into the next folder mixed two projects in one tab bar.
+	void DocumentsOfFolder::LetGo(FolderExit)
 	{
-		if (exit == FolderExit::Replaced)
-		{
-			m_Windows.CarryOverOpenDocuments();
-		}
-		else
-		{
-			m_Documents.CloseAll();
-		}
-
+		m_Documents.CloseAll();
 		m_Windows.ClearExpectedWrites();
 	}
 
