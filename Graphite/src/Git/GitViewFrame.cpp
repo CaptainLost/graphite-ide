@@ -70,26 +70,6 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
-		std::optional<std::size_t> CheckedOutRefOf(const LineRead& read)
-		{
-			if (!read.Branches)
-			{
-				return std::nullopt;
-			}
-
-			const std::vector<Core::Branch>& branches = *read.Branches;
-
-			for (std::size_t ref = 0; ref < branches.size(); ++ref)
-			{
-				if (branches[ref].IsHead)
-				{
-					return ref;
-				}
-			}
-
-			return std::nullopt;
-		}
-
 		// The stash's place in the list; empty when the list no longer holds it.
 		std::optional<std::size_t> IndexOfStash(const std::vector<Core::StashEntry>& stashes, const Core::Oid& id)
 		{
@@ -323,7 +303,7 @@ namespace Graphite {
 		const std::optional<Core::Error>& stashesError = m_Model.GetStashesError();
 		const std::optional<Core::Error>& tagsError = m_Model.GetTagsError();
 
-		SidebarInputs inputs{.Read = m_Lines.GetRead(),
+		SidebarInputs inputs{.Read = m_OnScreen.GetRead(),
 							 .Stashes = m_Model.GetStashes(),
 							 .StashesError = stashesError.has_value() ? std::optional<std::string>{stashesError->Message}
 																	  : std::nullopt,
@@ -341,19 +321,9 @@ namespace Graphite {
 			return;
 		}
 
-		// WARNING: The lines view into the read they were built from, so they go before that read can.
 		if (!m_SidebarBuiltFrom.has_value() || m_SidebarBuiltFrom->Read != inputs.Read)
 		{
-			m_SidebarLines.reset();
-			m_MostCommonLine.clear();
-			m_HeadRef.reset();
-
-			if (inputs.Read)
-			{
-				m_SidebarLines.emplace(*inputs.Read);
-				m_MostCommonLine = MostCommonLineOf(*inputs.Read);
-				m_HeadRef = CheckedOutRefOf(*inputs.Read);
-			}
+			m_MostCommonLine = inputs.Read ? MostCommonLineOf(*inputs.Read) : std::string{};
 		}
 
 		const Core::Error* const failedStashRead = stashesError.has_value() ? &*stashesError : nullptr;
@@ -575,13 +545,13 @@ namespace Graphite {
 			return stash != nullptr ? DescribeStashRow(*stash, NowInSeconds(), ReaderTimeZone()) : SidebarRowText{};
 		}
 
-		if (!m_SidebarLines.has_value())
+		if (m_OnScreen.GetLines() == nullptr)
 		{
 			return SidebarRowText{};
 		}
 
-		SidebarTextInput input{.Read = *m_SidebarBuiltFrom->Read,
-							   .Lines = *m_SidebarLines,
+		SidebarTextInput input{.Read = *m_OnScreen.GetRead(),
+							   .Lines = *m_OnScreen.GetLines(),
 							   .UserEmail = m_Model.GetUserEmail(),
 							   .MostCommonLine = m_MostCommonLine,
 							   .Now = NowInSeconds()};
@@ -597,7 +567,7 @@ namespace Graphite {
 	{
 		const Core::Ref<const std::vector<Core::Tag>>& tags = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Tags : nullptr;
 
-		if (!tags || !ShowsTag())
+		if (!tags || !Shown().ShowsTag())
 		{
 			return std::nullopt;
 		}
@@ -624,14 +594,14 @@ namespace Graphite {
 
 		selection.Tag = SelectedTagIndex();
 
-		if (!m_SidebarLines.has_value())
+		if (m_OnScreen.GetLines() == nullptr)
 		{
 			return selection;
 		}
 
 		if (m_SelectedRef.has_value())
 		{
-			selection.Ref = m_SidebarLines->IndexOf(*m_SelectedRef);
+			selection.Ref = m_OnScreen.GetLines()->IndexOf(*m_SelectedRef);
 			return selection;
 		}
 
@@ -640,11 +610,11 @@ namespace Graphite {
 
 		if (!head)
 		{
-			selection.Ref = m_HeadRef;
+			selection.Ref = m_OnScreen.GetHeadRef();
 		}
 		else if (head->Kind == Core::HeadKind::Branch)
 		{
-			selection.Ref = m_SidebarLines->IndexOf(Core::LocalBranchReference(head->BranchName));
+			selection.Ref = m_OnScreen.GetLines()->IndexOf(Core::LocalBranchReference(head->BranchName));
 		}
 
 		return selection;
@@ -658,7 +628,7 @@ namespace Graphite {
 		case SidebarRowKind::Base:
 		{
 			const std::optional<std::size_t> opened =
-				m_SidebarLines.has_value() ? RefOpenedBy(row, *m_SidebarBuiltFrom->Read, *m_SidebarLines) : std::nullopt;
+				m_OnScreen.GetLines() != nullptr ? RefOpenedBy(row, *m_OnScreen.GetRead(), *m_OnScreen.GetLines()) : std::nullopt;
 
 			if (const Core::Branch* branch = SidebarBranchAt(opened))
 			{
@@ -732,7 +702,7 @@ namespace Graphite {
 	{
 		const bool isStash = row.Kind == SidebarRowKind::Stash;
 		const RowMenuRefs refs =
-			m_SidebarLines.has_value() ? RowMenuRefsOf(row, *m_SidebarBuiltFrom->Read, *m_SidebarLines) : RowMenuRefs{};
+			m_OnScreen.GetLines() != nullptr ? RowMenuRefsOf(row, *m_OnScreen.GetRead(), *m_OnScreen.GetLines()) : RowMenuRefs{};
 		const Core::Branch* branch = SidebarBranchAt(refs.Menu);
 		const Core::StashEntry* stash = isStash ? SidebarStashOf(row) : nullptr;
 
@@ -866,7 +836,7 @@ namespace Graphite {
 			return "Stash";
 		}
 
-		if (ShowsTag())
+		if (Shown().ShowsTag())
 		{
 			const Core::Ref<const std::vector<Core::Tag>> tags = m_Model.GetTags();
 			const Core::Tag* tag = TagWithFullName(TagsOrNone(tags), *m_SelectedRef);
@@ -909,9 +879,9 @@ namespace Graphite {
 		const WindowBarColours colours = ReadWindowBarColours(m_Scheme.Get());
 
 		// What the shown branch is compared with, from the read the sidebar's lines view.
-		const std::string shownRef = ShownRefName();
-		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
-		const BranchLines* const lines = CurrentLines();
+		const std::string shownRef = Shown().RefName();
+		const LineRead* const read = m_OnScreen.GetRead().get();
+		const BranchLines* const lines = m_OnScreen.GetLines();
 
 		VsLabel label;
 		std::optional<std::string> banner;
@@ -922,11 +892,11 @@ namespace Graphite {
 		if (read != nullptr && lines != nullptr && !shownRef.empty() && HistoryRowsNow() == HistoryRows::Shown)
 		{
 			const std::optional<ContentMark> content = ShownContentMark();
-			const VsInput input{*read, *lines, shownRef, ShownDistance(*read, shownRef),
+			const VsInput input{*read, *lines, shownRef, ShownDistance(shownRef),
 								content.has_value() ? content->Verdict : std::nullopt};
 			const HeaderWords fresh{.Label = DescribeVs(input), .Banner = HistoryBannerFor(input),
 								 .BannerAction = HistoryBannerActionFor(input)};
-			const bool waits = HeaderWordsWait(MeasuresShownDistance(*read, shownRef), RowsOfLineShown(), ShownContentWaits());
+			const bool waits = HeaderWordsWait(MeasuresShownDistance(shownRef), RowsOfLineShown(), ShownContentWaits());
 			const HeaderWords& words = HeaderWordsToDraw(fresh, waits, shownRef, m_DrawnHeaderWords);
 
 			label = words.Label;
@@ -941,12 +911,9 @@ namespace Graphite {
 
 		// An operation in progress belongs to HEAD, so it is said by HEAD's history and by the checked-out branch's.
 		std::string operation;
-		const bool isHeadHistory = !RestoreWaits() && !m_SelectedStash.has_value() &&
-								   (!m_SelectedRef.has_value() || (m_HeadRef.has_value() && read != nullptr &&
-																   read->Refs[*m_HeadRef].FullName == *m_SelectedRef));
 		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
 
-		if (isHeadHistory && head)
+		if (Shown().IsHeadHistory() && head)
 		{
 			operation = HeadOperationText(head->Operation);
 		}
@@ -989,7 +956,7 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::TextUnformatted(HistoryIcon(m_SelectedStash.has_value(), ShowsTag()));
+			ImGui::TextUnformatted(HistoryIcon(m_SelectedStash.has_value(), Shown().ShowsTag()));
 		}
 
 		ImGui::SameLine();
@@ -1082,7 +1049,7 @@ namespace Graphite {
 
 	void GitView::OpenVsPicker(ImVec2 below)
 	{
-		const std::string shown = ShownRefName();
+		const std::string shown = Shown().RefName();
 
 		if (!shown.empty())
 		{
@@ -1097,8 +1064,8 @@ namespace Graphite {
 			return;
 		}
 
-		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
-		const BranchLines* const lines = CurrentLines();
+		const LineRead* const read = m_OnScreen.GetRead().get();
+		const BranchLines* const lines = m_OnScreen.GetLines();
 
 		// Without a read there is nothing to choose from.
 		if (read == nullptr || lines == nullptr)

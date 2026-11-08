@@ -29,8 +29,10 @@
 #include "Git/History/HistoryReach.h"
 #include "Git/History/HistoryStatus.h"
 #include "Git/History/HistoryStatusLine.h"
+#include "Git/History/ShownHistory.h"
 #include "Git/Lines/BranchLines.h"
 #include "Git/Lines/HeadInRead.h"
+#include "Git/Lines/LinesOnScreen.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/Network/NetworkModel.h"
 #include "Git/Sidebar/SidebarRows.h"
@@ -245,37 +247,16 @@ namespace Graphite {
 
 		std::string HistoryTitle() const;
 
-		// The full name of the branch whose history is shown: the selected ref, or the checked-out branch for HEAD's.
-		// Empty for a stash, a tag, a detached or unborn HEAD, while no read is held, and for HEAD's history while the read
-		// names another branch checked out than HEAD does: none of them has a line to compare it with.
-		std::string ShownRefName() const;
-
-		// The selected ref is a tag's.
-		bool ShowsTag() const;
-
-		// How HEAD's history stands against the read the sidebar's lines view.
-		HeadInRead HeadPlacement() const;
-
-		struct DistanceTips
-		{
-			Core::Oid From;
-			Core::Oid To;
-		};
-
-		// The two tips whose distance the header counts for the shown reference: the branch's and its line's, an old
-		// copy's and its base's, or a picked line's; none when the header counts nothing.
-		std::optional<DistanceTips> ShownDistanceTips(const LineRead& read, std::string_view shownRef) const;
+		// Which history is shown and how it stands against the read on screen, asked of what is selected and the models
+		// now.
+		ShownHistory Shown() const;
 
 		// What the shown reference is compared with and how far from it; asked of the lines model on every frame the
 		// header is drawn, which answers from its cache after the first.
-		std::optional<Core::LineDistance> ShownDistance(const LineRead& read, std::string_view shownRef);
+		std::optional<Core::LineDistance> ShownDistance(std::string_view shownRef);
 
 		// The header counts a distance that is still being measured.
-		bool MeasuresShownDistance(const LineRead& read, std::string_view shownRef);
-
-		// The shown branch's line when it is a candidate for a check of its contents; empty for a pick, an old copy, a base,
-		// a branch merged by history.
-		const Core::BranchLine* ShownContentCandidate() const;
+		bool MeasuresShownDistance(std::string_view shownRef);
 
 		// Whether the view's read is the one the models follow; it is not in the one frame a new read lands.
 		bool ViewFollowsModelsRead() const;
@@ -417,25 +398,8 @@ namespace Graphite {
 		// the read moved the shown reference's line.
 		void AskLogAsNeeded();
 
-		// The sidebar's lines of the read on screen; null before the first read lands.
-		const BranchLines* CurrentLines() const;
-
-		// How the shown reference's history shows its line, from the read the sidebar's lines view: the reference alone
-		// for a stash, a detached HEAD and while no read is held. The filters are not looked at.
-		HistoryLine ShownRefLine() const;
-
-		// The line as the history draws it: none for a file's history, which follows the file alone.
-		HistoryLine LineToShow() const;
-
 		// The path box names a file, so the history is that file's.
 		bool IsFileHistory() const;
-
-		// A branch's or HEAD's history waits for the line read that holds it, and HEAD's for the one that names its branch
-		// checked out; a stash, a tag and a file's history do not, and neither does a history whose read failed.
-		bool WaitsForLines() const;
-
-		// HEAD's or the checked-out branch's history of the whole tree, whose first row is Local changes.
-		bool ShowsLocalChanges() const;
 
 		// What the Local changes row says, for a history that has the row.
 		std::optional<std::string> LocalChangesMark() const;
@@ -578,15 +542,17 @@ namespace Graphite {
 		// "Not now" on the main-line question: until the folder changes.
 		bool m_MainLineDismissed = false;
 
+		// The read the sidebar and the history both draw, followed as each frame starts.
+		LinesOnScreen m_OnScreen;
+
 		SidebarView m_Sidebar;
 
 		// WARNING: The inputs are held, not only compared: the rows' indices point into the read and the stashes held
-		// here, m_SidebarLines views into the read, and a snapshot freed and another made at its address must never
-		// pass for the one the rows were built from. Without a read the rows are the stashes alone.
+		// here, and a snapshot freed and another made at its address must never pass for the one the rows were built
+		// from. Without a read the rows are the stashes alone.
 		std::optional<SidebarInputs> m_SidebarBuiltFrom;
 		std::vector<SidebarRow> m_SidebarRows;
 		SearchedAuthors m_SearchedAuthors;
-		std::optional<BranchLines> m_SidebarLines;
 
 		// The remote branches the rows hide as merged by content, found again only at the moments spec §6 rule 3 names.
 		MergedByContentSnapshot m_HiddenByContent;
@@ -605,7 +571,6 @@ namespace Graphite {
 		// What the shown reference is compared with: opened by the header's vs button and the sidebar's bases link.
 		VsPickerView m_VsPicker;
 		std::string m_MostCommonLine;
-		std::optional<std::size_t> m_HeadRef; // the checked-out branch's ref: its row stands for HEAD's history
 
 		std::map<std::string, bool> m_OpenByUser;
 		std::set<std::string> m_ShowingMerged;

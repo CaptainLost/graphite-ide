@@ -200,7 +200,7 @@ namespace Graphite {
 
 		// A tag is looked up among the tags, and stays while they are not listed: a listing that failed says nothing of
 		// it. One that moved stays too; the refresh that listed it asks its history again.
-		const bool isListed = ShowsTag() ? tags == nullptr || TagWithFullName(*tags, *m_SelectedRef) != nullptr
+		const bool isListed = Shown().ShowsTag() ? tags == nullptr || TagWithFullName(*tags, *m_SelectedRef) != nullptr
 										 : BranchWithFullName(branches, *m_SelectedRef) != nullptr;
 
 		if (isListed)
@@ -514,14 +514,12 @@ namespace Graphite {
 		// restores from its handler of the same event is asked for after this has let go of the last one.
 		m_PendingRestore.reset();
 
-		// WARNING: The lines view into the read held with the rows, so they go first.
-		m_SidebarLines.reset();
+		m_OnScreen.Reset();
 		m_SidebarBuiltFrom.reset();
 		m_SidebarRows.clear();
 		m_SearchedAuthors = SearchedAuthors{};
 		m_DrawnHeaderWords.reset();
 		m_MostCommonLine.clear();
-		m_HeadRef.reset();
 		m_OpenByUser.clear();
 		m_ShowingMerged.clear();
 		++m_SidebarChoicesVersion;
@@ -553,6 +551,9 @@ namespace Graphite {
 
 	void GitView::OnImGuiRender()
 	{
+		// WARNING: Before anything is drawn or asked, so the window bar, the sidebar and the history read one read.
+		m_OnScreen.Follow(m_Lines.GetRead());
+
 		UpdateForNewPage();
 
 		// WARNING: With no folder nothing is on its way, so a loader here would turn forever and keep
@@ -637,7 +638,7 @@ namespace Graphite {
 	void GitView::StartOpening()
 	{
 		// The checked-out branch opens on its Local changes; any other reference on the row its first page gives.
-		m_OpeningRef = !ShowsLocalChanges();
+		m_OpeningRef = !Shown().ShowsLocalChanges();
 		m_Commits.ClearSelection();
 
 		if (m_OpeningRef)
@@ -760,7 +761,7 @@ namespace Graphite {
 	void GitView::RenderLineItems(const std::string& linesFor, const std::string& comparedFor)
 	{
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();
-		const BranchLines* const lines = CurrentLines();
+		const BranchLines* const lines = m_OnScreen.GetLines();
 
 		// A base's local copy answers for the base its row shows.
 		const std::string shown = lines != nullptr ? std::string{lines->ShownAs(linesFor)} : linesFor;
@@ -848,15 +849,15 @@ namespace Graphite {
 
 		// WARNING: Asked before the line read is in, the page would land without the fold row and the dimmed rows the
 		// line gives it, and they would appear in it later. AskLogAsNeeded asks it once the read is in.
-		m_LogHeld = WaitsForLines();
+		m_LogHeld = Shown().WaitsForLines();
 
 		if (m_LogHeld)
 		{
 			return;
 		}
 
-		m_LineAsked = ShownRefLine();
-		const HistoryLine line = LineToShow();
+		m_LineAsked = Shown().RefLine();
+		const HistoryLine line = Shown().LineToShow();
 
 		Core::LogRequest log = BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash, m_FirstParentsOnly);
 		WidenToLine(log, line);
@@ -895,7 +896,7 @@ namespace Graphite {
 
 		if (m_LogHeld)
 		{
-			if (!WaitsForLines())
+			if (!Shown().WaitsForLines())
 			{
 				RequestLog(m_Reach);
 			}
@@ -918,34 +919,27 @@ namespace Graphite {
 		// A new read that moved the shown reference's line, its tip or the reference's own tip asks the page and its
 		// marks again, so they keep to what the header says. Rows kept from before HEAD's history named a line give way to
 		// that page in the frame it lands, so it is asked once the counts its rows wait for are in.
-		if (!WaitsForLines() && ShownRefLine() != m_LineAsked &&
+		if (!Shown().WaitsForLines() && Shown().RefLine() != m_LineAsked &&
 			!(HistoryRowsNow() == HistoryRows::Kept && ShownLineCountsWait()))
 		{
 			RequestLog(m_Reach, LogAsk::Again);
 		}
 	}
 
-	const BranchLines* GitView::CurrentLines() const
+	ShownHistory GitView::Shown() const
 	{
-		return m_SidebarLines.has_value() ? &*m_SidebarLines : nullptr;
-	}
-
-	HistoryLine GitView::ShownRefLine() const
-	{
-		const BranchLines* const lines = CurrentLines();
-		const std::string shown = ShownRefName();
-
-		if (lines == nullptr || shown.empty())
-		{
-			return {};
-		}
-
-		return HistoryLineOf(*m_SidebarBuiltFrom->Read, *lines, shown, m_NewerShown.contains(shown));
-	}
-
-	HistoryLine GitView::LineToShow() const
-	{
-		return IsFileHistory() ? HistoryLine{} : ShownRefLine();
+		// WARNING: The head is held by the model, which replaces it only in its update, so the pointer outlives the question.
+		return ShownHistory{ShownHistoryInput{.OnScreen = m_OnScreen,
+											  .SelectedRef = m_SelectedRef,
+											  .SelectedStash = m_SelectedStash,
+											  .RestoreWaits = RestoreWaits(),
+											  .FileHistory = IsFileHistory(),
+											  .Head = m_Model.GetHead().get(),
+											  .Reading = m_Lines.IsReading(),
+											  .ListingComing = m_Model.IsBranchListingComing(),
+											  .ReadFailed = m_Lines.GetError().has_value(),
+											  .BranchesFailed = !m_Model.GetBranches() && m_Model.GetBranchesError().has_value(),
+											  .NewerShown = m_NewerShown}};
 	}
 
 	bool GitView::IsFileHistory() const
@@ -953,46 +947,9 @@ namespace Graphite {
 		return !Core::Trimmed(m_Filter.Get().Path).empty();
 	}
 
-	bool GitView::WaitsForLines() const
-	{
-		// A tag's history is read from its commit alone: the read has no line for it to wait for.
-		if (m_SelectedStash.has_value() || IsFileHistory() || ShowsTag())
-		{
-			return false;
-		}
-
-		const BranchLines* const lines = CurrentLines();
-
-		return HistoryWaitsForLines(HistoryWaitInput{
-			.HasRead = lines != nullptr,
-			.Reading = m_Lines.IsReading(),
-			.ReadFailed = m_Lines.GetError().has_value(),
-			.BranchesFailed = !m_Model.GetBranches() && m_Model.GetBranchesError().has_value(),
-			.ReadLacksShown = lines != nullptr && m_SelectedRef.has_value() && !lines->IndexOf(*m_SelectedRef).has_value(),
-			.Head = m_SelectedRef.has_value() ? HeadInRead::Agrees : HeadPlacement()});
-	}
-
-	bool GitView::ShowsLocalChanges() const
-	{
-		// A file's history is about that file, not about the whole tree's changes; a history still being decided is none.
-		if (m_SelectedStash.has_value() || IsFileHistory() || RestoreWaits())
-		{
-			return false;
-		}
-
-		if (!m_SelectedRef.has_value())
-		{
-			return true;
-		}
-
-		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
-
-		return head && head->Kind == Core::HeadKind::Branch && Core::LocalBranchReference(head->BranchName) == *m_SelectedRef;
-	}
-
 	std::optional<std::string> GitView::LocalChangesMark() const
 	{
-		if (!ShowsLocalChanges())
+		if (!Shown().ShowsLocalChanges())
 		{
 			return std::nullopt;
 		}
@@ -1016,7 +973,7 @@ namespace Graphite {
 
 	HistoryRows GitView::HistoryRowsNow()
 	{
-		if (m_LogHeld || WaitsForLines() || !m_Model.GetLog())
+		if (m_LogHeld || Shown().WaitsForLines() || !m_Model.GetLog())
 		{
 			return HistoryRows::Waiting;
 		}
@@ -1032,7 +989,7 @@ namespace Graphite {
 
 		// Rows once on screen stay while they show the same branch; only the first time are they held for the fold row's
 		// count.
-		const std::string shownRef = ShownRefName();
+		const std::string shownRef = Shown().RefName();
 		const bool shownForThis = m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = shownRef};
 
 		return RowsOfHistory(HistoryRowsInput{
@@ -1043,7 +1000,7 @@ namespace Graphite {
 
 	bool GitView::RowsOfLineShown() const
 	{
-		return m_LineAsked == ShownRefLine() && m_Model.IsLogAnswered(m_LineAskedGeneration);
+		return m_LineAsked == Shown().RefLine() && m_Model.IsLogAnswered(m_LineAskedGeneration);
 	}
 
 	bool GitView::FirstRowsReady(const Core::LogRequest& shown)
@@ -1058,9 +1015,9 @@ namespace Graphite {
 
 		// The header's vs label and banner come with the rows and count a distance, so the rows wait for it too: the
 		// label then appears once, at its final width.
-		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
+		const LineRead* const read = m_OnScreen.GetRead().get();
 
-		if (const std::string shownRef = ShownRefName(); read != nullptr && !shownRef.empty() && MeasuresShownDistance(*read, shownRef))
+		if (const std::string shownRef = Shown().RefName(); read != nullptr && !shownRef.empty() && MeasuresShownDistance(shownRef))
 		{
 			return false;
 		}
@@ -1071,7 +1028,7 @@ namespace Graphite {
 			return false;
 		}
 
-		const HistoryLine line = LineToShow();
+		const HistoryLine line = Shown().LineToShow();
 		std::optional<std::size_t> behind;
 
 		if (line.Fold == LineFold::Folded)
@@ -1093,8 +1050,8 @@ namespace Graphite {
 
 	bool GitView::ShownLineCountsWait()
 	{
-		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
-		const std::string shownRef = ShownRefName();
+		const LineRead* const read = m_OnScreen.GetRead().get();
+		const std::string shownRef = Shown().RefName();
 
 		if (read == nullptr || shownRef.empty())
 		{
@@ -1102,8 +1059,8 @@ namespace Graphite {
 		}
 
 		// Both are asked in the same frame, so the page waits for the longer of the two only.
-		const bool headerWaits = MeasuresShownDistance(*read, shownRef);
-		const HistoryLine line = LineToShow();
+		const bool headerWaits = MeasuresShownDistance(shownRef);
+		const HistoryLine line = Shown().LineToShow();
 		const bool foldWaits = line.Fold == LineFold::Folded && m_Lines.HoldsCommit(line.BranchTip) &&
 							   m_Lines.HoldsCommit(line.LineTip) && !m_Lines.DistanceOf(line.BranchTip, line.LineTip).has_value();
 
@@ -1148,7 +1105,7 @@ namespace Graphite {
 			return marks;
 		}
 
-		const HistoryLine line = LineToShow();
+		const HistoryLine line = Shown().LineToShow();
 
 		if (*kind == GitModel::MarkedKind::Newer)
 		{
@@ -1193,7 +1150,7 @@ namespace Graphite {
 
 	void GitView::ToggleNewerShown()
 	{
-		const std::string shown = ShownRefName();
+		const std::string shown = Shown().RefName();
 
 		if (shown.empty())
 		{
@@ -1349,7 +1306,7 @@ namespace Graphite {
 			const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 			const bool pageWaitsForCount = page && shown.has_value() && PageAnswersSelection(*shown);
 
-			const bool linesAwaited = m_LogHeld || WaitsForLines() || RestoreWaits();
+			const bool linesAwaited = m_LogHeld || Shown().WaitsForLines() || RestoreWaits();
 
 			if (linesAwaited || pageWaitsForCount)
 			{
@@ -1403,7 +1360,7 @@ namespace Graphite {
 
 			if (rows == HistoryRows::Shown)
 			{
-				m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = ShownRefName()};
+				m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = Shown().RefName()};
 				marks = HistoryMarksFor(page);
 			}
 			else
@@ -1735,7 +1692,7 @@ namespace Graphite {
 
 	std::optional<TwinMark> GitView::NoteShownSquash(BaseEquivalence& equivalence, const Core::Oid& commit, std::size_t base)
 	{
-		const Core::BranchLine* const line = ShownContentCandidate();
+		const Core::BranchLine* const line = Shown().ContentCandidate();
 
 		// Only an own commit of the shown branch, the rows before the fold, has the branch's squash for an equivalent.
 		if (line == nullptr || !ViewFollowsModelsRead() || line->ComparedWith != std::optional<std::size_t>{base} ||

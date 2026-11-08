@@ -202,105 +202,16 @@ namespace Graphite {
 		}
 	}
 
-	std::string GitView::ShownRefName() const
+	std::optional<Core::LineDistance> GitView::ShownDistance(std::string_view shownRef)
 	{
-		// A tag's history is its commit's, combined: no fold row, no vs button, no banner.
-		if (m_SelectedStash.has_value() || RestoreWaits() || ShowsTag())
-		{
-			return {};
-		}
-
-		if (m_SelectedRef.has_value())
-		{
-			return *m_SelectedRef;
-		}
-
-		if (!m_HeadRef.has_value() || !m_SidebarBuiltFrom.has_value() || !m_SidebarBuiltFrom->Read)
-		{
-			return {};
-		}
-
-		// WARNING: After a checkout the read names the branch checked out before until the next read lands; its line,
-		// banner and fold row would describe that branch under HEAD's new name.
-		if (HeadPlacement() != HeadInRead::Agrees)
-		{
-			return {};
-		}
-
-		return m_SidebarBuiltFrom->Read->Refs[*m_HeadRef].FullName;
-	}
-
-	bool GitView::ShowsTag() const
-	{
-		return m_SelectedRef.has_value() && IsTagName(*m_SelectedRef);
-	}
-
-	HeadInRead GitView::HeadPlacement() const
-	{
-		const LineRead* const read = m_SidebarBuiltFrom.has_value() ? m_SidebarBuiltFrom->Read.get() : nullptr;
-		const std::string_view checkedOut =
-			read != nullptr && m_HeadRef.has_value() ? std::string_view{read->Refs[*m_HeadRef].FullName} : std::string_view{};
-		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
-
-		return PlaceHeadInRead(HeadInReadInput{.Head = head.get(),
-											   .ReadCheckedOut = checkedOut,
-											   .ReadComing = m_Lines.IsReading() || m_Model.IsBranchListingComing(),
-											   .ReadFailed = m_Lines.GetError().has_value()});
-	}
-
-	std::optional<GitView::DistanceTips> GitView::ShownDistanceTips(const LineRead& read, std::string_view shownRef) const
-	{
-		const BranchLines* const lines = CurrentLines();
-
-		if (lines == nullptr)
-		{
-			return std::nullopt;
-		}
-
-		const ShownComparison comparison = lines->ComparisonOf(shownRef);
-
-		switch (comparison.What)
-		{
-		case ShownComparison::Kind::Pick:
-		{
-			// A pick for a base or an old copy is measured from the reference whose history is shown, as its fold row is.
-			const std::optional<std::size_t> self = lines->IndexOf(shownRef);
-
-			return self.has_value() ? std::optional<DistanceTips>{DistanceTips{read.Refs[*self].Tip, read.Refs[*comparison.Picked].Tip}}
-									: std::nullopt;
-		}
-		case ShownComparison::Kind::OldCopy:
-			return DistanceTips{read.Refs[comparison.OldCopy->Ref].Tip, read.Refs[comparison.OldCopy->Of].Tip};
-		case ShownComparison::Kind::Line:
-		{
-			const Core::BranchLine& line = *comparison.Line;
-
-			// Behind is said only for a branch that is neither merged nor without commits of its own.
-			if (!line.ComparedWith.has_value() || line.State != Core::BranchState::NotMerged)
-			{
-				return std::nullopt;
-			}
-
-			return DistanceTips{read.Refs[line.Ref].Tip, read.Refs[*line.ComparedWith].Tip};
-		}
-		case ShownComparison::Kind::Base:
-		case ShownComparison::Kind::Nothing:
-			return std::nullopt;
-		}
-
-		return std::nullopt;
-	}
-
-	std::optional<Core::LineDistance> GitView::ShownDistance(const LineRead& read, std::string_view shownRef)
-	{
-		const std::optional<DistanceTips> tips = ShownDistanceTips(read, shownRef);
+		const std::optional<DistanceTips> tips = Shown().DistanceTipsOf(shownRef);
 
 		return tips.has_value() ? m_Lines.DistanceOf(tips->From, tips->To) : std::nullopt;
 	}
 
-	bool GitView::MeasuresShownDistance(const LineRead& read, std::string_view shownRef)
+	bool GitView::MeasuresShownDistance(std::string_view shownRef)
 	{
-		const std::optional<DistanceTips> tips = ShownDistanceTips(read, shownRef);
+		const std::optional<DistanceTips> tips = Shown().DistanceTipsOf(shownRef);
 
 		// A tip the read's graph lacks is never measured, so nothing waits for it.
 		if (!tips.has_value() || !m_Lines.HoldsCommit(tips->From) || !m_Lines.HoldsCommit(tips->To))
@@ -311,35 +222,14 @@ namespace Graphite {
 		return !m_Lines.DistanceOf(tips->From, tips->To).has_value();
 	}
 
-	const Core::BranchLine* GitView::ShownContentCandidate() const
-	{
-		const BranchLines* const lines = CurrentLines();
-		const std::string shownRef = ShownRefName();
-
-		if (lines == nullptr || shownRef.empty())
-		{
-			return nullptr;
-		}
-
-		// The line DescribeVs describes as a branch's; a pick or an old copy has no state of the model's to check.
-		const ShownComparison comparison = lines->ComparisonOf(shownRef);
-
-		if (comparison.What != ShownComparison::Kind::Line || !IsContentCandidate(*comparison.Line))
-		{
-			return nullptr;
-		}
-
-		return comparison.Line;
-	}
-
 	bool GitView::ViewFollowsModelsRead() const
 	{
-		return m_SidebarBuiltFrom.has_value() && m_SidebarBuiltFrom->Read == m_Lines.GetRead();
+		return m_OnScreen.GetRead() != nullptr && m_OnScreen.GetRead() == m_Lines.GetRead();
 	}
 
 	std::optional<ContentMark> GitView::ShownContentMark()
 	{
-		const Core::BranchLine* const line = ShownContentCandidate();
+		const Core::BranchLine* const line = Shown().ContentCandidate();
 
 		// WARNING: The line is a line of the view's read; the model answers only for the read it follows, and indexes
 		// its branches by the line's ref, so a line of another read is never asked.
@@ -353,7 +243,7 @@ namespace Graphite {
 
 	bool GitView::ShownContentWaits()
 	{
-		const bool candidate = ShownContentCandidate() != nullptr;
+		const bool candidate = Shown().ContentCandidate() != nullptr;
 		const bool drawn = HasBeenDrawnOnLatestFrame();
 
 		switch (StepForShownContent(candidate, drawn, ViewFollowsModelsRead()))
