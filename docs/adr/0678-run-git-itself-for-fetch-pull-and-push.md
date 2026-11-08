@@ -55,9 +55,11 @@ and say why; everything else works. An install outside those places is not found
   server's default is not tracked, so after a rename on the server the old default stays until the user runs that
   command.
 - Fetch full history: the "History cut off here" banner of a shallow clone gains **Fetch full history**, which runs
-  `git fetch --unshallow --progress` as a network operation with the same cancel and progress. Afterwards the graph
-  re-reads, as it already does when the shallow boundary moves. The cost is that the whole history comes down at once,
-  which on a large repository is a long, cancellable run.
+  `git fetch --unshallow --progress` as a network operation with the same cancel and progress. Afterwards the history
+  and the lines are read again, whoever deepened the clone, a terminal included: libgit2 keeps the commits it parsed
+  with their parents cut, so the port opens the repository afresh once the shallow file changes, and the branch listing
+  is then a new snapshot even though no ref moved. The cost is that the whole history comes down at once, which on a
+  large repository is a long, cancellable run.
 - Pull is two commands, `git fetch <remote> --progress` then `git merge --ff-only <upstream>`, never `git pull`: the
   user's `pull.rebase` and `pull.ff` would decide what it did, and the window cannot yet show a rebase or a merge in
   progress. A branch that cannot fast-forward is refused with nothing changed.
@@ -82,8 +84,9 @@ and say why; everything else works. An install outside those places is not found
 - The fast-forward step of Pull is not cancellable: a half-updated tree is worse than a wait. Cancel is disabled, and
   the button reads `Pulling...`, once the merge starts.
 - Cancel ends the child and every process it started, which a job object does; Cancel is the running operation's own
-  button, which reads `Fetching... 45%`, `Pulling...` or `Pushing...` while it runs, and the other two buttons are
-  disabled.
+  button. While it runs, its icon becomes the busy mark, its count slot shows the percent, and its tooltip says
+  `Fetching... 45%`, `Pulling...` or `Pushing...` and "Click to cancel". The other two buttons are disabled and keep
+  their counts, dim: the running state changes only its own button.
 - The percent is git's own. `git fetch --all` with several remotes starts one fetch per remote and passes `--progress`
   to none of them, so they print no progress: such a Fetch shows the busy mark without a percent. Fetching remote by
   remote would show one, at the cost of the single process this decision keeps for every remote. With one remote, and
@@ -99,7 +102,11 @@ and say why; everything else works. An install outside those places is not found
 **In the code.** Core owns the runner and the operations (`Core/src/Core/Git/Command`). `GitPort` finds git
 (`QueryNetworkSetup`: the git, the work tree, the common git dir, and whether `core.sshCommand` is configured, read
 through libgit2), forwards the six operations and answers the time of the last fetch (`QueryLastFetch`: the mtime of
-`FETCH_HEAD` in the common git dir, which a linked worktree's own git dir does not have).
+`FETCH_HEAD` in the common git dir, which a linked worktree's own git dir does not have). The age shown is that of the
+last fetch that ended well: git writes `FETCH_HEAD` before it reaches the remote, so after a fetch of the window's
+(Fetch, Pull's fetch, Fetch full history) fails or is cancelled, the age from before it stays shown until `FETCH_HEAD`'s
+time changes again. The cost is that a fetch that failed in a terminal still reads as a fetch, since nothing says how
+it ended.
 
 ## Rationale
 
