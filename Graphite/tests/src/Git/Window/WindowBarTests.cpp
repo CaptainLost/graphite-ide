@@ -604,6 +604,20 @@ TEST_CASE("Window bar: each button says why it is disabled")
 	CHECK_FALSE(buttons.Push.Enabled);
 	CHECK(buttons.Push.Tooltip == "No branch is checked out.");
 
+	// A local branch as the upstream is an upstream: Pull is enabled.
+	Core::Branch develop;
+	develop.Name = "develop";
+	develop.FullName = "refs/heads/develop";
+	const std::vector<Core::Branch> onLocal = {Tracking(HeadBranch("main"), "develop", 0, 1), develop};
+	buttons = Buttons(&head, &onLocal, &kOrigin);
+	CHECK(buttons.Pull.Enabled);
+	CHECK(buttons.Pull.Count == "1");
+
+	// Git missing before the listing: the buttons wait like any, with nothing said yet.
+	buttons = Buttons(nullptr, nullptr, nullptr, {}, std::nullopt, false);
+	CHECK_FALSE(buttons.Fetch.Enabled);
+	CHECK(buttons.Fetch.Tooltip.empty());
+
 	// An unborn HEAD.
 	Core::HeadState unborn;
 	unborn.Kind = Core::HeadKind::Unborn;
@@ -623,11 +637,18 @@ TEST_CASE("Window bar: pull and push show the upstream distance")
 	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin);
 
 	CHECK(buttons.Pull.Label == "Pull");
-	CHECK(buttons.Pull.Count == "1,234");
+	CHECK(buttons.Pull.Count == "999+");
 	CHECK(buttons.Pull.Tooltip == "Pull origin/main into main");
 	CHECK(buttons.Push.Count == "2");
 	CHECK(buttons.Push.Tooltip == "Push 2 commits to origin");
 	CHECK_FALSE(buttons.Push.AsksWhichRemote);
+
+	// Over 999 the slot reads 999+, the tooltip keeps the number.
+	branches = {Tracking(HeadBranch("main"), "origin/main", 12'345, 999), RemoteMain()};
+	buttons = Buttons(&head, &branches, &kOrigin);
+	CHECK(buttons.Pull.Count == "999");
+	CHECK(buttons.Push.Count == "999+");
+	CHECK(buttons.Push.Tooltip == "Push 12,345 commits to origin");
 
 	branches = {Tracking(HeadBranch("main"), "origin/main", 1, 0), RemoteMain()};
 	buttons = Buttons(&head, &branches, &kOrigin);
@@ -686,11 +707,12 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 	state.Cancellable = true;
 
 	Graphite::NetworkButtons buttons = Buttons(&head, &branches, &kOrigin, state);
-	CHECK(buttons.Fetch.Label == "Fetching\xE2\x80\xA6 45%");
+	// The label never changes: the slot shows the percent, the tooltip says the rest.
+	CHECK(buttons.Fetch.Label == "Fetch");
+	CHECK(buttons.Fetch.Count == "45%");
 	CHECK(buttons.Fetch.Running);
 	CHECK(buttons.Fetch.Enabled);
-	CHECK(buttons.Fetch.Tooltip == "Click to cancel");
-	CHECK(buttons.Fetch.Count.empty());
+	CHECK(buttons.Fetch.Tooltip == "Fetching\xE2\x80\xA6 45%\nClick to cancel");
 
 	for (const Graphite::ButtonText* other : {&buttons.Pull, &buttons.Push})
 	{
@@ -702,7 +724,9 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 	state.Running = Graphite::NetworkOperation::Pull;
 	state.Percent.reset();
 	buttons = Buttons(&head, &branches, &kOrigin, state);
-	CHECK(buttons.Pull.Label == "Pulling\xE2\x80\xA6");
+	CHECK(buttons.Pull.Label == "Pull");
+	CHECK(buttons.Pull.Count.empty());
+	CHECK(buttons.Pull.Tooltip == "Pulling\xE2\x80\xA6\nClick to cancel");
 	CHECK(buttons.Pull.Enabled);
 
 	// Pull's fast-forward cannot be stopped: the button says so by being disabled.
@@ -710,11 +734,13 @@ TEST_CASE("Window bar: a running operation's button reads its progress and cance
 	buttons = Buttons(&head, &branches, &kOrigin, state);
 	CHECK(buttons.Pull.Running);
 	CHECK_FALSE(buttons.Pull.Enabled);
+	CHECK(buttons.Pull.Tooltip == "Pulling\xE2\x80\xA6 the last step cannot be cancelled");
 
 	state.Running = Graphite::NetworkOperation::Push;
 	state.Cancellable = true;
 	buttons = Buttons(&head, &branches, &kOrigin, state);
-	CHECK(buttons.Push.Label == "Pushing\xE2\x80\xA6");
+	CHECK(buttons.Push.Label == "Push");
+	CHECK(buttons.Push.Tooltip == "Pushing\xE2\x80\xA6\nClick to cancel");
 
 	// The full history's fetch has no button of its own: all three wait.
 	state.Running = Graphite::NetworkOperation::FullHistory;
@@ -750,5 +776,133 @@ TEST_CASE("Window bar: without git every button says git was not found")
 		CHECK_FALSE(button->Enabled);
 		CHECK(button->Tooltip == kGitMissingSentence);
 		CHECK(button->Count.empty());
+	}
+}
+
+namespace {
+
+	// The bar drawn in a window `width` wide with a problem to say; says where each part stood.
+	Graphite::WindowBarPlaces PlacesOf(const Graphite::NetworkButtons& network, float width = 900.0f, float* windowRight = nullptr)
+	{
+		ImGuiFrames frames;
+		const Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
+		const Core::HeadState head = OnBranch("main");
+		const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", 2, 0)};
+		const std::vector<Core::Remote> remotes = {{"origin", "https://example.com/a.git"}, {"backup", "ssh://host/a.git"}};
+		const Graphite::WindowBarText text = Describe(&head, &branches, &remotes);
+		Graphite::WindowBarPlaces places;
+
+		for (int frame = 0; frame < 2; ++frame)
+		{
+			frames.Next([&] {
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(width, 200.0f));
+				ImGui::Begin("WindowBarPlacesHarness", nullptr,
+							 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+
+				if (windowRight != nullptr)
+				{
+					*windowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+				}
+
+				const Graphite::WindowBarColours colours = Graphite::ReadWindowBarColours(scheme);
+				places = {};
+				Graphite::DrawWindowBar(Graphite::WindowBarDrawing{.Text = text,
+																   .WorkingDirectory = kFolder,
+																   .Colours = colours,
+																   .Problem = "the status could not be read",
+																   .Network = &network,
+																   .Places = &places});
+				ImGui::End();
+			});
+		}
+
+		return places;
+	}
+
+	bool SamePlace(const Graphite::Place& first, const Graphite::Place& second)
+	{
+		return first.Min.x == doctest::Approx(second.Min.x) && first.Min.y == doctest::Approx(second.Min.y) &&
+			   first.Max.x == doctest::Approx(second.Max.x) && first.Max.y == doctest::Approx(second.Max.y);
+	}
+
+	Graphite::NetworkButtons ButtonsWith(std::size_t ahead, const Graphite::NetworkState& state = {})
+	{
+		const Core::HeadState head = OnBranch("main");
+		const std::vector<Core::Branch> branches = {Tracking(HeadBranch("main"), "origin/main", ahead, 0), RemoteMain()};
+		return Buttons(&head, &branches, &kOrigin, state, kNow - std::chrono::minutes{5});
+	}
+
+	void CheckEveryPlaceHolds(const Graphite::WindowBarPlaces& before, const Graphite::WindowBarPlaces& after)
+	{
+		CHECK(SamePlace(before.Repository, after.Repository));
+		CHECK(SamePlace(before.Remotes, after.Remotes));
+		CHECK(SamePlace(before.Chip, after.Chip));
+		CHECK(SamePlace(before.Problem, after.Problem));
+		CHECK(SamePlace(before.Fetch, after.Fetch));
+		CHECK(SamePlace(before.Pull, after.Pull));
+		CHECK(SamePlace(before.Push, after.Push));
+		CHECK(SamePlace(before.Age, after.Age));
+	}
+}
+
+TEST_CASE("Window bar: a count appearing or growing leaves every other part where it was")
+{
+	const Graphite::WindowBarPlaces none = PlacesOf(ButtonsWith(0));
+	REQUIRE(none.Fetch.Max.x > none.Fetch.Min.x);
+	REQUIRE(none.Age.Max.x > none.Age.Min.x);
+	REQUIRE(none.Problem.Max.x > none.Problem.Min.x);
+	REQUIRE(none.Chip.Max.x > none.Chip.Min.x);
+
+	CheckEveryPlaceHolds(none, PlacesOf(ButtonsWith(2)));
+	CheckEveryPlaceHolds(none, PlacesOf(ButtonsWith(136)));
+	CheckEveryPlaceHolds(none, PlacesOf(ButtonsWith(12'345)));
+}
+
+TEST_CASE("Window bar: a running percent going from empty to 5 to 100 leaves every part where it was")
+{
+	const Graphite::WindowBarPlaces idle = PlacesOf(ButtonsWith(2));
+
+	Graphite::NetworkState state;
+	state.Running = Graphite::NetworkOperation::Fetch;
+	state.Serial = 3;
+	state.Cancellable = true;
+
+	CheckEveryPlaceHolds(idle, PlacesOf(ButtonsWith(2, state)));
+	state.Percent = 5;
+	CheckEveryPlaceHolds(idle, PlacesOf(ButtonsWith(2, state)));
+	state.Percent = 100;
+	CheckEveryPlaceHolds(idle, PlacesOf(ButtonsWith(2, state)));
+
+	state.Running = Graphite::NetworkOperation::Push;
+	CheckEveryPlaceHolds(idle, PlacesOf(ButtonsWith(2, state)));
+}
+
+TEST_CASE("Window bar: a narrow bar keeps the network part's place and the remotes give way before the repository")
+{
+	float wideRight = 0.0f;
+	float narrowRight = 0.0f;
+	float tightRight = 0.0f;
+	const Graphite::WindowBarPlaces wide = PlacesOf(ButtonsWith(2), 900.0f, &wideRight);
+	const Graphite::WindowBarPlaces narrow = PlacesOf(ButtonsWith(2), 600.0f, &narrowRight);
+	const Graphite::WindowBarPlaces tight = PlacesOf(ButtonsWith(2), 300.0f, &tightRight);
+
+	REQUIRE(wide.Remotes.Max.x > wide.Remotes.Min.x);
+
+	CHECK(narrowRight - narrow.Push.Max.x == doctest::Approx(wideRight - wide.Push.Max.x));
+	CHECK(tightRight - tight.Push.Max.x == doctest::Approx(wideRight - wide.Push.Max.x));
+	CHECK(narrow.Push.Min.x - narrow.Fetch.Min.x == doctest::Approx(wide.Push.Min.x - wide.Fetch.Min.x));
+
+	// The remotes go first while the repository's name still stands.
+	CHECK(narrow.Remotes.Max.x - narrow.Remotes.Min.x == doctest::Approx(0.0f));
+	CHECK(narrow.Repository.Max.x > narrow.Repository.Min.x);
+
+	// Nothing reaches into the buttons.
+	for (const Graphite::WindowBarPlaces* places : {&narrow, &tight})
+	{
+		for (const Graphite::Place* place : {&places->Repository, &places->Remotes, &places->Chip})
+		{
+			CHECK((place->Max.x <= place->Min.x || place->Max.x <= places->Fetch.Min.x));
+		}
 	}
 }

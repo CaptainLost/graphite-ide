@@ -202,22 +202,21 @@ namespace Graphite {
 		const bool remotesFailed = m_Model.GetRemotesError().has_value();
 		const bool headFailed = !head && m_Model.GetHeadError().has_value();
 		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
-		const WindowBarSource source{head,
-									 branches,
-									 remotes,
-									 remotesFailed,
-									 headFailed,
-									 checkingOut,
-									 folder,
-									 m_Network.GetState(),
-									 m_Model.GetLastFetch(),
-									 m_Model.IsGitFound(),
-									 std::chrono::floor<std::chrono::minutes>(now).time_since_epoch().count()};
+		const WindowBarSource source{head, branches, remotes, remotesFailed, headFailed, checkingOut, folder};
+		const NetworkSource networkSource{m_Network.GetState(), m_Model.GetLastFetch(), m_Model.IsGitFound(),
+										  std::chrono::floor<std::chrono::minutes>(now).time_since_epoch().count()};
+
+		// WARNING: A percent changes the buttons and nothing else, so the bar's text, which looks the checked-out branch up
+		// among every branch, is not described again for it.
+		if (m_WindowBarSource != source || m_NetworkSource != networkSource)
+		{
+			m_NetworkButtons = DescribeNetworkButtons(WindowBarInput{folder, head.get(), branches.get(), remotes.get(), checkingOut.has_value()},
+													  networkSource.State, networkSource.LastFetch, now, networkSource.GitFound);
+			m_NetworkSource = networkSource;
+		}
 
 		if (m_WindowBarSource != source)
 		{
-			m_NetworkButtons = DescribeNetworkButtons(WindowBarInput{folder, head.get(), branches.get(), remotes.get(), checkingOut.has_value()},
-													  source.Network, source.LastFetch, now, source.GitFound);
 
 			const std::optional<Core::Error>& remotesError = m_Model.GetRemotesError();
 			const std::string* remotesFailure = remotesFailed && !remotes ? &remotesError->Message : nullptr;
@@ -417,6 +416,7 @@ namespace Graphite {
 		case NetworkClick::Push:
 			if (m_NetworkButtons.Push.AsksWhichRemote)
 			{
+				m_PushMenuTitle = m_NetworkButtons.Push.Tooltip;
 				ImGui::OpenPopup(kPushRemotePopup);
 				break;
 			}
@@ -427,7 +427,7 @@ namespace Graphite {
 		case NetworkClick::Cancel:
 			// The serial of the state the button drew, so a click on an operation that has since ended, and another begun,
 			// cancels nothing.
-			m_Network.Cancel(m_WindowBarSource->Network.Serial);
+			m_Network.Cancel(m_NetworkSource->State.Serial);
 			break;
 
 		case NetworkClick::None:
@@ -442,7 +442,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::TextDisabled("%s", m_NetworkButtons.Push.Tooltip.c_str());
+		ImGui::TextDisabled("%s", m_PushMenuTitle.c_str());
 		ImGui::Separator();
 
 		if (const Core::Ref<const std::vector<Core::Remote>> remotes = m_Model.GetRemotes())

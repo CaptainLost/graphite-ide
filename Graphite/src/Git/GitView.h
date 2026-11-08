@@ -541,14 +541,25 @@ namespace Graphite {
 			std::optional<std::string> CheckingOut;
 			std::filesystem::path Folder;
 
-			// What the network buttons read. The age is whole minutes, so the text is described again only when it can change.
-			NetworkState Network;
+			friend bool operator==(const WindowBarSource&, const WindowBarSource&) = default;
+		};
+
+		// What the network buttons read besides the bar's source. The age is whole minutes, so the text is described again
+		// only when it can change. A change here rebuilds the buttons alone, not the bar's text.
+		struct NetworkSource
+		{
+			NetworkState State;
 			std::optional<std::chrono::sys_seconds> LastFetch;
 			bool GitFound = false;
 			std::int64_t NowMinutes = 0;
 
-			friend bool operator==(const WindowBarSource&, const WindowBarSource&) = default;
+			friend bool operator==(const NetworkSource&, const NetworkSource&) = default;
 		};
+
+		std::optional<NetworkSource> m_NetworkSource;
+
+		// "Push main to…", fixed when the menu opens.
+		std::string m_PushMenuTitle;
 
 		std::optional<WindowBarSource> m_WindowBarSource;
 		WindowBarText m_WindowBarText;

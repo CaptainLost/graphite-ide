@@ -56,10 +56,22 @@ namespace Graphite {
 
 		// The widest age the bar says, so the buttons keep their place as the age changes.
 		constexpr const char* kWidestWhen = "fetched 99mo ago";
+		constexpr const char* kJustNow = "fetched just now";
 
 		constexpr const char* kGitMissing =
 			"Fetch, Pull and Push need git, which was not found on PATH or where Git for Windows installs it.";
 		constexpr const char* kClickToCancel = "Click to cancel";
+		constexpr const char* kLastStepTooltip = "Pulling\xE2\x80\xA6 the last step cannot be cancelled";
+
+		// The widest the count slot reads, so a button is as wide with no count as with one.
+		constexpr const char* kWidestCount = "999+";
+		constexpr const char* kWidestPercent = "100%";
+		constexpr std::size_t kLargestCountShown = 999;
+
+		// The room the remotes' text keeps while the bar has more than this to give, in mockup px; below it they shrink to
+		// nothing over the next kRemotesGiveWay.
+		constexpr float kRemotesKeepRoom = 400.0f;
+		constexpr float kRemotesGiveWay = 160.0f;
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
 		constexpr const char* kUnreadRemotes = "\xE2\x80\xA6";
@@ -183,6 +195,12 @@ namespace Graphite {
 			}
 		}
 
+		// The count slot's text: 999+ for a thousand or more.
+		std::string SlotCount(std::size_t count)
+		{
+			return count > kLargestCountShown ? kWidestCount : Core::FormatCount(count);
+		}
+
 		std::string CommitsText(std::size_t count)
 		{
 			return Core::FormatCount(count) + (count == 1 ? " commit" : " commits");
@@ -258,7 +276,7 @@ namespace Graphite {
 
 			if (branch.DistanceKnown && branch.Behind > 0)
 			{
-				pull.Count = Core::FormatCount(branch.Behind);
+				pull.Count = SlotCount(branch.Behind);
 			}
 		}
 
@@ -277,7 +295,7 @@ namespace Graphite {
 
 			if (upstreamRemote.has_value() && branch.DistanceKnown && branch.Ahead > 0)
 			{
-				push.Count = Core::FormatCount(branch.Ahead);
+				push.Count = SlotCount(branch.Ahead);
 				push.Tooltip = "Push " + CommitsText(branch.Ahead) + " to " + *upstreamRemote;
 				return;
 			}
@@ -355,16 +373,32 @@ namespace Graphite {
 				return;
 			}
 
+			// The label stays; the slot reads the percent, empty until git counts, and the tooltip says the rest.
 			ButtonText& running = ButtonOf(buttons, *state.Running);
-			running.Label = RunningText(state);
 			running.Running = true;
 			running.Enabled = state.Cancellable;
-			running.Tooltip = state.Cancellable ? kClickToCancel : "";
+			running.Count = state.Percent.has_value() ? std::to_string(*state.Percent) + "%" : std::string{};
+
+			if (state.Cancellable)
+			{
+				running.Tooltip = RunningText(state) + "\n" + kClickToCancel;
+			}
+			else
+			{
+				running.Tooltip = *state.Running == NetworkOperation::Pull ? kLastStepTooltip : RunningText(state);
+			}
 		}
 
 		float Em(float mockupPixels)
 		{
 			return WindowBarEm(mockupPixels);
+		}
+
+		// How much of its share the remotes' text keeps: all of it while the bar is roomy, none when it is tight, so the
+		// remotes give way before the repository's name does.
+		float RemotesKeptShare(float room)
+		{
+			return std::clamp((room - Em(kRemotesKeepRoom - kRemotesGiveWay)) / Em(kRemotesGiveWay), 0.0f, 1.0f);
 		}
 
 		float WidthOf(const std::string& text)
@@ -437,7 +471,17 @@ namespace Graphite {
 			const float gap = Em(kChipGap);
 			const float dot = Em(kHeadDot);
 			const float maxWidth = std::min(Em(kChipMaxWidth), room);
-			const float stateWidth = text.HeadState.empty() ? 0.0f : gap + WidthOf(text.HeadState);
+
+			// Narrower than its dot and padding the chip is left out, so it never reaches into the network part.
+			if (maxWidth < 2.0f * side + dot + gap)
+			{
+				return false;
+			}
+			float stateWidth = text.HeadState.empty() ? 0.0f : gap + WidthOf(text.HeadState);
+
+			// The state is left out when it alone would not fit, so the chip never outgrows the room it was given.
+			const bool showsState = maxWidth - 2.0f * side - dot - gap - stateWidth >= 0.0f;
+			stateWidth = showsState ? stateWidth : 0.0f;
 			const std::string name = FitToWidth(text.Head, maxWidth - 2.0f * side - dot - gap - stateWidth);
 			const float width = 2.0f * side + dot + gap + WidthOf(name) + stateWidth;
 
@@ -451,6 +495,11 @@ namespace Graphite {
 			drawList->AddRectFilled(topLeft, bottomRight, hovered ? colours.ChipHoveredFill : colours.ChipFill, Em(kChipRounding));
 			drawList->AddRect(topLeft, bottomRight, colours.Rule, Em(kChipRounding));
 
+			if (drawing.Places != nullptr)
+			{
+				drawing.Places->Chip = Place{topLeft, bottomRight};
+			}
+
 			const float centreY = topLeft.y + height * kHalf;
 			const float textTop = centreY - ImGui::GetTextLineHeight() * kHalf;
 			float x = topLeft.x + side;
@@ -460,7 +509,7 @@ namespace Graphite {
 
 			drawList->AddText(ImVec2(x, textTop), ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
 
-			if (!text.HeadState.empty())
+			if (!text.HeadState.empty() && showsState)
 			{
 				drawList->AddText(ImVec2(x + WidthOf(name) + gap, textTop), colours.Match, text.HeadState.c_str());
 			}
@@ -473,6 +522,12 @@ namespace Graphite {
 		{
 			const float iconWidth = WidthOf(ICON_LC_FOLDER) + Em(kIconGap);
 
+			// A bar too tight for the icon has no room for the repository: the network part keeps its place instead.
+			if (room < iconWidth)
+			{
+				return 0.0f;
+			}
+
 			ImGui::SetCursorScreenPos(at);
 			ImGui::TextUnformatted(ICON_LC_FOLDER);
 			ImGui::SameLine(0.0f, Em(kIconGap));
@@ -484,6 +539,11 @@ namespace Graphite {
 			ImGui::PopFont();
 
 			const float width = ImGui::GetItemRectMax().x - at.x;
+
+			if (drawing.Places != nullptr)
+			{
+				drawing.Places->Repository = Place{at, ImVec2(at.x + width, at.y + ImGui::GetTextLineHeight())};
+			}
 
 			ImGui::SetCursorScreenPos(at);
 			ImGui::Dummy(ImVec2(width, ImGui::GetTextLineHeight()));
@@ -508,6 +568,11 @@ namespace Graphite {
 
 			ImGui::GetWindowDrawList()->AddText(at, drawing.Colours.Problem, shown.c_str());
 
+			if (drawing.Places != nullptr)
+			{
+				drawing.Places->Problem = Place{at, ImVec2(at.x + width, at.y + ImGui::GetTextLineHeight())};
+			}
+
 			ImGui::SetCursorScreenPos(at);
 			ImGui::Dummy(ImVec2(width, ImGui::GetTextLineHeight()));
 			ShowTooltipOfLastItem(std::string{drawing.Problem});
@@ -518,28 +583,35 @@ namespace Graphite {
 			const ButtonText* Text;
 			const char* Icon;
 			const char* Id;
+			Place* Where;
 		};
+
+		// WARNING: Whatever the button says, never its count or its running state: a button is as wide on the first frame as
+		// on any other, so nothing beside it moves when a count or a percent changes.
+		float CountSlotWidth()
+		{
+			return std::max(WidthOf(kWidestCount), WidthOf(kWidestPercent));
+		}
 
 		float ButtonWidth(const ButtonLook& look)
 		{
-			const float count = look.Text->Count.empty() ? 0.0f : Em(kButtonInnerGap) + WidthOf(look.Text->Count);
-
-			return 2.0f * Em(kButtonSide) + WidthOf(look.Icon) + Em(kButtonInnerGap) + WidthOf(look.Text->Label) + count;
+			return 2.0f * Em(kButtonSide) + WidthOf(look.Icon) + Em(kButtonInnerGap) + WidthOf(look.Text->Label) + Em(kButtonInnerGap) +
+				   CountSlotWidth();
 		}
 
-		float WhenWidth(const std::string& when)
+		float WhenWidth()
 		{
 			Core::PushInterfaceFont(ImGui::GetFontSize() * kWhenText / kMockupFont);
-			const float width = std::max(WidthOf(when), WidthOf(kWidestWhen));
+			const float width = std::max(WidthOf(kWidestWhen), WidthOf(kJustNow));
 			ImGui::PopFont();
 
 			return width;
 		}
 
 		// How far left the network part reaches when it ends at `right`.
-		float NetworkLeft(const NetworkButtons& network, const std::array<ButtonLook, 3>& looks, float right)
+		float NetworkLeft(const std::array<ButtonLook, 3>& looks, float right)
 		{
-			float width = WhenWidth(network.FetchedAge) + Em(kWhenGap);
+			float width = WhenWidth() + Em(kWhenGap);
 
 			for (const ButtonLook& look : looks)
 			{
@@ -549,6 +621,8 @@ namespace Graphite {
 			return right - width;
 		}
 
+		// WARNING: Drawn by hand on an InvisibleButton, as the HEAD chip is, and not through Core::TextButton, which draws a
+		// label alone: this one has an icon that becomes the busy mark and a count in the match colour.
 		// A button: its icon in the dim colour, its label, and its count in the match colour; a disabled one is all dim.
 		NetworkClick DrawNetworkButton(const WindowBarDrawing& drawing, const ButtonLook& look, ImVec2 topLeft, NetworkClick onClick)
 		{
@@ -556,6 +630,11 @@ namespace Graphite {
 			const WindowBarColours& colours = drawing.Colours;
 			const float width = ButtonWidth(look);
 			const float height = Em(kChipHeight);
+
+			if (look.Where != nullptr)
+			{
+				*look.Where = Place{topLeft, ImVec2(topLeft.x + width, topLeft.y + height)};
+			}
 
 			ImGui::SetCursorScreenPos(topLeft);
 			const bool clicked = ImGui::InvisibleButton(look.Id, ImVec2(width, height));
@@ -573,7 +652,16 @@ namespace Graphite {
 			const ImU32 ink = button.Enabled ? ImGui::GetColorU32(ImGuiCol_Text) : colours.Dim;
 			float x = topLeft.x + Em(kButtonSide);
 
-			drawList->AddText(ImVec2(x, textTop), colours.Dim, look.Icon);
+			if (button.Running)
+			{
+				// The busy mark takes the icon's place; the label stays where it was.
+				Core::DrawLoadingSpinner(ImVec2(x + WidthOf(look.Icon) * kHalf, topLeft.y + height * kHalf));
+			}
+			else
+			{
+				drawList->AddText(ImVec2(x, textTop), colours.Dim, look.Icon);
+			}
+
 			x += WidthOf(look.Icon) + Em(kButtonInnerGap);
 
 			drawList->AddText(ImVec2(x, textTop), ink, button.Label.c_str());
@@ -611,8 +699,14 @@ namespace Graphite {
 			if (!when.empty())
 			{
 				Core::PushInterfaceFont(ImGui::GetFontSize() * kWhenText / kMockupFont);
-				ImGui::GetWindowDrawList()->AddText(ImVec2(x + Em(kWhenGap), centreY - ImGui::GetTextLineHeight() * kHalf), drawing.Colours.Dim,
-													when.c_str());
+				const ImVec2 at(x + Em(kWhenGap), centreY - ImGui::GetTextLineHeight() * kHalf);
+				ImGui::GetWindowDrawList()->AddText(at, drawing.Colours.Dim, when.c_str());
+
+				if (drawing.Places != nullptr)
+				{
+					drawing.Places->Age = Place{at, ImVec2(at.x + WidthOf(when), at.y + ImGui::GetTextLineHeight())};
+				}
+
 				ImGui::PopFont();
 			}
 
@@ -630,6 +724,12 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 			const float width = ImGui::GetItemRectSize().x;
 			ShowTooltipOfLastItem(drawing.Text.RemotesTooltip);
+
+			if (drawing.Places != nullptr)
+			{
+				const ImVec2 at(left, centreY - ImGui::GetTextLineHeight() * kHalf);
+				drawing.Places->Remotes = Place{at, ImVec2(at.x + width, at.y + ImGui::GetTextLineHeight())};
+			}
 
 			ImGui::PopFont();
 
@@ -783,16 +883,17 @@ namespace Graphite {
 
 		const NetworkButtons* const network = drawing.Network;
 		const std::array<ButtonLook, 3> looks = network != nullptr
-			? std::array<ButtonLook, 3>{ButtonLook{&network->Fetch, ICON_LC_REFRESH_CW, "##networkFetch"},
-										ButtonLook{&network->Pull, ICON_LC_ARROW_DOWN, "##networkPull"},
-										ButtonLook{&network->Push, ICON_LC_ARROW_UP, "##networkPush"}}
+			? std::array<ButtonLook, 3>{
+				  ButtonLook{&network->Fetch, ICON_LC_REFRESH_CW, "##networkFetch", drawing.Places ? &drawing.Places->Fetch : nullptr},
+				  ButtonLook{&network->Pull, ICON_LC_ARROW_DOWN, "##networkPull", drawing.Places ? &drawing.Places->Pull : nullptr},
+				  ButtonLook{&network->Push, ICON_LC_ARROW_UP, "##networkPush", drawing.Places ? &drawing.Places->Push : nullptr}}
 			: std::array<ButtonLook, 3>{};
 
 		// WARNING: The network part takes the right end, before the problem's text and the HEAD chip; its room is fixed by the
 		// widest age, so the buttons stay where they are as the age changes.
-		const float networkLeft = network != nullptr ? NetworkLeft(*network, looks, barRight) : barRight + gap;
+		const float networkLeft = network != nullptr ? NetworkLeft(looks, barRight) : barRight + gap;
 		const float right = networkLeft - gap;
-		const float room = right - (origin.x + side);
+		const float room = std::max(0.0f, right - (origin.x + side));
 
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 		drawList->AddLine(ImVec2(origin.x, origin.y + height - 1.0f), ImVec2(origin.x + width, origin.y + height - 1.0f),
@@ -800,7 +901,7 @@ namespace Graphite {
 
 		float x = origin.x + side;
 		x += DrawRepository(drawing, ImVec2(x, centreY - lineHeight * kHalf), room * kRepositoryShare) + gap;
-		x += DrawRemotes(drawing, x, centreY, room * kRemotesShare) + gap;
+		x += DrawRemotes(drawing, x, centreY, room * kRemotesShare * RemotesKeptShare(room)) + gap;
 
 		const float separatorHalf = Em(kSeparatorHeight) * kHalf;
 		drawList->AddLine(ImVec2(x, centreY - separatorHalf), ImVec2(x, centreY + separatorHalf), drawing.Colours.Rule);

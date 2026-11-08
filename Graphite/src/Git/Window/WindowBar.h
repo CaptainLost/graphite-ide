@@ -4,7 +4,7 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Remote.h"
-#include "Git/Network/NetworkModel.h"
+#include "Git/Network/NetworkState.h"
 #include "Theme/ColorScheme.h"
 
 #include <imgui.h>
@@ -147,6 +147,25 @@ namespace Graphite {
 	// A length of the mockup, in px at its 13 px font, scaled to the font in use.
 	float WindowBarEm(float mockupPixels);
 
+	// Where the bar put what it drew, in screen pixels; a part not drawn keeps an empty rectangle. For tests of the layout.
+	struct Place
+	{
+		ImVec2 Min{};
+		ImVec2 Max{};
+	};
+
+	struct WindowBarPlaces
+	{
+		Place Repository;
+		Place Remotes;
+		Place Chip;
+		Place Problem;
+		Place Fetch;
+		Place Pull;
+		Place Push;
+		Place Age;
+	};
+
 	struct WindowBarDrawing
 	{
 		const WindowBarText& Text;
@@ -167,6 +186,9 @@ namespace Graphite {
 
 		// Fetch, Pull and Push and the age of the last fetch, at the bar's right end before the problem; null draws none.
 		const NetworkButtons* Network = nullptr;
+
+		// Filled while drawing when not null.
+		WindowBarPlaces* Places = nullptr;
 	};
 
 	// One bar high across the available width, ending on an item. Says what was clicked.

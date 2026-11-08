@@ -611,7 +611,24 @@ namespace {
 
 		Graphite::GitModel Model{Port, RunJobsInline()};
 		Graphite::LinesModel Lines{LinesPort, LineReadJobs(), [] { return LineReadBuilder::Now().time_since_epoch().count(); }};
-		Graphite::NetworkModel Network{Port, Model, RunJobsInline()};
+		// While held, a network operation asked waits here unrun, as one still running does.
+		bool HoldsNetworkJobs = false;
+		DeferredJobs HeldNetworkJobs;
+
+		Core::JobSubmitter NetworkJobs()
+		{
+			return [this](std::function<void()> job) {
+				if (HoldsNetworkJobs)
+				{
+					HeldNetworkJobs.Submitter()(std::move(job));
+					return;
+				}
+
+				job();
+			};
+		}
+
+		Graphite::NetworkModel Network{Port, Model, NetworkJobs()};
 		Graphite::WorktreesModel Worktrees{WorktreePort, RunJobsInline()};
 		Graphite::ContentModel Content{ContentPort, RunJobsInline()};
 
@@ -705,6 +722,36 @@ TEST_CASE("Git window: a click on Fetch starts a fetch")
 
 	REQUIRE_FALSE(window.Port.Network.Calls.empty());
 	CHECK(window.Port.Network.Calls.front() == "FetchAll");
+}
+
+TEST_CASE("Git window: a click on the running button cancels the operation the button showed")
+{
+	GitWindow window("NetworkCancelWindow");
+	window.Port.Remotes = {{"origin", "https://example.com/a.git"}};
+	window.Port.Network.Setup.Git = std::filesystem::path{"git.exe"};
+	window.ListAgain();
+	window.HoldsNetworkJobs = true;
+
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+	window.Settle(2);
+
+	const Graphite::NetworkState running = window.Network.GetState();
+	REQUIRE(running.Running == Graphite::NetworkOperation::Fetch);
+	REQUIRE(running.Cancellable);
+
+	// The button now cancels: a second click ends the operation the drawn state carried.
+	REQUIRE(window.PointAt(window.FetchId));
+	window.Click();
+
+	window.HoldsNetworkJobs = false;
+	window.HeldNetworkJobs.RunAll();
+	window.Settle(2);
+
+	const std::optional<Graphite::NetworkDone> done = window.Network.GetShownDone();
+	REQUIRE(done.has_value());
+	CHECK(done->Cancelled);
+	CHECK(done->Operation == Graphite::NetworkOperation::Fetch);
 }
 
 TEST_CASE("Git window: push with no upstream and several remotes asks which remote")
