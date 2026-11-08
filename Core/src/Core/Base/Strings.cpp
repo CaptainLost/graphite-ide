@@ -2,6 +2,8 @@
 
 #include "Core/Base/Strings.h"
 
+#include "Core/Base/Ascii.h"
+
 namespace Core {
 
 	std::string JoinedWith(std::span<const std::string> parts, std::string_view separator)
@@ -66,6 +68,13 @@ namespace Core {
 		}
 
 		return parts;
+	}
+
+	std::vector<std::string> LoweredWords(std::string_view query)
+	{
+		constexpr char kWordSeparator = ' ';
+
+		return SplitSkippingEmpty(Lowered(query), kWordSeparator);
 	}
 
 	std::vector<std::string_view> SplitLines(std::string_view text)

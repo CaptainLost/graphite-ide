@@ -6,6 +6,7 @@
 #include "Git/Sidebar/SidebarText.h"
 
 #include "Core/Base/Count.h"
+#include "Core/Base/Strings.h"
 
 #include <algorithm>
 #include <utility>
@@ -173,7 +174,7 @@ namespace Graphite {
 		another.Why = "search all " + Core::FormatCount(read.Refs.size());
 		picker.Options.push_back(std::move(another));
 
-		const std::vector<std::string> words = LoweredWordsOf(input.Search);
+		const std::vector<std::string> words = Core::LoweredWords(input.Search);
 
 		if (!words.empty() && read.Branches)
 		{

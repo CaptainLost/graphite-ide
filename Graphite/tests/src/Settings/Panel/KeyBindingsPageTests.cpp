@@ -15,6 +15,7 @@
 #include "Core/ImGui/UiScale.h"
 
 #include "UI/TickBox.h"
+#include "Core/Base/Strings.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -84,20 +85,20 @@ TEST_CASE("Commands are found word by word across their name and their shortcuts
 {
 	KeyBindingsScreen screen;
 
-	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("save"))) == std::vector<std::string>{"Save", "Save All"});
-	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("save ctrl"))) == std::vector<std::string>{"Save", "Save All"});
-	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("ctrl shift"))) == std::vector<std::string>{"Save All"});
-	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("all ctrl alt"))) == std::vector<std::string>{"Save All"});
-	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("WRAP"))) == std::vector<std::string>{"Word Wrap"});
-	CHECK(screen.Page.FindCommands(Graphite::SplitQueryWords("save tabs")).empty());
+	CHECK(TitlesOf(screen.Page.FindCommands(Core::LoweredWords("save"))) == std::vector<std::string>{"Save", "Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Core::LoweredWords("save ctrl"))) == std::vector<std::string>{"Save", "Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Core::LoweredWords("ctrl shift"))) == std::vector<std::string>{"Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Core::LoweredWords("all ctrl alt"))) == std::vector<std::string>{"Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Core::LoweredWords("WRAP"))) == std::vector<std::string>{"Word Wrap"});
+	CHECK(screen.Page.FindCommands(Core::LoweredWords("save tabs")).empty());
 }
 
 TEST_CASE("A found command is a row with its id, its name, its shortcuts and no control")
 {
 	KeyBindingsScreen screen;
 
-	const std::vector<Graphite::SettingsRow> saveAllRows = screen.Page.FindCommands(Graphite::SplitQueryWords("all"));
-	const std::vector<Graphite::SettingsRow> wrapRows = screen.Page.FindCommands(Graphite::SplitQueryWords("wrap"));
+	const std::vector<Graphite::SettingsRow> saveAllRows = screen.Page.FindCommands(Core::LoweredWords("all"));
+	const std::vector<Graphite::SettingsRow> wrapRows = screen.Page.FindCommands(Core::LoweredWords("wrap"));
 
 	REQUIRE(saveAllRows.size() == 1);
 	CHECK(saveAllRows[0].Key == "file.saveAll");
@@ -129,7 +130,7 @@ TEST_CASE("The shortcuts block finds the commands inside itself")
 	REQUIRE(row.has_value());
 	REQUIRE(row->FindInside);
 	CHECK(row->IsBlock());
-	CHECK(TitlesOf(row->FindInside(Graphite::SplitQueryWords("wrap"))) == std::vector<std::string>{"Word Wrap"});
+	CHECK(TitlesOf(row->FindInside(Core::LoweredWords("wrap"))) == std::vector<std::string>{"Word Wrap"});
 }
 
 TEST_CASE("The table's filter shows the commands a search for the same words finds")

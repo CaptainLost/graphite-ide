@@ -8,6 +8,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Count.h"
 #include "Core/Git/Ref.h"
+#include "Core/Base/Strings.h"
 
 #include <algorithm>
 #include <array>
@@ -60,7 +61,7 @@ namespace Graphite {
 			explicit Builder(const SidebarInput& input, bool opensEverything = false)
 				: m_Input(input)
 				, m_Lines(input.Read)
-				, m_Words(LoweredWordsOf(input.Search))
+				, m_Words(Core::LoweredWords(input.Search))
 				, m_Searching(!m_Words.empty())
 				, m_OpensEverything(opensEverything)
 				, m_Shown(input.ShownRef.empty() ? std::nullopt : m_Lines.IndexOf(input.ShownRef))
@@ -751,7 +752,7 @@ namespace Graphite {
 
 	Core::Ref<const BranchAuthors> SearchedAuthors::Follow(Core::Ref<const BranchAuthors> newest, std::string_view search)
 	{
-		const bool searching = !LoweredWordsOf(search).empty();
+		const bool searching = !Core::LoweredWords(search).empty();
 
 		if (!searching || !m_Searching)
 		{
@@ -893,7 +894,7 @@ namespace Graphite {
 		}
 
 		// A search lists every section and group open, so what the row needs opened is read from the rows without it.
-		reveal.ClearsSearch = !LoweredWordsOf(input.Search).empty();
+		reveal.ClearsSearch = !Core::LoweredWords(input.Search).empty();
 		const std::vector<SidebarRow> listed = BuildSidebarRows(unsearched);
 
 		for (const std::string& key : KeysHolding(everything, *place))

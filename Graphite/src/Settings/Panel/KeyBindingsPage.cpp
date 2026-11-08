@@ -504,7 +504,7 @@ namespace Graphite {
 		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, kDefaultColumnWeight);
 		ImGui::TableHeadersRow();
 
-		const std::vector<std::string> words = SplitQueryWords(m_Filter);
+		const std::vector<std::string> words = Core::LoweredWords(m_Filter);
 
 		m_Commands.ForEach([this, &words](const Core::Command& command) {
 			if (CommandMatches(command, words))

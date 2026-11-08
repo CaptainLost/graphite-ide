@@ -144,16 +144,9 @@ namespace Graphite {
 		}
 	}
 
-	std::vector<std::string> SplitQueryWords(std::string_view query)
-	{
-		constexpr char kWordSeparator = ' ';
-
-		return Core::SplitSkippingEmpty(Core::Lowered(query), kWordSeparator);
-	}
-
 	bool IsSearchQuery(std::string_view query)
 	{
-		return !SplitQueryWords(query).empty();
+		return !Core::LoweredWords(query).empty();
 	}
 
 	bool EveryWordFound(std::span<const std::string> words, std::span<const std::string_view> texts)
@@ -171,7 +164,7 @@ namespace Graphite {
 
 	std::vector<SettingsPageHits> FindSettings(const SettingsDirectory& directory, std::string_view query)
 	{
-		const SearchTerms terms{.Words = SplitQueryWords(query), .Query = Core::Trimmed(query)};
+		const SearchTerms terms{.Words = Core::LoweredWords(query), .Query = Core::Trimmed(query)};
 
 		if (terms.Words.empty())
 		{

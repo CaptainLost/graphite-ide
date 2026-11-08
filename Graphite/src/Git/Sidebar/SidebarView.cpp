@@ -15,12 +15,13 @@
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
+#include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 #include <IconsLucide.h>
 #include <imgui_internal.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <utility>
 
@@ -150,11 +151,6 @@ namespace Graphite {
 			return IsTwoLine(row) || row.Kind == SidebarRowKind::Stash || row.Kind == SidebarRowKind::Tag;
 		}
 
-		char LowerOf(char character)
-		{
-			return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-		}
-
 		// Where each search word occurs in `text`, ignoring case; overlapping or touching occurrences are one range.
 		std::vector<std::pair<std::size_t, std::size_t>> MatchRanges(std::string_view text,
 																	 const std::vector<std::string>& loweredWords)
@@ -174,7 +170,7 @@ namespace Graphite {
 
 					for (std::size_t offset = 0; same && offset < word.size(); ++offset)
 					{
-						same = LowerOf(text[at + offset]) == word[offset];
+						same = Core::LowerAscii(text[at + offset]) == word[offset];
 					}
 
 					if (same)
@@ -715,7 +711,7 @@ namespace Graphite {
 
 			if (rows != nullptr)
 			{
-				const std::vector<std::string> searchWords = LoweredWordsOf(m_Search);
+				const std::vector<std::string> searchWords = Core::LoweredWords(m_Search);
 				const float scrolled = ImGui::GetScrollY();
 				const float visibleBottom = scrolled + ImGui::GetWindowHeight();
 				const auto firstAfter = std::upper_bound(m_RowTops.begin(), m_RowTops.begin() + rows->size(), scrolled);

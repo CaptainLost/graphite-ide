@@ -109,3 +109,10 @@ TEST_CASE("Counted takes the plural it is given where an s would be wrong")
 	CHECK(Core::Counted(1, "more match", "more matches") == "1 more match");
 	CHECK(Core::Counted(2LL, "more match", "more matches") == "2 more matches");
 }
+TEST_CASE("LoweredWords lowers a filter's text and splits it on spaces, dropping empty words")
+{
+	CHECK(Core::LoweredWords("  PROJ   Login ") == std::vector<std::string>{"proj", "login"});
+	CHECK(Core::LoweredWords("Ctrl+S") == std::vector<std::string>{"ctrl+s"});
+	CHECK(Core::LoweredWords("   ").empty());
+	CHECK(Core::LoweredWords("").empty());
+}

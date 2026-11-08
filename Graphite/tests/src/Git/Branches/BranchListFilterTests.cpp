@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/Branches/BranchListFilter.h"
+#include "Core/Base/Strings.h"
 
 #include <string>
 #include <vector>
@@ -31,8 +32,8 @@ namespace {
 
 TEST_CASE("The filter text splits into lower-cased words")
 {
-	CHECK(Graphite::LoweredWordsOf("  PROJ   Login ") == std::vector<std::string>{"proj", "login"});
-	CHECK(Graphite::LoweredWordsOf("   ").empty());
+	CHECK(Core::LoweredWords("  PROJ   Login ") == std::vector<std::string>{"proj", "login"});
+	CHECK(Core::LoweredWords("   ").empty());
 }
 
 TEST_CASE("No words match every branch")

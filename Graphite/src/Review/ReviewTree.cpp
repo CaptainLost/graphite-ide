@@ -3,10 +3,10 @@
 #include "Git/Changes/ChangesRows.h"
 #include "Git/History/CommitLabels.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
-#include <cctype>
 #include <map>
 #include <string_view>
 
@@ -38,19 +38,6 @@ namespace Graphite {
 			const std::set<MarkKey>* FoldedFolders = nullptr;
 			std::vector<ReviewTreeRow>* Rows = nullptr;
 		};
-
-		std::string LowerAscii(std::string_view text)
-		{
-			std::string lowered;
-			lowered.reserve(text.size());
-
-			for (const char character : text)
-			{
-				lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(character))));
-			}
-
-			return lowered;
-		}
 
 		std::vector<std::string> FolderNamesOf(const std::filesystem::path& path)
 		{
@@ -415,7 +402,7 @@ namespace Graphite {
 			return true;
 		}
 
-		return LowerAscii(Core::ToGenericUtf8(path)).find(LowerAscii(filter)) != std::string::npos;
+		return Core::LoweredTextContains(Core::ToGenericUtf8(path), Core::Lowered(filter));
 	}
 
 	std::vector<ReviewTreeRow> BuildReviewTree(const ReviewTreeInput& input)

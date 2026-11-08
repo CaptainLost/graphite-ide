@@ -24,8 +24,6 @@ namespace Graphite {
 		std::vector<SettingsCardHits> Cards;
 	};
 
-	std::vector<std::string> SplitQueryWords(std::string_view query);
-
 	bool IsSearchQuery(std::string_view query);
 
 	bool EveryWordFound(std::span<const std::string> words, std::span<const std::string_view> texts);

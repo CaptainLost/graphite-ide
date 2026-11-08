@@ -7,8 +7,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr char kWordSeparator = ' ';
-
 		bool MessageHolds(const Core::Branch& branch, std::string_view loweredWord)
 		{
 			if (!branch.TipCommit.has_value())
@@ -44,11 +42,6 @@ namespace Graphite {
 
 			return false;
 		}
-	}
-
-	std::vector<std::string> LoweredWordsOf(std::string_view text)
-	{
-		return Core::SplitSkippingEmpty(Core::Lowered(text), kWordSeparator);
 	}
 
 	bool AuthorHoldsAnyWord(const BranchAuthor& author, const std::vector<std::string>& loweredWords)

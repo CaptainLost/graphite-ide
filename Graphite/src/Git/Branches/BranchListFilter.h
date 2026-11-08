@@ -22,8 +22,6 @@ namespace Graphite {
 		friend bool operator==(const BranchListFilter&, const BranchListFilter&) = default;
 	};
 
-	std::vector<std::string> LoweredWordsOf(std::string_view text);
-
 	bool MatchesWords(const Core::Branch& branch, const std::vector<BranchAuthor>& authors,
 					  const std::vector<std::string>& loweredWords, bool alsoMessage);
 

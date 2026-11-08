@@ -16,6 +16,7 @@
 #include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 #include "Core/ImGui/Theme.h"
+#include "Core/Base/Strings.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -66,7 +67,7 @@ namespace {
 	std::vector<Graphite::SettingsRow> FindInFrame(AppearanceScreen& screen, const Graphite::SettingsRow& block, std::string_view query)
 	{
 		std::vector<Graphite::SettingsRow> found;
-		const std::vector<std::string> words = Graphite::SplitQueryWords(query);
+		const std::vector<std::string> words = Core::LoweredWords(query);
 		screen.Frames.GetFrames().Next([&found, &block, &words] { found = block.FindInside(words); });
 
 		return found;

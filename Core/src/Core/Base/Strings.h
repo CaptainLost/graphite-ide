@@ -20,6 +20,9 @@ namespace Core {
 
 	std::vector<std::string> SplitSkippingEmpty(std::string_view text, char separator);
 
+	// The words of a search typed into a list's filter: lowered, split on spaces, the empty ones dropped.
+	std::vector<std::string> LoweredWords(std::string_view query);
+
 	// WARNING: The lines view into `text`, so they last only as long as it does.
 	std::vector<std::string_view> SplitLines(std::string_view text);
 

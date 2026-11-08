@@ -5,6 +5,7 @@
 #include "Settings/Panel/SettingsSearch.h"
 
 #include "Core/Base/Base.h"
+#include "Core/Base/Strings.h"
 
 #include <array>
 #include <cstddef>
@@ -118,8 +119,8 @@ namespace {
 
 TEST_CASE("A query's words are lowered and empty ones dropped")
 {
-	CHECK(Graphite::SplitQueryWords("  Wrap   LONG ") == std::vector<std::string>{"wrap", "long"});
-	CHECK(Graphite::SplitQueryWords("   ").empty());
+	CHECK(Core::LoweredWords("  Wrap   LONG ") == std::vector<std::string>{"wrap", "long"});
+	CHECK(Core::LoweredWords("   ").empty());
 }
 
 TEST_CASE("A query of spaces only is not a search")
