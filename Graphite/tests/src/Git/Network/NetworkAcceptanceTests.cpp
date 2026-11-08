@@ -613,6 +613,24 @@ namespace {
 		std::filesystem::rename(moved, folder, renameError);
 		return !renameError;
 	}
+
+	// What a fetch's index-pack left in objects/pack under a temporary name, as a cancel can leave it, with its size.
+	std::string TemporaryPackFiles(const std::filesystem::path& repository)
+	{
+		std::string found;
+
+		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator{repository / ".git" / "objects" / "pack"})
+		{
+			const std::string name = Core::ToUtf8(entry.path().filename());
+
+			if (name.starts_with("tmp_"))
+			{
+				found += (found.empty() ? "" : ", ") + name + " (" + std::to_string(entry.file_size() / kMebibyte) + " MiB)";
+			}
+		}
+
+		return found.empty() ? "nothing" : found;
+	}
 }
 
 TEST_CASE("Network acceptance: fetch brings a branch made on the server and prunes one deleted there" * doctest::skip())
@@ -976,6 +994,7 @@ TEST_CASE("Network acceptance: cancel during a fetch made slow by a large reposi
 		CHECK(Graphite::DoneText(*done) == "Fetch cancelled");
 		CHECK_FALSE(app.Network.GetState().Running.has_value());
 		CHECK(cancelMilliseconds < kMostCancelMilliseconds);
+		MESSAGE("model: left in objects/pack under a temporary name: ", TemporaryPackFiles(work));
 
 		// git wrote FETCH_HEAD before it was cancelled; a clone never fetched still shows no age.
 		app.List();
@@ -1032,6 +1051,7 @@ TEST_CASE("Network acceptance: cancel during a fetch made slow by a large reposi
 		MESSAGE("the folder let go at once: ", letGoAtOnce);
 		CHECK(letGoAtOnce);
 		MESSAGE("checked in ", Milliseconds(std::chrono::steady_clock::now() - letGoFrom), " ms");
+		MESSAGE("port: left in objects/pack under a temporary name: ", TemporaryPackFiles(work));
 	}
 }
 
