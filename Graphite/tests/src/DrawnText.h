@@ -18,6 +18,10 @@ struct DrawnLine
 {
 	float Top = 0.0f; // the line's top, in screen space
 	std::string Text; // its characters left to right, without spaces
+
+	// Each character's quad's left and right edges, in screen space, one for each character of Text.
+	std::vector<float> Lefts;
+	std::vector<float> Rights;
 };
 
 // The ASCII text a draw list holds in one baked font, read back from its glyph quads line by line, top to bottom. A space
@@ -42,6 +46,7 @@ inline std::vector<DrawnLine> DrawnTextLines(const ImDrawList& drawing, const Im
 	{
 		float LineTop = 0.0f;
 		float Left = 0.0f;
+		float Right = 0.0f;
 		char Character = ' ';
 	};
 
@@ -60,6 +65,7 @@ inline std::vector<DrawnLine> DrawnTextLines(const ImDrawList& drawing, const Im
 		const float scale = glyph.Y1 > glyph.Y0 ? drawn.Box.GetHeight() / (glyph.Y1 - glyph.Y0) : 1.0f;
 		placed.push_back(Placed{.LineTop = drawn.Box.Min.y - glyph.Y0 * scale,
 								.Left = drawn.Box.Min.x,
+								.Right = drawn.Box.Max.x,
 								.Character = static_cast<char>(glyph.Codepoint)});
 	}
 
@@ -90,12 +96,28 @@ inline std::vector<DrawnLine> DrawnTextLines(const ImDrawList& drawing, const Im
 		for (const Placed& glyph : line)
 		{
 			text.Text += glyph.Character;
+			text.Lefts.push_back(glyph.Left);
+			text.Rights.push_back(glyph.Right);
 		}
 
 		read.push_back(std::move(text));
 	}
 
 	return read;
+}
+
+// Where `word`, written without spaces, was drawn on the line, from its first character's left edge to its last one's
+// right edge; empty when the line does not hold it.
+inline std::optional<std::pair<float, float>> HorizontalSpanOf(const DrawnLine& line, std::string_view word)
+{
+	const std::size_t start = line.Text.find(word);
+
+	if (word.empty() || start == std::string::npos)
+	{
+		return std::nullopt;
+	}
+
+	return std::pair<float, float>{line.Lefts[start], line.Rights[start + word.size() - 1]};
 }
 
 // The index of the first line that starts with `start`, written without spaces.

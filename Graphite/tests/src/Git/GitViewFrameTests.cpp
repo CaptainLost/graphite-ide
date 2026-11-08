@@ -46,7 +46,6 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -712,31 +711,17 @@ namespace {
 		return DrawnTextLines(*table->InnerWindow->DrawList, *window.Font);
 	}
 
-	// Inside the action at the end of the banner's message cell: x is not checked out, so the banner is the list's first
-	// row and its one commit the second, the last drawn.
+	// The middle of the action's words where the banner row drew them: x is not checked out, so the banner is the list's
+	// first line of text.
 	ImVec2 BannerActionPoint(const GitWindow& window)
 	{
-		const ImGuiTable* table = window.HistoryTable();
-		REQUIRE(table != nullptr);
-		REQUIRE(window.HistoryRowCount() == 2);
+		const std::vector<DrawnLine> lines = HistoryText(window);
+		REQUIRE_FALSE(lines.empty());
 
-		int message = -1;
+		const std::optional<std::pair<float, float>> action = HorizontalSpanOf(lines.front(), "Fetchfullhistory");
+		REQUIRE(action.has_value());
 
-		for (int column = 0; column < table->ColumnsCount; ++column)
-		{
-			if (std::string_view{ImGui::TableGetColumnName(table, column)} == "Message")
-			{
-				message = column;
-			}
-		}
-
-		REQUIRE(message >= 0);
-
-		constexpr float kInsideTheAction = 40.0f;
-		const float pitch = Graphite::ListRowPitch();
-		const float bannerTop = table->RowPosY1 - pitch;
-
-		return ImVec2(table->Columns[message].MaxX - kInsideTheAction, bannerTop + pitch * 0.5f);
+		return ImVec2((action->first + action->second) * 0.5f, lines.front().Top + window.Font->Size * 0.5f);
 	}
 }
 
