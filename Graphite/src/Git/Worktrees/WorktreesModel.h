@@ -50,6 +50,12 @@ namespace Graphite {
 		// Every worktree of the repository, detached and folder-missing ones included; null while unread.
 		const std::vector<Core::WorktreeEntry>* Entries() const;
 
+		// Why the last read of the list failed; empty when it did not. A failed first read leaves Entries() null.
+		const std::optional<Core::Error>& ListError() const { return m_Entries.GetError(); }
+
+		// Whether the list's first read has answered, with the list or with a failure.
+		bool HasListAnswered() const { return Entries() != nullptr || ListError().has_value(); }
+
 		// The number of files with changes; empty while unknown, after a failed count, and for the open folder's own worktree.
 		std::optional<std::size_t> CountOf(const std::filesystem::path& worktree) const;
 

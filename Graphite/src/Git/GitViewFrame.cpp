@@ -301,7 +301,10 @@ namespace Graphite {
 			m_SidebarOpenings, m_Sidebar.GetSearch(), worktreesOpen == m_OpenByUser.end() || worktreesOpen->second);
 		m_WorktreeOrder.Follow(moment, m_Worktrees, m_Model.GetWorkingDirectory());
 
-		SidebarInputs inputs{.Read = m_OnScreen.GetRead(),
+		// WARNING: The sections that need the lines wait for the worktree list too, behind the one waiting row: the
+		// Worktrees section stands between Yours and Bases, and arriving later it would push Bases and all below it down
+		// (spec 2026-11-03 §6 rule 1). A failed list holds nothing.
+		SidebarInputs inputs{.Read = m_Worktrees.HasListAnswered() ? m_OnScreen.GetRead() : nullptr,
 							 .Stashes = m_Model.GetStashes(),
 							 .StashesError = stashesError.has_value() ? std::optional<std::string>{stashesError->Message}
 																	  : std::nullopt,

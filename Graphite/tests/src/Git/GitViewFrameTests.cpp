@@ -210,7 +210,15 @@ namespace {
 	class NoWorktreesPort final : public Graphite::WorktreePort
 	{
 	public:
-		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override { return std::vector<Core::WorktreeEntry>{}; }
+		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override
+		{
+			if (ListFailure.has_value())
+			{
+				return *ListFailure;
+			}
+
+			return std::vector<Core::WorktreeEntry>{};
+		}
 
 		Core::Result<Graphite::WorktreeActivity> QueryActivity(const std::filesystem::path&) override
 		{
@@ -221,6 +229,8 @@ namespace {
 		{
 			return Graphite::WorktreeCount{};
 		}
+
+		std::optional<Core::Error> ListFailure; // set, the list cannot be read
 	};
 
 	class NoContentPort final : public Graphite::ContentPort
@@ -647,7 +657,24 @@ namespace {
 		}
 
 		Graphite::NetworkModel Network{Port, Model, NetworkJobs()};
-		Graphite::WorktreesModel Worktrees{WorktreePort, RunJobsInline(), [] { return std::int64_t{0}; }};
+		// While held, a worktree list asked waits here unread, as one of dozens of worktrees still being read does.
+		bool HoldsWorktreeReads = false;
+		DeferredJobs HeldWorktreeReads;
+
+		Core::JobSubmitter WorktreeJobs()
+		{
+			return [this](std::function<void()> job) {
+				if (HoldsWorktreeReads)
+				{
+					HeldWorktreeReads.Submitter()(std::move(job));
+					return;
+				}
+
+				job();
+			};
+		}
+
+		Graphite::WorktreesModel Worktrees{WorktreePort, WorktreeJobs(), [] { return std::int64_t{0}; }};
 		Graphite::ContentModel Content{ContentPort, RunJobsInline()};
 
 		Graphite::ModalGate Modals;
@@ -1295,4 +1322,62 @@ TEST_CASE("Git view: an opening with a restored tag in a closed folder opens its
 	REQUIRE(window.Lines.GetRead() != nullptr);
 	CHECK(window.View.CaptureWindowState().Ref == "refs/tags/release/1.0");
 	CHECK(SelectedRowIsInView(window));
+}
+
+namespace {
+
+	// Whether the sidebar drew its one waiting row last frame, in place of the sections that need the lines.
+	bool SidebarWaits(const GitWindow& window)
+	{
+		const ImGuiWindow* rows = window.SidebarRows();
+		REQUIRE(rows != nullptr);
+
+		for (const DrawnLine& line : DrawnTextLines(*rows->DrawList, *window.Font))
+		{
+			if (line.Text.find("Reading") != std::string::npos)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	// The lines are read and the worktree list is not: the sidebar waits with every section that needs the lines, and
+	// builds them, HEAD's row selected in Yours, only once the list has answered.
+	void CheckSidebarWaitsForWorktreeList(const char* windowName, bool listFails)
+	{
+		GitWindow window(windowName);
+		window.HoldsWorktreeReads = true;
+		window.Settle();
+
+		REQUIRE(window.Lines.GetRead() != nullptr);
+		REQUIRE_FALSE(window.Worktrees.HasListAnswered());
+		CHECK(SidebarWaits(window));
+		CHECK_FALSE(window.SelectedRowMiddle().has_value());
+
+		if (listFails)
+		{
+			window.WorktreePort.ListFailure = Core::Error{Core::ErrorCode::IoFailure, "cannot list worktrees"};
+		}
+
+		window.HoldsWorktreeReads = false;
+		window.HeldWorktreeReads.RunAll();
+		window.Settle();
+
+		REQUIRE(window.Worktrees.HasListAnswered());
+		CHECK((window.Worktrees.Entries() == nullptr) == listFails);
+		CHECK_FALSE(SidebarWaits(window));
+		CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(0), Graphite::SidebarTwoLineRowHeight()));
+	}
+}
+
+TEST_CASE("Git window: the sidebar's sections wait for the worktree list as well as the lines, so the Worktrees section never pushes Bases down")
+{
+	CheckSidebarWaitsForWorktreeList("WorktreeListWaitWindow", false);
+}
+
+TEST_CASE("Git window: a worktree list that cannot be read holds the sidebar's sections no longer")
+{
+	CheckSidebarWaitsForWorktreeList("WorktreeListFailWindow", true);
 }
