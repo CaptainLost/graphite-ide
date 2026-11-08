@@ -14,10 +14,12 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 inline std::string HexTextOf(const git_oid& id)
 {
@@ -334,6 +336,25 @@ public:
 		git_remote_free(remote);
 	}
 
+	// A bare repository of its own, which lives as long as the fixture, added as the remote `name`; returns its path. It
+	// is a path, never a url, so nothing is contacted.
+	std::filesystem::path MakeBareRemote(const std::string& name)
+	{
+		m_BareRemotes.push_back(std::make_unique<TempDirectory>());
+		const std::filesystem::path barePath = m_BareRemotes.back()->GetPath();
+
+		git_repository_init_options options = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+		options.flags = GIT_REPOSITORY_INIT_BARE | GIT_REPOSITORY_INIT_MKPATH;
+		options.initial_head = "master";
+
+		git_repository* bare = nullptr;
+		REQUIRE(git_repository_init_ext(&bare, Core::ToUtf8(barePath).c_str(), &options) == 0);
+		git_repository_free(bare);
+
+		AddRemoteWithUrl(name, Core::ToUtf8(barePath));
+		return barePath;
+	}
+
 	void AddRemoteWithUrl(const std::string& name, const std::string& url)
 	{
 		git_remote* remote = nullptr;
@@ -518,6 +539,7 @@ private:
 	}
 
 	TempDirectory m_Directory;
+	std::vector<std::unique_ptr<TempDirectory>> m_BareRemotes;
 	git_repository* m_Repository = nullptr;
 	int m_CommitCount = 0;
 };
