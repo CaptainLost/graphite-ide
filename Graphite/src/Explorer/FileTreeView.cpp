@@ -409,6 +409,12 @@ namespace Graphite {
 			return false;
 		}
 
+		// git's own directory is never anyone's source, and the Git window shows what is in it.
+		if (node.IsDirectory && node.Name == ".git")
+		{
+			return false;
+		}
+
 		return PassesFilter(node);
 	}
 
