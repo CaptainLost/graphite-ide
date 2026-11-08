@@ -113,6 +113,44 @@ namespace Graphite {
 			return OnlyRemoteOf(remotes);
 		}
 
+		// What Pull and Push read before git runs.
+		struct CheckedOutRead
+		{
+			std::vector<Core::Branch> Branches;
+			Core::Branch CheckedOut;
+			std::vector<Core::Remote> Remotes;
+		};
+
+		// A failure's message is the sentence to say: the read's own, or NoBranchText's when no branch is checked out.
+		Core::Result<CheckedOutRead> ReadCheckedOut(GitPort& port)
+		{
+			Core::Result<std::vector<Core::Branch>> branches = port.QueryBranches();
+
+			if (!branches.HasValue())
+			{
+				return branches.GetError();
+			}
+
+			const Core::Branch* checkedOut = CheckedOutBranch(branches.GetValue());
+
+			if (checkedOut == nullptr)
+			{
+				return Core::Error{Core::ErrorCode::NotFound, NoBranchText()};
+			}
+
+			Core::Branch checkedOutCopy = *checkedOut;
+			Core::Result<std::vector<Core::Remote>> remotes = port.QueryRemotes();
+
+			if (!remotes.HasValue())
+			{
+				return remotes.GetError();
+			}
+
+			return CheckedOutRead{.Branches = std::move(branches).GetValue(),
+								  .CheckedOut = std::move(checkedOutCopy),
+								  .Remotes = std::move(remotes).GetValue()};
+		}
+
 		// Why a push without a remote given has none to go to. `localUpstream` is the branch's upstream when it is a local
 		// branch, and null otherwise.
 		std::string NoPushRemoteText(const Core::Branch& checkedOut, const Core::Branch* localUpstream,
@@ -447,37 +485,21 @@ namespace Graphite {
 	NetworkModel::JobAnswer NetworkModel::RunPullFetch(const std::atomic<bool>& cancelled)
 	{
 		JobAnswer answer;
-		const Core::Result<std::vector<Core::Branch>> listed = m_Port.QueryBranches();
+		const Core::Result<CheckedOutRead> read = ReadCheckedOut(m_Port);
 
-		if (!listed.HasValue())
+		if (!read.HasValue())
 		{
-			answer.Outcome = FailedWith(listed.GetError().Message);
+			answer.Outcome = FailedWith(read.GetError().Message);
 			return answer;
 		}
 
-		const std::vector<Core::Branch>& branches = listed.GetValue();
-		const Core::Branch* checkedOut = CheckedOutBranch(branches);
-
-		if (checkedOut == nullptr)
-		{
-			answer.Outcome = FailedWith(NoBranchText());
-			return answer;
-		}
-
-		answer.Names.Branch = checkedOut->Name;
-		const Core::Branch* upstream = UpstreamOf(*checkedOut, branches);
+		const Core::Branch& checkedOut = read.GetValue().CheckedOut;
+		answer.Names.Branch = checkedOut.Name;
+		const Core::Branch* upstream = UpstreamOf(checkedOut, read.GetValue().Branches);
 
 		if (upstream == nullptr)
 		{
-			answer.Outcome = FailedWith(NoUpstreamText(checkedOut->Name));
-			return answer;
-		}
-
-		const Core::Result<std::vector<Core::Remote>> remotes = m_Port.QueryRemotes();
-
-		if (!remotes.HasValue())
-		{
-			answer.Outcome = FailedWith(remotes.GetError().Message);
+			answer.Outcome = FailedWith(NoUpstreamText(checkedOut.Name));
 			return answer;
 		}
 
@@ -489,9 +511,9 @@ namespace Graphite {
 			return answer;
 		}
 
-		answer.Names.Remote = RemoteOfRemoteBranch(upstream->FullName, remotes.GetValue());
-		answer.FastForward = PullTarget{.Branch = checkedOut->Name,
-										.BranchFullName = checkedOut->FullName,
+		answer.Names.Remote = RemoteOfRemoteBranch(upstream->FullName, read.GetValue().Remotes);
+		answer.FastForward = PullTarget{.Branch = checkedOut.Name,
+										.BranchFullName = checkedOut.FullName,
 										.Upstream = upstream->Name,
 										.UpstreamFullName = upstream->FullName,
 										.WorkingDirectory = workingDirectory.GetValue()};
@@ -508,34 +530,19 @@ namespace Graphite {
 	NetworkModel::JobAnswer NetworkModel::RunPush(const std::optional<std::string>& remote, const std::atomic<bool>& cancelled)
 	{
 		JobAnswer answer;
-		const Core::Result<std::vector<Core::Branch>> listed = m_Port.QueryBranches();
+		const Core::Result<CheckedOutRead> read = ReadCheckedOut(m_Port);
 
-		if (!listed.HasValue())
+		if (!read.HasValue())
 		{
-			answer.Outcome = FailedWith(listed.GetError().Message);
+			answer.Outcome = FailedWith(read.GetError().Message);
 			return answer;
 		}
 
-		const std::vector<Core::Branch>& branches = listed.GetValue();
-		const Core::Branch* checkedOut = CheckedOutBranch(branches);
+		const Core::Branch& checkedOut = read.GetValue().CheckedOut;
+		const std::vector<Core::Remote>& remotes = read.GetValue().Remotes;
+		answer.Names.Branch = checkedOut.Name;
 
-		if (checkedOut == nullptr)
-		{
-			answer.Outcome = FailedWith(NoBranchText());
-			return answer;
-		}
-
-		answer.Names.Branch = checkedOut->Name;
-		const Core::Result<std::vector<Core::Remote>> listedRemotes = m_Port.QueryRemotes();
-
-		if (!listedRemotes.HasValue())
-		{
-			answer.Outcome = FailedWith(listedRemotes.GetError().Message);
-			return answer;
-		}
-
-		const std::vector<Core::Remote>& remotes = listedRemotes.GetValue();
-		const Core::Branch* upstream = UpstreamOf(*checkedOut, branches);
+		const Core::Branch* upstream = UpstreamOf(checkedOut, read.GetValue().Branches);
 		const bool upstreamIsLocal = upstream != nullptr && upstream->Kind == Core::RefKind::Local;
 		const std::optional<std::string> upstreamRemote =
 			upstream != nullptr ? RemoteOfRemoteBranch(upstream->FullName, remotes) : std::nullopt;
@@ -543,7 +550,7 @@ namespace Graphite {
 
 		if (!target.has_value())
 		{
-			answer.Outcome = FailedWith(NoPushRemoteText(*checkedOut, upstreamIsLocal ? upstream : nullptr, remotes));
+			answer.Outcome = FailedWith(NoPushRemoteText(checkedOut, upstreamIsLocal ? upstream : nullptr, remotes));
 			return answer;
 		}
 
@@ -552,7 +559,7 @@ namespace Graphite {
 		// WARNING: --set-upstream would replace the local branch the user made this one follow.
 		if (upstreamIsLocal)
 		{
-			answer.Outcome = m_Port.PushTo(cancelled, m_Progress, *target, checkedOut->Name);
+			answer.Outcome = m_Port.PushTo(cancelled, m_Progress, *target, checkedOut.Name);
 			return answer;
 		}
 
@@ -565,9 +572,9 @@ namespace Graphite {
 			return answer;
 		}
 
-		if (checkedOut->DistanceKnown)
+		if (checkedOut.DistanceKnown)
 		{
-			answer.Commits = checkedOut->Ahead;
+			answer.Commits = checkedOut.Ahead;
 		}
 
 		answer.Outcome = m_Port.PushTo(cancelled, m_Progress, *target, NameOnRemote(upstream->FullName, *target));
