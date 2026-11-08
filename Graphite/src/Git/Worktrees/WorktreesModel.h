@@ -77,7 +77,7 @@ namespace Graphite {
 
 		void Land(std::uint64_t generation, Core::Result<std::vector<Core::WorktreeEntry>> result);
 		void AskCounts(const std::set<Core::PathKeyText>& inView);
-		void LandCount(const Core::PathKeyText& key, const Core::Result<std::size_t>& count);
+		void LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeCount>& count);
 		bool IsOpenFolder(const std::filesystem::path& worktree) const;
 		bool IsSameFolder(std::uint64_t folder) const;
 

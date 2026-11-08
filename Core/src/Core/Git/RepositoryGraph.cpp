@@ -174,6 +174,16 @@ namespace Core {
 		return FromUtf8(git_repository_commondir(m_Handle.get()));
 	}
 
+	std::filesystem::path Repository::GitDirectory() const
+	{
+		if (m_Handle == nullptr)
+		{
+			return {};
+		}
+
+		return FromUtf8(git_repository_path(m_Handle.get()));
+	}
+
 	Result<std::vector<std::string>> Repository::QueryRemoteNames() const
 	{
 		Result<std::vector<Remote>> remotes = QueryRemotes();

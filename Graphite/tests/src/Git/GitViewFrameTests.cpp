@@ -212,7 +212,15 @@ namespace {
 	public:
 		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override { return std::vector<Core::WorktreeEntry>{}; }
 
-		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path&) override { return std::size_t{0}; }
+		Core::Result<Graphite::WorktreeActivity> QueryActivity(const std::filesystem::path&) override
+		{
+			return Graphite::WorktreeActivity{};
+		}
+
+		Core::Result<Graphite::WorktreeCount> CountUncommitted(const std::filesystem::path&) override
+		{
+			return Graphite::WorktreeCount{};
+		}
 	};
 
 	class NoContentPort final : public Graphite::ContentPort

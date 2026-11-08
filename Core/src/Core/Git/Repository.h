@@ -20,6 +20,7 @@
 #include "Core/Git/Tag.h"
 #include "Core/Git/Worktree.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -139,6 +140,10 @@ namespace Core {
 		// The git directory every worktree of this repository shares (git_repository_commondir).
 		std::filesystem::path CommonDirectory() const;
 
+		// This worktree's own git directory (git_repository_path): <common>/worktrees/<name> for a linked worktree,
+		// where its HEAD, index and logs/HEAD live.
+		std::filesystem::path GitDirectory() const;
+
 		// Configured remotes, in name order.
 		Result<std::vector<std::string>> QueryRemoteNames() const;
 
@@ -163,6 +168,9 @@ namespace Core {
 
 		// NotFound on an unborn HEAD, which is a repository with no commit yet rather than a broken one.
 		Result<Oid> HeadCommit() const;
+
+		// The committer time of the commit HEAD names. NotFound on an unborn HEAD, as HeadCommit.
+		Result<std::chrono::sys_seconds> HeadCommitTime() const;
 
 		// A full name such as "refs/heads/main" or "refs/remotes/origin/main". NotFound when there
 		// is no such reference, which is the ordinary answer for a branch deleted since it was listed.

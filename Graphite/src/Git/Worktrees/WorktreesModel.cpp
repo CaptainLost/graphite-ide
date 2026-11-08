@@ -187,7 +187,7 @@ namespace Graphite {
 					return;
 				}
 
-				Core::Result<std::size_t> count = m_Port.CountUncommitted(path);
+				Core::Result<WorktreeCount> count = m_Port.CountUncommitted(path);
 
 				m_Inbox.Post([this, key, folder, count = std::move(count)]() {
 					if (IsSameFolder(folder))
@@ -199,7 +199,7 @@ namespace Graphite {
 		}
 	}
 
-	void WorktreesModel::LandCount(const Core::PathKeyText& key, const Core::Result<std::size_t>& count)
+	void WorktreesModel::LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeCount>& count)
 	{
 		m_Counting.erase(key);
 
@@ -209,7 +209,7 @@ namespace Graphite {
 		}
 
 		CountTiming& timing = m_Timing[key];
-		const std::optional<std::size_t> landed = count.HasValue() ? std::optional<std::size_t>{count.GetValue()} : std::nullopt;
+		const std::optional<std::size_t> landed = count.HasValue() ? std::optional<std::size_t>{count.GetValue().Changed} : std::nullopt;
 
 		// A worktree left alone, or failing again, is asked less and less often; one that changed, or answered after
 		// failing, as often as at first.

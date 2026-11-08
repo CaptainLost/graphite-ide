@@ -42,7 +42,9 @@ namespace {
 			return Entries;
 		}
 
-		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override
+		Core::Result<WorktreeActivity> QueryActivity(const std::filesystem::path&) override { return WorktreeActivity{}; }
+
+		Core::Result<WorktreeCount> CountUncommitted(const std::filesystem::path& worktree) override
 		{
 			Counted.push_back(worktree);
 
@@ -51,7 +53,9 @@ namespace {
 				return Core::Error{Core::ErrorCode::IoFailure, "the index is locked"};
 			}
 
-			return Changes[worktree.generic_string()];
+			WorktreeCount count;
+			count.Changed = Changes[worktree.generic_string()];
+			return count;
 		}
 
 		std::vector<Core::WorktreeEntry> Entries;

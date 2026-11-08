@@ -86,7 +86,9 @@ namespace Graphite {
 
 	bool IsIndexLocked(const Core::Error& error)
 	{
-		return error.Message.find("index.lock") != std::string::npos;
+		// libgit2 words a held lock file as "the index is locked; this might be due to a concurrent or crashed process" and
+		// does not name the file, so a user file called index.lock cannot be mistaken for it.
+		return error.Message.find("the index is locked") != std::string::npos;
 	}
 
 	std::string BusyMessage(std::string_view folder)

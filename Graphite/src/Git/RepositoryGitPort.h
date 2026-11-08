@@ -109,7 +109,8 @@ namespace Graphite {
 		Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) override;
 
 		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override;
-		Core::Result<std::size_t> CountUncommitted(const std::filesystem::path& worktree) override;
+		Core::Result<WorktreeActivity> QueryActivity(const std::filesystem::path& worktree) override;
+		Core::Result<WorktreeCount> CountUncommitted(const std::filesystem::path& worktree) override;
 
 		std::uint64_t RepositoryNow() override;
 		Core::Result<LineRead> ReadLines(std::uint64_t repository, const LineReadInput& input) override;

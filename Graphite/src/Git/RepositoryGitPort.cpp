@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <chrono>
 #include <optional>
 #include <system_error>
 #include <unordered_map>
@@ -1326,7 +1327,51 @@ namespace Graphite {
 		return opened.GetValue()->QueryWorktrees();
 	}
 
-	Core::Result<std::size_t> RepositoryGitPort::CountUncommitted(const std::filesystem::path& worktree)
+	namespace {
+
+		std::optional<std::chrono::sys_seconds> ModifiedAt(const std::filesystem::path& path)
+		{
+			std::error_code code;
+			const std::filesystem::file_time_type written = std::filesystem::last_write_time(path, code);
+
+			if (code)
+			{
+				return std::nullopt;
+			}
+
+			return std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::clock_cast<std::chrono::system_clock>(written));
+		}
+	}
+
+	Core::Result<WorktreeActivity> RepositoryGitPort::QueryActivity(const std::filesystem::path& worktree)
+	{
+		// WARNING: Opened exactly and not cached, for the reason QueryWorktreeDiff gives. The git directory is asked of
+		// libgit2 because a linked worktree keeps its HEAD, index and reflog in <common>/worktrees/<name>.
+		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const Core::Repository repository = std::move(opened).GetValue();
+		const std::filesystem::path gitDirectory = repository.GitDirectory();
+
+		WorktreeActivity activity;
+		activity.Reflog = ModifiedAt(gitDirectory / "logs" / "HEAD");
+		activity.Index = ModifiedAt(gitDirectory / "index");
+
+		const Core::Result<std::chrono::sys_seconds> headTime = repository.HeadCommitTime();
+
+		if (headTime.HasValue())
+		{
+			activity.HeadCommit = headTime.GetValue();
+		}
+
+		return activity;
+	}
+
+	Core::Result<WorktreeCount> RepositoryGitPort::CountUncommitted(const std::filesystem::path& worktree)
 	{
 		// WARNING: Not cached per thread, for the reason QueryWorktreeDiff gives. A wholly untracked folder
 		// is one entry, as QueryStatus collapses it.
@@ -1338,14 +1383,27 @@ namespace Graphite {
 		}
 
 		const Core::Repository repository = std::move(opened).GetValue();
-		Core::Result<Core::WorkingTreeStatus> status = repository.QueryStatus();
+		Core::Result<Core::WorkingTreeStatus> status = repository.QueryStatus(Core::SubmoduleWalk::Skipped);
 
 		if (!status.HasValue())
 		{
 			return status.GetError();
 		}
 
-		return status.GetValue().Entries.size();
+		WorktreeCount count;
+		count.Changed = status.GetValue().Entries.size();
+
+		for (const Core::FileStatus& entry : status.GetValue().Entries)
+		{
+			const std::optional<std::chrono::sys_seconds> written = ModifiedAt(worktree / entry.Path);
+
+			if (written.has_value() && (!count.NewestChange.has_value() || *written > *count.NewestChange))
+			{
+				count.NewestChange = written;
+			}
+		}
+
+		return count;
 	}
 
 	Core::Result<SinceViewedAnswer> RepositoryGitPort::ReadSinceViewed(const SinceViewedRequest& request)

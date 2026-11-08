@@ -1924,7 +1924,7 @@ TEST_CASE("Git model: a locked index is reported as busy")
 	port.Head.Kind = Core::HeadKind::Branch;
 	port.Head.BranchName = "main";
 	port.Fail = true;
-	port.FailMessage = "failed to lock file 'wt/index.lock'";
+	port.FailMessage = "cannot write the index: the index is locked; this might be due to a concurrent or crashed process";
 
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);

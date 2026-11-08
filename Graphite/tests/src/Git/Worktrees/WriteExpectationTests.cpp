@@ -135,7 +135,8 @@ TEST_CASE("Write expectation: a busy worktree names its folder")
 
 TEST_CASE("Write expectation: only libgit2's index lock failure counts as busy")
 {
-	CHECK(IsIndexLocked(Core::Error{Core::ErrorCode::IoFailure, "failed to lock file '.git/worktrees/x/index.lock'"}));
+	CHECK(IsIndexLocked(Core::Error{Core::ErrorCode::IoFailure, "cannot write the index: the index is locked; this might be due to a concurrent or crashed process"}));
+	CHECK_FALSE(IsIndexLocked(Core::Error{Core::ErrorCode::IoFailure, "cannot read 'docs/index.lock'"}));
 	CHECK_FALSE(IsIndexLocked(Core::Error{Core::ErrorCode::IoFailure, "stage failed"}));
 }
 

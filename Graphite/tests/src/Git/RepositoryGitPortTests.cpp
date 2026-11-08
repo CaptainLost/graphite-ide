@@ -10,6 +10,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Git/Lines/LineStore.h"
 #include "Git/Lines/LinesModel.h"
+#include "Git/Worktrees/WriteExpectation.h"
 #include "Review/ReviewRepository.h"
 
 #include <git2.h>
@@ -1163,10 +1164,130 @@ TEST_CASE("Counting a worktree's uncommitted files reads that folder alone")
 	repository.Write("main-only.txt", "m\n");
 	Graphite::RepositoryGitPort port{repository.GetPath()};
 
-	const Core::Result<std::size_t> count = port.CountUncommitted(worktree);
+	const Core::Result<Graphite::WorktreeCount> count = port.CountUncommitted(worktree);
 
 	REQUIRE(count.HasValue());
-	CHECK(count.GetValue() == 3);
+	CHECK(count.GetValue().Changed == 3);
+}
+
+namespace {
+
+	// A worktree of a fresh repository, on a branch of its own with one commit behind it.
+	std::filesystem::path AddCommittedWorktree(ReviewRepository& repository)
+	{
+		repository.Write("a.txt", "one\n");
+		repository.Commit("fork point");
+		repository.Branch("side");
+		return repository.AddWorktree("side");
+	}
+
+	void StageInOtherHandle(const std::filesystem::path& worktree, const char* relative)
+	{
+		git_repository* handle = nullptr;
+		REQUIRE(git_repository_open(&handle, Core::ToUtf8(worktree).c_str()) == 0);
+
+		git_index* index = nullptr;
+		REQUIRE(git_repository_index(&index, handle) == 0);
+		REQUIRE(git_index_add_bypath(index, relative) == 0);
+		REQUIRE(git_index_write(index) == 0);
+
+		git_index_free(index);
+		git_repository_free(handle);
+	}
+
+	std::filesystem::path GitDirectoryOf(const std::filesystem::path& worktree)
+	{
+		git_repository* handle = nullptr;
+		REQUIRE(git_repository_open(&handle, Core::ToUtf8(worktree).c_str()) == 0);
+		const std::filesystem::path directory = Core::FromUtf8(git_repository_path(handle));
+		git_repository_free(handle);
+		return directory;
+	}
+}
+
+TEST_CASE("Repository port: a worktree's activity reads its reflog, index and HEAD commit")
+{
+	ReviewRepository repository;
+	const std::filesystem::path worktree = AddCommittedWorktree(repository);
+
+	ReviewRepository::WriteFileAt(worktree / "w.txt", "w\n");
+	StageInOtherHandle(worktree, "w.txt");
+	const Core::Oid made = CommitOnHead(worktree, "in the worktree");
+
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(worktree).c_str()) == 0);
+	git_oid id;
+	std::copy(made.Bytes.begin(), made.Bytes.end(), id.id);
+	git_commit* commit = nullptr;
+	REQUIRE(git_commit_lookup(&commit, handle, &id) == 0);
+	const std::chrono::sys_seconds committedAt{std::chrono::seconds{git_commit_time(commit)}};
+	git_commit_free(commit);
+	git_repository_free(handle);
+
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const Core::Result<Graphite::WorktreeActivity> activity = port.QueryActivity(worktree);
+
+	REQUIRE(activity.HasValue());
+	CHECK(activity.GetValue().Reflog.has_value());
+	CHECK(activity.GetValue().Index.has_value());
+	REQUIRE(activity.GetValue().HeadCommit.has_value());
+	CHECK(*activity.GetValue().HeadCommit == committedAt);
+}
+
+TEST_CASE("Repository port: a worktree count names its newest changed file's time")
+{
+	ReviewRepository repository;
+	const std::filesystem::path worktree = AddCommittedWorktree(repository);
+
+	ReviewRepository::WriteFileAt(worktree / "a.txt", "edited\n");
+	ReviewRepository::WriteFileAt(worktree / "b.txt", "new\n");
+
+	const std::chrono::sys_seconds earlier{std::chrono::seconds{1'700'000'000}};
+	const std::chrono::sys_seconds later{std::chrono::seconds{1'700'000'500}};
+	std::filesystem::last_write_time(worktree / "a.txt", std::chrono::clock_cast<std::filesystem::file_time_type::clock>(earlier));
+	std::filesystem::last_write_time(worktree / "b.txt", std::chrono::clock_cast<std::filesystem::file_time_type::clock>(later));
+
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const Core::Result<Graphite::WorktreeCount> count = port.CountUncommitted(worktree);
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue().Changed == 2);
+	REQUIRE(count.GetValue().NewestChange.has_value());
+	CHECK(*count.GetValue().NewestChange == later);
+}
+
+TEST_CASE("Repository port: a file staged by another process shows staged at once")
+{
+	ReviewRepository repository;
+	const std::filesystem::path worktree = AddCommittedWorktree(repository);
+	ReviewRepository::WriteFileAt(worktree / "n.txt", "n\n");
+
+	Graphite::RepositoryGitPort port{worktree};
+	const Core::Result<Core::WorkingTreeStatus> before = port.QueryStatus();
+	REQUIRE(before.HasValue());
+	REQUIRE(before.GetValue().Entries.size() == 1);
+	CHECK(before.GetValue().Entries.front().IsUntracked);
+
+	StageInOtherHandle(worktree, "n.txt");
+
+	const Core::Result<Core::WorkingTreeStatus> after = port.QueryStatus();
+	REQUIRE(after.HasValue());
+	REQUIRE(after.GetValue().Entries.size() == 1);
+	CHECK(after.GetValue().Entries.front().Index == Core::StatusFlags::New);
+}
+
+TEST_CASE("Repository port: a held index.lock makes Stage fail as locked")
+{
+	ReviewRepository repository;
+	const std::filesystem::path worktree = AddCommittedWorktree(repository);
+	ReviewRepository::WriteFileAt(worktree / "n.txt", "n\n");
+	ReviewRepository::WriteFileAt(GitDirectoryOf(worktree) / "index.lock", "");
+
+	Graphite::RepositoryGitPort port{worktree};
+	const Core::Result<void> staged = port.Stage({"n.txt"});
+
+	REQUIRE_FALSE(staged.HasValue());
+	CHECK(Graphite::IsIndexLocked(staged.GetError()));
 }
 
 TEST_CASE("Git window: the port lists the worktrees of the repository")

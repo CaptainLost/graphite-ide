@@ -310,4 +310,23 @@ namespace Core {
 
 		return ToOid(headId);
 	}
+
+	Result<std::chrono::sys_seconds> Repository::HeadCommitTime() const
+	{
+		const Result<Oid> head = HeadCommit();
+
+		if (!head.HasValue())
+		{
+			return head.GetError();
+		}
+
+		Result<CommitHandle> commit = LookupCommit(m_Handle.get(), head.GetValue());
+
+		if (!commit.HasValue())
+		{
+			return commit.GetError();
+		}
+
+		return std::chrono::sys_seconds{std::chrono::seconds{git_commit_time(commit.GetValue().get())}};
+	}
 }
