@@ -72,20 +72,24 @@ namespace Graphite {
 	// a base's history is in the graph; waiting while a newer read may hold it, but not for one asked again after a failure.
 	InBases InBasesOutsideRead(bool reading, const std::optional<Core::Error>& linesError);
 
-	// The "First tag" line of a commit's details: drawn whenever the repository has tags, in one of three states, and
+	// The "First tag" line of a commit's details: drawn whenever the repository has tags, in one of four states, and
 	// always one line high.
 	struct FirstTagLine
 	{
 		bool Shown = false;
-		bool Pending = false;                           // there is no read yet to say which tag holds the commit
+		bool Pending = false;                           // no read, or one made from an older tag listing, says which tag holds it
+		std::optional<std::string> Unknown;             // the line read failed and none is held: its message, no answer will come
 		std::optional<std::string> Name;                // the oldest tag holding the commit; empty when no tag holds it
 		std::optional<std::chrono::sys_seconds> When;   // when that tag was made
 	};
 
-	// `listed` is GitModel's tag listing: with `read` it decides whether the line is drawn at all. Without a read the line
-	// waits; a commit outside the read's graph, like a commit no tag reaches, is held by no tag yet.
+	// `listed` is GitModel's tag listing: with `read` it decides whether the line is drawn at all. The line waits while no
+	// read is held, and while the read was made from another listing than `listed` (compared by pointer, as In bases waits
+	// for a commit outside the read): a tag that has just landed is not yet in the read's answer. Without a read, a failed
+	// line read (`linesError`) settles it as unknown. A commit outside the read's graph, like a commit no tag reaches, is
+	// held by no tag yet.
 	FirstTagLine DescribeFirstTag(const LineRead* read, const Core::Ref<const std::vector<Core::Tag>>& listed,
-								  const Core::Oid& commit);
+								  const Core::Oid& commit, const std::optional<Core::Error>& linesError);
 
 	// How many of the "In bases" chips go on the line, which never wraps: as many, in order, as fit in `room` with `gap`
 	// between them and, when some are left over, the words for the rest after them, at most `moreWidth` wide.

@@ -121,7 +121,7 @@ namespace Graphite {
 	}
 
 	FirstTagLine DescribeFirstTag(const LineRead* read, const Core::Ref<const std::vector<Core::Tag>>& listed,
-								  const Core::Oid& commit)
+								  const Core::Oid& commit, const std::optional<Core::Error>& linesError)
 	{
 		FirstTagLine line;
 		line.Shown = RepositoryHasTags(read, listed);
@@ -132,6 +132,21 @@ namespace Graphite {
 		}
 
 		if (read == nullptr)
+		{
+			// A failure stays said while a read is asked again after it, as In bases says it.
+			if (linesError.has_value())
+			{
+				line.Unknown = linesError->Message;
+			}
+			else
+			{
+				line.Pending = true;
+			}
+
+			return line;
+		}
+
+		if (listed != nullptr && read->Tags != listed)
 		{
 			line.Pending = true;
 			return line;

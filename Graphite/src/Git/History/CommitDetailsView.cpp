@@ -227,6 +227,18 @@ namespace Graphite {
 				return;
 			}
 
+			if (line.Unknown.has_value())
+			{
+				ImGui::TextDisabled("unknown");
+
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::SetTooltip("%s", line.Unknown->c_str());
+				}
+
+				return;
+			}
+
 			if (!line.Name.has_value())
 			{
 				ImGui::TextDisabled("no tag holds it yet");

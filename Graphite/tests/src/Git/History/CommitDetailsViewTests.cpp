@@ -106,12 +106,14 @@ TEST_CASE("Commit details view: the First tag line has the same height pending, 
 	const float pending = DrawPane("FirstTagHeightPending", ContentWith({.Shown = true, .Pending = true})).Height;
 	const float named = DrawPane("FirstTagHeightNamed", ContentWith({.Shown = true, .Name = "v1.2", .When = ThreeDaysAgo()})).Height;
 	const float empty = DrawPane("FirstTagHeightEmpty", ContentWith({.Shown = true})).Height;
+	const float unknown = DrawPane("FirstTagHeightUnknown", ContentWith({.Shown = true, .Unknown = "the graph could not be read"})).Height;
 
 	// The line is there when the repository has tags, and not otherwise.
 	CHECK(pending > withoutTags);
 
 	CHECK(named == doctest::Approx(pending));
 	CHECK(empty == doctest::Approx(pending));
+	CHECK(unknown == doctest::Approx(pending));
 }
 
 TEST_CASE("Commit details view: the First tag line comes right after In bases and the source sentence, before the refs")
@@ -148,4 +150,14 @@ TEST_CASE("Commit details view: the First tag line comes right after In bases an
 	CHECK(pane.TagPill->Top >= pane.Lines[*source].Top + pane.LineHeight * 0.5f);
 	CHECK(pane.LocalPill->Top > pane.TagPill->Bottom);
 	CHECK(pane.LocalPill->Bottom <= pane.Lines[*parents].Top);
+}
+
+TEST_CASE("Commit details view: a First tag that cannot be known says unknown on its one line")
+{
+	const DrawnPane pane = DrawPane("FirstTagUnknown", ContentWith({.Shown = true, .Unknown = "the graph could not be read"}));
+
+	const std::optional<std::size_t> firstTag = LineStartingWith(pane.Lines, "Firsttag");
+	REQUIRE(firstTag.has_value());
+	CHECK(pane.Lines[*firstTag].Text.ends_with("unknown"));
+	CHECK(pane.Lines[*firstTag].Text.find("…") == std::string::npos);
 }
