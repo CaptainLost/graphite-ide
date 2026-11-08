@@ -18,6 +18,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -341,7 +342,7 @@ TEST_CASE("Network model: cancel ends the running operation and reports it cance
 
 	CHECK(network.Model.GetState().Cancellable);
 
-	network.Model.Cancel();
+	network.Model.Cancel(network.Model.GetState().Serial);
 
 	const std::optional<NetworkDone> done = network.WaitForDone();
 	REQUIRE(done.has_value());
@@ -362,7 +363,7 @@ TEST_CASE("Network model: a cancel that comes after git has finished takes git's
 
 	model.Fetch();
 	jobs.RunAll();
-	model.Cancel();
+	model.Cancel(model.GetState().Serial);
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Fetch}});
@@ -379,7 +380,7 @@ TEST_CASE("Network model: a cancel that comes after pull's fetch has finished st
 
 	model.Pull();
 	jobs.RunAll();
-	model.Cancel();
+	model.Cancel(model.GetState().Serial);
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Pull, .Cancelled = true}});
@@ -531,7 +532,8 @@ TEST_CASE("Network model: pull fast-forwards through the write queue")
 
 	CHECK(port.CallsSoFar() == Calls({"FetchRemote origin"}));
 	CHECK(writes.Count() == 1);
-	CHECK(model.GetState() == NetworkState{.Running = NetworkOperation::Pull, .Cancellable = false});
+	CHECK(model.GetState().Running == std::optional<NetworkOperation>{NetworkOperation::Pull});
+	CHECK_FALSE(model.GetState().Cancellable);
 	CHECK(git.IsUpdatingWorkingTree());
 
 	writes.RunAll();
@@ -565,7 +567,7 @@ TEST_CASE("Network model: pull cannot be cancelled once its fast-forward is aske
 
 	model.Pull();
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
-	model.Cancel();
+	model.Cancel(model.GetState().Serial);
 
 	writes.RunAll();
 	git.OnUpdate(Core::Timestep{kFrameSeconds});
@@ -788,4 +790,182 @@ TEST_CASE("Network model: fetching full history runs the unshallow fetch")
 
 	CHECK(network.Port.CallsSoFar() == Calls({"FetchFullHistory"}));
 	CHECK(network.Model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::FullHistory}});
+}
+
+TEST_CASE("Network model: pull does not merge once the port opens another folder")
+{
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 2)), RemoteBranch("origin", "main")};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	model.Pull();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	port.WorkingDirectory = "C:/other";
+
+	writes.RunAll();
+	git.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	const std::optional<NetworkFailureReport> failure = model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "The folder changed while Pull ran, so it did not merge origin/main.");
+	CHECK(port.CallsSoFar() == Calls({"FetchRemote origin"}));
+}
+
+TEST_CASE("Network model: a cancel aimed at an operation that has ended leaves the next one running")
+{
+	DeferredJobs jobs;
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 1, 0)), RemoteBranch("origin", "main", true)};
+	Graphite::GitModel git{port, RunJobsInline()};
+	NetworkModel model{port, git, jobs.Submitter()};
+	git.SetRoot("C:/repo");
+
+	model.Fetch();
+	model.Push();
+	const std::uint64_t fetching = model.GetState().Serial;
+
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetState().Running == std::optional<NetworkOperation>{NetworkOperation::Push});
+	CHECK(model.GetState().Serial != fetching);
+
+	model.Cancel(fetching);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Fetch}});
+	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push, .Commits = 1}});
+	CHECK(port.CallsSoFar() == Calls({"FetchAll", "PushTo origin main"}));
+}
+
+TEST_CASE("Network model: a push asked while a commit is queued waits for it and pushes the new commit")
+{
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 0)), RemoteBranch("origin", "main")};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	git.RequestCommit(Core::CommitRequest{.Message = "mine"});
+	model.Push();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetState().Running == std::optional<NetworkOperation>{NetworkOperation::Push});
+	CHECK(model.GetState().Cancellable);
+	CHECK(port.CallsSoFar().empty());
+
+	writes.RunAll();
+	git.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.PushedTips == std::vector<Core::Oid>{port.CommitTip});
+	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push, .Commits = 1}});
+}
+
+TEST_CASE("Network model: a pull asked while a write runs starts its fetch once the write is done")
+{
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 0, 1)), RemoteBranch("origin", "main")};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	git.RequestStage({"a.txt"});
+	model.Pull();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.CallsSoFar().empty());
+
+	writes.RunOldest();
+	git.OnUpdate(Core::Timestep{kFrameSeconds});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.CallsSoFar() == Calls({"FetchRemote origin"}));
+}
+
+TEST_CASE("Network model: a fetch does not wait for the write queue")
+{
+	NetworkPort port;
+	port.Branches = {RemoteBranch("origin", "main", true)};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	git.RequestStage({"a.txt"});
+	model.Fetch();
+
+	CHECK(port.CallsSoFar() == Calls({"FetchAll"}));
+}
+
+TEST_CASE("Network model: a push waiting for the write queue can be cancelled before git starts")
+{
+	NetworkPort port;
+	port.Branches = {CheckedOut(LocalBranch("main", "origin/main", 1, 0)), RemoteBranch("origin", "main")};
+
+	DeferredJobs writes;
+	Graphite::GitModel git{port, RunJobsInline(), writes.Submitter()};
+	NetworkModel model{port, git, RunJobsInline()};
+	git.SetRoot("C:/repo");
+
+	git.RequestStage({"a.txt"});
+	model.Push();
+	model.Cancel(model.GetState().Serial);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push, .Cancelled = true}});
+	CHECK(model.GetState() == NetworkState{});
+	CHECK(port.CallsSoFar().empty());
+}
+
+TEST_CASE("Network model: a branch whose upstream is a local branch keeps it and sends HEAD to the only remote")
+{
+	InlineNetwork network;
+	network.Port.Branches = {CheckedOut(LocalBranch("feature", "main", 2, 0)), LocalBranch("main")};
+
+	network.Model.Push();
+	network.Update();
+
+	CHECK(network.Port.CallsSoFar() == Calls({"PushTo origin feature"}));
+	CHECK(network.Model.TakeDone() == std::optional<NetworkDone>{NetworkDone{.Operation = NetworkOperation::Push}});
+}
+
+TEST_CASE("Network model: a branch whose upstream is a local branch keeps it and sends HEAD to the remote given")
+{
+	InlineNetwork network;
+	network.Port.Remotes = {Core::Remote{.Name = "origin"}, Core::Remote{.Name = "fork"}};
+	network.Port.Branches = {CheckedOut(LocalBranch("feature", "main", 2, 0)), LocalBranch("main")};
+
+	network.Model.Push("fork");
+	network.Update();
+
+	CHECK(network.Port.CallsSoFar() == Calls({"PushTo fork feature"}));
+}
+
+TEST_CASE("Network model: a branch whose upstream is a local branch is not pushed while there are several remotes and none given")
+{
+	InlineNetwork network;
+	network.Port.Remotes = {Core::Remote{.Name = "origin"}, Core::Remote{.Name = "fork"}};
+	network.Port.Branches = {CheckedOut(LocalBranch("feature", "main", 2, 0)), LocalBranch("main")};
+
+	network.Model.Push();
+	network.Update();
+
+	const std::optional<NetworkFailureReport> failure = network.Model.TakeFailure();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "feature's upstream is the local branch main, so Push needs a remote chosen.");
+	CHECK(network.Port.CallsSoFar().empty());
 }

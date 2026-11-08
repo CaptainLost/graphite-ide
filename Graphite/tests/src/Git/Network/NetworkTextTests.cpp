@@ -166,3 +166,9 @@ TEST_CASE("Network text: the activity line reads the running operation, else the
 	CHECK_FALSE(idle.Running.has_value());
 	CHECK_FALSE(idle.Done.has_value());
 }
+
+TEST_CASE("Network text: a pull or a push of no commits says there was nothing to do")
+{
+	CHECK(Graphite::DoneText(NetworkDone{.Operation = NetworkOperation::Pull, .Commits = 0}) == "Already up to date");
+	CHECK(Graphite::DoneText(NetworkDone{.Operation = NetworkOperation::Push, .Commits = 0}) == "Nothing to push");
+}

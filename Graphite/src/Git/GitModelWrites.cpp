@@ -215,9 +215,9 @@ namespace Graphite {
 		Enqueue({.Kind = WriteKind::Checkout, .Checkout = std::move(request)});
 	}
 
-	void GitModel::RequestFastForward(std::string branch, std::string upstream)
+	void GitModel::RequestFastForward(FastForwardRequest request)
 	{
-		Enqueue({.Kind = WriteKind::FastForward, .Name = std::move(branch), .OtherName = std::move(upstream)});
+		Enqueue({.Kind = WriteKind::FastForward, .FastForward = std::move(request)});
 	}
 
 	std::optional<FastForwardAnswer> GitModel::TakeFastForward()
@@ -806,7 +806,7 @@ namespace Graphite {
 
 			case WriteKind::FastForward:
 			{
-				outcome.FastForward = RunFastForward(job.Name, job.OtherName);
+				outcome.FastForward = RunFastForward(job.FastForward);
 				break;
 			}
 			}
@@ -919,7 +919,7 @@ namespace Graphite {
 		return outcome;
 	}
 
-	FastForwardAnswer GitModel::RunFastForward(const std::string& branch, const std::string& upstream)
+	FastForwardAnswer GitModel::RunFastForward(const FastForwardRequest& request)
 	{
 		FastForwardAnswer answer;
 		const Core::Result<std::vector<Core::Branch>> listed = m_Port.QueryBranches();
@@ -932,14 +932,14 @@ namespace Graphite {
 
 		const std::vector<Core::Branch>& branches = listed.GetValue();
 		const Core::Branch* checkedOut = CheckedOutBranch(branches);
-		answer.CheckedOut = checkedOut != nullptr && checkedOut->FullName == branch;
+		answer.CheckedOut = checkedOut != nullptr && checkedOut->FullName == request.Branch;
 
 		if (!answer.CheckedOut)
 		{
 			return answer;
 		}
 
-		const Core::Branch* fetched = BranchWithFullName(branches, upstream);
+		const Core::Branch* fetched = BranchWithFullName(branches, request.Upstream);
 		answer.DistanceKnown = checkedOut->DistanceKnown && fetched != nullptr && checkedOut->Upstream == fetched->Name;
 
 		if (answer.DistanceKnown)
@@ -955,10 +955,20 @@ namespace Graphite {
 			return answer;
 		}
 
+		// WARNING: The port opens whichever folder is open by now, and a folder change does not wait for a write, so the
+		// folder is checked last, as close to the merge as it can be.
+		const Core::Result<std::filesystem::path> folder = m_Port.GetWorkingDirectory();
+		answer.FolderChanged = !folder.HasValue() || folder.GetValue() != request.WorkingDirectory;
+
+		if (answer.FolderChanged)
+		{
+			return answer;
+		}
+
 		// WARNING: Never cancelled: a merge stopped halfway leaves a half-updated tree, which is worse than a wait.
 		const std::atomic<bool> neverCancelled{false};
 		const Core::ProgressSink noProgress;
-		answer.Merge = m_Port.FastForward(neverCancelled, noProgress, upstream);
+		answer.Merge = m_Port.FastForward(neverCancelled, noProgress, request.Upstream);
 
 		return answer;
 	}

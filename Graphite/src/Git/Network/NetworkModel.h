@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -35,6 +36,9 @@ namespace Graphite {
 	struct NetworkState
 	{
 		std::optional<NetworkOperation> Running;
+
+		// Which operation runs: each one started takes the next serial. Zero while nothing runs.
+		std::uint64_t Serial = 0;
 
 		// git's own, once it counts.
 		std::optional<int> Percent;
@@ -78,9 +82,10 @@ namespace Graphite {
 
 	// Runs one fetch, pull or push at a time, on a queue of its own so a long fetch never holds a commit back; the
 	// operations asked meanwhile wait their turn in order. Each reads the branches and remotes itself as it starts, so it
-	// acts on the repository as it is, not as the last listing showed it. Pull fetches its upstream's remote, then hands
-	// the fast-forward to the git model's write queue, which reads the branches again just before the merge. UI thread
-	// only, but for the jobs it submits.
+	// acts on the repository as it is, not as the last listing showed it; a pull or a push waits first for the writes
+	// asked before it, so a commit just made is pushed. Pull fetches its upstream's remote, then hands the fast-forward to
+	// the git model's write queue, which reads the branches again just before the merge. UI thread only, but for the jobs
+	// it submits.
 	// WARNING: Every job captures `this`; the owner declares this after the port and the git model and before the queue
 	// behind the submitter.
 	class NetworkModel : Core::NonCopyable
@@ -91,14 +96,16 @@ namespace Graphite {
 		void Fetch();
 		void Pull();
 
-		// Without a remote: the upstream's, or the only remote when the branch has no upstream. A remote other than the
-		// upstream's becomes the branch's upstream.
+		// Without a remote: the upstream's, or the only remote when the branch has no upstream on one. A remote other than
+		// the upstream's becomes the branch's upstream, unless that upstream is a local branch, which is kept.
 		void Push(std::optional<std::string> remote = std::nullopt);
 
 		void FetchFullHistory();
 
-		// Ends the running operation within the runner's poll, unless it is Pull's fast-forward. The waiting ones still run.
-		void Cancel();
+		// Ends the operation of that serial within the runner's poll while it runs, unless it is in Pull's fast-forward; an
+		// operation that has ended since its serial was read is left alone, and so is the one that started after it. The
+		// waiting ones still run.
+		void Cancel(std::uint64_t serial);
 
 		NetworkState GetState() const;
 
@@ -127,13 +134,15 @@ namespace Graphite {
 			std::optional<std::string> Remote;
 		};
 
-		// Pull's branch and the upstream its fetch brought up to date, short and full names.
+		// Pull's branch and the upstream its fetch brought up to date, short and full names, and the work tree it fetched
+		// for.
 		struct PullTarget
 		{
 			std::string Branch;
 			std::string BranchFullName;
 			std::string Upstream;
 			std::string UpstreamFullName;
+			std::filesystem::path WorkingDirectory;
 		};
 
 		// What a job hands to the UI thread. A refusal before git ran is a failure whose words are the sentence.
@@ -149,10 +158,14 @@ namespace Graphite {
 
 		struct RunningOperation
 		{
-			NetworkOperation Operation = NetworkOperation::Fetch;
+			Request Asked;
+			std::uint64_t Serial = 0;
 
 			// Per operation, so a flag set for one can never stop the next.
 			Core::Ref<std::atomic<bool>> Cancelled;
+
+			// A pull or a push asked while a write ran or waited: its job starts once the write queue is empty.
+			bool AwaitingWrites = false;
 
 			NetworkNames Names;
 
@@ -163,6 +176,8 @@ namespace Graphite {
 		void Ask(Request request);
 		void StartNext();
 		void Start(const Request& request);
+		void SubmitRunning();
+		void StartWhenWritesDrained();
 
 		// WARNING: These run on a worker thread. They touch m_Port, m_Progress, m_Percent, m_JobMutex and m_Inbox and nothing
 		// else on this object.
@@ -198,6 +213,9 @@ namespace Graphite {
 
 		// Moved by every Detach: an answer of the folder before lands as nothing.
 		std::uint64_t m_Folder = 0;
+
+		// WARNING: Never restarts, not even in Detach, so a serial seen before a folder change never names a later operation.
+		std::uint64_t m_LastSerial = 0;
 
 		std::optional<RunningOperation> m_Running;
 		std::deque<Request> m_Waiting;

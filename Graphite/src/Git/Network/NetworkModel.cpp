@@ -112,6 +112,24 @@ namespace Graphite {
 
 			return OnlyRemoteOf(remotes);
 		}
+
+		// Why a push without a remote given has none to go to. `localUpstream` is the branch's upstream when it is a local
+		// branch, and null otherwise.
+		std::string NoPushRemoteText(const Core::Branch& checkedOut, const Core::Branch* localUpstream,
+									 const std::vector<Core::Remote>& remotes)
+		{
+			if (remotes.empty())
+			{
+				return NoRemoteText();
+			}
+
+			if (localUpstream != nullptr)
+			{
+				return LocalUpstreamText(checkedOut.Name, localUpstream->Name);
+			}
+
+			return NoUpstreamText(checkedOut.Name);
+		}
 	}
 
 	NetworkModel::NetworkModel(GitPort& port, GitModel& git, Core::JobSubmitter submit)
@@ -139,11 +157,11 @@ namespace Graphite {
 		Ask(Request{.Operation = NetworkOperation::FullHistory});
 	}
 
-	void NetworkModel::Cancel()
+	void NetworkModel::Cancel(std::uint64_t serial)
 	{
-		const bool cancellable = m_Running.has_value() && !m_Running->FastForwarding.has_value();
+		const bool aimedAtRunning = m_Running.has_value() && m_Running->Serial == serial;
 
-		if (cancellable)
+		if (aimedAtRunning && !m_Running->FastForwarding.has_value())
 		{
 			m_Running->Cancelled->store(true);
 		}
@@ -156,7 +174,9 @@ namespace Graphite {
 			return NetworkState{};
 		}
 
-		NetworkState state{.Running = m_Running->Operation, .Cancellable = !m_Running->FastForwarding.has_value()};
+		NetworkState state{.Running = m_Running->Asked.Operation,
+						   .Serial = m_Running->Serial,
+						   .Cancellable = !m_Running->FastForwarding.has_value()};
 
 		if (const int percent = m_Percent.load(); percent != kNoPercent)
 		{
@@ -204,15 +224,15 @@ namespace Graphite {
 
 		const bool fastForwarding = m_Running.has_value() && m_Running->FastForwarding.has_value();
 
-		if (!fastForwarding)
+		if (fastForwarding)
 		{
-			return;
+			if (const std::optional<FastForwardAnswer> answer = m_Git.TakeFastForward(); answer.has_value())
+			{
+				LandFastForward(*answer);
+			}
 		}
 
-		if (const std::optional<FastForwardAnswer> answer = m_Git.TakeFastForward(); answer.has_value())
-		{
-			LandFastForward(*answer);
-		}
+		StartWhenWritesDrained();
 	}
 
 	void NetworkModel::Detach()
@@ -261,11 +281,53 @@ namespace Graphite {
 
 	void NetworkModel::Start(const Request& request)
 	{
-		m_Running = RunningOperation{.Operation = request.Operation, .Cancelled = Core::CreateRef<std::atomic<bool>>(false)};
+		m_Running = RunningOperation{.Asked = request, .Serial = ++m_LastSerial, .Cancelled = Core::CreateRef<std::atomic<bool>>(false)};
 		m_Percent.store(kNoPercent);
 		m_Shown.reset();
 
-		m_Submit([this, request, cancelled = m_Running->Cancelled, folder = m_Folder]() { RunAndDeliver(request, *cancelled, folder); });
+		// WARNING: A pull or a push reads the branch as the writes asked before it leave it: a commit still on the write
+		// queue would be left out of the push it was made for.
+		const bool actsOnTheBranch = request.Operation == NetworkOperation::Pull || request.Operation == NetworkOperation::Push;
+
+		if (actsOnTheBranch && m_Git.HasWritesPending())
+		{
+			m_Running->AwaitingWrites = true;
+			return;
+		}
+
+		SubmitRunning();
+	}
+
+	void NetworkModel::SubmitRunning()
+	{
+		m_Submit([this, request = m_Running->Asked, cancelled = m_Running->Cancelled, folder = m_Folder]() {
+			RunAndDeliver(request, *cancelled, folder);
+		});
+	}
+
+	void NetworkModel::StartWhenWritesDrained()
+	{
+		const bool awaitingWrites = m_Running.has_value() && m_Running->AwaitingWrites;
+
+		if (!awaitingWrites)
+		{
+			return;
+		}
+
+		if (m_Running->Cancelled->load())
+		{
+			const std::optional<std::size_t> notCounted;
+			Finish(Core::NetworkOutcome{.Result = Core::NetworkResult::Cancelled}, notCounted);
+			return;
+		}
+
+		if (m_Git.HasWritesPending())
+		{
+			return;
+		}
+
+		m_Running->AwaitingWrites = false;
+		SubmitRunning();
 	}
 
 	void NetworkModel::RunAndDeliver(const Request& request, const std::atomic<bool>& cancelled, std::uint64_t folder)
@@ -419,11 +481,20 @@ namespace Graphite {
 			return answer;
 		}
 
+		const Core::Result<std::filesystem::path> workingDirectory = m_Port.GetWorkingDirectory();
+
+		if (!workingDirectory.HasValue())
+		{
+			answer.Outcome = FailedWith(workingDirectory.GetError().Message);
+			return answer;
+		}
+
 		answer.Names.Remote = RemoteOfRemoteBranch(upstream->FullName, remotes.GetValue());
 		answer.FastForward = PullTarget{.Branch = checkedOut->Name,
 										.BranchFullName = checkedOut->FullName,
 										.Upstream = upstream->Name,
-										.UpstreamFullName = upstream->FullName};
+										.UpstreamFullName = upstream->FullName,
+										.WorkingDirectory = workingDirectory.GetValue()};
 
 		// An upstream that is a local branch is up to date already, with nothing to fetch.
 		if (answer.Names.Remote.has_value())
@@ -465,17 +536,26 @@ namespace Graphite {
 
 		const std::vector<Core::Remote>& remotes = listedRemotes.GetValue();
 		const Core::Branch* upstream = UpstreamOf(*checkedOut, branches);
+		const bool upstreamIsLocal = upstream != nullptr && upstream->Kind == Core::RefKind::Local;
 		const std::optional<std::string> upstreamRemote =
 			upstream != nullptr ? RemoteOfRemoteBranch(upstream->FullName, remotes) : std::nullopt;
 		const std::optional<std::string> target = PushRemoteOf(remote, upstreamRemote, remotes);
 
 		if (!target.has_value())
 		{
-			answer.Outcome = FailedWith(remotes.empty() ? NoRemoteText() : NoUpstreamText(checkedOut->Name));
+			answer.Outcome = FailedWith(NoPushRemoteText(*checkedOut, upstreamIsLocal ? upstream : nullptr, remotes));
 			return answer;
 		}
 
 		answer.Names.Remote = target;
+
+		// WARNING: --set-upstream would replace the local branch the user made this one follow.
+		if (upstreamIsLocal)
+		{
+			answer.Outcome = m_Port.PushTo(cancelled, m_Progress, *target, checkedOut->Name);
+			return answer;
+		}
+
 		const bool toUpstream = upstreamRemote == target;
 
 		if (!toUpstream)
@@ -529,7 +609,9 @@ namespace Graphite {
 
 		m_Running->FastForwarding = answer.FastForward;
 		m_Percent.store(kNoPercent);
-		m_Git.RequestFastForward(answer.FastForward->BranchFullName, answer.FastForward->UpstreamFullName);
+		m_Git.RequestFastForward(FastForwardRequest{.Branch = answer.FastForward->BranchFullName,
+													.Upstream = answer.FastForward->UpstreamFullName,
+													.WorkingDirectory = answer.FastForward->WorkingDirectory});
 	}
 
 	void NetworkModel::LandFastForward(const FastForwardAnswer& answer)
@@ -540,6 +622,12 @@ namespace Graphite {
 		if (answer.Failure.has_value())
 		{
 			Finish(FailedWith(answer.Failure->Message), notCounted);
+			return;
+		}
+
+		if (answer.FolderChanged)
+		{
+			Finish(FailedWith(FolderChangedText(target.Upstream)), notCounted);
 			return;
 		}
 
@@ -563,7 +651,7 @@ namespace Graphite {
 
 	void NetworkModel::Finish(const Core::NetworkOutcome& outcome, std::optional<std::size_t> commits)
 	{
-		const NetworkOperation operation = m_Running->Operation;
+		const NetworkOperation operation = m_Running->Asked.Operation;
 		const NetworkNames names = m_Running->Names;
 
 		m_Running.reset();

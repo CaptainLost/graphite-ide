@@ -187,9 +187,9 @@ namespace Graphite {
 		case NetworkOperation::FullHistory:
 			return "Fetched";
 		case NetworkOperation::Pull:
-			return CountedText("Pulled", done.Commits);
+			return done.Commits == std::optional<std::size_t>{0} ? "Already up to date" : CountedText("Pulled", done.Commits);
 		case NetworkOperation::Push:
-			return CountedText("Pushed", done.Commits);
+			return done.Commits == std::optional<std::size_t>{0} ? "Nothing to push" : CountedText("Pushed", done.Commits);
 		}
 
 		return {};
@@ -212,9 +212,19 @@ namespace Graphite {
 		return branch + " is no longer checked out, so Pull did not merge " + upstream + ".";
 	}
 
+	std::string FolderChangedText(const std::string& upstream)
+	{
+		return "The folder changed while Pull ran, so it did not merge " + upstream + ".";
+	}
+
 	std::string NoUpstreamText(const std::string& branch)
 	{
 		return branch + " has no upstream branch.";
+	}
+
+	std::string LocalUpstreamText(const std::string& branch, const std::string& upstream)
+	{
+		return branch + "'s upstream is the local branch " + upstream + ", so Push needs a remote chosen.";
 	}
 
 	std::string NoRemoteText()

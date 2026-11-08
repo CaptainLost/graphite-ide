@@ -73,6 +73,14 @@ namespace Graphite {
 		std::optional<Core::Error> Failure;
 	};
 
+	// Pull's last step: Branch moved to Upstream, both full names, in the work tree Pull fetched for.
+	struct FastForwardRequest
+	{
+		std::string Branch;
+		std::string Upstream;
+		std::filesystem::path WorkingDirectory;
+	};
+
 	// Pull's last step as the write queue found it. The branches are read just before the merge, so a checkout or a commit
 	// made while Pull fetched is seen.
 	struct FastForwardAnswer
@@ -80,13 +88,17 @@ namespace Graphite {
 		// False when another branch, or none, is checked out by then; the merge never ran.
 		bool CheckedOut = false;
 
+		// True when the port opens another folder than the one Pull fetched for; the merge never ran.
+		bool FolderChanged = false;
+
 		// The branch's distance from the upstream fetched, known only while that is still its upstream. Behind is what a
 		// merge brings.
 		bool DistanceKnown = false;
 		std::size_t Ahead = 0;
 		std::size_t Behind = 0;
 
-		// Empty when the merge never ran: the branch is not checked out, has diverged, or could not be read.
+		// Empty when the merge never ran: the folder changed, the branch is not checked out, has diverged, or could not be
+		// read.
 		std::optional<Core::NetworkOutcome> Merge;
 
 		// The branches could not be read, or the write threw.
@@ -322,12 +334,15 @@ namespace Graphite {
 
 		std::vector<std::filesystem::path> TakeCheckedOut();
 
-		// Pull's last step: `branch` moved to `upstream`, both full names, by a fast-forward that nothing cancels, once it is
-		// still checked out and has not diverged. Its failure is not one of TakeWriteError's: the answer says what happened.
-		void RequestFastForward(std::string branch, std::string upstream);
+		// Pull's last step, by a fast-forward that nothing cancels, once the folder is the same, the branch is still checked
+		// out and has not diverged. Its failure is not one of TakeWriteError's: the answer says what happened.
+		void RequestFastForward(FastForwardRequest request);
 		std::optional<FastForwardAnswer> TakeFastForward();
 
 		bool IsWriteInFlight() const { return m_WriteInFlight; }
+
+		// A write runs or waits its turn. The status read after a write is not one.
+		bool HasWritesPending() const { return m_WriteInFlight || !m_WriteQueue.empty(); }
 
 		bool IsAwaitingStatusAfterInit() const
 		{
@@ -514,6 +529,7 @@ namespace Graphite {
 
 			std::optional<Core::CheckoutTarget> Target;
 			CheckoutRequest Checkout;
+			FastForwardRequest FastForward;
 
 			std::uint64_t Generation = 0;
 
@@ -540,7 +556,7 @@ namespace Graphite {
 		WriteOutcome RunCheckout(const CheckoutRequest& request);
 
 		// WARNING: Runs on a worker thread, as RunWrite.
-		FastForwardAnswer RunFastForward(const std::string& branch, const std::string& upstream);
+		FastForwardAnswer RunFastForward(const FastForwardRequest& request);
 
 		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
 
