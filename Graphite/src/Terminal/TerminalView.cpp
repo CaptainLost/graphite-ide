@@ -1,5 +1,7 @@
 #include "Terminal/TerminalView.h"
 
+#include "Terminal/ReadableColour.h"
+
 #include "Core/Base/Narrow.h"
 
 #include "UI/ClipboardCopy.h"
@@ -905,6 +907,13 @@ namespace Graphite {
 
 		foreground = Resolve(chosen, palette, ColourRole::Foreground);
 		background = Resolve(cell.Background, palette, ColourRole::Background);
+
+		// WARNING: A colour a program picked is xterm's, made for a dark background: on a light scheme its yellow and
+		// white could not be read, so it is moved toward the scheme's text until it reads. The scheme's own text is left.
+		if (chosen.Kind != Core::TerminalColorKind::Default)
+		{
+			foreground = ReadableOn(foreground, background, Core::WithOpaqueAlpha(palette.Text));
+		}
 
 		// WARNING: The steps run in this order on purpose: opaque, then inverse, then faint. Forcing
 		// opaque after the halving would render a faint character under the cursor at full strength.
