@@ -14,6 +14,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <utility>
 
 #include <windows.h>
 
@@ -25,47 +26,28 @@ inline std::filesystem::path WindowsPowerShell()
 	return systemRoot / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe";
 }
 
-// A process writes its id followed by a line end, so a file that ends in one holds the whole id; empty if no id came
-// before the deadline.
-inline std::optional<std::uint32_t> WaitForProcessId(const std::filesystem::path& file, std::chrono::seconds deadline)
-{
-	constexpr std::chrono::milliseconds kPollInterval{50};
-	const std::chrono::steady_clock::time_point giveUpAt = std::chrono::steady_clock::now() + deadline;
-
-	while (std::chrono::steady_clock::now() < giveUpAt)
-	{
-		std::ifstream stream{file, std::ios::binary};
-		const std::string text{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
-		const bool holdsWholeId = !text.empty() && text.back() == '\n';
-
-		std::uint32_t processId = 0;
-		const std::from_chars_result parsed = std::from_chars(text.data(), text.data() + text.size(), processId);
-
-		if (holdsWholeId && parsed.ec == std::errc{} && processId != 0)
-		{
-			return processId;
-		}
-
-		std::this_thread::sleep_for(kPollInterval);
-	}
-
-	return std::nullopt;
-}
-
-// A process a test leaves running on purpose, ended when the test ends however it ends, and waited for, so that the
-// directory it runs in can be removed after it.
+// A process a test leaves running on purpose. It writes its id, followed by a line end, to a file the test names.
+// This object is made before that process is started, so that its id can be checked against what the test started,
+// and it ends the process, waiting until it has ended, on every way out of the test, a failed REQUIRE included, so
+// that the folder the process runs in can be removed after it.
 class LeftBehindProcess
 {
 public:
-	explicit LeftBehindProcess(std::uint32_t processId)
-		: m_Process(::OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, processId))
+	LeftBehindProcess(std::filesystem::path idFile, std::filesystem::path program)
+		: m_IdFile(std::move(idFile)), m_Program(std::move(program)), m_CreatedNoEarlierThan(AMomentAgo())
 	{
 	}
 
 	~LeftBehindProcess()
 	{
+		constexpr std::chrono::seconds kLateIdDeadline{15};
 		constexpr UINT kEndedByTheTest = 0;
 		constexpr DWORD kTeardownWaitMilliseconds = 10000;
+
+		if (!m_Process)
+		{
+			WaitUntilFound(kLateIdDeadline);
+		}
 
 		if (m_Process)
 		{
@@ -76,6 +58,30 @@ public:
 
 	LeftBehindProcess(const LeftBehindProcess&) = delete;
 	LeftBehindProcess& operator=(const LeftBehindProcess&) = delete;
+
+	// True once the id has come and its process is shown to be the one the test started: it runs the program and was
+	// created after this object. An id that fails either check, as an id reused by an unrelated process would, opens
+	// nothing, so nothing unrelated is ever ended.
+	bool WaitUntilFound(std::chrono::seconds deadline)
+	{
+		constexpr std::chrono::milliseconds kPollInterval{50};
+		const std::chrono::steady_clock::time_point giveUpAt = std::chrono::steady_clock::now() + deadline;
+
+		while (!m_Process && std::chrono::steady_clock::now() < giveUpAt)
+		{
+			const std::optional<std::uint32_t> processId = WrittenId();
+
+			if (processId.has_value())
+			{
+				OpenIfTheTestStartedIt(*processId);
+				break;
+			}
+
+			std::this_thread::sleep_for(kPollInterval);
+		}
+
+		return static_cast<bool>(m_Process);
+	}
 
 	bool IsRunning() const
 	{
@@ -90,5 +96,76 @@ public:
 	}
 
 private:
+	// WARNING: The coarse clock this reads may stand a tick apart from the one that stamps a process's creation, so the
+	// mark is set a second early.
+	static FILETIME AMomentAgo()
+	{
+		constexpr ULONGLONG kOneSecondInFileTimeUnits = 10'000'000;
+
+		FILETIME now{};
+		::GetSystemTimeAsFileTime(&now);
+
+		ULARGE_INTEGER units{};
+		units.LowPart = now.dwLowDateTime;
+		units.HighPart = now.dwHighDateTime;
+		units.QuadPart -= kOneSecondInFileTimeUnits;
+
+		return FILETIME{.dwLowDateTime = units.LowPart, .dwHighDateTime = units.HighPart};
+	}
+
+	std::optional<std::uint32_t> WrittenId() const
+	{
+		std::ifstream stream{m_IdFile, std::ios::binary};
+		const std::string text{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+		const bool holdsWholeId = !text.empty() && text.back() == '\n';
+
+		std::uint32_t processId = 0;
+		const std::from_chars_result parsed = std::from_chars(text.data(), text.data() + text.size(), processId);
+
+		if (!holdsWholeId || parsed.ec != std::errc{} || processId == 0)
+		{
+			return std::nullopt;
+		}
+
+		return processId;
+	}
+
+	void OpenIfTheTestStartedIt(std::uint32_t processId)
+	{
+		constexpr BOOL kNotInherited = FALSE;
+		constexpr DWORD kNativePathFormat = 0;
+		constexpr BOOL kIgnoreCase = TRUE;
+
+		Core::UniqueHandle opened{::OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, kNotInherited, processId)};
+
+		if (!opened)
+		{
+			return;
+		}
+
+		FILETIME created{};
+		FILETIME exited{};
+		FILETIME kernelTime{};
+		FILETIME userTime{};
+		const bool createdAfterThis = ::GetProcessTimes(opened.Get(), &created, &exited, &kernelTime, &userTime) != FALSE &&
+									  ::CompareFileTime(&created, &m_CreatedNoEarlierThan) >= 0;
+
+		constexpr std::size_t kLongestImagePath = 32768;
+		std::wstring imagePath(kLongestImagePath, L'\0');
+		DWORD imagePathLength = static_cast<DWORD>(imagePath.size());
+		const bool imageRead = ::QueryFullProcessImageNameW(opened.Get(), kNativePathFormat, imagePath.data(), &imagePathLength) != FALSE;
+		const std::wstring expectedImage = m_Program.wstring();
+		const bool runsTheProgram = imageRead && ::CompareStringOrdinal(imagePath.data(), static_cast<int>(imagePathLength), expectedImage.c_str(),
+																		  static_cast<int>(expectedImage.size()), kIgnoreCase) == CSTR_EQUAL;
+
+		if (createdAfterThis && runsTheProgram)
+		{
+			m_Process = std::move(opened);
+		}
+	}
+
+	std::filesystem::path m_IdFile;
+	std::filesystem::path m_Program;
+	FILETIME m_CreatedNoEarlierThan{};
 	Core::UniqueHandle m_Process;
 };

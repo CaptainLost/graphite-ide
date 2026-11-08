@@ -4,6 +4,7 @@
 #include "Core/Platform/ChildProcess.h"
 
 #include "ProcessFixtures.h"
+#include "ScopedEnvironmentVariable.h"
 #include "TempDirectory.h"
 
 #include <array>
@@ -90,30 +91,6 @@ namespace {
 		return text;
 	}
 
-	// Clears the variable on every path out of a test, a failed REQUIRE included.
-	class ScopedProcessVariable
-	{
-	public:
-		ScopedProcessVariable(const wchar_t* name, const wchar_t* value) : m_Name(name)
-		{
-			m_Set = ::SetEnvironmentVariableW(m_Name, value) != FALSE;
-		}
-
-		~ScopedProcessVariable()
-		{
-			::SetEnvironmentVariableW(m_Name, nullptr);
-		}
-
-		ScopedProcessVariable(const ScopedProcessVariable&) = delete;
-		ScopedProcessVariable& operator=(const ScopedProcessVariable&) = delete;
-
-		bool WasSet() const { return m_Set; }
-
-	private:
-		const wchar_t* m_Name;
-		bool m_Set = false;
-	};
-
 	// The output pipe closes as the child is torn down, which can be a moment before its process
 	// object is signalled, so the exit gets a bounded time to become visible.
 	void WaitUntilNotRunning(const Core::ChildProcess& process)
@@ -123,6 +100,29 @@ namespace {
 			std::this_thread::sleep_for(kExitPollInterval);
 		}
 	}
+
+	// Ends the child's whole job on every way out of a test, a failed REQUIRE included, and waits until it is empty, so
+	// that the folder its processes run in can be removed after it. A child already destroyed is left alone.
+	class JobEndedOnExit
+	{
+	public:
+		explicit JobEndedOnExit(const Core::Scope<Core::ChildProcess>& child) : m_Child(child) {}
+
+		~JobEndedOnExit()
+		{
+			if (m_Child)
+			{
+				m_Child->Terminate();
+				WaitUntilNotRunning(*m_Child);
+			}
+		}
+
+		JobEndedOnExit(const JobEndedOnExit&) = delete;
+		JobEndedOnExit& operator=(const JobEndedOnExit&) = delete;
+
+	private:
+		const Core::Scope<Core::ChildProcess>& m_Child;
+	};
 }
 
 TEST_CASE("ChildProcess reads what the child writes to its output until Read returns zero as the child exits")
@@ -236,8 +236,8 @@ TEST_CASE("A variable given to a child reaches it")
 
 TEST_CASE("A child given variables still inherits the rest and a given variable wins over an inherited one")
 {
-	const ScopedProcessVariable inherited(L"CORE_TEST_INHERITED_VARIABLE", L"inherited");
-	const ScopedProcessVariable replaced(L"CORE_TEST_REPLACED_VARIABLE", L"parent");
+	const ScopedEnvironmentVariable inherited(L"CORE_TEST_INHERITED_VARIABLE", L"inherited");
+	const ScopedEnvironmentVariable replaced(L"CORE_TEST_REPLACED_VARIABLE", L"parent");
 	REQUIRE(inherited.WasSet());
 	REQUIRE(replaced.WasSet());
 
@@ -329,6 +329,7 @@ TEST_CASE("Waiting for a child that keeps running gives up once the wait runs ou
 	CHECK(waited >= wait);
 	CHECK(child.IsRunning());
 }
+
 TEST_CASE("Child process: stderr is read apart from stdout when piped")
 {
 	const std::array<Core::EnvironmentVariable, 0> noEnvironment{};
@@ -383,15 +384,15 @@ TEST_CASE("Child process: one started not to end its job on close leaves what it
 	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = kProcessIdFileVariable, .Value = Core::ToUtf8(grandchildIdFile)}}};
 	const Core::ChildProcessOptions leavingRunningOnClose{.EndJobOnClose = false};
 
+	LeftBehindProcess grandchild{grandchildIdFile, WindowsPowerShell()};
+
 	StartedChild started = Core::ChildProcess::Start(WindowsPowerShell(), PowerShellRunning(kStartGrandchildThenEnd),
 													 temporaryDirectory.GetPath(), environment, leavingRunningOnClose);
 	REQUIRE(started);
+	const JobEndedOnExit jobEnded{started.GetValue()};
+
 	REQUIRE(started.GetValue()->WaitForExit(kGrandchildDeadline));
-
-	const std::optional<std::uint32_t> grandchildId = WaitForProcessId(grandchildIdFile, kGrandchildDeadline);
-	REQUIRE(grandchildId.has_value());
-
-	const LeftBehindProcess grandchild{*grandchildId};
+	REQUIRE(grandchild.WaitUntilFound(kGrandchildDeadline));
 	REQUIRE(grandchild.IsRunning());
 
 	started.GetValue().reset();
@@ -406,15 +407,15 @@ TEST_CASE("Child process: terminating one started not to end its job on close st
 	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = kProcessIdFileVariable, .Value = Core::ToUtf8(grandchildIdFile)}}};
 	const Core::ChildProcessOptions leavingRunningOnClose{.EndJobOnClose = false};
 
+	LeftBehindProcess grandchild{grandchildIdFile, WindowsPowerShell()};
+
 	StartedChild started = Core::ChildProcess::Start(WindowsPowerShell(), PowerShellRunning(kStartGrandchildThenWait),
 													 temporaryDirectory.GetPath(), environment, leavingRunningOnClose);
 	REQUIRE(started);
+	const JobEndedOnExit jobEnded{started.GetValue()};
 	Core::ChildProcess& child = *started.GetValue();
 
-	const std::optional<std::uint32_t> grandchildId = WaitForProcessId(grandchildIdFile, kGrandchildDeadline);
-	REQUIRE(grandchildId.has_value());
-
-	const LeftBehindProcess grandchild{*grandchildId};
+	REQUIRE(grandchild.WaitUntilFound(kGrandchildDeadline));
 	REQUIRE(grandchild.IsRunning());
 	REQUIRE_FALSE(child.GetExitCode().has_value());
 

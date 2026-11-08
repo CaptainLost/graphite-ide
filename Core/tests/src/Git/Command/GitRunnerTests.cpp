@@ -235,6 +235,49 @@ namespace {
 		}
 	}
 
+	// Sets the flag once the deadline passes, unless this object is destroyed first, so that a run stalling on the
+	// test's own thread ends as Cancelled rather than hanging the suite.
+	class CancelAfter
+	{
+	public:
+		CancelAfter(std::atomic<bool>& cancelled, std::chrono::seconds deadline)
+			: m_Watchdog(&CancelAfter::Watch, this, std::ref(cancelled), deadline)
+		{
+		}
+
+		~CancelAfter()
+		{
+			{
+				const std::lock_guard<std::mutex> lock(m_Mutex);
+				m_Finished = true;
+			}
+
+			m_FinishedChanged.notify_all();
+			m_Watchdog.join();
+		}
+
+		CancelAfter(const CancelAfter&) = delete;
+		CancelAfter& operator=(const CancelAfter&) = delete;
+
+	private:
+		void Watch(std::atomic<bool>& cancelled, std::chrono::seconds deadline)
+		{
+			std::unique_lock<std::mutex> lock(m_Mutex);
+			const bool finishedInTime = m_FinishedChanged.wait_for(lock, deadline, [this] { return m_Finished; });
+
+			if (!finishedInTime)
+			{
+				cancelled.store(true);
+			}
+		}
+
+		// Declared before the thread, which reads them as soon as it starts.
+		std::mutex m_Mutex;
+		std::condition_variable m_FinishedChanged;
+		bool m_Finished = false;
+		std::thread m_Watchdog;
+	};
+
 	// Opens once git's trace says the git that waits on its input has started.
 	class WaitingGitSignal
 	{
@@ -473,6 +516,8 @@ TEST_CASE("Git: a run that succeeds leaves running what git started")
 								   .WorkingDirectory = workingDirectory,
 								   .Environment = environment};
 
+	LeftBehindProcess leftBehind{leftBehindIdFile, WindowsPowerShell()};
+
 	const std::chrono::steady_clock::time_point startedAt = std::chrono::steady_clock::now();
 	const RunResult ran = RunGitWithin(kRunDeadline, *git, leaveBehind, IgnoreLine);
 	const std::chrono::steady_clock::duration ranFor = std::chrono::steady_clock::now() - startedAt;
@@ -481,10 +526,7 @@ TEST_CASE("Git: a run that succeeds leaves running what git started")
 	CHECK(ran.GetValue().ExitCode == kExitedCleanly);
 	CHECK(ranFor < kWellShortOfTheLeftBehindLifetime);
 
-	const std::optional<std::uint32_t> leftBehindId = WaitForProcessId(leftBehindIdFile, kLeftBehindDeadline);
-	REQUIRE(leftBehindId.has_value());
-
-	const LeftBehindProcess leftBehind{*leftBehindId};
+	REQUIRE(leftBehind.WaitUntilFound(kLeftBehindDeadline));
 
 	CHECK(leftBehind.IsRunning());
 	CHECK_FALSE(leftBehind.EndsWithin(kLongerThanATermination));
@@ -513,9 +555,12 @@ TEST_CASE("Git: progress lines are handed over as they come")
 
 	HandedLines handed{std::this_thread::get_id()};
 	const LineHandler onProgressLine = [&handed](std::string_view line) { handed.OnLine(line); };
-	const std::atomic<bool> notCancelled{false};
 
-	const RunResult cloned = Core::RunGit(*git, clone, notCancelled, onProgressLine);
+	// RunGit stays on this thread, which the thread check needs, so the deadline comes from a watchdog.
+	std::atomic<bool> cancelledOnDeadline{false};
+	const CancelAfter watchdog{cancelledOnDeadline, kRunDeadline};
+
+	const RunResult cloned = Core::RunGit(*git, clone, cancelledOnDeadline, onProgressLine);
 
 	REQUIRE(cloned);
 	CHECK(cloned.GetValue().ExitCode == kExitedCleanly);
