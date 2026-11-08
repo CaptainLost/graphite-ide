@@ -89,6 +89,8 @@ Avoids linking a git library at all. Rejected because it makes another
 program's text output a parsing contract, and adds a hard runtime dependency
 on `git` being present in `PATH` — a strictly worse position than the one
 already held, where libgit2 is vendored and linked in.
+[0678](0678-run-git-itself-for-fetch-pull-and-push.md) narrows this rejection for fetch,
+pull and push, which run git itself; every read and every other write stays on libgit2.
 
 ## Related
 

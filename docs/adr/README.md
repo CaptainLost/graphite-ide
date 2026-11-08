@@ -707,4 +707,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0675](0675-count-a-line-s-own-work-committed-by-someone-else-toward-a-base-and-ask-merged-lines-for-two-people-or-a-week.md) | Count a line's own work committed by someone else toward a base, and ask merged lines for two people or a week | proposed | 2026-11-06 |
 | [0676](0676-find-branches-merged-by-content-in-the-background-and-keep-the-verdicts-per-repository.md) | Find branches merged by content in the background and keep the verdicts per repository | proposed | 2026-11-06 |
 | [0677](0677-read-tags-as-named-commits-that-feed-the-line-graph-but-never-the-lines.md) | Read tags as named commits that feed the line graph but never the lines | proposed | 2026-11-08 |
+| [0678](0678-run-git-itself-for-fetch-pull-and-push.md) | Run git itself for fetch, pull and push | proposed | 2026-11-08 |
 <!-- /adr-index -->
