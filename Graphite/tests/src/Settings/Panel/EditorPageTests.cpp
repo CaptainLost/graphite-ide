@@ -20,7 +20,7 @@ namespace {
 
 	constexpr float kWideWindowWidth = 900.0f;
 	constexpr float kNarrowWindowWidth = 320.0f;
-	constexpr std::size_t kRowCount = 12;
+	constexpr std::size_t kRowCount = 13;
 
 	struct EditorScreen
 	{
@@ -40,7 +40,7 @@ TEST_CASE("The editor page lists its settings under Text, Indentation, Hover and
 	EditorScreen screen;
 
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Text", "Indentation", "Hover", "Git changes"});
-	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Highlight occurrences", "Indent with", "Tab width", "Symbol information",
+	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Save when Graphite loses focus", "Highlight occurrences", "Indent with", "Tab width", "Symbol information",
 																"Definition preview", "Hover delay", "Markers in the gutter",
 																"Markers on the scrollbar", "Line author", "Line author delay"});
 }

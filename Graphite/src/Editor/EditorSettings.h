@@ -78,6 +78,9 @@ namespace Graphite {
 
 		bool IsWordWrap() const { return m_WordWrap; }
 
+		// Every modified file is saved when Graphite goes to the background.
+		bool SavesOnFocusLoss() const { return m_SaveOnFocusLoss; }
+
 		bool IsDiffWordWrap() const { return m_DiffView.WordWrap; }
 		void SetDiffWordWrap(bool wrap);
 
@@ -134,6 +137,7 @@ namespace Graphite {
 		std::size_t m_IndentWidth = kDefaultIndentWidth;
 
 		bool m_WordWrap = false;
+		bool m_SaveOnFocusLoss = false;
 		DiffViewOptions m_DiffView;
 		PictureBackground m_ImageBackground = PictureBackground::Checkerboard;
 		bool m_ImagePixelGrid = true;

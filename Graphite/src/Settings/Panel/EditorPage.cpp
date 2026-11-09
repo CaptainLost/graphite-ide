@@ -87,6 +87,11 @@ namespace Graphite {
 										.Description = "Long lines continue on the next line instead of running off to the side.",
 										.ControlWidth = SettingsLayout::ToggleWidth(),
 										.DrawControl = [this] { DrawWordWrap(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Save when Graphite loses focus",
+										.Description = "Every modified file is saved as you switch to another application.",
+										.Keywords = {"auto save", "autosave", "focus"},
+										.ControlWidth = SettingsLayout::ToggleWidth(),
+										.DrawControl = [this] { DrawCommandToggle(m_Commands, "editor.toggleSaveOnFocusLoss"); }});
 		card.Rows.push_back(SettingsRow{.Title = "Highlight occurrences",
 										.Description = "Selecting a whole word marks everywhere else it appears in the file, in the text and beside the scrollbar.",
 										.Keywords = {"selection", "word", "matches"},

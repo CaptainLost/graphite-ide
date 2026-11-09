@@ -149,6 +149,7 @@ namespace Graphite {
 		}
 
 		m_WordWrap = m_Store.IsWordWrapEnabled();
+		m_SaveOnFocusLoss = m_Store.IsSaveOnFocusLossEnabled();
 		m_DiffView = DiffViewOptions{.Mode = DiffLayoutFrom(m_Store.GetDiffLayout()),
 									 .Scope = DiffScopeFrom(m_Store.GetDiffScope()),
 									 .ColourSyntax = m_Store.IsDiffSyntaxColoured(),
@@ -327,6 +328,14 @@ namespace Graphite {
 					  .Label = "Word Wrap",
 					  .Run = [this] { SetWordWrap(!m_WordWrap); },
 					  .Checked = [this] { return m_WordWrap; }});
+
+		commands.Add({.Id = "editor.toggleSaveOnFocusLoss",
+					  .Label = "Save When Graphite Loses Focus",
+					  .Run = [this] {
+						  m_SaveOnFocusLoss = !m_SaveOnFocusLoss;
+						  m_Store.SetSaveOnFocusLoss(m_SaveOnFocusLoss);
+					  },
+					  .Checked = [this] { return m_SaveOnFocusLoss; }});
 
 		SetDefaultZoomBindings(keys);
 	}

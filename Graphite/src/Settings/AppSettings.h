@@ -73,6 +73,9 @@ namespace Graphite {
 		bool IsWordWrapEnabled() const;
 		void SetWordWrap(bool wrap);
 
+		bool IsSaveOnFocusLossEnabled() const;
+		void SetSaveOnFocusLoss(bool save);
+
 		bool IsDiffWordWrapEnabled() const;
 		void SetDiffWordWrap(bool wrap);
 

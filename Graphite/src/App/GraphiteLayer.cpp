@@ -677,6 +677,12 @@ namespace Graphite {
 		// WARNING: Tests the process, not the main window: a panel dragged out into its own viewport is a separate OS window, and working in one is not having left the application.
 		if (!Core::IsProcessInForeground())
 		{
+			// The moment the reader turns to another application, not every frame after it.
+			if (m_AppForeground && m_EditorSettings.SavesOnFocusLoss())
+			{
+				static_cast<void>(m_DocumentWindows.SaveAllModified()); // reports its own failures
+			}
+
 			m_SecondsInBackground += timestep.GetSeconds();
 			m_AppForeground = false;
 			return;
