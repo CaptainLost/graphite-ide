@@ -722,4 +722,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0690](0690-write-into-another-worktree-only-when-it-is-as-the-user-saw-it.md) | Write into another worktree only when it is as the user saw it | proposed | 2026-11-09 |
 | [0691](0691-attribute-a-file-to-the-deepest-worktree-that-holds-it.md) | Attribute a file to the deepest worktree that holds it | proposed | 2026-11-09 |
 | [0692](0692-give-each-repositorygitport-its-own-per-thread-repository-handles.md) | Give each RepositoryGitPort its own per-thread repository handles | proposed | 2026-11-09 |
+| [0693](0693-cross-compile-the-linux-parts-with-a-pinned-zig-fetched-by-a-script.md) | Cross-compile the Linux parts with a pinned zig fetched by a script | proposed | 2026-11-09 |
 <!-- /adr-index -->

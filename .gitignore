@@ -2,6 +2,11 @@
 bin/
 bin-int/
 
+# zig, fetched by scripts/Get-Zig.ps1, and the caches its builds leave
+vendor/bin/zig/
+.zig-cache/
+zig-out/
+
 # Generated project files
 *.sln
 *.slnx
