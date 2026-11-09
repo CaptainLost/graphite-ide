@@ -234,11 +234,12 @@ namespace {
 		Fixtures::FakeWorktreePort Port;
 		DeferredJobs Jobs;
 		WorktreesModel Model{Port, Jobs.Submitter(), [] { return std::int64_t{0}; }};
+		std::uint64_t Listings = 0; // the branch listings that landed
 
 		void List(std::vector<Core::WorktreeEntry> entries)
 		{
 			Port.Entries = std::move(entries);
-			Model.Follow(Core::CreateRef<const std::vector<Core::Branch>>(), kOpenFolder);
+			Model.Follow(Core::CreateRef<const std::vector<Core::Branch>>(), ++Listings, kOpenFolder);
 			Jobs.RunAll();
 			Model.OnUpdate(Core::Timestep{0.0f});
 		}

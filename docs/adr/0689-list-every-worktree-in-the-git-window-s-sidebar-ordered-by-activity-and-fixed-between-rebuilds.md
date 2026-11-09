@@ -32,6 +32,11 @@ changed files needs one.
   worktree's `logs/HEAD` in the same second without adding an entry, which made all of them look active at once.
   Worktrees idle for 7 days with no known changes fold into one closing row `N more · no changes for 7+ days`; a folded
   worktree found with changes is said in place (`N more · 1 with changes`) and leaves the fold at the next build.
+- **The list follows the repository.** The worktrees are listed again, on the job queue, with every branch listing of
+  the open folder that lands, the same branches listed again too: a worktree added detached, removed, moved or pruned
+  moves no ref, so a new branch snapshot alone would never say so. A count, an activity read or the looked-at
+  worktree's HEAD read that finds no repository at a listed worktree asks the list again as well. A list equal to the
+  one held keeps it, so nothing built from it is built again.
 - **Fixed between rebuilds.** The order is built at an opening of the window, a change of the search, the section
   opened or closed, a worktree added or removed, and once when the first count settles. Between those moments counts,
   times and the live marker change in place and no row moves.
@@ -40,6 +45,8 @@ changed files needs one.
   between Yours and Bases after they were drawn and pushes them down. The first build then shows one row `Reading N worktrees…`
   while every worktree is counted once, in parallel on the job queue and without walking into submodules, for at most
   3 s on screen; a worktree not counted by then is placed by its cheap activity and shows "…" until its count lands.
+  The cheap activity is a read of its own, asked ahead of every count and landing alone, so a count held past the cap
+  does not hold the activity with it.
   Once settled, the folder stays settled: a worktree added later, or a list read again, does not bring the waiting
   row back.
 - **Counting.** Rows in view keep ADR 0674's poll (3 s, doubling to 48 s while unchanged). Every other worktree, scrolled
@@ -49,10 +56,11 @@ changed files needs one.
   shows that worktree's history: a branch's as for any branch, a detached HEAD's from its commit titled
   `HEAD in <folder>`. Its first row is `Changes in <folder>` with `n staged · m not staged` or `no changes`. That one
   worktree is watched (the review tab's `WorktreeWatch`, plus its linked git directory, where another process's stage
-  or commit lands) while the window is on screen; it is neither polled nor swept, and each watch firing counts it again
-  so its row keeps its count, activity and live marker. A HEAD that watch reads which the list does not hold (detached,
-  on another branch, or a detached HEAD at another commit) asks the worktree list again, since no ref of the open
-  folder moves for it; a branch opened from a worktree's row then follows that worktree to its new HEAD, while one
+  or commit lands) while the window is on screen; it is neither polled nor swept, and a watch firing counts it again so
+  its row keeps its count, activity and live marker: at once when it was not recounted for 3 s, else once 3 s after
+  the last recount, so a watch firing every second through an agent's build costs one count per 3 s and the last
+  change is still counted. A HEAD that watch reads which the list does not hold (detached, on another branch, or a
+  detached HEAD at another commit) asks the worktree list again, since no ref of the open folder moves for it; a branch opened from a worktree's row then follows that worktree to its new HEAD, while one
   opened from Yours stays on the branch. Off screen the window keeps following it but stops watching and
   reading, so coming back shows the last state at once instead of "…".
 - **The live marker** is a static green dot in place of the folder icon while the last activity is within 60 s. It
@@ -82,6 +90,8 @@ user is actually looking at is kept fresh by a watch instead of a faster poll. A
 ### Negative
 
 - A worktree out of view can be up to (number of worktrees × 10 s) out of date; with 37 that is about six minutes.
+- Every branch listing of the open folder lists the worktrees again on a worker, opening each to read its HEAD, even
+  when nothing about them changed.
 - The sidebar's sections wait for the worktree list on the first opening of a folder, even when the repository has no
   linked worktree.
 - A static dot does not say "changing right now" as a pulse would; it says "changed within the last minute".

@@ -35,7 +35,7 @@ namespace Graphite {
 
 		m_Lines.Follow(m_Git.GetBranches(), m_Git.GetBranchListingGeneration(), m_Git.GetTags());
 		m_Lines.OnUpdate(timestep);
-		m_Worktrees.Follow(m_Git.GetBranches(), m_Git.GetWorkingDirectory());
+		m_Worktrees.Follow(m_Git.GetBranches(), m_Git.GetBranchListingGeneration(), m_Git.GetWorkingDirectory());
 		m_Worktrees.OnUpdate(timestep);
 
 		const Core::Ref<const LineRead> read = m_Lines.GetRead();

@@ -42,6 +42,23 @@ namespace Graphite {
 		m_Changes.OnUpdate(timestep);
 		m_Counts.SetLookedAt(m_Changes.LookedAt());
 		ListAgainWhenHeadMoved();
+		ListAgainWhenGone();
+	}
+
+	void LookedAtWorktree::ListAgainWhenGone()
+	{
+		const std::optional<Core::Error>& error = m_Changes.Model().GetHeadError();
+		const std::optional<std::filesystem::path>& followed = m_Changes.Worktree();
+		const bool gone = error.has_value() && error->Code == Core::ErrorCode::NotFound && followed.has_value() &&
+						  m_Counts.IndexOf(*followed).has_value();
+
+		// Once as it goes: a list that still holds it is not asked again for every read that fails the same way.
+		if (gone && !m_HeadGone)
+		{
+			m_Counts.ListAgain();
+		}
+
+		m_HeadGone = gone;
 	}
 
 	void LookedAtWorktree::ListAgainWhenHeadMoved()
@@ -64,7 +81,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<std::size_t> index = IndexOfWorktree(*entries, *watched);
+		const std::optional<std::size_t> index = m_Counts.IndexOf(*watched);
 
 		if (!index.has_value() || (*entries)[*index].FolderMissing)
 		{

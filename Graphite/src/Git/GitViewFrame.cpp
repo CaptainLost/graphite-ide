@@ -679,7 +679,7 @@ namespace Graphite {
 
 			if (entries != nullptr && worktree.has_value())
 			{
-				selection.Worktree = IndexOfWorktree(*entries, *worktree);
+				selection.Worktree = m_Worktrees.IndexOf(*worktree);
 			}
 
 			// A branch whose worktree has gone keeps its own row selected.
@@ -790,7 +790,7 @@ namespace Graphite {
 	void GitView::SelectWorktree(const std::filesystem::path& worktree)
 	{
 		const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
-		const std::optional<std::size_t> index = entries != nullptr ? IndexOfWorktree(*entries, worktree) : std::nullopt;
+		const std::optional<std::size_t> index = m_Worktrees.IndexOf(worktree);
 		const Core::WorktreeEntry* const entry = index.has_value() ? &(*entries)[*index] : nullptr;
 
 		// The open folder's own row is its HEAD's history, as is a worktree no longer listed.
@@ -863,6 +863,14 @@ namespace Graphite {
 
 	void GitView::FollowWorktreeOfOpenedRow()
 	{
+		// Only another list can move the worktree off its branch: a row clicked meanwhile opened the branch the list held.
+		if (m_OpenedRowFollowedList == m_Worktrees.EntriesGeneration())
+		{
+			return;
+		}
+
+		m_OpenedRowFollowedList = m_Worktrees.EntriesGeneration();
+
 		const bool branchFromRow = m_SelectedRef.has_value() && m_SelectedRef == m_RefOpenedFromWorktreeRow;
 		const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
 
@@ -871,7 +879,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<std::size_t> index = IndexOfWorktree(*entries, *m_WorktreeOfOpenedRow);
+		const std::optional<std::size_t> index = m_Worktrees.IndexOf(*m_WorktreeOfOpenedRow);
 
 		// A worktree that left the list, or whose folder is gone, leaves its branch's history as it is.
 		if (!index.has_value() || (*entries)[*index].FolderMissing)

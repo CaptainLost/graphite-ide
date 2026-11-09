@@ -66,7 +66,7 @@ namespace {
 		void Settle(const std::filesystem::path& openFolder = kOpen)
 		{
 			Model.SetOnScreen(true);
-			Model.Follow(NewSnapshot(), openFolder);
+			Model.Follow(NewSnapshot(), ++Listings, openFolder);
 			Jobs.RunAll();
 			Model.OnUpdate(Core::Timestep{0.0f});
 			Jobs.RunAll();
@@ -89,7 +89,7 @@ namespace {
 
 		void ListAgain()
 		{
-			Model.Follow(NewSnapshot(), kOpen);
+			Model.Follow(NewSnapshot(), ++Listings, kOpen);
 			Jobs.RunAll();
 			Model.OnUpdate(Core::Timestep{0.0f});
 			Jobs.RunAll();
@@ -125,6 +125,7 @@ namespace {
 		DeferredJobs Jobs;
 		WorktreesModel Model{Port, Jobs.Submitter(), [] { return kNow; }};
 		WorktreeOrder Order;
+		std::uint64_t Listings = 0; // the branch listings that landed
 	};
 
 	using Names = std::vector<std::string>;
@@ -304,7 +305,7 @@ TEST_CASE("Worktrees section: the listing waits for the first count, then is bui
 	CHECK_FALSE(repository.Order.Listing().Waiting);
 	CHECK(repository.Order.Listing().Shown.empty());
 
-	repository.Model.Follow(NewSnapshot(), kOpen);
+	repository.Model.Follow(NewSnapshot(), ++repository.Listings, kOpen);
 	repository.Jobs.RunAll();
 	repository.Model.OnUpdate(Core::Timestep{0.0f});
 	repository.Order.Follow(WorktreeOrderMoment::None, repository.Model, kOpen);
@@ -320,32 +321,40 @@ TEST_CASE("Worktrees section: the listing waits for the first count, then is bui
 	CHECK(repository.Shown(repository.Order.Listing()) == Names{"repo*", "first", "second"});
 }
 
-TEST_CASE("Worktrees section: a worktree whose count has not landed by the cap is placed after those whose activity is known")
+TEST_CASE("Worktrees section: a worktree whose count has not landed by the cap is placed by its activity alone, and one with no activity read after every known one")
 {
 	Repository repository;
 	repository.AddWorktree("known", 100);
 	repository.AddWorktree("late", 50);
+	repository.AddWorktree("unread", 10);
 
 	std::vector<std::function<void()>> waiting;
 	WorktreesModel model(repository.Port, [&waiting](std::function<void()> job) { waiting.push_back(std::move(job)); },
 						 [] { return kNow; });
 	model.SetOnScreen(true);
-	model.Follow(NewSnapshot(), kOpen);
+	model.Follow(NewSnapshot(), 1, kOpen);
 	waiting.back()();
 	waiting.clear();
 	model.OnUpdate(Core::Timestep{0.0f});
-	REQUIRE(waiting.size() == 2);
 
+	// The three activity reads, then the three counts.
+	REQUIRE(waiting.size() == 6);
+
+	// known is read whole; late's count is held past the cap, its activity not; unread is held whole.
 	waiting[0]();
+	waiting[1]();
+	waiting[3]();
 	model.OnUpdate(Core::Timestep{WorktreesModel::kFirstCountCapSeconds});
 	REQUIRE(model.IsFirstCountSettled());
+	REQUIRE_FALSE(model.CountOf(Folder("late")).has_value());
 
 	WorktreeOrder order;
 	order.Follow(WorktreeOrderMoment::Opening, model, kOpen);
 
-	REQUIRE(order.Listing().Shown.size() == 3);
-	CHECK(model.Entries()->at(order.Listing().Shown[1].Entry).Path == Folder("known"));
-	CHECK(model.Entries()->at(order.Listing().Shown[2].Entry).Path == Folder("late"));
+	REQUIRE(order.Listing().Shown.size() == 4);
+	CHECK(model.Entries()->at(order.Listing().Shown[1].Entry).Path == Folder("late"));
+	CHECK(model.Entries()->at(order.Listing().Shown[2].Entry).Path == Folder("known"));
+	CHECK(model.Entries()->at(order.Listing().Shown[3].Entry).Path == Folder("unread"));
 }
 
 TEST_CASE("Worktrees section: the section's moments are an opening, a search and the section opened or closed")

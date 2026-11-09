@@ -37,12 +37,23 @@ namespace Graphite::Fixtures {
 		Core::Result<WorktreeActivity> QueryActivity(const std::filesystem::path& worktree) override
 		{
 			ActivityQueried.push_back(worktree);
+
+			if (ActivityFailure.has_value())
+			{
+				return *ActivityFailure;
+			}
+
 			return Activity[worktree.generic_string()];
 		}
 
 		Core::Result<WorktreeCount> CountUncommitted(const std::filesystem::path& worktree) override
 		{
 			Counted.push_back(worktree);
+
+			if (CountFailure.has_value())
+			{
+				return *CountFailure;
+			}
 
 			if (FailCounts)
 			{
@@ -61,6 +72,8 @@ namespace Graphite::Fixtures {
 		std::map<std::string, std::optional<std::chrono::sys_seconds>> Newest;
 		std::vector<std::filesystem::path> ActivityQueried;
 		bool FailCounts = false;
+		std::optional<Core::Error> CountFailure;    // set, every count answers it
+		std::optional<Core::Error> ActivityFailure; // set, every activity read answers it
 		int Listed = 0;
 		std::vector<std::filesystem::path> Counted;
 	};

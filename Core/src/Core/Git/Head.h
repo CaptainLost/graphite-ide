@@ -40,5 +40,7 @@ namespace Core {
 		std::optional<Oid> Commit;
 
 		RepositoryOperation Operation = RepositoryOperation::None;
+
+		friend bool operator==(const HeadState&, const HeadState&) = default;
 	};
 }

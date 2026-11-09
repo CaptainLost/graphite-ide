@@ -273,6 +273,11 @@ namespace {
 			return head;
 		}
 
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override { return Root; }
+
+		// Where the window pointed the port.
+		std::filesystem::path Root;
+
 		// What another process may change under the window.
 		std::string Branch = "feature";
 		Core::RepositoryOperation Operation = Core::RepositoryOperation::None;
@@ -759,8 +764,10 @@ namespace {
 		Graphite::ChangesView Changes{Model, Modals, Buffers, Scheme, Events, Shared, "window"};
 
 		WorktreeStatusPort WorktreeGitPort;
-		Graphite::WorktreeChanges WorktreeChanges{WorktreeGitPort, [](const std::filesystem::path&) {}, RunJobsInline(),
-												  RunJobsInline(), [](const std::filesystem::path&) -> Core::Scope<Graphite::WorktreeWatch> {
+		Graphite::WorktreeChanges WorktreeChanges{WorktreeGitPort,
+												  [this](const std::filesystem::path& root) { WorktreeGitPort.Root = root; },
+												  RunJobsInline(), RunJobsInline(),
+												  [](const std::filesystem::path&) -> Core::Scope<Graphite::WorktreeWatch> {
 													  return Core::CreateScope<QuietWatch>();
 												  }};
 		Graphite::ChangesView WorktreeView{WorktreeChanges.Model(), Modals, Buffers, Scheme, Events, WorktreeChanges.Draft(),
@@ -1609,14 +1616,16 @@ namespace {
 		CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(place), Graphite::SidebarTwoLineRowHeight()));
 	}
 
-	// The worktrees are read again, as for a new branch snapshot: a worktree removed or moved leaves the branches as they
-	// were.
+	// The repository is read again as after a change on disk: the branches are listed as they were, since a worktree
+	// removed, moved or detached moves no ref, and the worktrees are read again with them.
 	void ListWorktreesAgain(GitWindow& window)
 	{
-		REQUIRE(window.Model.GetBranches() != nullptr);
-		window.Worktrees.Follow(Core::CreateRef<const std::vector<Core::Branch>>(*window.Model.GetBranches()),
-								window.Model.GetWorkingDirectory());
-		window.Settle();
+		const Core::Ref<const std::vector<Core::Branch>> before = window.Model.GetBranches();
+		REQUIRE(before != nullptr);
+
+		window.ListAgain();
+
+		REQUIRE(window.Model.GetBranches() == before);
 	}
 }
 
@@ -1756,7 +1765,7 @@ TEST_CASE("Git window: a branch opened from Yours stays on the branch when its w
 	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
 }
 
-TEST_CASE("Git window: a selected worktree that leaves the list, or whose folder goes missing, falls back to the open folder's HEAD")
+TEST_CASE("Git window: a selected worktree that leaves the list, or whose folder goes missing, falls back to the open folder's HEAD once the repository is read again, though no ref moved")
 {
 	for (const bool folderMissing : {false, true})
 	{
@@ -2109,7 +2118,10 @@ TEST_CASE("Git window: a selected detached worktree whose HEAD moved keeps its r
 	const Core::Oid newHead = OidWithFirstByte(0x78);
 	window.WorktreePort.Listed.back().Head.Commit = newHead;
 	window.HoldsModelReads = true;
-	ListWorktreesAgain(window);
+
+	// The model's reads are held, branches too, so the list is asked again as the worktree's watch asks it.
+	window.Worktrees.ListAgain();
+	window.Settle();
 
 	REQUIRE(window.Model.GetAskedLogRequest().has_value());
 	REQUIRE(window.Model.GetAskedLogRequest()->From == newHead);

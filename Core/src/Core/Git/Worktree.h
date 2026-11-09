@@ -24,5 +24,7 @@ namespace Core {
 
 		// The folder is gone or no longer opens as that worktree.
 		bool FolderMissing = false;
+
+		friend bool operator==(const WorktreeEntry&, const WorktreeEntry&) = default;
 	};
 }

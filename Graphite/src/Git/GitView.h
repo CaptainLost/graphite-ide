@@ -650,6 +650,9 @@ namespace Graphite {
 		// follows it rather than stay on a branch it no longer holds.
 		std::optional<std::filesystem::path> m_WorktreeOfOpenedRow;
 
+		// The worktree list (WorktreesModel::EntriesGeneration) m_WorktreeOfOpenedRow was last held against.
+		std::optional<std::uint64_t> m_OpenedRowFollowedList;
+
 		Core::Ref<const std::vector<Core::Branch>> m_LastSeenBranches;
 		Core::Ref<const std::vector<Core::Tag>> m_LastSeenTags;
 		std::optional<BranchRenameSent> m_PendingRename;

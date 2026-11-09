@@ -149,7 +149,7 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const std::optional<std::size_t> index = IndexOfWorktree(*entries, *m_Input.SelectedWorktree);
+		const std::optional<std::size_t> index = m_Input.Worktrees->IndexOf(*m_Input.SelectedWorktree);
 
 		if (!index.has_value())
 		{

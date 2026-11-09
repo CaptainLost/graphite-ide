@@ -28,7 +28,7 @@
 
 namespace Graphite {
 
-	// The worktrees of the open folder's repository, read again for each branch snapshot, and which of them have
+	// The worktrees of the open folder's repository, read again with every branch listing, and which of them have
 	// uncommitted changes, counted while the Git window is on screen. UI thread only, but for the jobs it submits.
 	// WARNING: Every job captures `this`; the owner declares this before the queue behind the submitter.
 	class WorktreesModel : Core::NonCopyable
@@ -38,11 +38,14 @@ namespace Graphite {
 
 		void OnUpdate(Core::Timestep timestep); // drains landed results and asks the counts that are due
 
-		// Asks a read when the snapshot differs from the last asked. The open folder's own worktree is never counted.
-		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, const std::filesystem::path& openFolder);
+		// Asks the list again for every branch listing that lands (GitModel::GetBranchListingGeneration), the same
+		// branches listed again too: a worktree added detached, removed, moved or pruned moves no ref. Nothing is asked
+		// while the branches are unread. The open folder's own worktree is never counted.
+		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t branchListing,
+					const std::filesystem::path& openFolder);
 
-		// Asks the list again although no branch moved: a worktree's HEAD detached or switched branch, which changes no
-		// ref of the open folder's snapshot. Nothing is asked before the folder's first list.
+		// Asks the list again although no branch was listed: a worktree's HEAD detached or switched branch, or a read of a
+		// listed worktree found no repository there. Nothing is asked before the folder's first list.
 		void ListAgain();
 
 		void SetOnScreen(bool onScreen);
@@ -54,8 +57,15 @@ namespace Graphite {
 		// Every worktree of the repository, detached and folder-missing ones included; null while unread.
 		const std::vector<Core::WorktreeEntry>* Entries() const;
 
-		// Changes whenever Entries() answers with another list, or with a failure.
-		std::uint64_t EntriesGeneration() const { return m_Entries.GetApplied(); }
+		// Where the worktree at that folder stands in Entries(); empty when it is not listed.
+		std::optional<std::size_t> IndexOf(const std::filesystem::path& worktree) const;
+
+		// Core::PathKey of each of Entries()' paths, in the same order; made once per list, so that nothing asked every
+		// frame keys every worktree again.
+		const std::vector<Core::PathKeyText>& EntryKeys() const { return m_EntryKeys; }
+
+		// Changes whenever Entries() answers with another list, or with a failure; the same list read again keeps it.
+		std::uint64_t EntriesGeneration() const { return m_EntriesGeneration; }
 
 		// Why the last read of the list failed; empty when it did not. A failed first read leaves Entries() null.
 		const std::optional<Core::Error>& ListError() const { return m_Entries.GetError(); }
@@ -66,7 +76,12 @@ namespace Graphite {
 		// The number of files with changes; empty while unknown, after a failed count, and for the open folder's own worktree.
 		std::optional<std::size_t> CountOf(const std::filesystem::path& worktree) const;
 
-		// The newest of the worktree's reflog, index and HEAD commit times and of its newest changed file; empty while unknown.
+		// The same, for the worktree of one of EntryKeys().
+		std::optional<std::size_t> CountOfKey(const Core::PathKeyText& worktree) const;
+
+		// The newest of the worktree's reflog, index and HEAD commit times and of its newest changed file; empty while
+		// unknown. The first three are read ahead of the count and land on their own, so a count still on its way leaves
+		// them known.
 		std::optional<std::chrono::sys_seconds> LastActivity(const std::filesystem::path& worktree) const;
 
 		// Whether the last activity is no older than kLiveSeconds.
@@ -82,8 +97,11 @@ namespace Graphite {
 		// The worktree the user is looking at: never polled nor swept, since its watcher keeps it fresh.
 		void SetLookedAt(std::optional<std::filesystem::path> worktree);
 
-		// Counts the worktree and reads its activity once, outside the polling, as its watch says it changed. Nothing is
-		// asked while a count of it is on its way, nor for the open folder, a missing folder or a worktree not listed.
+		// Counts the worktree and reads its activity once, outside the polling, as its watch says it changed: at once when
+		// it was not recounted for kPollSeconds, else once that long after the last recount, so a watch firing every
+		// second during an agent's build costs one count per period and the last change is still counted. A recount due
+		// while a count of the worktree is on its way waits for it. Nothing is asked for the open folder, a missing folder
+		// or a worktree not listed.
 		void RecountNow(const std::filesystem::path& worktree);
 
 		// The folder of the worktree that has that local branch checked out; empty for none, and for a worktree whose folder is missing.
@@ -137,9 +155,23 @@ namespace Graphite {
 
 		void AskCounts(const std::set<Core::PathKeyText>& inView);
 		void AskSweep(const std::set<Core::PathKeyText>& inView);
+		void AskRecountsDue();
+
+		// The activity read and the count of one worktree, the activity first.
+		void AskReads(const Core::PathKeyText& key, const std::filesystem::path& path);
+		void AskActivity(const Core::PathKeyText& key, const std::filesystem::path& path);
 		void AskCount(const Core::PathKeyText& key, const std::filesystem::path& path);
-		void LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeActivity>& activity, const Core::Result<WorktreeCount>& count);
-		bool IsCountable(const Core::WorktreeEntry& entry) const;
+		void LandActivity(const Core::PathKeyText& key, const Core::Result<WorktreeActivity>& activity);
+		void LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeCount>& count);
+
+		// A read that finds no repository at a listed worktree: git pruned it, or its folder or `.git` file went, and no
+		// ref moved to say so.
+		void ListAgainWhenGone(const Core::Error& error);
+
+		// By index into Entries() and EntryKeys().
+		bool IsCountable(std::size_t entry) const;
+		std::optional<std::size_t> IndexOfKey(const Core::PathKeyText& key) const;
+
 		void SettleFirstCountWhenDone();
 		bool IsOpenFolder(const std::filesystem::path& worktree) const;
 		bool IsSameFolder(std::uint64_t folder) const;
@@ -152,7 +184,12 @@ namespace Graphite {
 		DeliveryInbox m_Inbox;
 
 		GenerationSlot<std::vector<Core::WorktreeEntry>> m_Entries;
-		Core::Ref<const std::vector<Core::Branch>> m_LastAsked;
+		std::vector<Core::PathKeyText> m_EntryKeys;
+		std::uint64_t m_EntriesGeneration = 0;
+
+		// The branch listing the list was last asked for; empty before the folder's first.
+		std::optional<std::uint64_t> m_ListingFollowed;
+
 		std::filesystem::path m_OpenFolder;
 		Core::PathKeyText m_OpenFolderKey;
 
@@ -163,6 +200,11 @@ namespace Graphite {
 		std::map<Core::PathKeyText, Observed> m_Observed;
 		std::set<Core::PathKeyText> m_Listed; // worktrees of the last list: a count of one that left it is dropped
 		std::set<Core::PathKeyText> m_Counting;
+		std::set<Core::PathKeyText> m_ReadingActivity;
+
+		// RecountNow's last asks and the ones it put off, on m_Clock.
+		std::map<Core::PathKeyText, float> m_LastRecount;
+		std::map<Core::PathKeyText, float> m_RecountDue;
 
 		// The worktrees whose rows were drawn since the last update.
 		std::set<Core::PathKeyText> m_InView;

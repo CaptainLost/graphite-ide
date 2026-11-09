@@ -58,7 +58,9 @@ namespace Graphite {
 		++m_Folder;
 
 		m_Entries.Clear();
-		m_LastAsked.reset();
+		m_EntryKeys.clear();
+		++m_EntriesGeneration;
+		m_ListingFollowed.reset();
 		m_WorktreeOfBranch.clear();
 		m_Dirty.clear();
 		m_Failures.clear();
@@ -69,27 +71,35 @@ namespace Graphite {
 		m_FirstCountWaited = 0.0f;
 		m_FirstCountSettled = false;
 		m_Counting.clear();
+		m_ReadingActivity.clear();
+		m_LastRecount.clear();
+		m_RecountDue.clear();
 		m_InView.clear();
 	}
 
-	void WorktreesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, const std::filesystem::path& openFolder)
+	void WorktreesModel::Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, std::uint64_t branchListing,
+								const std::filesystem::path& openFolder)
 	{
-		m_OpenFolder = openFolder;
-		m_OpenFolderKey = openFolder.empty() ? Core::PathKeyText{} : Core::PathKey(openFolder);
+		// Keyed only when the folder's spelling changes: this is asked every frame.
+		if (openFolder.native() != m_OpenFolder.native())
+		{
+			m_OpenFolder = openFolder;
+			m_OpenFolderKey = openFolder.empty() ? Core::PathKeyText{} : Core::PathKey(openFolder);
+		}
 
-		if (branches == nullptr || branches == m_LastAsked)
+		if (branches == nullptr || m_ListingFollowed == branchListing)
 		{
 			return;
 		}
 
-		m_LastAsked = branches;
+		m_ListingFollowed = branchListing;
 		AskList();
 	}
 
 	void WorktreesModel::ListAgain()
 	{
 		// Nothing is asked before the folder's first list: Follow asks that one.
-		if (m_LastAsked == nullptr)
+		if (!m_ListingFollowed.has_value())
 		{
 			return;
 		}
@@ -121,17 +131,32 @@ namespace Graphite {
 
 	void WorktreesModel::Land(std::uint64_t generation, Core::Result<std::vector<Core::WorktreeEntry>> result)
 	{
-		if (m_Entries.Land(generation, std::move(result)) != SlotLanding::Applied)
+		// The same list read again keeps the one held, and its generation: every branch listing reads it, and what is
+		// built from it is built again only for another.
+		const Core::Ref<const std::vector<Core::WorktreeEntry>> held = m_Entries.Get();
+		const bool sameAsHeld = result.HasValue() && held != nullptr && result.GetValue() == *held;
+		const SlotLanding landing = sameAsHeld ? m_Entries.LandSameAsHeld(generation) : m_Entries.Land(generation, std::move(result));
+
+		if (landing == SlotLanding::Stale || sameAsHeld)
+		{
+			return;
+		}
+
+		++m_EntriesGeneration;
+
+		if (landing != SlotLanding::Applied)
 		{
 			return;
 		}
 
 		m_WorktreeOfBranch.clear();
+		m_EntryKeys.clear();
 		std::set<Core::PathKeyText> present;
 
 		for (const Core::WorktreeEntry& entry : *m_Entries.Get())
 		{
-			present.insert(Core::PathKey(entry.Path));
+			m_EntryKeys.push_back(Core::PathKey(entry.Path));
+			present.insert(m_EntryKeys.back());
 
 			if (HoldsBranch(entry))
 			{
@@ -143,6 +168,8 @@ namespace Graphite {
 		ForgetWorktreesNotListed(m_Dirty, present);
 		ForgetWorktreesNotListed(m_Failures, present);
 		ForgetWorktreesNotListed(m_Timing, present);
+		ForgetWorktreesNotListed(m_LastRecount, present);
+		ForgetWorktreesNotListed(m_RecountDue, present);
 		m_Listed = std::move(present);
 	}
 
@@ -183,6 +210,7 @@ namespace Graphite {
 
 		AskCounts(inView);
 		AskSweep(inView);
+		AskRecountsDue();
 		SettleFirstCountWhenDone();
 	}
 
@@ -195,16 +223,62 @@ namespace Graphite {
 			return;
 		}
 
-		m_FirstCountSettled = m_FirstCountWaited >= kFirstCountCapSeconds ||
-							  std::ranges::all_of(*entries, [this](const Core::WorktreeEntry& entry) {
-								  const auto observed = m_Observed.find(Core::PathKey(entry.Path));
-								  return !IsCountable(entry) || (observed != m_Observed.end() && observed->second.Counted);
-							  });
+		bool everyOneCounted = true;
+
+		for (std::size_t entry = 0; entry < entries->size() && everyOneCounted; ++entry)
+		{
+			const auto observed = m_Observed.find(m_EntryKeys[entry]);
+			everyOneCounted = !IsCountable(entry) || (observed != m_Observed.end() && observed->second.Counted);
+		}
+
+		m_FirstCountSettled = m_FirstCountWaited >= kFirstCountCapSeconds || everyOneCounted;
 	}
 
-	bool WorktreesModel::IsCountable(const Core::WorktreeEntry& entry) const
+	bool WorktreesModel::IsCountable(std::size_t entry) const
 	{
-		return !entry.FolderMissing && !IsOpenFolder(entry.Path);
+		return !(*Entries())[entry].FolderMissing && (m_OpenFolderKey.empty() || m_EntryKeys[entry] != m_OpenFolderKey);
+	}
+
+	std::optional<std::size_t> WorktreesModel::IndexOfKey(const Core::PathKeyText& key) const
+	{
+		const std::vector<Core::PathKeyText>::const_iterator found = std::ranges::find(m_EntryKeys, key);
+
+		if (found == m_EntryKeys.end())
+		{
+			return std::nullopt;
+		}
+
+		return static_cast<std::size_t>(found - m_EntryKeys.begin());
+	}
+
+	void WorktreesModel::AskReads(const Core::PathKeyText& key, const std::filesystem::path& path)
+	{
+		AskActivity(key, path);
+		AskCount(key, path);
+	}
+
+	void WorktreesModel::AskActivity(const Core::PathKeyText& key, const std::filesystem::path& path)
+	{
+		if (!m_ReadingActivity.insert(key).second)
+		{
+			return;
+		}
+
+		m_Submit([this, key, path, folder = m_Folder.load()]() {
+			if (!IsSameFolder(folder))
+			{
+				return;
+			}
+
+			Core::Result<WorktreeActivity> activity = m_Port.QueryActivity(path);
+
+			m_Inbox.Post([this, key, folder, activity = std::move(activity)]() {
+				if (IsSameFolder(folder))
+				{
+					LandActivity(key, activity);
+				}
+			});
+		});
 	}
 
 	void WorktreesModel::AskCount(const Core::PathKeyText& key, const std::filesystem::path& path)
@@ -220,13 +294,12 @@ namespace Graphite {
 				return;
 			}
 
-			Core::Result<WorktreeActivity> activity = m_Port.QueryActivity(path);
 			Core::Result<WorktreeCount> count = m_Port.CountUncommitted(path);
 
-			m_Inbox.Post([this, key, folder, activity = std::move(activity), count = std::move(count)]() {
+			m_Inbox.Post([this, key, folder, count = std::move(count)]() {
 				if (IsSameFolder(folder))
 				{
-					LandCount(key, activity, count);
+					LandCount(key, count);
 				}
 			});
 		});
@@ -241,12 +314,12 @@ namespace Graphite {
 			return;
 		}
 
-		const Core::WorktreeEntry* oldest = nullptr;
+		std::optional<std::size_t> oldest;
 		float oldestLanded = 0.0f;
 
-		for (const Core::WorktreeEntry& entry : *entries)
+		for (std::size_t entry = 0; entry < entries->size(); ++entry)
 		{
-			const Core::PathKeyText key = Core::PathKey(entry.Path);
+			const Core::PathKeyText& key = m_EntryKeys[entry];
 			const auto observed = m_Observed.find(key);
 
 			if (!IsCountable(entry) || inView.contains(key) || key == m_LookedAt || m_Counting.contains(key) ||
@@ -255,20 +328,20 @@ namespace Graphite {
 				continue;
 			}
 
-			if (oldest == nullptr || observed->second.LandedAt < oldestLanded)
+			if (!oldest.has_value() || observed->second.LandedAt < oldestLanded)
 			{
-				oldest = &entry;
+				oldest = entry;
 				oldestLanded = observed->second.LandedAt;
 			}
 		}
 
-		if (oldest == nullptr)
+		if (!oldest.has_value())
 		{
 			return;
 		}
 
 		m_NextSweep = m_Clock + kSweepSeconds;
-		AskCount(Core::PathKey(oldest->Path), oldest->Path);
+		AskReads(m_EntryKeys[*oldest], (*entries)[*oldest].Path);
 	}
 
 	void WorktreesModel::AskCounts(const std::set<Core::PathKeyText>& inView)
@@ -280,14 +353,17 @@ namespace Graphite {
 			return;
 		}
 
-		for (const Core::WorktreeEntry& entry : *entries)
+		std::vector<std::size_t> due;
+
+		for (std::size_t entry = 0; entry < entries->size(); ++entry)
 		{
-			if (!IsCountable(entry))
+			const Core::PathKeyText& key = m_EntryKeys[entry];
+
+			if (!IsCountable(entry) || m_Counting.contains(key))
 			{
 				continue;
 			}
 
-			const Core::PathKeyText key = Core::PathKey(entry.Path);
 			const std::map<Core::PathKeyText, CountTiming>::const_iterator timing = m_Timing.find(key);
 			const std::map<Core::PathKeyText, Observed>::const_iterator observed = m_Observed.find(key);
 			const bool firstCount = observed == m_Observed.end() || !observed->second.Counted;
@@ -296,13 +372,84 @@ namespace Graphite {
 
 			if (firstCount || polled)
 			{
-				AskCount(key, entry.Path);
+				due.push_back(entry);
+			}
+		}
+
+		// WARNING: Every activity read goes ahead of every count. A worker then lands the cheap reads first, and a
+		// worktree whose count is held past the first build's cap is placed by its activity, not after every other.
+		for (const std::size_t entry : due)
+		{
+			AskActivity(m_EntryKeys[entry], (*entries)[entry].Path);
+		}
+
+		for (const std::size_t entry : due)
+		{
+			AskCount(m_EntryKeys[entry], (*entries)[entry].Path);
+		}
+	}
+
+	void WorktreesModel::AskRecountsDue()
+	{
+		const Core::Ref<const std::vector<Core::WorktreeEntry>> entries = m_Entries.Get();
+
+		if (entries == nullptr)
+		{
+			return;
+		}
+
+		for (std::map<Core::PathKeyText, float>::iterator recount = m_RecountDue.begin(); recount != m_RecountDue.end();)
+		{
+			const Core::PathKeyText key = recount->first;
+
+			// A count already on its way may have read the worktree before its last change: this one waits for it.
+			if (m_Clock < recount->second || m_Counting.contains(key))
+			{
+				++recount;
+				continue;
+			}
+
+			recount = m_RecountDue.erase(recount);
+
+			const std::optional<std::size_t> entry = IndexOfKey(key);
+
+			if (entry.has_value() && IsCountable(*entry))
+			{
+				m_LastRecount[key] = m_Clock;
+				AskReads(key, (*entries)[*entry].Path);
 			}
 		}
 	}
 
-	void WorktreesModel::LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeActivity>& activity,
-								   const Core::Result<WorktreeCount>& count)
+	void WorktreesModel::ListAgainWhenGone(const Core::Error& error)
+	{
+		// The activity read and the count of a worktree that went both find nothing: one list answers both.
+		if (error.Code == Core::ErrorCode::NotFound && !m_Entries.IsInFlight())
+		{
+			ListAgain();
+		}
+	}
+
+	void WorktreesModel::LandActivity(const Core::PathKeyText& key, const Core::Result<WorktreeActivity>& activity)
+	{
+		m_ReadingActivity.erase(key);
+
+		if (!m_Listed.contains(key))
+		{
+			return;
+		}
+
+		if (!activity.HasValue())
+		{
+			ListAgainWhenGone(activity.GetError());
+			return;
+		}
+
+		const WorktreeActivity& read = activity.GetValue();
+		m_Observed[key].Activity = std::max({read.Reflog, read.Index, read.HeadCommit});
+	}
+
+	void WorktreesModel::LandCount(const Core::PathKeyText& key, const Core::Result<WorktreeCount>& count)
 	{
 		m_Counting.erase(key);
 
@@ -315,12 +462,6 @@ namespace Graphite {
 		observed.Counted = true;
 		observed.LandedAt = m_Clock;
 		observed.Count = count.HasValue() ? std::optional<std::size_t>{count.GetValue().Changed} : std::nullopt;
-
-		if (activity.HasValue())
-		{
-			const WorktreeActivity& read = activity.GetValue();
-			observed.Activity = std::max({read.Reflog, read.Index, read.HeadCommit});
-		}
 
 		if (count.HasValue())
 		{
@@ -347,6 +488,7 @@ namespace Graphite {
 		{
 			m_Dirty.erase(key);
 			m_Failures[key] = count.GetError().Message;
+			ListAgainWhenGone(count.GetError());
 		}
 	}
 
@@ -412,9 +554,19 @@ namespace Graphite {
 		return m_Entries.Get().get();
 	}
 
+	std::optional<std::size_t> WorktreesModel::IndexOf(const std::filesystem::path& worktree) const
+	{
+		return IndexOfKey(Core::PathKey(worktree));
+	}
+
 	std::optional<std::size_t> WorktreesModel::CountOf(const std::filesystem::path& worktree) const
 	{
-		const auto found = m_Observed.find(Core::PathKey(worktree));
+		return CountOfKey(Core::PathKey(worktree));
+	}
+
+	std::optional<std::size_t> WorktreesModel::CountOfKey(const Core::PathKeyText& worktree) const
+	{
+		const auto found = m_Observed.find(worktree);
 		return found == m_Observed.end() ? std::nullopt : found->second.Count;
 	}
 
@@ -451,14 +603,29 @@ namespace Graphite {
 		}
 
 		const Core::PathKeyText key = Core::PathKey(worktree);
-		const std::vector<Core::WorktreeEntry>::const_iterator entry =
-			std::ranges::find_if(*entries, [&](const Core::WorktreeEntry& listed) { return Core::PathKey(listed.Path) == key; });
+		const std::optional<std::size_t> entry = IndexOfKey(key);
 
-		if (entry == entries->end() || !IsCountable(*entry))
+		// Already put off: that recount comes after this change too.
+		if (!entry.has_value() || !IsCountable(*entry) || m_RecountDue.contains(key))
 		{
 			return;
 		}
 
-		AskCount(key, entry->Path);
+		const std::map<Core::PathKeyText, float>::const_iterator last = m_LastRecount.find(key);
+
+		if (last != m_LastRecount.end() && m_Clock < last->second + kPollSeconds)
+		{
+			m_RecountDue[key] = last->second + kPollSeconds;
+			return;
+		}
+
+		if (m_Counting.contains(key))
+		{
+			m_RecountDue[key] = m_Clock;
+			return;
+		}
+
+		m_LastRecount[key] = m_Clock;
+		AskReads(key, (*entries)[*entry].Path);
 	}
 }

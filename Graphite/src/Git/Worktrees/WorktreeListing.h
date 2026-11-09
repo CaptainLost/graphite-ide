@@ -87,12 +87,11 @@ namespace Graphite {
 		std::uint64_t m_Version = 0;
 		bool m_Built = false;
 		std::vector<Core::PathKeyText> m_Paths; // the entries the listing indexes, in their order
+		std::uint64_t m_Generation = 0;         // the model's list m_Paths was last compared with
+		std::filesystem::path m_OpenFolderPath; // as asked, so it is keyed again only when it changes
 		Core::PathKeyText m_OpenFolder;
 	};
 
 	// The last segment of the worktree's path; git's name for it when the path is unknown.
 	std::string WorktreeFolderName(const Core::WorktreeEntry& entry);
-
-	// Where the worktree at that folder stands in the list; empty when it is not listed.
-	std::optional<std::size_t> IndexOfWorktree(const std::vector<Core::WorktreeEntry>& entries, const std::filesystem::path& worktree);
 }
