@@ -529,3 +529,12 @@ TEST_CASE("A commit made outside the application is reported as a repository cha
 
 	CHECK(reported);
 }
+
+TEST_CASE("A folder inside WSL is refused at once rather than watched without a report")
+{
+	const auto started = Core::DirectoryWatcher::Start(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\proj");
+
+	REQUIRE_FALSE(started.HasValue());
+	CHECK(started.GetError().Code == Core::ErrorCode::Unsupported);
+	CHECK(started.GetError().Message.find("not reported to Windows") != std::string::npos);
+}

@@ -8,6 +8,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslSharePath.h"
 #include "Core/Platform/Win32Io.h"
 
 #include <functional>
@@ -182,6 +183,15 @@ namespace Core {
 	Result<Scope<DirectoryWatcher>> DirectoryWatcher::Start(
 		[[maybe_unused]] const std::filesystem::path& root)
 	{
+		// WARNING: a watch on a WSL share arms without an error and then never reports a change,
+		// made from Linux or from Windows (ADR 0688), so it is refused before the disk is touched.
+		if (ParseWslSharePath(root).has_value())
+		{
+			return Error{.Code = ErrorCode::Unsupported,
+						 .Message = std::format("changes made inside WSL are not reported to Windows, so '{}' cannot be watched",
+												ToUtf8(root))};
+		}
+
 #ifdef CORE_PLATFORM_WINDOWS
 		UniqueHandle directory{::CreateFileW(
 			root.c_str(), FILE_LIST_DIRECTORY, kShareModeAllowingRenameAndDelete, nullptr, OPEN_EXISTING,
