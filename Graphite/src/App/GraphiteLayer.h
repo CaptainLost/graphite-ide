@@ -29,6 +29,7 @@
 #include "Git/RepositoryGitPort.h"
 #include "Git/RepositorySession.h"
 #include "Git/WriteConsequences.h"
+#include "Git/Worktrees/WorktreeChanges.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
@@ -156,6 +157,10 @@ namespace Graphite {
 		// WARNING: An idle worker keeps its last folder's packfiles mapped until its next call, which blocks moving
 		// or deleting that folder on Windows.
 		void LetGoOfOldRepositoryOnWriteAndNetworkWorkers();
+
+		// Points the looked-at worktree's port at `root`, empty for none, and has the read and write workers let go of
+		// their handles of the one before.
+		void PointWorktreePortAt(const std::filesystem::path& root);
 
 		// The `now` of the line model: seconds since the epoch by the system clock.
 		static std::int64_t SystemClockSeconds();
@@ -401,11 +406,12 @@ namespace Graphite {
 		ModalQuestion<ForcePushQuestion> m_ForcePushQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these twelve is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel, ReviewModel,
-		// LinesModel, WorktreesModel and ContentModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST
-		// of those ten: members are destroyed in reverse order, which joins every worker before the models and the port
-		// go away. NetworkModel follows, reaching m_GitPort and m_Git, with its own queue last of all. Declaring a queue first
-		// compiles and fails only under real threading.
+		// The order among these fourteen is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel, ReviewModel,
+		// LinesModel, WorktreesModel and ContentModel submit captures `this` and reads m_GitPort, and every job of
+		// m_WorktreeChanges' model reads m_WorktreeGitPort, so the two queues are declared LAST of those twelve: members are
+		// destroyed in reverse order, which joins every worker before the models and the ports go away. NetworkModel follows,
+		// reaching m_GitPort and m_Git, with its own queue last of all. Declaring a queue first compiles and fails only under
+		// real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 					   [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); }};
@@ -417,6 +423,15 @@ namespace Graphite {
 		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		WorktreesModel m_Worktrees{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		ContentModel m_Content{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+
+		// The worktree the Git window looks at, when it is not the open folder: its own port and model, never bound to the
+		// workspace's events. Its writes go through m_GitWrites with the open folder's, one at a time.
+		RepositoryGitPort m_WorktreeGitPort{std::filesystem::path{}};
+		WorktreeChanges m_WorktreeChanges{m_WorktreeGitPort,
+										  [this](const std::filesystem::path& root) { PointWorktreePortAt(root); },
+										  [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
+										  [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); },
+										  WatchWithDirectoryWatcher()};
 		Core::JobQueue m_Jobs;
 
 		static constexpr std::size_t kGitWriteWorkers = 1;

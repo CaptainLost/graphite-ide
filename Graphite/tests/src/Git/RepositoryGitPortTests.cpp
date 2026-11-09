@@ -222,6 +222,32 @@ TEST_CASE("Switching to a different root does not leave the old root's handle li
 	CHECK(port.GetLiveHandleCountForThisThread() == 1);
 }
 
+TEST_CASE("Two ports on one thread keep their own handles, so reading one never reopens the other")
+{
+	TempRepo openFolder;
+	TempRepo otherWorktree;
+	Graphite::RepositoryGitPort openFolderPort{openFolder.GetPath()};
+	Graphite::RepositoryGitPort worktreePort{otherWorktree.GetPath()};
+
+	for (int round = 0; round < 3; ++round)
+	{
+		REQUIRE(openFolderPort.QueryStatus().HasValue());
+		REQUIRE(worktreePort.QueryStatus().HasValue());
+	}
+
+	CHECK(openFolderPort.GetOpenCount() == 1);
+	CHECK(worktreePort.GetOpenCount() == 1);
+	CHECK(openFolderPort.GetLiveHandleCountForThisThread() == 1);
+	CHECK(worktreePort.GetLiveHandleCountForThisThread() == 1);
+
+	const std::filesystem::path noRoot;
+	worktreePort.SetRoot(noRoot);
+	worktreePort.LetGoOfHandlesNoLongerCurrent();
+
+	CHECK(worktreePort.GetLiveHandleCountForThisThread() == 0);
+	CHECK(openFolderPort.GetLiveHandleCountForThisThread() == 1);
+}
+
 TEST_CASE("A thread lets go of a closed folder's handle on request, without opening anything")
 {
 	TempRepo repoA;

@@ -121,6 +121,10 @@ namespace Graphite {
 
 		void RequestStatus();
 
+		// The status and HEAD read again and every working-tree diff asked again, without the branch listing and the log
+		// of a full refresh: for a model bound to one worktree, whose own watch says when its files changed.
+		void RefreshWorkingTree();
+
 		void RequestUntrackedIn(std::filesystem::path directory);
 
 		// WARNING: A listing is kept through the status refreshes that still list its folder, and asked for again by

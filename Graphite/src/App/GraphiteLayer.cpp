@@ -540,6 +540,16 @@ namespace Graphite {
 		m_NetworkJobs.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
 	}
 
+	void GraphiteLayer::PointWorktreePortAt(const std::filesystem::path& root)
+	{
+		m_WorktreeGitPort.SetRoot(root);
+
+		// WARNING: m_Jobs has several workers and this reaches one of them; each of the others lets go on its next query
+		// of this port, so it may hold the worktree before until another worktree is looked at.
+		m_Jobs.Submit([this] { m_WorktreeGitPort.LetGoOfHandlesNoLongerCurrent(); });
+		m_GitWrites.Submit([this] { m_WorktreeGitPort.LetGoOfHandlesNoLongerCurrent(); });
+	}
+
 	std::int64_t GraphiteLayer::SystemClockSeconds()
 	{
 		return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -651,6 +661,15 @@ namespace Graphite {
 		// published before a panel reads a snapshot.
 		m_Repository.Update(timestep);
 		ApplyNetworkResults();
+
+		// The worktree the Git window looks at. Its watch keeps it fresh, so the worktree counts leave it alone.
+		m_WorktreeChanges.OnUpdate(timestep);
+		m_Worktrees.SetLookedAt(m_WorktreeChanges.LookedAt());
+
+		while (std::optional<GitModel::WriteFailure> failure = m_WorktreeChanges.Model().TakeWriteError())
+		{
+			ReportGitWriteFailure(*failure);
+		}
 
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);

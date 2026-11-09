@@ -211,6 +211,13 @@ namespace Graphite {
 		RequestStatusOn(m_Submit);
 	}
 
+	void GitModel::RefreshWorkingTree()
+	{
+		RequestStatus();
+		RequestHead();
+		m_WorkingTreeDiffs.MarkAllStale();
+	}
+
 	void GitModel::ReadStatusAfterWrite()
 	{
 		RequestStatusOn(m_SubmitWrite);

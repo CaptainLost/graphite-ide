@@ -32,6 +32,11 @@ namespace Graphite {
 		// Each repository's line store is a folder under lineStoreRoot (LineStoreFor).
 		explicit RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot = UserDirectories::GitRepositoriesDirectory());
 
+		~RepositoryGitPort() override;
+
+		RepositoryGitPort(const RepositoryGitPort&) = delete;
+		RepositoryGitPort& operator=(const RepositoryGitPort&) = delete;
+
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override;
 		Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
 			const std::filesystem::path& directory) override;
@@ -127,12 +132,13 @@ namespace Graphite {
 
 		void SetRoot(std::filesystem::path root);
 
-		// WARNING: Reaches the calling thread's handles only, so it is run on the thread whose handles of a closed or
-		// replaced folder must go, without opening the current one.
+		// WARNING: Reaches the calling thread's handles of this port only, so it is run on the thread whose handles of a
+		// closed or replaced folder must go, without opening the current one.
 		void LetGoOfHandlesNoLongerCurrent();
 
 		std::uint64_t GetOpenCount() const { return m_OpenCount.load(); }
 
+		// This port's handles on the calling thread; another port's are its own.
 		std::size_t GetLiveHandleCountForThisThread() const;
 
 	private:
@@ -150,6 +156,9 @@ namespace Graphite {
 		// The handle that writes objects to disk, or the one whose writes stay in memory, kept apart per thread.
 		Core::Result<Core::Repository*> OpenForThisThread(const std::string& root, std::uint64_t generation,
 														  Core::ObjectWrites writes = Core::ObjectWrites::OnDisk);
+
+		// Names this port's handles in every thread's cache, which every port shares (RepositoryGitPort.cpp).
+		const std::uint64_t m_Number;
 
 		// WARNING: m_Root and m_Generation are read on worker threads and written on the UI thread,
 		// both under m_RootMutex.

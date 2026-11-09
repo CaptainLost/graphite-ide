@@ -6,7 +6,9 @@
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
 
+#include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -57,30 +59,55 @@ namespace Graphite {
 
 		using HandleMap = std::unordered_map<std::string, CachedRepository>;
 
-		// WARNING: The map is thread_local and keyed by root text alone, so every RepositoryGitPort on
-		// a thread shares it. Two instances on one thread would evict and reopen each other's
-		// handles on every query. Not reachable while the application owns exactly one instance.
-		HandleMap& HandlesForThisThread()
+		// WARNING: Kept apart per port, by the port's number: the open folder's port and the looked-at worktree's share
+		// the workers, and one map for both would have each evict and reopen the other's handle on every query, losing
+		// every commit its handle had parsed. Numbers are never reused, so a port made where another was destroyed never
+		// takes over its handles.
+		using HandleMapsByPort = std::unordered_map<std::uint64_t, HandleMap>;
+
+		HandleMapsByPort& HandleMapsForThisThread()
 		{
-			static thread_local HandleMap handlesByRoot;
-			return handlesByRoot;
+			static thread_local HandleMapsByPort handlesByPort;
+			return handlesByPort;
 		}
 
 		// Opened with ObjectWrites::InMemory: what a content check's merge writes never reaches the repository.
-		HandleMap& ContentHandlesForThisThread()
+		HandleMapsByPort& ContentHandleMapsForThisThread()
 		{
-			static thread_local HandleMap contentHandlesByRoot;
-			return contentHandlesByRoot;
+			static thread_local HandleMapsByPort contentHandlesByPort;
+			return contentHandlesByPort;
 		}
 
-		HandleMap& HandlesForThisThreadThatWrite(Core::ObjectWrites writes)
+		HandleMap& HandlesForThisThread(std::uint64_t port)
+		{
+			return HandleMapsForThisThread()[port];
+		}
+
+		HandleMap& ContentHandlesForThisThread(std::uint64_t port)
+		{
+			return ContentHandleMapsForThisThread()[port];
+		}
+
+		HandleMap& HandlesForThisThreadThatWrite(std::uint64_t port, Core::ObjectWrites writes)
 		{
 			if (writes == Core::ObjectWrites::InMemory)
 			{
-				return ContentHandlesForThisThread();
+				return ContentHandlesForThisThread(port);
 			}
 
-			return HandlesForThisThread();
+			return HandlesForThisThread(port);
+		}
+
+		std::size_t HandleCountForThisThread(const HandleMapsByPort& handlesByPort, std::uint64_t port)
+		{
+			const HandleMapsByPort::const_iterator found = handlesByPort.find(port);
+			return found == handlesByPort.end() ? 0 : found->second.size();
+		}
+
+		std::uint64_t NextPortNumber()
+		{
+			static std::atomic<std::uint64_t> lastPortNumber{0};
+			return ++lastPortNumber;
 		}
 
 		// WARNING: SetRoot runs on the UI thread and cannot reach another thread's thread_local map,
@@ -128,8 +155,16 @@ namespace Graphite {
 	}
 
 	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot)
-		: m_Root(Core::ToUtf8(root)), m_LineStoreRoot(std::move(lineStoreRoot))
+		: m_Number(NextPortNumber()), m_Root(Core::ToUtf8(root)), m_LineStoreRoot(std::move(lineStoreRoot))
 	{
+	}
+
+	RepositoryGitPort::~RepositoryGitPort()
+	{
+		// The destroying thread's handles only: every worker that queried the port is joined before it goes, and its
+		// handles went with its thread.
+		HandleMapsForThisThread().erase(m_Number);
+		ContentHandleMapsForThisThread().erase(m_Number);
 	}
 
 	void RepositoryGitPort::SetRoot(std::filesystem::path root)
@@ -180,13 +215,13 @@ namespace Graphite {
 	{
 		// Both kinds of handle of a root or generation no longer open go, whichever is asked for: each keeps its packfiles
 		// mapped.
-		for (HandleMap* handles : {&HandlesForThisThread(), &ContentHandlesForThisThread()})
+		for (HandleMap* handles : {&HandlesForThisThread(m_Number), &ContentHandlesForThisThread(m_Number)})
 		{
 			DropHandlesOfOtherRoots(*handles, root);
 			DropStaleHandle(*handles, root, generation);
 		}
 
-		HandleMap& handlesByRoot = HandlesForThisThreadThatWrite(writes);
+		HandleMap& handlesByRoot = HandlesForThisThreadThatWrite(m_Number, writes);
 
 		if (root.empty())
 		{
@@ -241,7 +276,7 @@ namespace Graphite {
 			generation = m_Generation;
 		}
 
-		for (HandleMap* handlesByRoot : {&HandlesForThisThread(), &ContentHandlesForThisThread()})
+		for (HandleMap* handlesByRoot : {&HandlesForThisThread(m_Number), &ContentHandlesForThisThread(m_Number)})
 		{
 			DropHandlesOfOtherRoots(*handlesByRoot, root);
 			DropStaleHandle(*handlesByRoot, root, generation);
@@ -250,7 +285,8 @@ namespace Graphite {
 
 	std::size_t RepositoryGitPort::GetLiveHandleCountForThisThread() const
 	{
-		return HandlesForThisThread().size() + ContentHandlesForThisThread().size();
+		return HandleCountForThisThread(HandleMapsForThisThread(), m_Number) +
+			   HandleCountForThisThread(ContentHandleMapsForThisThread(), m_Number);
 	}
 
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryStatus()
