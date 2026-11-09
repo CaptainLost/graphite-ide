@@ -50,6 +50,9 @@ namespace Graphite {
 		// Every worktree of the repository, detached and folder-missing ones included; null while unread.
 		const std::vector<Core::WorktreeEntry>* Entries() const;
 
+		// Changes whenever Entries() answers with another list, or with a failure.
+		std::uint64_t EntriesGeneration() const { return m_Entries.GetApplied(); }
+
 		// Why the last read of the list failed; empty when it did not. A failed first read leaves Entries() null.
 		const std::optional<Core::Error>& ListError() const { return m_Entries.GetError(); }
 

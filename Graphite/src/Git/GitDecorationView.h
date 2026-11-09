@@ -48,10 +48,6 @@ namespace Graphite {
 		ImU32 ColourFor(GitDecoration decoration) const;
 
 	private:
-		// Whether the file at `relative` lies under a checkout nested in the working directory, whose own repository owns it.
-		bool InNestedCheckout(const std::filesystem::path& relative) const;
-
-		std::filesystem::path m_WorkingDirectory;
 		Core::PathKeyText m_WorkingDirectoryKey;
 	};
 

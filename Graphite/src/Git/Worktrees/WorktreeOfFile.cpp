@@ -60,6 +60,27 @@ namespace Graphite {
 		return FolderNameOf(deepest->Path);
 	}
 
+	std::optional<std::string> WorktreeNameCache::Of(const std::filesystem::path& file, std::uint64_t generation,
+													 const std::vector<Core::WorktreeEntry>& entries,
+													 const std::filesystem::path& openFolder)
+	{
+		if (generation != m_Generation || openFolder != m_OpenFolder)
+		{
+			m_Names.clear();
+			m_Generation = generation;
+			m_OpenFolder = openFolder;
+		}
+
+		const auto found = m_Names.find(file.native());
+
+		if (found != m_Names.end())
+		{
+			return found->second;
+		}
+
+		return m_Names.emplace(file.native(), WorktreeFolderOf(file, entries, openFolder)).first->second;
+	}
+
 	bool IsInsideNestedCheckout(const std::filesystem::path& workingDirectory, const std::filesystem::path& relative)
 	{
 		std::filesystem::path directory = workingDirectory;

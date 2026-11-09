@@ -59,6 +59,10 @@ namespace Core {
 		// libgit2 reports a wholly untracked directory as one entry. Path is stored without a
 		// trailing separator, so ask this instead of looking for one.
 		bool IsDirectory = false;
+
+		// An untracked directory holding a `.git` entry: a checkout of its own, whose files belong to it. Set by whoever
+		// reads the status, off the UI thread; libgit2 does not say.
+		bool HoldsCheckout = false;
 	};
 
 	struct WorkingTreeStatus

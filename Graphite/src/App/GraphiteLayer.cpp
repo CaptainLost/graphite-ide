@@ -252,7 +252,11 @@ namespace Graphite {
 		// The list is null while unread: until then every file belongs to the open folder's tab naming.
 		m_DocumentWindows.SetWorktreeOf([this](const std::filesystem::path& file) -> std::optional<std::string> {
 			const std::vector<Core::WorktreeEntry>* entries = m_Worktrees.Entries();
-			return entries == nullptr ? std::nullopt : WorktreeFolderOf(file, *entries, m_Workspace.GetRoot());
+
+			// WARNING: The repository's working directory, not the folder opened: opening a subfolder resolves upward, and
+			// the main checkout would then be a worktree other than "this folder".
+			return entries == nullptr ? std::nullopt
+									  : m_WorktreeNames.Of(file, m_Worktrees.EntriesGeneration(), *entries, m_Git.GetWorkingDirectory());
 		});
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.SetPictureZoom([this](PictureZoom zoom) { return m_DocumentWindows.ZoomFocusedPicture(zoom); });

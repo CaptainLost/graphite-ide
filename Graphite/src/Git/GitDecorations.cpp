@@ -166,6 +166,12 @@ namespace Graphite {
 			const GitDecoration ownDecoration = DecorationOf(entry);
 			const GitDecoration folderWeight = FolderWeightOf(entry);
 
+			if (entry.IsUntracked && entry.IsDirectory && entry.HoldsCheckout)
+			{
+				m_NestedCheckouts.insert(DecorationKeyOf(entry.Path));
+				continue;
+			}
+
 			if (entry.IsUntracked && entry.IsDirectory)
 			{
 				const Core::PathKeyText key = DecorationKeyOf(entry.Path);
@@ -195,7 +201,7 @@ namespace Graphite {
 	// inside "build/gen".
 	bool GitDecorations::IsUntrackedFolder(const std::filesystem::path& relative) const
 	{
-		if (m_UntrackedFolders.empty())
+		if (m_UntrackedFolders.empty() || IsInNestedCheckout(relative))
 		{
 			return false;
 		}
@@ -215,9 +221,31 @@ namespace Graphite {
 		return false;
 	}
 
+	bool GitDecorations::IsInNestedCheckout(const std::filesystem::path& relative) const
+	{
+		if (m_NestedCheckouts.empty())
+		{
+			return false;
+		}
+
+		std::filesystem::path current = relative;
+
+		while (current.has_relative_path())
+		{
+			if (m_NestedCheckouts.contains(DecorationKeyOf(current)))
+			{
+				return true;
+			}
+
+			current = current.parent_path();
+		}
+
+		return false;
+	}
+
 	GitDecoration GitDecorations::OwnFile(const std::filesystem::path& relative) const
 	{
-		if (m_Files.empty())
+		if (m_Files.empty() || IsInNestedCheckout(relative))
 		{
 			return GitDecoration::None;
 		}
@@ -229,7 +257,7 @@ namespace Graphite {
 	// IsUntrackedFolder walks no ancestors while nothing is untracked.
 	GitDecoration GitDecorations::File(const std::filesystem::path& relative) const
 	{
-		if (IsEmpty())
+		if (IsEmpty() || IsInNestedCheckout(relative))
 		{
 			return GitDecoration::None;
 		}
@@ -246,7 +274,7 @@ namespace Graphite {
 
 	GitDecoration GitDecorations::Folder(const std::filesystem::path& relative) const
 	{
-		if (IsEmpty())
+		if (IsEmpty() || IsInNestedCheckout(relative))
 		{
 			return GitDecoration::None;
 		}

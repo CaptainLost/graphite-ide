@@ -3124,7 +3124,7 @@ namespace Graphite {
 				open = false;
 			}
 
-			if (m_WorktreeOf && m_WorktreeOf(item.Path) && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			if (m_WorktreeOf && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && m_WorktreeOf(item.Path))
 			{
 				ImGui::SetTooltip("%s", Core::ToUtf8(item.Path).c_str());
 			}

@@ -89,3 +89,31 @@ TEST_CASE("The working directory's own .git entry does not make its files nested
 
 	CHECK_FALSE(Graphite::IsInsideNestedCheckout(folder.GetPath(), "src/x.cpp"));
 }
+
+TEST_CASE("Named against a subfolder of the repository, the main checkout would be taken for another worktree")
+{
+	const std::vector<Core::WorktreeEntry> entries{EntryAt("D:/r"), EntryAt("D:/r/w/a")};
+
+	// The caller passes the repository's working directory, so a file of the open folder is never named.
+	CHECK_FALSE(Graphite::WorktreeFolderOf("D:/r/Graphite/x.cpp", entries, "D:/r").has_value());
+	CHECK(Graphite::WorktreeFolderOf("D:/r/Graphite/x.cpp", entries, "D:/r/Graphite").has_value());
+}
+
+TEST_CASE("The name cache answers from memory until the list's generation or the open folder changes")
+{
+	std::vector<Core::WorktreeEntry> entries{EntryAt("D:/r"), EntryAt("D:/r/w/a")};
+	Graphite::WorktreeNameCache cache;
+
+	CHECK(cache.Of("D:/r/w/a/x.cpp", 1, entries, kOpenFolder) == std::optional<std::string>{"a"});
+
+	// The same generation is trusted without looking at the list again.
+	entries.clear();
+	CHECK(cache.Of("D:/r/w/a/x.cpp", 1, entries, kOpenFolder) == std::optional<std::string>{"a"});
+
+	CHECK_FALSE(cache.Of("D:/r/w/a/x.cpp", 2, entries, kOpenFolder).has_value());
+
+	entries = {EntryAt("D:/r"), EntryAt("D:/r/w/a")};
+	CHECK_FALSE(cache.Of("D:/r/w/a/x.cpp", 2, entries, kOpenFolder).has_value());
+	CHECK(cache.Of("D:/r/w/a/x.cpp", 3, entries, kOpenFolder) == std::optional<std::string>{"a"});
+	CHECK_FALSE(cache.Of("D:/r/w/a/x.cpp", 3, entries, "D:/r/w/a").has_value());
+}

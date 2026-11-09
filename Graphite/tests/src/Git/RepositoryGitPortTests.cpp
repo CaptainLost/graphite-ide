@@ -480,6 +480,23 @@ TEST_CASE("A file of a worktree nested in the working tree, with no ignore rule,
 	CHECK_FALSE(blamed.GetValue().Tracked);
 	CHECK_FALSE(blamed.GetValue().Blame);
 
+	// The status is where the nested checkout is told apart, once, off the UI thread.
+	const Core::Result<Core::WorkingTreeStatus> status = port.QueryStatus();
+	REQUIRE(status.HasValue());
+
+	bool foundNested = false;
+
+	for (const Core::FileStatus& entry : status.GetValue().Entries)
+	{
+		if (entry.IsDirectory && Core::PathKey(entry.Path) == Core::PathKey(nested.filename()))
+		{
+			foundNested = true;
+			CHECK(entry.HoldsCheckout);
+		}
+	}
+
+	CHECK(foundNested);
+
 	const Core::Result<Graphite::ChangeBases> own = port.ReadBases(repository.GetPath() / "a.txt");
 	REQUIRE(own.HasValue());
 	CHECK(own.GetValue().Tracked);

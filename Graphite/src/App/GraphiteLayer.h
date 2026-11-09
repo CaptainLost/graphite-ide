@@ -31,6 +31,7 @@
 #include "Git/WriteConsequences.h"
 #include "Git/Worktrees/LookedAtWorktree.h"
 #include "Git/Worktrees/WorktreeChanges.h"
+#include "Git/Worktrees/WorktreeOfFile.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Hex/HexFiles.h"
 #include "Image/ImageTabs.h"
@@ -431,6 +432,9 @@ namespace Graphite {
 							  WatchWithDirectoryWatcher()};
 		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		WorktreesModel m_Worktrees{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
+
+		// The tab names of files in other worktrees, kept while m_Worktrees' list stays as it is.
+		WorktreeNameCache m_WorktreeNames;
 		ContentModel m_Content{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 
 		// The worktree the Git window looks at, when it is not the open folder: its own port and model, never bound to the

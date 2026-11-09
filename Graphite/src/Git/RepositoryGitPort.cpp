@@ -291,6 +291,22 @@ namespace Graphite {
 			   HandleCountForThisThread(ContentHandleMapsForThisThread(), m_Number);
 	}
 
+	namespace {
+		// WARNING: Asks the disk once per untracked directory, here on the thread that read the status, so that no frame
+		// does: the decorations answer for a nested checkout from the status alone.
+		void MarkNestedCheckouts(const std::filesystem::path& workingDirectory, Core::WorkingTreeStatus& status)
+		{
+			for (Core::FileStatus& entry : status.Entries)
+			{
+				if (entry.IsUntracked && entry.IsDirectory)
+				{
+					std::error_code error;
+					entry.HoldsCheckout = std::filesystem::exists(workingDirectory / entry.Path / ".git", error);
+				}
+			}
+		}
+	}
+
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryStatus()
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
@@ -302,7 +318,14 @@ namespace Graphite {
 
 		Core::Repository* repository = opened.GetValue();
 
-		return repository->QueryStatus();
+		Core::Result<Core::WorkingTreeStatus> status = repository->QueryStatus();
+
+		if (status.HasValue())
+		{
+			MarkNestedCheckouts(repository->GetWorkingDirectory(), status.GetValue());
+		}
+
+		return status;
 	}
 
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryUntrackedIn(

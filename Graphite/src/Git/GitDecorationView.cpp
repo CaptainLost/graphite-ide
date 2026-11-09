@@ -1,7 +1,5 @@
 #include "Git/GitDecorationView.h"
 
-#include "Git/Worktrees/WorktreeOfFile.h"
-
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
@@ -16,15 +14,7 @@ namespace Graphite {
 
 	void GitDecorationView::SetWorkingDirectory(const std::filesystem::path& workingDirectory)
 	{
-		m_WorkingDirectory = workingDirectory;
 		m_WorkingDirectoryKey = Core::PathKey(workingDirectory);
-	}
-
-	// WARNING: Asks the disk, so it is asked only once the index has something to say about the file: a clean tree, and
-	// every file the index knows nothing of, cost nothing per frame.
-	bool GitDecorationView::InNestedCheckout(const std::filesystem::path& relative) const
-	{
-		return IsInsideNestedCheckout(m_WorkingDirectory, relative);
 	}
 
 	// WARNING: Goes through PathKey as the index's own keys do: case-folded on Windows, either
@@ -48,8 +38,7 @@ namespace Graphite {
 			return GitDecoration::None;
 		}
 
-		const GitDecoration decoration = Index->File(*relative);
-		return decoration != GitDecoration::None && InNestedCheckout(*relative) ? GitDecoration::None : decoration;
+		return Index->File(*relative);
 	}
 
 	GitDecoration GitDecorationView::OwnFileOf(const std::filesystem::path& absolute) const
@@ -66,8 +55,7 @@ namespace Graphite {
 			return GitDecoration::None;
 		}
 
-		const GitDecoration decoration = Index->OwnFile(*relative);
-		return decoration != GitDecoration::None && InNestedCheckout(*relative) ? GitDecoration::None : decoration;
+		return Index->OwnFile(*relative);
 	}
 
 	GitDecoration GitDecorationView::FolderOf(const std::filesystem::path& absolute) const

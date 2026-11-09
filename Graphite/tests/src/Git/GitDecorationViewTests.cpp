@@ -2,7 +2,6 @@
 
 #include "Git/GitDecorationView.h"
 #include "GitFixtures.h"
-#include "TempDirectory.h"
 
 #include <optional>
 #include <vector>
@@ -69,27 +68,37 @@ TEST_CASE("GitDecorationView: a path outside the working directory has no key an
 	CHECK(view.FileOf("C:/repo2/x") == GitDecoration::None);
 }
 
-TEST_CASE("GitDecorationView: a file under a nested checkout is undecorated even where the folder is listed untracked")
+TEST_CASE("GitDecorationView: a nested checkout and what lies under it are undecorated, decided from the status alone")
 {
-	TempDirectory folder;
-	folder.MakeFile("nested/.git", "gitdir: elsewhere");
-	const std::filesystem::path inNested = folder.MakeFile("nested/src/x.cpp", "x");
-	const std::filesystem::path plain = folder.MakeFile("other/y.cpp", "y");
-
+	// Nothing of this exists on disk: the answer cannot come from a lookup there.
 	Core::FileStatus nested;
-	nested.Path = u8"nested";
+	nested.Path = u8"tools/nested";
 	nested.IsUntracked = true;
 	nested.IsDirectory = true;
-	Core::FileStatus other = Entry(u8"other/y.cpp", StatusFlags::Modified);
+	nested.HoldsCheckout = true;
 
-	const Graphite::GitDecorations index(WorkingTreeStatusOf({nested, other}));
-	Graphite::GitDecorationView view;
-	view.Index = &index;
-	view.SetWorkingDirectory(folder.GetPath());
+	Core::FileStatus build;
+	build.Path = u8"build";
+	build.IsUntracked = true;
+	build.IsDirectory = true;
 
-	CHECK(view.FileOf(plain) == GitDecoration::Modified);
-	CHECK(view.FileOf(inNested) == GitDecoration::None);
-	CHECK(view.OwnFileOf(inNested) == GitDecoration::None);
+	const Graphite::GitDecorations index(
+		WorkingTreeStatusOf({nested, build, Entry(u8"other/y.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorationView view = ViewOf(&index);
+
+	CHECK(view.FileOf("C:/repo/other/y.cpp") == GitDecoration::Modified);
+	CHECK(view.FileOf("C:/repo/build/out.o") == GitDecoration::Untracked);
+
+	CHECK(view.FileOf("C:/repo/tools/nested/src/x.cpp") == GitDecoration::None);
+	CHECK(view.OwnFileOf("C:/repo/tools/nested/src/x.cpp") == GitDecoration::None);
+	CHECK(view.FolderOf("C:/repo/tools/nested") == GitDecoration::None);
+	CHECK(view.FolderOf("C:/repo/tools/nested/src") == GitDecoration::None);
+	CHECK_FALSE(view.IsUntrackedFolderOf("C:/repo/tools/nested"));
+	CHECK(view.FolderDecorationOf("C:/repo/tools/nested/src").Decoration == GitDecoration::None);
+
+	// The folders above it are not marked for holding it.
+	CHECK(view.FolderOf("C:/repo/tools") == GitDecoration::None);
+	CHECK(view.FolderOf("C:/repo/build") == GitDecoration::Untracked);
 }
 
 #ifdef _WIN32

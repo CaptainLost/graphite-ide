@@ -44,11 +44,16 @@ namespace Graphite {
 
 		bool IsUntrackedFolder(const std::filesystem::path& relative) const;
 
+		// Whether the path is a checkout nested in the working directory, or lies under one. The repository does not
+		// answer for it, so it carries no decoration here. Decided from the status alone: no disk access.
+		bool IsInNestedCheckout(const std::filesystem::path& relative) const;
+
 		bool IsEmpty() const;
 
 	private:
 		std::unordered_map<Core::PathKeyText, GitDecoration> m_Files;
 		std::unordered_map<Core::PathKeyText, GitDecoration> m_Folders;
 		std::unordered_set<Core::PathKeyText> m_UntrackedFolders;
+		std::unordered_set<Core::PathKeyText> m_NestedCheckouts;
 	};
 }
