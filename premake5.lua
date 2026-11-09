@@ -48,6 +48,7 @@ group ""
 group "Engine"
     include "Core"
     include "Core/tests"
+    include "Core/linux"
 group ""
 
 group "App"
