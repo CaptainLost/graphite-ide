@@ -830,6 +830,77 @@ TEST_CASE("Renaming a file tells the application which path moved where, so its 
 	CHECK(moved.front().To == folder.GetPath() / "renamed.cpp");
 }
 
+TEST_CASE("Cut and then Paste on a folder moves the file into it and tells the application where it went")
+{
+	TempDirectory folder;
+	folder.MakeFile("dest/keep.txt");
+	folder.MakeFile("a.cpp");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	std::vector<Graphite::PathMovedEvent> moved;
+	screen.Events.Subscribe<Graphite::PathMovedEvent>(
+		[&moved](const Graphite::PathMovedEvent& event) { moved.push_back(event); });
+
+	constexpr int kFolderRow = 1;
+	constexpr int kFileRow = 2;
+
+	screen.RightClickRow(kFileRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Cut"));
+	screen.Next();
+
+	screen.RightClickRow(kFolderRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Paste"));
+	screen.Next();
+
+	CHECK(std::filesystem::is_regular_file(folder.GetPath() / "dest" / "a.cpp"));
+	CHECK_FALSE(std::filesystem::exists(folder.GetPath() / "a.cpp"));
+	REQUIRE(moved.size() == 1);
+	CHECK(moved.front().From == folder.GetPath() / "a.cpp");
+	CHECK(moved.front().To == folder.GetPath() / "dest" / "a.cpp");
+}
+
+TEST_CASE("Copy and then Paste on a folder copies the file into it under its own name and leaves the original")
+{
+	TempDirectory folder;
+	folder.MakeFile("dest/keep.txt");
+	folder.MakeFile("a.cpp");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	constexpr int kFolderRow = 1;
+	constexpr int kFileRow = 2;
+
+	screen.RightClickRow(kFileRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Copy"));
+	screen.Next();
+
+	screen.RightClickRow(kFolderRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Paste"));
+	screen.Next();
+
+	CHECK(std::filesystem::is_regular_file(folder.GetPath() / "dest" / "a.cpp"));
+	CHECK(std::filesystem::is_regular_file(folder.GetPath() / "a.cpp"));
+}
+
+TEST_CASE("A cut folder cannot be pasted into itself")
+{
+	TempDirectory folder;
+	folder.MakeFile("dest/keep.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	constexpr int kFolderRow = 1;
+
+	screen.RightClickRow(kFolderRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Cut"));
+	screen.Next();
+
+	screen.RightClickRow(kFolderRow, kDoomedDepth);
+	CHECK(screen.IsMenuItemEnabled("Paste") == std::optional<bool>{false});
+	screen.Press(ImGuiKey_Escape);
+}
+
 TEST_CASE("A name with slashes in the New File field makes the folders on the way")
 {
 	TempDirectory folder;

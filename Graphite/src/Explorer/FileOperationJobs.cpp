@@ -177,6 +177,19 @@ namespace Graphite {
 		const std::filesystem::path copyDestination =
 			kind == FileOperationKind::Duplicate ? PickUniquePath(target) : std::filesystem::path{};
 
+		Launch(kind, target, copyDestination, folderOpen, now);
+	}
+
+	void FileOperationJobs::StartCopyInto(const std::filesystem::path& target, const std::filesystem::path& intoFolder,
+										  const std::filesystem::path& folderOpen, Clock::time_point now)
+	{
+		Launch(FileOperationKind::Duplicate, target, PickUniquePath(intoFolder / target.filename()), folderOpen, now);
+	}
+
+	void FileOperationJobs::Launch(FileOperationKind kind, const std::filesystem::path& target,
+								   const std::filesystem::path& copyDestination, const std::filesystem::path& folderOpen,
+								   Clock::time_point now)
+	{
 		const RunningFileOperation operation{.Id = m_NextId++,
 											 .Kind = kind,
 											 .Target = target,

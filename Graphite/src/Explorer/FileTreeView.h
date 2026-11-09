@@ -108,12 +108,24 @@ namespace Graphite {
 				CreateNamedFile,
 				MakeDirectory,
 				Duplicate,
-				Refresh
+				Refresh,
+				Move,
+				CopyInto
 			};
 
 			Kind Action = Kind::None;
 			std::filesystem::path Target;
 			std::string Name;
+
+			// The folder a move or a copy goes into.
+			std::filesystem::path Destination;
+		};
+
+		// What Cut or Copy last picked, for Paste.
+		struct TreeClipboard
+		{
+			std::filesystem::path Path;
+			bool Cut = false;
 		};
 
 		void FollowActiveDocument();
@@ -148,6 +160,11 @@ namespace Graphite {
 		void HandleRename(const PendingAction& action);
 		std::filesystem::path ApplyRename(const PendingAction& action);
 		void HandleDuplicate(const PendingAction& action);
+		void HandleMove(const PendingAction& action);
+		void HandleCopyInto(const PendingAction& action);
+		bool CanPasteInto(const std::filesystem::path& folder) const;
+		void PasteInto(const std::filesystem::path& folder);
+		void OfferDragAndDrop(const Core::FileNode& node);
 		void ApplyFinished(const FinishedFileOperation& finished);
 		bool IsEditingAName() const;
 		bool ShowsBusy(const Core::FileNode& node) const;
@@ -181,6 +198,7 @@ namespace Graphite {
 		const ActiveScheme& m_Scheme;
 		ImGuiTextFilter m_Filter;
 		PendingAction m_Pending;
+		std::optional<TreeClipboard> m_Clipboard;
 		std::vector<std::filesystem::path> m_ForceOpen;
 		std::filesystem::path m_FollowedPath;
 		bool m_FollowsActiveFile = true;

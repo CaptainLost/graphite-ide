@@ -488,6 +488,16 @@ namespace Graphite {
 			{
 				RecordAction(PendingAction{.Action = PendingAction::Kind::Duplicate, .Target = node.Path});
 			}
+
+			if (ImGui::MenuItem("Cut", kNoShortcut, kNotSelected, nodeIsFree))
+			{
+				m_Clipboard = TreeClipboard{.Path = node.Path, .Cut = true};
+			}
+
+			if (ImGui::MenuItem("Copy", kNoShortcut, kNotSelected, nodeIsFree))
+			{
+				m_Clipboard = TreeClipboard{.Path = node.Path, .Cut = false};
+			}
 		}
 
 		const std::filesystem::path creationTarget =
@@ -509,6 +519,11 @@ namespace Graphite {
 		if (ImGui::MenuItem("New Folder", kNoShortcut, kNotSelected, creationTargetIsFree))
 		{
 			MakeFolderIn(creationTarget);
+		}
+
+		if (m_Clipboard.has_value() && ImGui::MenuItem("Paste", kNoShortcut, kNotSelected, CanPasteInto(creationTarget)))
+		{
+			PasteInto(creationTarget);
 		}
 
 		if (!isRoot)
@@ -568,6 +583,11 @@ namespace Graphite {
 		if (ImGui::MenuItem("New Folder"))
 		{
 			MakeFolderIn(root);
+		}
+
+		if (m_Clipboard.has_value() && ImGui::MenuItem("Paste", kNoShortcut, kNotSelected, CanPasteInto(root)))
+		{
+			PasteInto(root);
 		}
 
 		ImGui::Separator();
@@ -752,6 +772,12 @@ namespace Graphite {
 		case PendingAction::Kind::Duplicate:
 			HandleDuplicate(action);
 			return;
+		case PendingAction::Kind::Move:
+			HandleMove(action);
+			return;
+		case PendingAction::Kind::CopyInto:
+			HandleCopyInto(action);
+			return;
 		case PendingAction::Kind::BeginNewFile:
 			HandleBeginNewFile(action);
 			return;
@@ -887,6 +913,122 @@ namespace Graphite {
 		ApplyFinishedOperations();
 	}
 
+	bool FileTreeView::CanPasteInto(const std::filesystem::path& folder) const
+	{
+		if (!m_Clipboard.has_value() || m_FileOperations.IsBusy(folder) || m_FileOperations.IsBusyOrHoldsABusyPath(m_Clipboard->Path))
+		{
+			return false;
+		}
+
+		// A folder never goes inside itself; a cut file pasted where it already is would be a move to nowhere.
+		if (Core::IsSameOrWithin(folder, m_Clipboard->Path))
+		{
+			return false;
+		}
+
+		return !(m_Clipboard->Cut && Core::SamePath(m_Clipboard->Path.parent_path(), folder));
+	}
+
+	void FileTreeView::PasteInto(const std::filesystem::path& folder)
+	{
+		if (!m_Clipboard.has_value())
+		{
+			return;
+		}
+
+		const PendingAction::Kind kind = m_Clipboard->Cut ? PendingAction::Kind::Move : PendingAction::Kind::CopyInto;
+		RecordAction(PendingAction{.Action = kind, .Target = m_Clipboard->Path, .Destination = folder});
+	}
+
+	void FileTreeView::HandleMove(const PendingAction& action)
+	{
+		const std::filesystem::path destination = action.Destination / action.Target.filename();
+		const std::string name = Core::ToUtf8(action.Target.filename());
+
+		if (Core::SamePath(action.Target.parent_path(), action.Destination))
+		{
+			return;
+		}
+
+		if (Core::IsSameOrWithin(action.Destination, action.Target))
+		{
+			ReportFailure(Core::ToastKind::Error, "Move failed", std::format("'{}' cannot go inside itself", name));
+			return;
+		}
+
+		if (m_FileOperations.IsBusyOrHoldsABusyPath(action.Target) || m_FileOperations.IsBusy(action.Destination))
+		{
+			ReportFailure(Core::ToastKind::Error, "Move failed", BusyText(action.Target));
+			return;
+		}
+
+		if (Core::PathExists(destination))
+		{
+			ReportFailure(Core::ToastKind::Error, "Move failed",
+						  std::format("'{}' already holds '{}'", Core::ToUtf8(action.Destination.filename()), name));
+			return;
+		}
+
+		if (const Core::Result<void> moved = Core::Rename(action.Target, destination); !moved)
+		{
+			APP_ERROR("{}", moved.GetError().Message);
+			ReportFailure(Core::ToastKind::Error, "Move failed", moved.GetError().Message);
+			return;
+		}
+
+		m_Events.Publish(PathMovedEvent{.From = action.Target, .To = destination});
+
+		RefreshParentOf(action.Target);
+		RefreshParentOf(destination);
+
+		if (m_Clipboard.has_value() && m_Clipboard->Cut && Core::SamePath(m_Clipboard->Path, action.Target))
+		{
+			m_Clipboard.reset();
+		}
+	}
+
+	void FileTreeView::HandleCopyInto(const PendingAction& action)
+	{
+		if (m_FileOperations.IsBusyOrHoldsABusyPath(action.Target) || m_FileOperations.IsBusy(action.Destination))
+		{
+			ReportFailure(Core::ToastKind::Error, "Copy failed", BusyText(action.Target));
+			return;
+		}
+
+		m_FileOperations.StartCopyInto(action.Target, action.Destination, m_Workspace.GetRoot(), FileOperationJobs::Clock::now());
+
+		// WARNING: A job that runs where it is submitted has already finished here.
+		ApplyFinishedOperations();
+	}
+
+	void FileTreeView::OfferDragAndDrop(const Core::FileNode& node)
+	{
+		constexpr const char* kPayload = "GraphiteTreePath";
+
+		const bool isRoot = m_Workspace.IsOpen() && node.Path == m_Workspace.GetRoot();
+
+		if (!isRoot && ImGui::BeginDragDropSource())
+		{
+			const std::string path = Core::ToUtf8(node.Path);
+			ImGui::SetDragDropPayload(kPayload, path.data(), path.size());
+			ImGui::TextUnformatted(node.Name.c_str());
+			ImGui::EndDragDropSource();
+		}
+
+		if (!node.IsDirectory || !ImGui::BeginDragDropTarget())
+		{
+			return;
+		}
+
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kPayload); payload != nullptr)
+		{
+			const std::string dropped(static_cast<const char*>(payload->Data), static_cast<std::size_t>(payload->DataSize));
+			RecordAction(PendingAction{.Action = PendingAction::Kind::Move, .Target = Core::FromUtf8(dropped), .Destination = node.Path});
+		}
+
+		ImGui::EndDragDropTarget();
+	}
+
 	void FileTreeView::ApplyFinishedOperations()
 	{
 		for (const FinishedFileOperation& finished : m_FileOperations.TakeFinished())
@@ -919,9 +1061,19 @@ namespace Graphite {
 
 		RefreshParentOf(finished.Target);
 
-		if (finished.Kind == FileOperationKind::Duplicate && !IsEditingAName())
+		const std::filesystem::path& landed = finished.CopyOrMovedPath.GetValue();
+		const bool copiedElsewhere = finished.Kind == FileOperationKind::Duplicate &&
+									 !Core::SamePath(landed.parent_path(), finished.Target.parent_path());
+
+		if (copiedElsewhere)
 		{
-			StartRenamingPath(finished.CopyOrMovedPath.GetValue());
+			RefreshParentOf(landed);
+		}
+
+		// A duplicate next to its source is renamed at once; a copy pasted into another folder keeps its name.
+		if (finished.Kind == FileOperationKind::Duplicate && !copiedElsewhere && !IsEditingAName())
+		{
+			StartRenamingPath(landed);
 		}
 	}
 
@@ -1534,6 +1686,7 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
+		OfferDragAndDrop(node);
 		RenderContextMenu(node);
 	}
 
@@ -1594,6 +1747,7 @@ namespace Graphite {
 			DrawRowMarker(folderStatus, layout);
 		}
 
+		OfferDragAndDrop(node);
 		RenderContextMenu(node);
 
 		if (open)

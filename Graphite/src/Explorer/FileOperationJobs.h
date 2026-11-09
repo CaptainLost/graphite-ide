@@ -67,6 +67,10 @@ namespace Graphite {
 		void Start(FileOperationKind kind, const std::filesystem::path& target, const std::filesystem::path& folderOpen,
 				   Clock::time_point now);
 
+		// A duplicate made in `intoFolder` under the target's own name, or a free one next to it.
+		void StartCopyInto(const std::filesystem::path& target, const std::filesystem::path& intoFolder,
+						   const std::filesystem::path& folderOpen, Clock::time_point now);
+
 		std::vector<FinishedFileOperation> TakeFinished();
 
 		bool IsBusy(const std::filesystem::path& path) const;
@@ -84,6 +88,9 @@ namespace Graphite {
 		bool IsRunning() const { return !m_Running.empty(); }
 
 	private:
+		void Launch(FileOperationKind kind, const std::filesystem::path& target, const std::filesystem::path& copyDestination,
+					const std::filesystem::path& folderOpen, Clock::time_point now);
+
 		Core::JobSubmitter m_Submit;
 		FileOperationRunner m_Run;
 		std::vector<RunningFileOperation> m_Running;
