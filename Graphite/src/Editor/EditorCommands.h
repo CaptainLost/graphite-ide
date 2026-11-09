@@ -28,6 +28,9 @@ namespace Graphite {
 	inline constexpr const char* kPasteCommand = "edit.paste";
 	inline constexpr const char* kSelectAllCommand = "edit.selectAll";
 	inline constexpr const char* kToggleLineCommentCommand = "editor.toggleLineComment";
+	inline constexpr const char* kMoveLinesUpCommand = "editor.moveLinesUp";
+	inline constexpr const char* kMoveLinesDownCommand = "editor.moveLinesDown";
+	inline constexpr const char* kDuplicateLinesCommand = "editor.duplicateLines";
 	inline constexpr const char* kUndoCommand = "editor.undo";
 	inline constexpr const char* kRedoCommand = "editor.redo";
 	inline constexpr const char* kSaveCommand = "document.save";
@@ -41,7 +44,10 @@ namespace Graphite {
 		SelectAll,
 		ToggleLineComment,
 		Undo,
-		Redo
+		Redo,
+		MoveLinesUp,
+		MoveLinesDown,
+		DuplicateLines
 	};
 
 	struct EditorCommandSpec

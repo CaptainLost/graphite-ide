@@ -75,4 +75,7 @@ namespace Core {
 	bool Outdent(OpenItem& item, IndentStyle style);
 
 	bool ToggleLineComment(OpenItem& item, std::string_view commentPrefix);
+
+	bool MoveLines(OpenItem& item, int direction);
+	bool DuplicateLines(OpenItem& item);
 }

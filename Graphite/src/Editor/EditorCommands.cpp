@@ -70,6 +70,21 @@ namespace Graphite {
 			 .Chord = ImGuiMod_Ctrl | ImGuiKey_Y,
 			 .Alternate = ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z,
 			 .Repeats = true},
+			{.Id = kMoveLinesUpCommand,
+			 .Label = "Move Line Up",
+			 .Action = EditorAction::MoveLinesUp,
+			 .Chord = ImGuiMod_Alt | ImGuiKey_UpArrow,
+			 .Repeats = true},
+			{.Id = kMoveLinesDownCommand,
+			 .Label = "Move Line Down",
+			 .Action = EditorAction::MoveLinesDown,
+			 .Chord = ImGuiMod_Alt | ImGuiKey_DownArrow,
+			 .Repeats = true},
+			{.Id = kDuplicateLinesCommand,
+			 .Label = "Duplicate Line",
+			 .Action = EditorAction::DuplicateLines,
+			 .Chord = ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_DownArrow,
+			 .Repeats = true},
 		};
 
 		return specs;
@@ -127,6 +142,11 @@ namespace Graphite {
 
 		case EditorAction::Redo:
 			return IsWritable(item) && item.Document->GetBuffer().CanRedo();
+
+		case EditorAction::MoveLinesUp:
+		case EditorAction::MoveLinesDown:
+		case EditorAction::DuplicateLines:
+			return IsWritable(item);
 		}
 
 		return false;
@@ -186,6 +206,18 @@ namespace Graphite {
 
 		case EditorAction::Redo:
 			outcome.Changed = Core::Redo(item);
+			break;
+
+		case EditorAction::MoveLinesUp:
+			outcome.Changed = Core::MoveLines(item, -1);
+			break;
+
+		case EditorAction::MoveLinesDown:
+			outcome.Changed = Core::MoveLines(item, 1);
+			break;
+
+		case EditorAction::DuplicateLines:
+			outcome.Changed = Core::DuplicateLines(item);
 			break;
 		}
 

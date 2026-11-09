@@ -275,12 +275,14 @@ TEST_CASE("Save, undo, redo and close have default bindings that take nothing fr
 	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F4)) == kCloseCommand);
 }
 
-TEST_CASE("Only undo and redo repeat while their key is held")
+TEST_CASE("Undo, redo and the line moves repeat while their key is held, and nothing else does")
 {
 	for (const EditorCommandSpec& spec : EditorCommandSpecs())
 	{
-		const bool isHistoryAction = spec.Action == EditorAction::Undo || spec.Action == EditorAction::Redo;
+		const bool repeats = spec.Action == EditorAction::Undo || spec.Action == EditorAction::Redo ||
+							 spec.Action == EditorAction::MoveLinesUp || spec.Action == EditorAction::MoveLinesDown ||
+							 spec.Action == EditorAction::DuplicateLines;
 
-		CHECK_MESSAGE(spec.Repeats == isHistoryAction, spec.Id);
+		CHECK_MESSAGE(spec.Repeats == repeats, spec.Id);
 	}
 }

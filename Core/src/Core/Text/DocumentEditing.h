@@ -34,4 +34,12 @@ namespace Core {
 	bool Outdent(TextDocument& document, Caret& caret, IndentStyle style);
 
 	bool ToggleLineComment(TextDocument& document, Caret& caret, std::string_view commentPrefix);
+
+	// Moves the whole lines the selection touches one line up (a negative direction) or down, with the caret and the
+	// selection on them; one undo step. False at the top or the bottom.
+	bool MoveLines(TextDocument& document, Caret& caret, int direction);
+
+	// Puts a copy of the whole lines the selection touches below them and takes the caret and the selection onto the
+	// copy; one undo step.
+	bool DuplicateLines(TextDocument& document, Caret& caret);
 }

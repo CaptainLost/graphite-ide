@@ -27,6 +27,9 @@ namespace Graphite {
 		case EditorAction::ToggleLineComment:
 		case EditorAction::Undo:
 		case EditorAction::Redo:
+		case EditorAction::MoveLinesUp:
+		case EditorAction::MoveLinesDown:
+		case EditorAction::DuplicateLines:
 			break;
 		}
 

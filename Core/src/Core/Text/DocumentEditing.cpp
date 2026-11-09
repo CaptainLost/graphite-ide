@@ -6,7 +6,10 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/TextDocument.h"
 
+#include <algorithm>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace Core {
 
@@ -499,6 +502,113 @@ namespace Core {
 		buffer.BreakUndoGroup();
 
 		SelectWholeLines(caret, buffer, firstLine, lastLine);
+
+		return true;
+	}
+
+	bool MoveLines(TextDocument& document, Caret& caret, int direction)
+	{
+		if (document.IsReadOnly() || direction == 0)
+		{
+			return false;
+		}
+
+		TextBuffer& buffer = document.GetBuffer();
+		const auto [firstLine, lastLine] = LinesTouchedBySelection(buffer, caret);
+		const std::size_t lineCount = buffer.GetLineCount();
+		const bool down = direction > 0;
+
+		if ((down && lastLine + 1 >= lineCount) || (!down && firstLine == 0))
+		{
+			return false;
+		}
+
+		// The block and the line it swaps with, both whole, as one span of text.
+		const std::size_t spanFirst = down ? firstLine : firstLine - 1;
+		const std::size_t spanLast = down ? lastLine + 1 : lastLine;
+		const std::size_t spanStart = buffer.LineStart(spanFirst);
+		const bool spanEndsInNewline = spanLast + 1 < lineCount;
+		const std::size_t spanEnd = spanEndsInNewline ? buffer.LineStart(spanLast + 1) : buffer.GetLength();
+
+		std::vector<std::string> lines;
+
+		for (std::size_t line = spanFirst; line <= spanLast; ++line)
+		{
+			lines.push_back(buffer.LineText(line));
+		}
+
+		std::size_t shift = 0;
+
+		if (down)
+		{
+			shift = lines.back().size() + 1;
+			std::rotate(lines.begin(), lines.end() - 1, lines.end());
+		}
+		else
+		{
+			shift = lines.front().size() + 1;
+			std::rotate(lines.begin(), lines.begin() + 1, lines.end());
+		}
+
+		std::string moved;
+
+		for (std::size_t index = 0; index < lines.size(); ++index)
+		{
+			moved += lines[index];
+
+			if (index + 1 < lines.size() || spanEndsInNewline)
+			{
+				moved += '\n';
+			}
+		}
+
+		buffer.BreakUndoGroup();
+		buffer.BeginTransaction();
+		buffer.Erase(spanStart, spanEnd);
+		buffer.Insert(spanStart, moved);
+		buffer.EndTransaction();
+		buffer.BreakUndoGroup();
+
+		caret.Offset = down ? caret.Offset + shift : caret.Offset - shift;
+		caret.Anchor = down ? caret.Anchor + shift : caret.Anchor - shift;
+
+		return true;
+	}
+
+	bool DuplicateLines(TextDocument& document, Caret& caret)
+	{
+		if (document.IsReadOnly())
+		{
+			return false;
+		}
+
+		TextBuffer& buffer = document.GetBuffer();
+		const auto [firstLine, lastLine] = LinesTouchedBySelection(buffer, caret);
+		const std::size_t blockStart = buffer.LineStart(firstLine);
+		const bool blockEndsInNewline = lastLine + 1 < buffer.GetLineCount();
+
+		buffer.BreakUndoGroup();
+
+		std::size_t shift = 0;
+
+		if (blockEndsInNewline)
+		{
+			const std::size_t blockEnd = buffer.LineStart(lastLine + 1);
+			const std::string block = buffer.Substring(blockStart, blockEnd);
+			buffer.Insert(blockEnd, block);
+			shift = block.size();
+		}
+		else
+		{
+			const std::string copy = "\n" + buffer.Substring(blockStart, buffer.GetLength());
+			buffer.Insert(buffer.GetLength(), copy);
+			shift = copy.size();
+		}
+
+		buffer.BreakUndoGroup();
+
+		caret.Offset += shift;
+		caret.Anchor += shift;
 
 		return true;
 	}

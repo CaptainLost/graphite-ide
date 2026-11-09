@@ -454,4 +454,32 @@ namespace Core {
 
 		return changed;
 	}
+
+	bool MoveLines(OpenItem& item, int direction)
+	{
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = MoveLines(*item.Document, item.Caret, direction);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+		item.PendingScroll = changed || item.PendingScroll;
+
+		return changed;
+	}
+
+	bool DuplicateLines(OpenItem& item)
+	{
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = DuplicateLines(*item.Document, item.Caret);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+		item.PendingScroll = changed || item.PendingScroll;
+
+		return changed;
+	}
 }
