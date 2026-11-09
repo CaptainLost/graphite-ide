@@ -6,6 +6,7 @@
 
 #include "Core/ImGui/FontSet.h"
 #include "Core/Text/Editing.h"
+#include "Core/Text/TextDocument.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -81,6 +82,10 @@ namespace Graphite {
 		// Every modified file is saved when Graphite goes to the background.
 		bool SavesOnFocusLoss() const { return m_SaveOnFocusLoss; }
 
+		// What a file with no line break in it, as a new one, is saved with between the lines typed into it.
+		Core::LineEnding GetNewFileLineEnding() const { return m_NewFileLineEnding; }
+		void SetNewFileLineEnding(Core::LineEnding ending);
+
 		bool IsDiffWordWrap() const { return m_DiffView.WordWrap; }
 		void SetDiffWordWrap(bool wrap);
 
@@ -138,6 +143,7 @@ namespace Graphite {
 
 		bool m_WordWrap = false;
 		bool m_SaveOnFocusLoss = false;
+		Core::LineEnding m_NewFileLineEnding = Core::LineEnding::Lf;
 		DiffViewOptions m_DiffView;
 		PictureBackground m_ImageBackground = PictureBackground::Checkerboard;
 		bool m_ImagePixelGrid = true;

@@ -73,6 +73,19 @@ TEST_CASE("EditorSettings round-trips the indent style")
 	CHECK(settings.GetIndentStyle().Width == 8);
 }
 
+TEST_CASE("EditorSettings keeps the line ending of new files for the next launch")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+	CHECK(settings.GetNewFileLineEnding() == Core::LineEnding::Lf);
+
+	settings.SetNewFileLineEnding(Core::LineEnding::Crlf);
+
+	Graphite::EditorSettings nextLaunch{store.Get()};
+	nextLaunch.Load();
+	CHECK(nextLaunch.GetNewFileLineEnding() == Core::LineEnding::Crlf);
+}
+
 TEST_CASE("EditorSettings refuses an indent width of zero")
 {
 	TempAppSettings store;

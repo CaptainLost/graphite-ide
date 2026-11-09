@@ -199,6 +199,10 @@ namespace Core {
 		// WARNING: A load measured at a width other than the editor's is measured again on the UI thread.
 		void SetTabWidthForLoads(std::size_t tabWidth) { m_TabWidthForLoads = tabWidth; }
 
+		// The line ending a file read with no line break in it is saved with, as a new empty file is: nothing in it says
+		// which the reader wants.
+		void SetLineEndingForNewFiles(LineEnding ending) { m_LineEndingForNewFiles = ending; }
+
 		// WARNING: Called on a worker once the file is read; rows built at another width are wrapped again on the UI thread.
 		void SetWrapForLoads(WrapColumnsForLineCount wrapColumns);
 
@@ -270,6 +274,7 @@ namespace Core {
 
 		JobSubmitter m_SubmitLoad;
 		std::size_t m_TabWidthForLoads = DefaultTabWidth;
+		LineEnding m_LineEndingForNewFiles = LineEnding::Lf;
 		std::uint64_t m_LastLoadTicket = 0;
 		std::vector<BackgroundLoad> m_BackgroundLoads;
 

@@ -76,6 +76,9 @@ namespace Graphite {
 		bool IsSaveOnFocusLossEnabled() const;
 		void SetSaveOnFocusLoss(bool save);
 
+		bool AreNewFilesCrlf() const;
+		void SetNewFilesCrlf(bool crlf);
+
 		bool IsDiffWordWrapEnabled() const;
 		void SetDiffWordWrap(bool wrap);
 

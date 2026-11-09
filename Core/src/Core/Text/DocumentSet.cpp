@@ -414,7 +414,14 @@ namespace Core {
 			return ItemLoad::Loading;
 		}
 
-		return ReadNow(item, m_Store);
+		const ItemLoad load = ReadNow(item, m_Store);
+
+		if (load == ItemLoad::Loaded && item.Document && item.Document->GetBuffer().GetLineCount() == 1)
+		{
+			item.Document->SetDocumentLineEnding(m_LineEndingForNewFiles);
+		}
+
+		return load;
 	}
 
 	bool DocumentSet::ReadsInBackground(const OpenItem& item) const

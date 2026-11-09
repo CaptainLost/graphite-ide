@@ -44,6 +44,7 @@ namespace Graphite {
 		constexpr const char* kIndentWidthKey = "indentWidth";
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kSaveOnFocusLossKey = "saveOnFocusLoss";
+		constexpr const char* kNewFilesCrlfKey = "newFilesCrlf";
 		constexpr const char* kDiffWordWrapKey = "diffWordWrap";
 		constexpr const char* kDiffLayoutKey = "diffLayout";
 		constexpr const char* kImageBackgroundKey = "imageBackground";
@@ -492,6 +493,16 @@ namespace Graphite {
 	void AppSettings::SetSaveOnFocusLoss(bool save)
 	{
 		Set(kSaveOnFocusLossKey, Flag(save));
+	}
+
+	bool AppSettings::AreNewFilesCrlf() const
+	{
+		return ReadFlag(Get(kNewFilesCrlfKey), kOffWhenAbsent);
+	}
+
+	void AppSettings::SetNewFilesCrlf(bool crlf)
+	{
+		Set(kNewFilesCrlfKey, Flag(crlf));
 	}
 
 	bool AppSettings::IsDiffWordWrapEnabled() const

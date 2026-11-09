@@ -150,6 +150,7 @@ namespace Graphite {
 
 		m_WordWrap = m_Store.IsWordWrapEnabled();
 		m_SaveOnFocusLoss = m_Store.IsSaveOnFocusLossEnabled();
+		m_NewFileLineEnding = m_Store.AreNewFilesCrlf() ? Core::LineEnding::Crlf : Core::LineEnding::Lf;
 		m_DiffView = DiffViewOptions{.Mode = DiffLayoutFrom(m_Store.GetDiffLayout()),
 									 .Scope = DiffScopeFrom(m_Store.GetDiffScope()),
 									 .ColourSyntax = m_Store.IsDiffSyntaxColoured(),
@@ -185,6 +186,12 @@ namespace Graphite {
 
 		m_FontSize = clamped;
 		m_Store.SetEditorFontSize(m_FontSize);
+	}
+
+	void EditorSettings::SetNewFileLineEnding(Core::LineEnding ending)
+	{
+		m_NewFileLineEnding = ending;
+		m_Store.SetNewFilesCrlf(ending == Core::LineEnding::Crlf);
 	}
 
 	void EditorSettings::SetIndentWithSpaces(bool useSpaces)

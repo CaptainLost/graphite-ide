@@ -26,6 +26,10 @@ namespace Graphite {
 		constexpr std::size_t kSpacesOption = 0;
 		constexpr std::size_t kTabsOption = 1;
 
+		const std::vector<std::string> kLineEndingOptions{"LF", "CRLF"};
+		constexpr std::size_t kLfOption = 0;
+		constexpr std::size_t kCrlfOption = 1;
+
 		const std::vector<std::string> kPreviewOptions{"Off", "With Ctrl", "Always"};
 		constexpr std::array<DefinitionPreviewMode, 3> kPreviewModes{DefinitionPreviewMode::Off, DefinitionPreviewMode::WithCtrl,
 																	 DefinitionPreviewMode::Always};
@@ -115,6 +119,11 @@ namespace Graphite {
 										.Keywords = {"indent"},
 										.ControlWidth = SettingsLayout::NumberWidth(),
 										.DrawControl = [this] { DrawTabWidth(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Line ending of new files",
+										.Description = "What a new file puts between its lines. A file that has line breaks keeps its own.",
+										.Keywords = {"eol", "lf", "crlf", "newline"},
+										.ControlWidth = SettingsLayout::ComboWidth(kLineEndingOptions),
+										.DrawControl = [this] { DrawNewFileLineEnding(); }});
 
 		return card;
 	}
@@ -221,6 +230,16 @@ namespace Graphite {
 			constexpr int kMaximumTabWidth = static_cast<int>(EditorSettings::kMaximumIndentWidth);
 
 			m_Settings.SetIndentWidth(static_cast<std::size_t>(std::clamp(typedWidth, kMinimumTabWidth, kMaximumTabWidth)));
+		}
+	}
+
+	void EditorPage::DrawNewFileLineEnding()
+	{
+		std::size_t selected = m_Settings.GetNewFileLineEnding() == Core::LineEnding::Crlf ? kCrlfOption : kLfOption;
+
+		if (SettingsLayout::Choice("##newFileLineEnding", kLineEndingOptions, selected))
+		{
+			m_Settings.SetNewFileLineEnding(selected == kCrlfOption ? Core::LineEnding::Crlf : Core::LineEnding::Lf);
 		}
 	}
 

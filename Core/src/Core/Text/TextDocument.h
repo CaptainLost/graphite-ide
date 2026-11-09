@@ -54,6 +54,9 @@ namespace Core {
 
 		LineEnding GetDocumentLineEnding() const { return m_LineEnding; }
 
+		// What a save writes between lines from now on; the text in memory is LF-only either way.
+		void SetDocumentLineEnding(LineEnding ending) { m_LineEnding = ending; }
+
 		bool HasMixedLineEndings() const { return m_WasMixed; }
 
 		bool IsReadOnly() const { return m_ReadOnly; }

@@ -3469,6 +3469,8 @@ namespace Graphite {
 			m_Documents.SetTabWidthForLoads(frame.Indent.Width);
 		}
 
+		m_Documents.SetLineEndingForNewFiles(frame.Settings.GetNewFileLineEnding());
+
 		LandFinishedLoads();
 
 		// WARNING: The order is load-bearing. Answers come first so they are on screen this frame,

@@ -41,6 +41,7 @@ namespace Graphite {
 		void DrawHighlightOccurrences();
 		void DrawIndentWith();
 		void DrawTabWidth();
+		void DrawNewFileLineEnding();
 		void DrawSymbolInformation();
 		void DrawDefinitionPreview();
 		void DrawHoverDelay();

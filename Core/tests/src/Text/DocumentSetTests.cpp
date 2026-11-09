@@ -85,6 +85,24 @@ TEST_CASE("Opening a text file adds an item holding the document")
 	CHECK(documents.GetActiveIndex() == std::optional<std::size_t>{0});
 }
 
+TEST_CASE("A file with no line break in it is saved with the line ending set for new files and one with breaks keeps its own")
+{
+	TempDirectory directory;
+	const std::filesystem::path empty = directory.GetPath() / "new.cpp";
+	const std::filesystem::path lines = directory.GetPath() / "old.cpp";
+	WriteFileBytes(empty, "");
+	WriteFileBytes(lines, "a\nb\n");
+
+	DocumentSet documents;
+	documents.SetLineEndingForNewFiles(LineEnding::Crlf);
+
+	REQUIRE(documents.Open(empty, TabKind::Permanent) == OpenOutcome::Opened);
+	REQUIRE(documents.Open(lines, TabKind::Permanent) == OpenOutcome::Opened);
+
+	CHECK(documents.At(0).Document->GetDocumentLineEnding() == LineEnding::Crlf);
+	CHECK(documents.At(1).Document->GetDocumentLineEnding() == LineEnding::Lf);
+}
+
 TEST_CASE("The widest line is measured in columns not bytes so a line of nine two-byte characters is narrower than one of eleven ASCII characters")
 {
 	TempDirectory directory;
