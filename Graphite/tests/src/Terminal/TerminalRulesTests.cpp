@@ -447,6 +447,16 @@ TEST_CASE("Ctrl+V and Ctrl+Shift+V both paste")
 		  TerminalShortcut::Paste);
 }
 
+TEST_CASE("Ctrl+F opens the terminal's find bar and Ctrl+Shift+F is left to the rest of Graphite")
+{
+	using Core::KeyCode;
+	using Core::KeyModifier;
+
+	CHECK(ClassifyTerminalShortcut(KeyCode::F, KeyModifier::Control, false) == TerminalShortcut::Find);
+	CHECK(ClassifyTerminalShortcut(KeyCode::F, KeyModifier::Control | KeyModifier::Shift, false) == TerminalShortcut::None);
+	CHECK(ClassifyTerminalShortcut(KeyCode::F, KeyModifier::None, false) == TerminalShortcut::None);
+}
+
 TEST_CASE("Other chords are not the view's gestures")
 {
 	using Core::KeyCode;

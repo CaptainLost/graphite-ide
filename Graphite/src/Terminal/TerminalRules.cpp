@@ -398,6 +398,12 @@ namespace Graphite {
 			return TerminalShortcut::Paste;
 		}
 
+		// WARNING: Taken from the shell, whose readline moves a character right on it; the Right key still does.
+		if (key == Core::KeyCode::F && !shiftHeld)
+		{
+			return TerminalShortcut::Find;
+		}
+
 		return TerminalShortcut::None;
 	}
 

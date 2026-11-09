@@ -11,6 +11,9 @@
 #include "Core/Command/Chord.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/TextInput.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiKeys.h"
 #include "Core/ImGui/LoadingState.h"
@@ -18,6 +21,8 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Terminal/KeyEncoding.h"
 #include "Core/Text/Utf8.h"
+
+#include <IconsLucide.h>
 
 // WARNING: SetKeyOwner has no public entry point, and the same header is already used elsewhere in this project.
 #include <imgui_internal.h>
@@ -279,6 +284,7 @@ namespace Graphite {
 		const int columns =
 			std::max(1, static_cast<int>((available.x - scrollbarWidth) / cellSize.x));
 		const int rows = std::max(1, static_cast<int>(available.y / cellSize.y));
+		m_Rows = rows;
 
 		const Core::TerminalScreen& screen = m_Session.GetScreen();
 		const std::size_t scrollback = screen.GetScrollbackCount();
@@ -425,9 +431,15 @@ namespace Graphite {
 			}
 		}
 
-		HandleKeyboard();
-
 		ImGui::PopFont();
+
+		DrawFindBar(origin, origin.x + available.x - scrollbarWidth);
+
+		// WARNING: While the find field holds the keyboard, what is typed is the search and never reaches the shell.
+		if (!m_FindFieldActive)
+		{
+			HandleKeyboard();
+		}
 
 		if (!m_OutputSeen)
 		{
@@ -583,6 +595,157 @@ namespace Graphite {
 		}
 
 		ClearSelection();
+	}
+
+	void TerminalView::OpenFind()
+	{
+		m_FindOpen = true;
+		m_FocusFind = true;
+	}
+
+	void TerminalView::CloseFind()
+	{
+		m_FindOpen = false;
+		m_FindFieldActive = false;
+		m_CurrentMatch.reset();
+		m_MatchNumber = 0;
+		m_MatchCount = 0;
+		ImGui::SetWindowFocus();
+	}
+
+	bool TerminalView::IsOverFindBar(ImVec2 at) const
+	{
+		return m_FindOpen && at.x >= m_FindBarMin.x && at.x < m_FindBarMax.x && at.y >= m_FindBarMin.y && at.y < m_FindBarMax.y;
+	}
+
+	void TerminalView::StepFind(TerminalSearchDirection direction)
+	{
+		const Core::TerminalScreen& screen = m_Session.GetScreen();
+		const std::vector<TerminalMatch> matches = FindAllInTerminal(screen, SelectionColumns(), m_FindText);
+		const std::optional<std::size_t> next = NextTerminalMatch(matches, m_CurrentMatch, direction);
+
+		m_MatchCount = matches.size();
+
+		if (!next.has_value())
+		{
+			m_CurrentMatch.reset();
+			m_MatchNumber = 0;
+			ClearSelection();
+			return;
+		}
+
+		const TerminalMatch& match = matches[*next];
+		m_CurrentMatch = match;
+		m_MatchNumber = *next + 1;
+
+		m_Gesture.Cancel();
+		m_Selection.Select(Core::TextPoint{match.Line, match.FromColumn}, Core::TextPoint{match.Line, match.ToColumn});
+
+		// The match's row on the screen when nothing is scrolled; a row above the screen is in the scrollback.
+		const std::int64_t screenRow = match.Line - static_cast<std::int64_t>(screen.GetRowsScrolledOff());
+		const int shownRow = static_cast<int>(screenRow) + m_ScrollOffset;
+
+		if (shownRow < 0 || shownRow >= m_Rows)
+		{
+			m_ScrollOffset = std::clamp(m_Rows / 2 - static_cast<int>(screenRow), 0, static_cast<int>(screen.GetScrollbackCount()));
+			m_FollowTail = m_ScrollOffset == 0;
+		}
+	}
+
+	void TerminalView::DrawFindBar(const ImVec2& origin, float right)
+	{
+		constexpr float kFieldWidth = 200.0f;
+		constexpr bool kNotEngaged = false;
+		constexpr int kPreviousItem = -1;
+
+		if (!m_FindOpen)
+		{
+			m_FindFieldActive = false;
+			return;
+		}
+
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float fieldWidth = Core::Scaled(kFieldWidth);
+		const float counterWidth = ImGui::CalcTextSize("0000 of 0000").x;
+		const float buttonWidth = Core::IconButtonSize();
+		const float barWidth = style.WindowPadding.x * 2.0f + fieldWidth + counterWidth + buttonWidth * 3.0f + style.ItemSpacing.x * 4.0f;
+		const float barHeight = ImGui::GetFrameHeight() + style.WindowPadding.y;
+
+		m_FindBarMin = ImVec2(std::max(origin.x, right - barWidth), origin.y);
+		m_FindBarMax = ImVec2(right, origin.y + barHeight);
+
+		ImDrawList& drawList = *ImGui::GetWindowDrawList();
+		drawList.AddRectFilled(m_FindBarMin, m_FindBarMax, ImGui::GetColorU32(ImGuiCol_PopupBg), style.PopupRounding);
+		drawList.AddRect(m_FindBarMin, m_FindBarMax, ImGui::GetColorU32(ImGuiCol_Border), style.PopupRounding);
+
+		ImGui::SetCursorScreenPos(ImVec2(m_FindBarMin.x + style.WindowPadding.x, m_FindBarMin.y + style.WindowPadding.y * 0.5f));
+
+		if (m_FocusFind)
+		{
+			ImGui::SetKeyboardFocusHere();
+			m_FocusFind = false;
+		}
+
+		ImGui::SetNextItemWidth(fieldWidth);
+		const bool entered = Core::InputTextWithHint("##terminalFind", "Find", m_FindText, ImGuiInputTextFlags_EnterReturnsTrue);
+		const bool edited = ImGui::IsItemEdited();
+		const bool escaped = ImGui::IsItemDeactivated() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+		m_FindFieldActive = ImGui::IsItemActive();
+
+		if (entered)
+		{
+			// WARNING: Enter deactivates a single-line field; focus goes straight back so the next Enter steps again.
+			ImGui::SetKeyboardFocusHere(kPreviousItem);
+			m_FindFieldActive = true;
+			StepFind(ImGui::GetIO().KeyShift ? TerminalSearchDirection::Forward : TerminalSearchDirection::Backward);
+		}
+		else if (edited)
+		{
+			m_CurrentMatch.reset();
+			StepFind(TerminalSearchDirection::Backward);
+		}
+
+		ImGui::SameLine();
+
+		const float counterStart = ImGui::GetCursorPosX();
+
+		if (m_FindText.empty())
+		{
+			ImGui::Dummy(ImVec2(counterWidth, ImGui::GetFrameHeight()));
+		}
+		else
+		{
+			const std::string counter =
+				m_MatchCount == 0 ? std::string{"No results"} : std::to_string(m_MatchNumber) + " of " + std::to_string(m_MatchCount);
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(counter.c_str());
+		}
+
+		ImGui::SameLine(counterStart + counterWidth + style.ItemSpacing.x);
+
+		if (Core::DrawIconButton("##terminalFindOlder", ICON_LC_CHEVRON_UP, kNotEngaged, "Older (Enter)"))
+		{
+			StepFind(TerminalSearchDirection::Backward);
+		}
+
+		ImGui::SameLine();
+
+		if (Core::DrawIconButton("##terminalFindNewer", ICON_LC_CHEVRON_DOWN, kNotEngaged, "Newer (Shift+Enter)"))
+		{
+			StepFind(TerminalSearchDirection::Forward);
+		}
+
+		ImGui::SameLine();
+
+		if (Core::DrawIconButton("##terminalFindClose", ICON_LC_X, kNotEngaged, "Close (Escape)") || escaped)
+		{
+			CloseFind();
+
+			// The Escape that closed the bar is not the shell's.
+			m_FindFieldActive = escaped;
+		}
+
+		ImGui::SetCursorScreenPos(origin);
 	}
 
 	void TerminalView::SelectAll()
@@ -771,8 +934,8 @@ namespace Graphite {
 		source.SelectedText = [this]() {
 			return CopySelection();
 		};
-		source.Claims = [this](ImVec2) {
-			return IsScrollbarGrabbed();
+		source.Claims = [this](ImVec2 at) {
+			return IsScrollbarGrabbed() || IsOverFindBar(at);
 		};
 
 		Core::SelectionGestureOptions options;
@@ -855,6 +1018,9 @@ namespace Graphite {
 
 				continue;
 			case TerminalShortcut::Swallow:
+				continue;
+			case TerminalShortcut::Find:
+				OpenFind();
 				continue;
 			case TerminalShortcut::None:
 				break;

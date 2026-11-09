@@ -7,12 +7,14 @@
 #include "Core/Terminal/TerminalSession.h"
 #include "Core/Text/TextSelection.h"
 
+#include "Terminal/TerminalSearch.h"
 #include "Theme/EditorPalette.h"
 
 #include <imgui.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,6 +52,10 @@ namespace Graphite {
 		void Clear();
 		void SelectAll();
 
+		// Ctrl+F: a field over the terminal's top right that finds text in the scrollback and on the screen, selects
+		// the match and scrolls it into view.
+		void OpenFind();
+
 		bool HasSelection() const { return !m_Selection.IsEmpty(); }
 		std::string CopySelection() const;
 
@@ -86,6 +92,10 @@ namespace Graphite {
 						 ImU32& background, BaseOpacity baseOpacity = BaseOpacity::AsResolved) const;
 		std::size_t SelectionColumns() const;
 		bool IsScrollbarGrabbed() const { return m_ScrollbarGrab >= 0.0f; }
+		bool IsOverFindBar(ImVec2 at) const;
+		void DrawFindBar(const ImVec2& origin, float right);
+		void StepFind(TerminalSearchDirection direction);
+		void CloseFind();
 
 		Core::TerminalSession& m_Session;
 		const Core::Keymap& m_Keys;
@@ -103,5 +113,16 @@ namespace Graphite {
 		bool m_OutputSeen = false;
 		std::vector<ImU32> m_RowForegrounds;
 		std::vector<ImU32> m_RowBackgrounds;
+
+		int m_Rows = 0;
+		bool m_FindOpen = false;
+		bool m_FocusFind = false;
+		bool m_FindFieldActive = false;
+		std::string m_FindText;
+		std::optional<TerminalMatch> m_CurrentMatch;
+		std::size_t m_MatchNumber = 0;
+		std::size_t m_MatchCount = 0;
+		ImVec2 m_FindBarMin{};
+		ImVec2 m_FindBarMax{};
 	};
 }

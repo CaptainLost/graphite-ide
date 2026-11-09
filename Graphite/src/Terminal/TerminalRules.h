@@ -114,7 +114,8 @@ namespace Graphite {
 		Copy,
 		Paste,
 		Interrupt,
-		Swallow
+		Swallow,
+		Find
 	};
 
 	TerminalShortcut ClassifyTerminalShortcut(Core::KeyCode key, Core::KeyModifier held,
