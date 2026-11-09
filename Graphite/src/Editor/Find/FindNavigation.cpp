@@ -5,8 +5,11 @@
 
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/Editing.h"
 #include "Core/Text/TextBuffer.h"
+#include "Core/Text/TextDocument.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <vector>
@@ -109,5 +112,70 @@ namespace Graphite {
 	void RevealFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer)
 	{
 		SelectMatchAt(item, buffer, item.Find.CurrentMatch);
+	}
+
+	bool ReplaceCurrentMatch(Core::OpenItem& item)
+	{
+		if (!item.Document || item.Document->IsReadOnly())
+		{
+			return false;
+		}
+
+		Core::TextBuffer& buffer = item.Document->GetBuffer();
+		RefreshFindMatchesIfStale(item, buffer);
+
+		if (item.Find.Matches.empty() || item.Find.CurrentMatch >= item.Find.Matches.size())
+		{
+			return false;
+		}
+
+		SelectMatchAt(item, buffer, item.Find.CurrentMatch);
+
+		if (!Core::InsertText(item, item.Find.Replacement))
+		{
+			return false;
+		}
+
+		RefreshFindMatches(item, buffer);
+		RevealFindMatch(item, buffer);
+		return true;
+	}
+
+	std::size_t ReplaceAllMatches(Core::OpenItem& item)
+	{
+		if (!item.Document || item.Document->IsReadOnly())
+		{
+			return 0;
+		}
+
+		Core::TextBuffer& buffer = item.Document->GetBuffer();
+		RefreshFindMatchesIfStale(item, buffer);
+
+		const std::vector<Core::FindMatch> matches = item.Find.Matches;
+
+		if (matches.empty())
+		{
+			return 0;
+		}
+
+		// Back to front, so each replacement leaves the offsets of the ones before it as they were.
+		buffer.BreakUndoGroup();
+		buffer.BeginTransaction();
+
+		for (auto match = matches.rbegin(); match != matches.rend(); ++match)
+		{
+			buffer.Erase(match->From, match->To);
+			buffer.Insert(match->From, item.Find.Replacement);
+		}
+
+		buffer.EndTransaction();
+		buffer.BreakUndoGroup();
+
+		const std::size_t caret = std::min(matches.front().From + item.Find.Replacement.size(), buffer.GetLength());
+		item.Caret = Core::PlaceAt(buffer, item.Caret, caret, Core::SelectionChange::Collapse, item.TabWidth);
+		Core::CatchUpWithDocument(item, Core::CaretFollow::AlreadyPlaced);
+
+		RefreshFindMatches(item, buffer);
+		return matches.size();
 	}
 }

@@ -27,6 +27,8 @@ namespace Core {
 
 		// WARNING: only these icons are baked from the icon font; any other draws ImGui's fallback glyph.
 		constexpr const char* kUsedIcons[] = {
+			ICON_LC_REPLACE,
+			ICON_LC_REPLACE_ALL,
 			ICON_LC_FILE,
 			ICON_LC_FOLDER,
 			ICON_LC_FOLDER_OPEN,

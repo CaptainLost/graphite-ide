@@ -54,6 +54,10 @@ namespace Core {
 		bool MatchCase = false;
 		bool WholeWord = false;
 
+		// The bar's second row, Replace, and the text a match is replaced with.
+		bool ReplaceOpen = false;
+		std::string Replacement;
+
 		// Document byte ranges in ascending order.
 		std::vector<FindMatch> Matches;
 		std::size_t CurrentMatch = 0;

@@ -1009,6 +1009,19 @@ namespace Graphite {
 
 		keys.SetDefault("editor.goToLine", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_G)});
 
+		commands.Add({.Id = "find.replace",
+					  .Label = "Replace",
+					  .Run = [this] {
+						  if (Core::OpenItem* item = FindActiveTextItem())
+						  {
+							  m_FindBar.OpenReplace(*item);
+						  }
+					  },
+					  .Enabled = [this] { return FindActiveTextItem() != nullptr; },
+					  .RepeatsWhileHeld = false});
+
+		keys.SetDefault("find.replace", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_H)});
+
 		commands.Add({.Id = "editor.navigateBack",
 					  .Label = "Back",
 					  .Run = [this] { NavigateBack(); },

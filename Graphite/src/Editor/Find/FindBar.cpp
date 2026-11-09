@@ -6,6 +6,7 @@
 
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/UiScale.h"
+#include "Core/ImGui/TextInput.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
@@ -40,6 +41,7 @@ namespace Graphite {
 		void CloseFindBar(Core::OpenItem& item)
 		{
 			item.Find.Open = false;
+			item.Find.ReplaceOpen = false;
 			item.Find.Matches.clear();
 			item.Find.CurrentMatch = 0;
 		}
@@ -192,6 +194,18 @@ namespace Graphite {
 		}
 	}
 
+	void FindBar::OpenReplace(Core::OpenItem& item)
+	{
+		Open(item);
+
+		if (item.Find.Open)
+		{
+			item.Find.ReplaceOpen = true;
+			m_FocusReplaceFor = item.Path;
+			m_FocusFor.clear();
+		}
+	}
+
 	void FindBar::Open(Core::OpenItem& item)
 	{
 		if (!item.Document)
@@ -243,9 +257,11 @@ namespace Graphite {
 							ImVec2(Core::Scaled(kFindBarPaddingX), kFindBarPaddingY));
 		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
 
+		const float barHeight = item.Find.ReplaceOpen ? ImGui::GetFrameHeight() * 2.0f + ImGui::GetStyle().ItemSpacing.y
+													  : ImGui::GetFrameHeight();
 		const bool barVisible =
-			ImGui::BeginChild("##FindBar", ImVec2(barWidth, ImGui::GetFrameHeight()),
-							  ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollWithMouse);
+			ImGui::BeginChild("##FindBar", ImVec2(barWidth, barHeight), ImGuiChildFlags_Borders,
+							  ImGuiWindowFlags_NoScrollWithMouse);
 
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar();
@@ -344,6 +360,34 @@ namespace Graphite {
 		const bool closeClicked =
 			Core::DrawIconButton("##findClose", ICON_LC_X, kNotToggled, "Close (Escape)");
 
+		bool replaceOne = false;
+		bool replaceAll = false;
+
+		if (item.Find.ReplaceOpen)
+		{
+			ImGui::SetNextItemWidth(widths.Field);
+
+			if (m_FocusReplaceFor == item.Path)
+			{
+				ImGui::SetKeyboardFocusHere();
+				m_FocusReplaceFor.clear();
+			}
+
+			replaceOne = Core::InputTextWithHint("##replaceWith", "Replace", item.Find.Replacement,
+												 ImGuiInputTextFlags_EnterReturnsTrue);
+
+			if (replaceOne)
+			{
+				// WARNING: Enter deactivates the field, and the next Enter should replace the next match.
+				ImGui::SetKeyboardFocusHere(kPreviousItem);
+			}
+
+			ImGui::SameLine();
+			replaceOne = Core::DrawIconButton("##replaceOne", ICON_LC_REPLACE, kNotToggled, "Replace (Enter)") || replaceOne;
+			ImGui::SameLine();
+			replaceAll = Core::DrawIconButton("##replaceAll", ICON_LC_REPLACE_ALL, kNotToggled, "Replace All");
+		}
+
 		ImGui::EndChild();
 		ImGui::PopFont();
 		ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
@@ -367,6 +411,18 @@ namespace Graphite {
 				ImGui::SetNavCursorVisible(false);
 			}
 
+			return;
+		}
+
+		if (replaceAll)
+		{
+			static_cast<void>(ReplaceAllMatches(item));
+			return;
+		}
+
+		if (replaceOne)
+		{
+			static_cast<void>(ReplaceCurrentMatch(item));
 			return;
 		}
 

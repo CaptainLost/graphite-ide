@@ -3,7 +3,12 @@
 #include "Editor/Find/FindNavigation.h"
 
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/Editing.h"
 #include "Core/Text/TextBuffer.h"
+#include "Core/Text/TextDocument.h"
+
+#include <memory>
+#include <string>
 
 namespace {
 
@@ -194,4 +199,47 @@ TEST_CASE("Revealing with nothing found leaves the caret where it was")
 	CHECK(item.Caret.Anchor == 3);
 	CHECK(item.Caret.Offset == 3);
 	CHECK_FALSE(item.PendingScroll);
+}
+
+namespace {
+
+	Core::OpenItem ReplacingItem(std::string text, std::string needle, std::string replacement)
+	{
+		Core::OpenItem item = ItemSearchingFor(std::move(needle));
+		item.Find.ReplaceOpen = true;
+		item.Find.Replacement = std::move(replacement);
+
+		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(text), "C:/p/a.txt");
+		REQUIRE(document);
+		item.Document = std::make_shared<Core::TextDocument>(std::move(document).GetValue());
+		item.Path = "C:/p/a.txt";
+		Core::RecomputeLineCaches(item);
+
+		Graphite::RefreshFindMatches(item, item.Document->GetBuffer());
+		return item;
+	}
+}
+
+TEST_CASE("Replace replaces the current match and moves on to the next")
+{
+	Core::OpenItem item = ReplacingItem("cat dog cat", "cat", "fox");
+
+	REQUIRE(Graphite::ReplaceCurrentMatch(item));
+
+	CHECK(item.Document->GetBuffer().Materialize() == "fox dog cat");
+	REQUIRE(item.Find.Matches.size() == 1);
+	CHECK(item.Caret.Anchor == 8);
+	CHECK(item.Caret.Offset == 11);
+}
+
+TEST_CASE("Replace All replaces every match as one undo step")
+{
+	Core::OpenItem item = ReplacingItem("cat dog cat cat", "cat", "fish");
+
+	CHECK(Graphite::ReplaceAllMatches(item) == 3);
+	CHECK(item.Document->GetBuffer().Materialize() == "fish dog fish fish");
+	CHECK(item.Find.Matches.empty());
+
+	REQUIRE(Core::Undo(item));
+	CHECK(item.Document->GetBuffer().Materialize() == "cat dog cat cat");
 }
