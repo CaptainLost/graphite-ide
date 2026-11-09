@@ -207,6 +207,17 @@ namespace Graphite {
 		return std::format("Commit to {} in {}", head->BranchName, folder);
 	}
 
+	std::string WorktreeMessageHint(const Core::HeadState* head, std::string_view folder)
+	{
+		if (head == nullptr)
+		{
+			return "Message";
+		}
+
+		const std::string target = head->Kind == Core::HeadKind::Detached ? std::string{"detached HEAD"} : head->BranchName;
+		return std::format("Message for {} in {}", target, folder);
+	}
+
 	std::optional<std::filesystem::path> LinkedGitDirectoryOf(const std::filesystem::path& worktree)
 	{
 		const std::filesystem::path gitFile = worktree / ".git";

@@ -128,6 +128,11 @@ namespace Graphite {
 		return "Checking out " + targetLabel + "…";
 	}
 
+	const char* RepositoryOperationName(Core::RepositoryOperation operation)
+	{
+		return OperationName(operation);
+	}
+
 	std::optional<GitStatusSegment> GitStatusText(const GitStatusInputs& inputs)
 	{
 		if (!inputs.FolderOpen)

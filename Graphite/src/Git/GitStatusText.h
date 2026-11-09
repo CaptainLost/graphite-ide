@@ -54,4 +54,7 @@ namespace Graphite {
 	std::string CheckingOutText(const std::string& targetLabel);
 
 	std::optional<GitStatusSegment> GitStatusText(const GitStatusInputs& inputs);
+
+	// "MERGING", "REBASING" and the like, as the status bar names the operation under way; null for none.
+	const char* RepositoryOperationName(Core::RepositoryOperation operation);
 }

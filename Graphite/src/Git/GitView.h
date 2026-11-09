@@ -252,8 +252,8 @@ namespace Graphite {
 		void RenderWorktreeChanges(const std::filesystem::path& worktree, const GitPalette& palette);
 		void RenderChangesDiff(const GitPalette& palette, DiffBody& body, bool picked, GitModel& model);
 
-		// The worktree whose changes row the history shows is followed while the window is on screen; off screen, with no
-		// folder or no such row, none is, so nothing stays watched or held.
+		// The worktree whose changes row the history shows is followed, and watched while the window is on screen; with no
+		// folder or no such row none is, so nothing stays watched or held.
 		void FollowShownWorktree(bool panelOnScreen);
 
 		// The worktree changes' model reads `worktree`: until it does, after a switch that waits for a write, its numbers

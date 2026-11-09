@@ -185,6 +185,23 @@ namespace Graphite {
 		m_Shared = &shared;
 	}
 
+	void ChangesView::Forget()
+	{
+		WithdrawQuestions();
+
+		m_Selected.reset();
+		m_Expanded.clear();
+
+		for (std::vector<std::filesystem::path>& lastDrawn : m_LastDrawn)
+		{
+			lastDrawn.clear();
+		}
+
+		m_AmendMessageAsked = nullptr;
+		m_FillingAmendMessage = false;
+		m_AmendMessageFilled.clear();
+	}
+
 	std::optional<WriteExpectation> ChangesView::Expectation(bool forCommit) const
 	{
 		return m_Options.Expect ? m_Options.Expect(forCommit) : std::nullopt;
@@ -258,9 +275,15 @@ namespace Graphite {
 			const std::optional<Core::Error>& statusError = m_Model.GetStatusError();
 			const Core::PanelMarginScope margin;
 
-			if (IsMissingRepository(kHasStatus, statusError))
+			if (IsMissingRepository(kHasStatus, statusError) && m_Options.OffersInit)
 			{
 				DrawInitRepositoryPrompt(m_Model);
+			}
+			else if (IsMissingRepository(kHasStatus, statusError))
+			{
+				// WARNING: Another worktree's folder deleted while it is shown reads as no repository; initialising one in
+				// its place would make a new repository where the worktree was.
+				Core::EmptyState("Folder missing: " + statusError->Message);
 			}
 			else if (statusError.has_value())
 			{
@@ -997,11 +1020,20 @@ namespace Graphite {
 		{
 			const ImVec2 framePadding = ImGui::GetStyle().FramePadding;
 
-			const char* hint = m_Shared->Amend ? "Keeping the message of the last commit" : "Message";
+			std::string hint = "Message";
+
+			if (m_Shared->Amend)
+			{
+				hint = "Keeping the message of the last commit";
+			}
+			else if (m_Options.MessageHint)
+			{
+				hint = m_Options.MessageHint();
+			}
 
 			ImGui::GetWindowDrawList()->AddText(
 				ImVec2(messageStart.x + framePadding.x, messageStart.y + framePadding.y),
-				ImGui::GetColorU32(ImGuiCol_TextDisabled), hint);
+				ImGui::GetColorU32(ImGuiCol_TextDisabled), hint.c_str());
 		}
 
 		ImGui::EndDisabled();
@@ -1384,8 +1416,17 @@ namespace Graphite {
 
 	std::optional<ChangesView::AmendPushedQuestion> ChangesView::PushedLastCommit() const
 	{
+		std::optional<Core::Branch> answered;
+
+		if (m_Options.CheckedOutBranch)
+		{
+			answered = m_Options.CheckedOutBranch();
+		}
+
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-		const Core::Branch* const checkedOut = branches != nullptr ? CheckedOutBranch(*branches) : nullptr;
+		const Core::Branch* const checkedOut =
+			m_Options.CheckedOutBranch ? (answered.has_value() ? &*answered : nullptr)
+									   : (branches != nullptr ? CheckedOutBranch(*branches) : nullptr);
 
 		// Ahead of nothing means the upstream holds the last commit.
 		if (checkedOut == nullptr || !checkedOut->Upstream.has_value() || !checkedOut->DistanceKnown || checkedOut->Ahead > 0)

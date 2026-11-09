@@ -116,6 +116,10 @@ namespace Graphite {
 	// HEAD is unread.
 	std::string WorktreeCommitLabel(const Core::HeadState* head, std::string_view folder);
 
+	// The empty message box's words for a worktree: "Message for <branch> in <folder>", "Message for detached HEAD in
+	// <folder>"; "Message" while its HEAD is unread.
+	std::string WorktreeMessageHint(const Core::HeadState* head, std::string_view folder);
+
 	// The git directory a linked worktree's `.git` file names; empty when `.git` is a directory or cannot be read.
 	std::optional<std::filesystem::path> LinkedGitDirectoryOf(const std::filesystem::path& worktree);
 }

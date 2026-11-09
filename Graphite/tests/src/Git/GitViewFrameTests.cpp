@@ -34,6 +34,7 @@
 #include "Theme/GitPalette.h"
 #include "UI/Dialogs/ModalGate.h"
 #include "UI/Lists/ListRow.h"
+#include "UI/TickBox.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/Events/EventBus.h"
@@ -266,10 +267,15 @@ namespace {
 		Core::Result<Core::HeadState> QueryHead() override
 		{
 			Core::HeadState head;
-			head.BranchName = "feature";
+			head.BranchName = Branch;
 			head.Commit = OidWithFirstByte(2);
+			head.Operation = Operation;
 			return head;
 		}
+
+		// What another process may change under the window.
+		std::string Branch = "feature";
+		Core::RepositoryOperation Operation = Core::RepositoryOperation::None;
 	};
 
 	// A watch that starts and never reports a change.
@@ -1825,6 +1831,75 @@ namespace {
 		return "Worktree" + Core::ToUtf8(Core::NormalizeDirectory(kLinkedFolder));
 	}
 
+	// The worktree view's commit button's width, read off the item under the pointer at the start of its line; empty when
+	// nothing is there.
+	std::optional<float> WorktreeCommitButtonWidth(GitWindow& window)
+	{
+		const ImGuiWindow* box = window.WindowNamed("commitMessage");
+		REQUIRE(box != nullptr);
+
+		const float middle = box->Pos.y + box->Size.y + ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeight() * 0.5f;
+		const std::vector<HoveredStretch> stretches =
+			HoveredAcross(window.Frames, middle, box->Pos.x, box->Pos.x + box->Size.x, [&window] { window.DrawWindow(); });
+
+		if (stretches.empty())
+		{
+			return std::nullopt;
+		}
+
+		return stretches.front().To - stretches.front().From + 1.0f;
+	}
+
+	// Where the hover buttons of one.txt's row in the worktree view are, when it draws them.
+	struct OneTxtRowButtons
+	{
+		std::optional<ImVec2> Stage;
+		std::optional<ImVec2> Discard;
+	};
+
+	OneTxtRowButtons OneTxtRowButtonsNow(GitWindow& window)
+	{
+		const ImGuiWindow* list = window.WindowNamed("changes.lists");
+		REQUIRE(list != nullptr);
+
+		std::optional<float> rowMiddle;
+
+		for (const DrawnLine& line : DrawnTextLines(*list->DrawList, *window.Font))
+		{
+			if (line.Text.find("one.txt") != std::string::npos)
+			{
+				rowMiddle = line.Top + window.Font->Size * 0.5f;
+			}
+		}
+
+		REQUIRE(rowMiddle.has_value());
+
+		// one.txt is the status's second entry, listed under CHANGES.
+		constexpr int kOneTxtEntry = 1;
+		const ImGuiID section = ImHashStr("CHANGES", 0, list->ID);
+		const ImGuiID row = ImHashData(&kOneTxtEntry, sizeof(kOneTxtEntry), section);
+		const ImGuiID stageId = ImHashStr("##stage", 0, row);
+		const ImGuiID discardId = ImHashStr("##discard", 0, row);
+
+		OneTxtRowButtons buttons;
+
+		for (const HoveredStretch& stretch : HoveredAcross(window.Frames, *rowMiddle, list->Pos.x, list->Pos.x + list->Size.x,
+														   [&window] { window.DrawWindow(); }))
+		{
+			if (stretch.Id == stageId)
+			{
+				buttons.Stage = ImVec2(stretch.Middle(), *rowMiddle);
+			}
+
+			if (stretch.Id == discardId)
+			{
+				buttons.Discard = ImVec2(stretch.Middle(), *rowMiddle);
+			}
+		}
+
+		return buttons;
+	}
+
 	// The commit message box drawn last frame, whichever Changes view drew it; null when none was.
 	const ImGuiWindow* CommitMessageBox(const GitWindow& window)
 	{
@@ -1872,6 +1947,44 @@ TEST_CASE("Git window: selecting another worktree's changes row draws that workt
 	CHECK(DrawsText(window, LinkedWhereLine()));
 	CHECK(DrawsText(window, "two.txt"));
 	CHECK_FALSE(DrawsText(window, "Nochanges"));
+
+	// The empty message box names the target.
+	CHECK(DrawsText(window, "Messageforfeatureinlinked"));
+
+	// Without Stash the commit button takes the room beside Amend alone.
+	window.WorktreeChanges.Draft().Message = "fix";
+	window.Settle(1);
+	const std::optional<float> commitWidth = WorktreeCommitButtonWidth(window);
+	const ImGuiWindow* box = CommitMessageBox(window);
+	REQUIRE(commitWidth.has_value());
+	REQUIRE(box != nullptr);
+	CHECK(*commitWidth == doctest::Approx(box->Size.x - Graphite::TickBoxWidth("Amend") - ImGui::GetStyle().ItemSpacing.x).epsilon(0.02));
+
+	// Another process switched the worktree to another branch since the window read it: a stage is refused, and the row
+	// offers no discard.
+	window.WorktreeGitPort.Branch = "elsewhere";
+	const OneTxtRowButtons buttons = OneTxtRowButtonsNow(window);
+	CHECK_FALSE(buttons.Discard.has_value());
+	REQUIRE(buttons.Stage.has_value());
+
+	window.ClickAt(*buttons.Stage);
+	window.Settle();
+
+	const std::optional<Graphite::WorktreeWriteFailure> refused = window.WorktreeChanges.TakeWriteError();
+	REQUIRE(refused.has_value());
+	CHECK(refused->Failure.Error.Message.starts_with("Not staged:"));
+}
+
+TEST_CASE("Git window: a worktree in the middle of a merge names it on the line above its lists")
+{
+	GitWindow window("WorktreeMergingWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.WorktreeGitPort.Operation = Core::RepositoryOperation::Merge;
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+
+	CHECK(DrawsText(window, LinkedWhereLine() + "MERGING"));
 }
 
 TEST_CASE("Git window: the open folder's HEAD still shows Local changes after another worktree's changes were shown")
@@ -1912,7 +2025,7 @@ TEST_CASE("Git window: typing in another worktree's commit box fills its own dra
 	CHECK(window.Shared.Message.empty());
 }
 
-TEST_CASE("Git window: the worktree followed is let go of when the window is not on screen")
+TEST_CASE("Git window: off screen the worktree followed is kept unwatched, and its row comes back as it was")
 {
 	GitWindow window("WorktreeOffScreenWindow", HeadOnMain(), {}, MainAndFeatureRead());
 	window.WorktreePort.Listed = RepoLinkedAndLoose();
@@ -1925,8 +2038,15 @@ TEST_CASE("Git window: the worktree followed is let go of when the window is not
 	window.View.SetDrawnOnLatestFrame(false);
 	window.View.OnUpdate(Core::Timestep{0.0f});
 
-	CHECK_FALSE(window.WorktreeChanges.Worktree().has_value());
+	CHECK(window.WorktreeChanges.Worktree() == kLinkedFolder);
 	CHECK_FALSE(window.WorktreeChanges.IsWatching());
+
+	// Back on screen, the first frame draws the counts it had, not a wait.
+	window.Step();
+	CHECK(FirstHistoryLine(window).find("1staged") != std::string::npos);
+
+	window.Step();
+	CHECK(window.WorktreeChanges.IsWatching());
 }
 
 TEST_CASE("Git window: a selected detached worktree whose HEAD moved keeps its rows on screen until the page from the new HEAD lands")

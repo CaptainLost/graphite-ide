@@ -998,10 +998,34 @@ namespace Graphite {
 		ChangesViewOptions options;
 		options.OffersDiscard = false;
 		options.OffersStash = false;
+		options.OffersInit = false;
 		options.WhereLine = "Worktree \xC2\xB7 " + Core::ToUtf8(Core::NormalizeDirectory(worktree));
+
+		// A merge or a rebase under way in the worktree is named as the status bar names the open folder's.
+		if (const char* operation = head != nullptr ? RepositoryOperationName(head->Operation) : nullptr)
+		{
+			options.WhereLine += std::string{" \xC2\xB7 "} + operation;
+		}
+
 		options.CommitLabel = [this, folder] { return WorktreeCommitLabel(m_WorktreeChanges.Model().GetHead().get(), folder); };
+		options.MessageHint = [this, folder] { return WorktreeMessageHint(m_WorktreeChanges.Model().GetHead().get(), folder); };
 		options.CommitWarns = head != nullptr && head->Kind == Core::HeadKind::Detached;
 		options.Expect = [this](bool forCommit) { return std::optional<WriteExpectation>{m_WorktreeChanges.ExpectationNow(forCommit)}; };
+
+		// The worktree's model lists no branches; the open folder's are the same repository's.
+		options.CheckedOutBranch = [this]() -> std::optional<Core::Branch> {
+			const Core::Ref<const Core::HeadState> worktreeHead = m_WorktreeChanges.Model().GetHead();
+			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+
+			if (worktreeHead == nullptr || worktreeHead->Kind != Core::HeadKind::Branch || branches == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			const Core::Branch* const branch = BranchWithFullName(*branches, Core::LocalBranchReference(worktreeHead->BranchName));
+			return branch != nullptr ? std::optional<Core::Branch>{*branch} : std::nullopt;
+		};
+
 		return options;
 	}
 

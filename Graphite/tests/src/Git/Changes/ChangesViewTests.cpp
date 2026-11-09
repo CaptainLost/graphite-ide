@@ -20,6 +20,7 @@
 
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/Ref.h"
 
 #include <IconsLucide.h>
 #include <imgui.h>
@@ -283,6 +284,11 @@ namespace {
 	public:
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override
 		{
+			if (StatusFailure.has_value())
+			{
+				return *StatusFailure;
+			}
+
 			Core::FileStatus staged;
 			staged.Path = "staged.txt";
 			staged.Index = Core::StatusFlags::Modified;
@@ -318,6 +324,9 @@ namespace {
 
 		int StageCalls = 0;
 		int CommitCalls = 0;
+
+		// Set, the status cannot be read: NotFound for a folder that is no longer a checkout.
+		std::optional<Core::Error> StatusFailure;
 	};
 
 	// The model of that worktree, its status and HEAD already landed.
@@ -666,4 +675,102 @@ TEST_CASE("Changes view edits the draft it is given, and leaves the one it was m
 
 	CHECK(worktreeDraft.Message == "wip");
 	CHECK(host.Shared.Message.empty());
+}
+
+TEST_CASE("Changes view asks before amending a pushed commit when its branch is answered by the host")
+{
+	WorktreeHost host;
+	host.Shared.Message = "fix";
+	host.Shared.Amend = true;
+
+	Graphite::ChangesViewOptions options = host.SwitchedAway();
+	options.CheckedOutBranch = [] {
+		Core::Branch branch;
+		branch.Name = kWorktreeBranch;
+		branch.FullName = std::string{"refs/heads/"} + kWorktreeBranch;
+		branch.IsHead = true;
+		branch.Upstream = std::string{"origin/"} + kWorktreeBranch;
+		branch.DistanceKnown = true;
+		branch.Ahead = 0;
+		return std::optional<Core::Branch>{branch};
+	};
+	host.View.SetOptions(options);
+
+	constexpr const char* kHost = "Amend pushed host";
+	const std::function<void()> draw = InHost(kHost, [&host] { host.View.Draw(); }, ImVec2(0.0f, 0.0f), kWideHostSize);
+
+	ClickCommit(host.Frames, kHost, draw);
+	host.Frames.Next(draw);
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(host.Modals.IsBusy());
+	CHECK(host.Asked.empty());
+	CHECK(host.Port.CommitCalls == 0);
+
+	host.View.WithdrawQuestions();
+}
+
+TEST_CASE("Changes view without Initialize says the folder is missing where a repository is not found")
+{
+	for (const bool offersInit : {true, false})
+	{
+		CAPTURE(offersInit);
+
+		WorktreeHost host;
+		host.Port.StatusFailure = Core::Error{Core::ErrorCode::NotFound, "no repository at D:/work/eager-scribbling-frog"};
+		host.Model.Clear();
+		host.Model.SetRoot("D:/work/eager-scribbling-frog");
+		host.Model.RequestStatus();
+		host.Model.OnUpdate(Core::Timestep{0.0f});
+		REQUIRE(host.Model.GetStatus() == nullptr);
+
+		Graphite::ChangesViewOptions options = host.SwitchedAway();
+		options.OffersInit = offersInit;
+		host.View.SetOptions(options);
+
+		ImFontBaked* font = nullptr;
+		const char* const hostName = offersInit ? "Init offered host" : "No init host";
+		const std::function<void()> draw = InHost(hostName, [&host, &font] {
+			font = ImGui::GetFontBaked();
+			host.View.Draw();
+		}, ImVec2(0.0f, 0.0f), kWideHostSize);
+
+		host.Frames.Next(draw);
+		REQUIRE(font != nullptr);
+
+		CHECK(DrawsLine(hostName, *font, "InitializeRepository") == offersInit);
+		CHECK(DrawsLine(hostName, *font, "Foldermissing") == !offersInit);
+	}
+}
+
+TEST_CASE("Changes view's empty message box names the worktree's target, and the open folder's says Message")
+{
+	WorktreeHost host;
+
+	ImFontBaked* font = nullptr;
+	constexpr const char* kHost = "Message hint host";
+	const std::function<void()> draw = InHost(kHost, [&host, &font] {
+		font = ImGui::GetFontBaked();
+		host.View.Draw();
+	}, ImVec2(0.0f, 0.0f), kWideHostSize);
+
+	host.Frames.Next(draw);
+	REQUIRE(font != nullptr);
+	CHECK(DrawsLine(kHost, *font, "Message"));
+	CHECK_FALSE(DrawsLine(kHost, *font, "Messagefor"));
+
+	Graphite::ChangesViewOptions options = host.SwitchedAway();
+	options.MessageHint = [&host] { return Graphite::WorktreeMessageHint(host.Model.GetHead().get(), kWorktreeFolder); };
+	host.View.SetOptions(options);
+	host.Frames.Next(draw);
+
+	CHECK(DrawsLine(kHost, *font, "Messageforworktree-eager-scribbling-frogineager-scribbling-frog"));
+
+	host.Port.Head.Kind = Core::HeadKind::Detached;
+	host.Port.Head.BranchName.clear();
+	host.Model.RequestHead();
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+	host.Frames.Next(draw);
+
+	CHECK(DrawsLine(kHost, *font, "MessagefordetachedHEADineager-scribbling-frog"));
 }

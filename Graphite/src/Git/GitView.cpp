@@ -170,13 +170,14 @@ namespace Graphite {
 	void GitView::FollowShownWorktree(bool panelOnScreen)
 	{
 		// WARNING: Asked with the panel as drawn on the last frame, which holds from frame to frame: a value that flickered
-		// would stop and start the watches, and read the worktree again, each time.
+		// would stop and start the watches, and read the worktree again, each time. Off screen the worktree stays followed
+		// unwatched, so coming back shows what was there and reads it again in place, rather than a wait popping in.
 		const std::optional<std::filesystem::path> worktree =
-			panelOnScreen && m_Model.HasOpenFolder() ? Shown().ChangesWorktree() : std::nullopt;
+			m_Model.HasOpenFolder() ? Shown().ChangesWorktree() : std::nullopt;
 
 		m_WorktreeChanges.Follow(worktree, panelOnScreen);
 
-		// A file picked in one worktree is not another's.
+		// A file picked in one worktree, the view's selection and an Amend message on its way are not another's.
 		const std::optional<std::filesystem::path>& followed = m_WorktreeChanges.Worktree();
 		const bool sameFollowed = followed.has_value() == m_WorktreeDiffFor.has_value() &&
 								  (!followed.has_value() || Core::SamePath(*followed, *m_WorktreeDiffFor));
@@ -186,6 +187,7 @@ namespace Graphite {
 			m_WorktreeDiffFor = followed;
 			m_WorktreeChangesPicked = false;
 			m_WorktreeChangesDiff.Diff = {};
+			m_WorktreeView.Forget();
 		}
 	}
 

@@ -7,6 +7,7 @@
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
 #include "Git/Worktrees/WriteExpectation.h"
+#include "Core/Git/Ref.h"
 #include "Theme/GitPalette.h"
 #include "Theme/ActiveScheme.h"
 
@@ -43,6 +44,16 @@ namespace Graphite {
 
 		// What the user sees, carried by every write the view asks: a commit's with forCommit set. Unset carries nothing.
 		std::function<std::optional<WriteExpectation>(bool forCommit)> Expect;
+
+		// The branch HEAD is on, with its upstream and distance, which Amend asks whether its last commit is pushed. Unset
+		// reads the model's own list; set for a model that lists no branches of its own.
+		std::function<std::optional<Core::Branch>()> CheckedOutBranch;
+
+		// A status that finds no repository offers to initialise one; otherwise it says the folder is missing.
+		bool OffersInit = true;
+
+		// What the empty message box says, Amend off; unset reads "Message".
+		std::function<std::string()> MessageHint;
 	};
 
 	// The working tree's changes, the commit box and their dialogs. Each host has a view of its own, with its own
@@ -68,6 +79,11 @@ namespace Graphite {
 
 		// The draft the commit box edits from now on.
 		void SetShared(ChangesShared& shared);
+
+		// Lets go of what the view holds of the working tree it showed: the selection, the open folders, and an Amend
+		// message still on its way. For a host that points the view's model at another working tree.
+		// WARNING: Withdraws the view's questions, so it is called outside a popup.
+		void Forget();
 
 		// The lists, the commit box and the dialogs, into the current window.
 		void Draw();
