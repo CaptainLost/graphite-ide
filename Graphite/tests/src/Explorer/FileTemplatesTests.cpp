@@ -28,6 +28,16 @@ TEST_CASE("A C++ class makes a header with the class in it and a source that inc
 	CHECK(files[1].Content == "#include \"Foo.h\"\n");
 }
 
+TEST_CASE("A C++ class is indented with the indentation it is given")
+{
+	const auto spaces = ExpandTemplate(FileTemplate::CppClass, "Foo", "", "    ");
+	CHECK(spaces[0].Content.find("\n    Foo() = default;") != std::string::npos);
+	CHECK(spaces[0].Content.find('\t') == std::string::npos);
+
+	const auto tabs = ExpandTemplate(FileTemplate::CppClass, "Foo", "");
+	CHECK(tabs[0].Content.find("\n\tFoo() = default;") != std::string::npos);
+}
+
 TEST_CASE("A C# class sits in the namespace it is given")
 {
 	const auto files = ExpandTemplate(FileTemplate::CSharpClass, "Foo", "App.Models");

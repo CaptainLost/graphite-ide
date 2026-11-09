@@ -388,6 +388,32 @@ namespace Graphite {
 		return {};
 	}
 
+	std::string SchemeDisplayName(std::string_view name)
+	{
+		if (!ParseBuiltInName(name).has_value())
+		{
+			return std::string{name};
+		}
+
+		std::string shown;
+		bool startsWord = true;
+
+		for (const char character : name)
+		{
+			if (character == '-')
+			{
+				shown += ' ';
+				startsWord = true;
+				continue;
+			}
+
+			shown += startsWord && character >= 'a' && character <= 'z' ? static_cast<char>(character - 'a' + 'A') : character;
+			startsWord = false;
+		}
+
+		return shown;
+	}
+
 	std::optional<BuiltInScheme> ParseBuiltInName(std::string_view name)
 	{
 		for (const BuiltInName& entry : kBuiltInNames)

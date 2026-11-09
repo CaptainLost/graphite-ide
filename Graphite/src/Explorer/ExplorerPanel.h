@@ -49,6 +49,8 @@ namespace Graphite {
 
 		void SetShownFile(const std::filesystem::path& path);
 
+		void SetIndent(std::string indent) { m_Files.SetIndent(std::move(indent)); }
+
 		std::optional<std::string> FileOperationText() const;
 
 	private:

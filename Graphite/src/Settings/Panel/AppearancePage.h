@@ -107,6 +107,8 @@ namespace Graphite {
 		std::vector<std::string> SchemeActionLabels() const;
 
 		void DrawSchemeChoice();
+
+		static std::vector<std::string> SchemeLabels(const std::vector<std::string>& names);
 		void DrawSchemeActions();
 		void DrawThemesFolder();
 		void DrawInterfaceScale();

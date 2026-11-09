@@ -5,6 +5,7 @@
 #include "Settings/Panel/SettingsLayout.h"
 #include "Settings/Panel/SettingsSearch.h"
 #include "Theme/ActiveScheme.h"
+#include "Theme/BuiltInSchemes.h"
 #include "Theme/ColorScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
@@ -454,7 +455,7 @@ namespace Graphite {
 		card.Rows.push_back(SettingsRow{.Title = "Colour scheme",
 										.Description = "Colours for the editor, the panels and the diffs.",
 										.Keywords = {"theme", "dark", "light", "color"},
-										.ControlWidth = SettingsLayout::ComboWidth(m_Draft.GetNames()),
+										.ControlWidth = SettingsLayout::ComboWidth(SchemeLabels(m_Draft.GetNames())),
 										.DrawControl = [this] { DrawSchemeChoice(); }});
 		card.Rows.push_back(SettingsRow{.Title = "This scheme",
 										.Description = m_Draft.IsReadOnly() ? kBuiltInSchemeDescription : kOwnSchemeDescription,
@@ -553,12 +554,25 @@ namespace Graphite {
 		return {"Duplicate", "Rename", "Delete"};
 	}
 
+	std::vector<std::string> AppearancePage::SchemeLabels(const std::vector<std::string>& names)
+	{
+		std::vector<std::string> labels;
+		labels.reserve(names.size());
+
+		for (const std::string& name : names)
+		{
+			labels.push_back(SchemeDisplayName(name));
+		}
+
+		return labels;
+	}
+
 	void AppearancePage::DrawSchemeChoice()
 	{
 		const std::vector<std::string>& names = m_Draft.GetNames();
 		std::size_t selected = IndexOfName(names, m_Draft.GetSelected());
 
-		if (!SettingsLayout::Choice("##colourScheme", names, selected, m_Draft.GetSelected()))
+		if (!SettingsLayout::Choice("##colourScheme", SchemeLabels(names), selected, SchemeDisplayName(m_Draft.GetSelected())))
 		{
 			return;
 		}

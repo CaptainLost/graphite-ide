@@ -52,6 +52,9 @@ namespace Graphite {
 
 		void SetShownFile(const std::filesystem::path& path) { m_ShownFile = path; }
 
+		// One level of the editor's indentation, which files made from a template are indented with.
+		void SetIndent(std::string indent) { m_Indent = std::move(indent); }
+
 		void WithdrawQuestions();
 
 		void NewFileInRoot();
@@ -197,6 +200,8 @@ namespace Graphite {
 		GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
 		GitDecorationView m_GitDecorations;
 		std::filesystem::path m_ShownFile;
+
+		std::string m_Indent = "\t";
 		FileOperationJobs m_FileOperations;
 		FileOperationJobs::Clock::time_point m_FrameTime;
 		FolderListing m_Listing;

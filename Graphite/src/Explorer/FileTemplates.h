@@ -33,7 +33,9 @@ namespace Graphite {
 	std::optional<std::string> TemplateNameProblem(FileTemplate fileTemplate, std::string_view name);
 
 	// WARNING: Valid only for a name TemplateNameProblem accepted.
-	std::vector<TemplateFile> ExpandTemplate(FileTemplate fileTemplate, std::string_view name, std::string_view csharpNamespace);
+	// `indent` is one level of the editor's indentation, so a new file is indented as typing in it would be.
+	std::vector<TemplateFile> ExpandTemplate(FileTemplate fileTemplate, std::string_view name, std::string_view csharpNamespace,
+											 std::string_view indent = "\t");
 
 	// The namespace a C# file gets: the folders from the workspace root down, each cleaned into an identifier
 	// and joined by dots, or the root's own name for a file at the root.

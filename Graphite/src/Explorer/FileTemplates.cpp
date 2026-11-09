@@ -96,7 +96,8 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	std::vector<TemplateFile> ExpandTemplate(FileTemplate fileTemplate, std::string_view name, std::string_view csharpNamespace)
+	std::vector<TemplateFile> ExpandTemplate(FileTemplate fileTemplate, std::string_view name, std::string_view csharpNamespace,
+											 std::string_view indent)
 	{
 		switch (fileTemplate)
 		{
@@ -105,7 +106,7 @@ namespace Graphite {
 
 		case FileTemplate::CppClass:
 			return {{.Name = std::format("{}.h", name),
-					 .Content = std::format("#pragma once\n\nclass {}\n{{\npublic:\n\t{}() = default;\n}};\n", name, name)},
+					 .Content = std::format("#pragma once\n\nclass {}\n{{\npublic:\n{}{}() = default;\n}};\n", name, indent, name)},
 					{.Name = std::format("{}.cpp", name), .Content = std::format("#include \"{}.h\"\n", name)}};
 
 		case FileTemplate::CSharpClass:

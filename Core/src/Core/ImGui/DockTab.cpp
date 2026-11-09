@@ -199,8 +199,28 @@ namespace Core {
 
 			ImGui::PushFont(FaceOf(look), 0.0f);
 			ImGui::PushStyleColor(ImGuiCol_Text, colour);
-			ImGui::RenderTextEllipsis(&drawList, lineTop, ImVec2(right, lineTop.y + ImGui::GetFontSize()), right, nameStart,
-									  nameEnd, nullptr);
+
+			// WARNING: A cut name keeps its extension and loses its middle: Widget.cpp and Widget.h cut at the end both
+			// read "Widget…", and two such tabs could not be told apart.
+			const std::size_t lastDot = look.Name.rfind('.');
+			const bool hasExtension = lastDot != std::string_view::npos && lastDot > 0;
+			const float available = right - lineTop.x;
+			const bool cut = ImGui::CalcTextSize(nameStart, nameEnd).x > available;
+			const float extensionWidth = hasExtension ? ImGui::CalcTextSize(nameStart + lastDot, nameEnd).x : 0.0f;
+
+			if (cut && hasExtension && extensionWidth < available * 0.5f)
+			{
+				const float stemRight = right - extensionWidth;
+				ImGui::RenderTextEllipsis(&drawList, lineTop, ImVec2(stemRight, lineTop.y + ImGui::GetFontSize()), stemRight,
+										  nameStart, nameStart + lastDot, nullptr);
+				drawList.AddText(ImVec2(stemRight, lineTop.y), colour, nameStart + lastDot, nameEnd);
+			}
+			else
+			{
+				ImGui::RenderTextEllipsis(&drawList, lineTop, ImVec2(right, lineTop.y + ImGui::GetFontSize()), right, nameStart,
+										  nameEnd, nullptr);
+			}
+
 			ImGui::PopStyleColor();
 			ImGui::PopFont();
 		}

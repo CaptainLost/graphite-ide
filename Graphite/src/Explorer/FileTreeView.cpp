@@ -1133,7 +1133,7 @@ namespace Graphite {
 		const std::string csharpNamespace =
 			CSharpNamespaceFor(foldersBelowRoot, Core::ToUtf8(m_Workspace.GetRoot().filename()));
 
-		for (TemplateFile& file : ExpandTemplate(fileTemplate, name, csharpNamespace))
+		for (TemplateFile& file : ExpandTemplate(fileTemplate, name, csharpNamespace, m_Indent))
 		{
 			files.push_back(FileToCreate{.Path = NewFilePath{.Folders = {}, .File = std::move(file.Name)},
 										 .Content = std::move(file.Content)});

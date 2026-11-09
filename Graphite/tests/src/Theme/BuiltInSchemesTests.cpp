@@ -268,3 +268,11 @@ TEST_CASE("A user scheme's editor colours win over the built-in ones")
 		}
 	}
 }
+
+TEST_CASE("A built-in scheme is shown by its name in words and a scheme of the user's as it was named")
+{
+	CHECK(Graphite::SchemeDisplayName("graphite-bright") == "Graphite Bright");
+	CHECK(Graphite::SchemeDisplayName("gruvbox-dark-hard") == "Gruvbox Dark Hard");
+	CHECK(Graphite::SchemeDisplayName("dark") == "Dark");
+	CHECK(Graphite::SchemeDisplayName("my-scheme") == "my-scheme");
+}

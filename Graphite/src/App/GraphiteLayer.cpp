@@ -994,6 +994,9 @@ namespace Graphite {
 		const std::optional<std::size_t> shownTab = ShownActiveTab(m_Documents, isShown);
 		m_Explorer->SetShownFile(shownTab ? m_Documents.At(*shownTab).Path : std::filesystem::path{});
 
+		const Core::IndentStyle indent = m_EditorSettings.GetIndentStyle();
+		m_Explorer->SetIndent(indent.UseSpaces ? std::string(indent.Width, ' ') : std::string{"\t"});
+
 		ServerStatus status;
 		LanguageId activeLanguage = LanguageId::PlainText;
 
