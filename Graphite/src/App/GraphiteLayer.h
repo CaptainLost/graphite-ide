@@ -43,6 +43,7 @@
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
 #include "Persistence/UnsavedCopies.h"
+#include "Search/CommandPalette.h"
 #include "Search/QuickOpen.h"
 #include "Review/FolderReviews.h"
 #include "Review/ReviewMenu.h"
@@ -521,5 +522,8 @@ namespace Graphite {
 								  m_DocumentWindows.NoteDepartureFromActive();
 								  m_DocumentWindows.RequestOpen(file, kPermanentTab);
 							  }};
+
+		// Ctrl+Shift+P.
+		CommandPalette m_CommandPalette{[this](const std::string& id) { m_Commands.RunFromMenu(id); }};
 	};
 }

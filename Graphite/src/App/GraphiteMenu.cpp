@@ -81,7 +81,7 @@ namespace Graphite {
 					MenuItem::Command("view.resetLayout"),
 				}),
 			MenuItem::Submenu("Go", {MenuItem::Command("editor.navigateBack"), MenuItem::Command("editor.navigateForward"),
-									 MenuItem::Separator(), MenuItem::Command("file.quickOpen"),
+									 MenuItem::Separator(), MenuItem::Command("file.quickOpen"), MenuItem::Command("view.commandPalette"),
 									 MenuItem::Command("editor.goToLine")}),
 			MenuItem::Submenu("Git", {MenuItem::Command("git.fetch"), MenuItem::Command("git.pull"), MenuItem::Command("git.push"),
 											 MenuItem::Command("git.forcePush")}),

@@ -408,6 +408,13 @@ namespace Graphite {
 
 		m_Keys.SetDefault("file.quickOpen", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_P)});
 
+		m_Commands.Add({.Id = "view.commandPalette",
+						.Label = "Command Palette...",
+						.Run = [this] { m_CommandPalette.Open(ListPaletteEntries(m_Commands, m_Keys, "view.commandPalette")); },
+						.RepeatsWhileHeld = false});
+
+		m_Keys.SetDefault("view.commandPalette", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_P)});
+
 		// WARNING: These commands act on the active editor view, the one last focused, not the one being drawn: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
 		RegisterEditorNavigationCommands(m_Commands, m_Keys, m_ActiveEditor,
 										 EditorCommandServices{.HasLanguageServer = [this](const std::filesystem::path& path) { return m_LanguageServices.HasChosenServer(LanguageOfPath(path)); },
@@ -1189,6 +1196,7 @@ namespace Graphite {
 		RenderForcePushConfirm();
 		m_About.Render();
 		m_QuickOpen.Render();
+		m_CommandPalette.Render();
 		RenderTrustParentConfirm();
 
 		UpdateGitDecorations();
