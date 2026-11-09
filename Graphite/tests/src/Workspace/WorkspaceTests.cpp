@@ -8,6 +8,7 @@
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
+#include "Core/Command/CommandRegistry.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/FileSystem/FileTree.h"
@@ -51,6 +52,27 @@ TEST_CASE("A folder that cannot be opened is reported in an application toast")
 	CHECK(log.Toasts.front().Title == "Cannot open folder");
 	CHECK_FALSE(log.Toasts.front().Message.empty());
 	CHECK(log.Toasts.front().Scope == Graphite::ToastScope::Application);
+}
+
+TEST_CASE("A recent folder's command is labelled by its path in the menu and as Open Recent where commands are listed")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	settings.Get().NoteRecentFolder(temp.GetPath());
+	Graphite::Workspace workspace(events, settings.Get());
+	Core::CommandRegistry commands;
+
+	workspace.RegisterCommands(commands);
+
+	const Core::Command* recent = commands.Find("workspace.openRecent.0");
+	REQUIRE(recent != nullptr);
+	CHECK(recent->Label == Core::ToUtf8(temp.GetPath()));
+	CHECK(recent->ListLabel == "Open Recent: " + Core::ToUtf8(temp.GetPath()));
+
+	const Core::Command* unused = commands.Find("workspace.openRecent.1");
+	REQUIRE(unused != nullptr);
+	CHECK(unused->ListLabel.empty());
 }
 
 TEST_CASE("A file that is not a solution is refused with one application toast")

@@ -971,6 +971,7 @@ namespace Graphite {
 
 			const bool listed = place < folders.size();
 			command->Label = listed ? Core::ToUtf8(folders[place]) : std::string{};
+			command->ListLabel = listed ? "Open Recent: " + command->Label : std::string{};
 			command->Group = listed ? kRecentFoldersGroup : std::string{};
 		}
 	}
