@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/PlatformDetection.h"
+
 namespace Core {
 
 	// Out of line rather than in the macro: reaching the debugger's output window needs <Windows.h>,
@@ -8,8 +10,12 @@ namespace Core {
 								int line);
 }
 
-#ifdef CORE_PLATFORM_WINDOWS
+#if defined(CORE_PLATFORM_WINDOWS)
 #define CORE_DEBUGBREAK() __debugbreak()
+#elif defined(CORE_PLATFORM_LINUX)
+// A breakpoint ends a Windows process nobody debugs; a trap does the same here, rather than let
+// the process run on past a broken invariant.
+#define CORE_DEBUGBREAK() __builtin_trap()
 #else
 #define CORE_DEBUGBREAK() ((void)0)
 #endif

@@ -17,7 +17,14 @@
 #elif defined(__ANDROID__)
 #error "Android is not supported"
 #elif defined(__linux__)
-#error "Linux is not supported"
+// Only the headless part of Core builds for Linux: the WSL helper and its tests (ADR 0693).
+#ifdef __x86_64__
+#ifndef CORE_PLATFORM_LINUX
+#define CORE_PLATFORM_LINUX
+#endif
+#else
+#error "Only x86-64 Linux is supported"
+#endif
 #else
 #error "Unknown platform"
 #endif

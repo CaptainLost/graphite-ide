@@ -14,24 +14,36 @@ const std = @import("std");
 const Configuration = enum { Debug, Release };
 
 // The headless part of Core: folders walked for .cpp files, and what is left out of them.
-const core_source_folders = [_][]const u8{};
-const core_source_files = [_][]const u8{
-    "Core/src/Core/Base/Ascii.cpp",
+const core_source_folders = [_][]const u8{
+    "Core/src/Core/Base",
 };
-const core_excluded = [_][]const u8{};
+const core_source_files = [_][]const u8{};
+const core_excluded = [_][]const u8{
+    // These need FileSystem (AtomicWrite, ToUtf8), which joins next; the sink needs the log.
+    "Core/src/Core/Base/JsonFile.cpp",
+    "Core/src/Core/Base/Log.cpp",
+    "Core/src/Core/Base/RingBufferSink.cpp",
+};
 
-const core_test_folders = [_][]const u8{};
+const core_test_folders = [_][]const u8{
+    "Core/tests/src/Base",
+};
 const core_test_files = [_][]const u8{
     "Core/tests/src/Main.cpp",
-    "Core/tests/src/Base/AsciiTests.cpp",
 };
-const core_test_excluded = [_][]const u8{};
+const core_test_excluded = [_][]const u8{
+    "Core/tests/src/Base/JsonFileTests.cpp",
+    "Core/tests/src/Base/LogTests.cpp",
+};
 
 const core_flags = [_][]const u8{
     "-std=c++20",
     "-Wall",
     "-Wextra",
     "-Werror",
+    // A designated initializer that leaves out fields with defaults is this codebase's idiom
+    // (Core::LogSpec{.ConsoleCapacity = 16}); MSVC never warns about it.
+    "-Wno-missing-field-initializers",
     // Sources include "corepch.h" first, as MSVC's precompiled header requires; here it is an
     // ordinary header.
 };
@@ -98,11 +110,19 @@ fn collectSources(b: *std.Build, folders: []const []const u8, files: []const []c
         var walker = dir.walk(b.allocator) catch @panic("OOM");
         defer walker.deinit();
 
-        while (walker.next(io) catch |err| std.debug.panic("cannot walk '{s}': {s}", .{ folder, @errorName(err) })) |entry| {
-            if (entry.kind != .file or !std.mem.endsWith(u8, entry.basename, ".cpp")) continue;
+        // zig caches what this function found; without these a file added to a folder would
+        // be missed until build.zig itself changed.
+        b.dependOnDirectoryContents(b.path(folder));
 
+        while (walker.next(io) catch |err| std.debug.panic("cannot walk '{s}': {s}", .{ folder, @errorName(err) })) |entry| {
             const relative = std.mem.replaceOwned(u8, b.allocator, entry.path, "\\", "/") catch @panic("OOM");
             const path = b.fmt("{s}/{s}", .{ folder, relative });
+
+            if (entry.kind == .directory) {
+                b.dependOnDirectoryContents(b.path(path));
+                continue;
+            }
+            if (entry.kind != .file or !std.mem.endsWith(u8, entry.basename, ".cpp")) continue;
 
             if (isExcluded(path, excluded)) continue;
             found.append(b.allocator, path) catch @panic("OOM");
@@ -140,6 +160,8 @@ fn cFilesIn(b: *std.Build, folder: []const u8) []const []const u8 {
     var dir = b.root.root_dir.handle.openDir(io, folder, .{ .iterate = true }) catch |err|
         std.debug.panic("cannot open '{s}': {s}", .{ folder, @errorName(err) });
     defer dir.close(io);
+
+    b.dependOnDirectoryContents(b.path(folder));
 
     var iterator = dir.iterate();
     while (iterator.next(io) catch |err| std.debug.panic("cannot list '{s}': {s}", .{ folder, @errorName(err) })) |entry| {

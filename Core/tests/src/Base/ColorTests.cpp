@@ -6,12 +6,15 @@
 #include <optional>
 
 #include "Core/Base/Color.h"
+#include "Core/Base/PlatformDetection.h"
+
+#if defined(CORE_PLATFORM_WINDOWS)
 #include "Core/ImGui/Theme.h"
+#endif
 
 using Core::Color;
 using Core::PackBgr;
 using Core::ParseHexColor;
-using Core::Theme;
 using Core::ToHexColor;
 
 TEST_CASE("The channels land in a Windows COLORREF's order, 0x00BBGGRR, with red lowest and blue highest")
@@ -40,12 +43,16 @@ TEST_CASE("Channels outside the unit range clamp to the end they passed")
 	CHECK(PackBgr(Color{.R = -1.0f, .G = 2.0f, .B = 0.0f, .A = 1.0f}) == 0x00FF00u);
 }
 
+// The theme lives in Core's ImGui part, which the Linux build leaves out, and the border it
+// colours is a Windows window's.
+#if defined(CORE_PLATFORM_WINDOWS)
 TEST_CASE("The theme's border colour packs to RGB(36, 39, 44), the only check on the colour the window border is given")
 {
 	const std::uint32_t red36Green39Blue44 = 0x2C2724u;
 
-	CHECK(PackBgr(Theme::GetBorderColor()) == red36Green39Blue44);
+	CHECK(PackBgr(Core::Theme::GetBorderColor()) == red36Green39Blue44);
 }
+#endif
 
 TEST_CASE("A six-character hex colour parses to full opacity")
 {

@@ -3,9 +3,25 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
-#include <process.h>
 #include <string>
 #include <system_error>
+
+#include "Core/Base/PlatformDetection.h"
+
+#if defined(CORE_PLATFORM_WINDOWS)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
+inline int CurrentProcessId()
+{
+#if defined(CORE_PLATFORM_WINDOWS)
+	return ::_getpid();
+#else
+	return static_cast<int>(::getpid());
+#endif
+}
 
 class TempDirectory
 {
@@ -16,7 +32,7 @@ public:
 		const int directoryNumber = directoriesCreated.fetch_add(1);
 
 		m_Path = std::filesystem::temp_directory_path() /
-				 ("core-tests-" + std::to_string(directoryNumber) + "-" + std::to_string(::_getpid()));
+				 ("core-tests-" + std::to_string(directoryNumber) + "-" + std::to_string(CurrentProcessId()));
 
 		std::error_code ignoredError;
 		std::filesystem::remove_all(m_Path, ignoredError);
