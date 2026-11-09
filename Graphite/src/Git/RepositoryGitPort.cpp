@@ -157,7 +157,12 @@ namespace Graphite {
 	}
 
 	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot)
-		: m_Number(NextPortNumber()), m_Root(Core::ToUtf8(root)), m_LineStoreRoot(std::move(lineStoreRoot))
+		: RepositoryGitPort(std::move(root), RootReach::SearchUpward, std::move(lineStoreRoot))
+	{
+	}
+
+	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root, RootReach reach, std::filesystem::path lineStoreRoot)
+		: m_Number(NextPortNumber()), m_Root(Core::ToUtf8(root)), m_LineStoreRoot(std::move(lineStoreRoot)), m_Reach(reach)
 	{
 	}
 
@@ -244,7 +249,8 @@ namespace Graphite {
 			handlesByRoot.erase(cachedEntry);
 		}
 
-		Core::Result<Core::Repository> opened = Core::Repository::Open(Core::FromUtf8(root), writes);
+		Core::Result<Core::Repository> opened = m_Reach == RootReach::Exactly ? Core::Repository::OpenExactly(Core::FromUtf8(root), writes)
+																			  : Core::Repository::Open(Core::FromUtf8(root), writes);
 
 		// WARNING: Open's error is returned as is. Only NotFound means there is no repository, and
 		// the UI offers to initialise one on exactly that answer. A failed open is not cached, so a

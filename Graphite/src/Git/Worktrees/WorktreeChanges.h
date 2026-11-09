@@ -61,6 +61,9 @@ namespace Graphite {
 		// failure of the write the switch waited for before anyone had read it.
 		std::optional<WorktreeWriteFailure> TakeWriteError();
 
+		// Whether a commit or an amend landed since the last call, which moved a ref the open folder's model shares.
+		bool TakeRefMoved();
+
 		GitModel& Model() { return m_Model; }
 		const GitModel& Model() const { return m_Model; }
 
@@ -107,6 +110,7 @@ namespace Graphite {
 		Debouncer m_Debounce;
 
 		std::deque<WorktreeWriteFailure> m_WriteErrors;
+		bool m_RefMoved = false;
 
 		std::map<Core::PathKeyText, ChangesShared> m_Drafts;
 		ChangesShared m_NoDraft;

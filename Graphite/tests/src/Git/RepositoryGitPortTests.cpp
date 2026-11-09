@@ -8,6 +8,9 @@
 #include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Repository.h"
+#include "Core/Git/Status.h"
+#include "Git/GitModel.h"
 #include "Git/Lines/LineStore.h"
 #include "Git/Lines/LinesModel.h"
 #include "Git/Worktrees/WriteExpectation.h"
@@ -1471,4 +1474,91 @@ TEST_CASE("Git network: a repository never fetched has no last fetch")
 	Graphite::RepositoryGitPort port{repository.GetPath()};
 
 	CHECK_FALSE(port.QueryLastFetch().has_value());
+}
+
+namespace {
+
+	// A linked worktree nested in the main checkout, as under .claude/worktrees, whose `.git` file is gone, as when `git
+	// worktree remove` fails partway on a locked file; the main checkout has a change of its own, which nothing here may
+	// stage.
+	struct WorktreeWithoutGitFile
+	{
+		WorktreeWithoutGitFile()
+		{
+			Repository.Write("a.txt", "one\n");
+			ForkPoint = Repository.Commit("fork point");
+			Repository.Branch("side");
+			Worktree = Repository.AddWorktree("side", Repository.GetPath());
+			ReviewRepository::WriteFileAt(Worktree / "a.txt", "changed in the worktree\n");
+			REQUIRE(std::filesystem::remove(Worktree / ".git"));
+			Repository.Write("a.txt", "changed in the main checkout\n");
+		}
+
+		// What a window saw through a port that reached the main checkout: its branch and its HEAD.
+		Graphite::WriteExpectation SeenInTheMainCheckout() const
+		{
+			Graphite::WriteExpectation expected;
+			expected.Kind = Core::HeadKind::Branch;
+			expected.BranchName = "master";
+			expected.Head = ForkPoint;
+			expected.Folder = Core::ToUtf8(Worktree.filename());
+			return expected;
+		}
+
+		bool MainCheckoutHasStaged() const
+		{
+			Core::Result<Core::Repository> opened = Core::Repository::Open(Repository.GetPath());
+			REQUIRE(opened.HasValue());
+			const Core::Result<Core::WorkingTreeStatus> status = opened.GetValue().QueryStatus();
+			REQUIRE(status.HasValue());
+
+			return std::ranges::any_of(status.GetValue().Entries,
+									   [](const Core::FileStatus& entry) { return entry.Index != Core::StatusFlags::None; });
+		}
+
+		ReviewRepository Repository;
+		Core::Oid ForkPoint;
+		std::filesystem::path Worktree;
+	};
+}
+
+TEST_CASE("Repository port: opened exactly at a worktree that lost its .git file, a stage there fails and stages nothing in the checkout around it")
+{
+	WorktreeWithoutGitFile setup;
+	REQUIRE_FALSE(setup.MainCheckoutHasStaged());
+
+	Graphite::RepositoryGitPort port{setup.Worktree, Graphite::RootReach::Exactly};
+
+	const Core::Result<Core::HeadState> head = port.QueryHead();
+	REQUIRE_FALSE(head.HasValue());
+	CHECK(head.GetError().Code == Core::ErrorCode::NotFound);
+
+	// The expectation names no folder, so only the port's own reach keeps the stage out of the main checkout.
+	Graphite::GitModel model{port, [](std::function<void()> job) { job(); }};
+	model.SetRoot(setup.Worktree);
+	model.RequestStage({"a.txt"}, setup.SeenInTheMainCheckout());
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.TakeWriteError().has_value());
+	CHECK_FALSE(setup.MainCheckoutHasStaged());
+}
+
+TEST_CASE("Repository port: a write whose port opens another working directory than the worktree it expected is refused")
+{
+	WorktreeWithoutGitFile setup;
+
+	// A port that searches upward reaches the main checkout, whose HEAD is the one expected.
+	Graphite::RepositoryGitPort port{setup.Worktree};
+	Graphite::WriteExpectation expected = setup.SeenInTheMainCheckout();
+	expected.Worktree = setup.Worktree;
+
+	Graphite::GitModel model{port, [](std::function<void()> job) { job(); }};
+	model.SetRoot(setup.Worktree);
+	model.RequestStage({"a.txt"}, expected);
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Graphite::GitModel::WriteFailure> refused = model.TakeWriteError();
+	REQUIRE(refused.has_value());
+	CHECK(refused->Error.Message == "Not staged: side-tree no longer opens as that worktree");
+	CHECK_FALSE(setup.MainCheckoutHasStaged());
 }

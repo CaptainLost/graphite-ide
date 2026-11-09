@@ -30,11 +30,17 @@ namespace Graphite {
 
 		// The worktree's folder name, for messages.
 		std::string Folder;
+
+		// The worktree's folder, which the write's port must open as its working directory; empty checks nothing.
+		std::filesystem::path Worktree;
+
+		friend bool operator==(const WriteExpectation&, const WriteExpectation&) = default;
 	};
 
 	enum class ExpectationBreak
 	{
 		None,
+		OtherFolder,
 		OtherHead,
 		NewCommitBeforeAmend,
 		StagedChanged

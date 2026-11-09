@@ -682,6 +682,13 @@ namespace Graphite {
 			ReportGitWriteFailure(*failure);
 		}
 
+		// WARNING: A commit in another worktree moves a branch every worktree of the repository shares, and the workspace's
+		// watcher never sees it when the open folder is a subfolder of the repository or a linked worktree itself.
+		if (m_WorktreeChanges.TakeRefMoved())
+		{
+			m_Events.Publish(RepositoryChangedEvent{});
+		}
+
 		m_ChangeMarkers.OnUpdate(timestep);
 		m_Blame.OnUpdate(timestep);
 

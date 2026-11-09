@@ -149,6 +149,11 @@ namespace Core {
 		return OpenWith(directory, GIT_REPOSITORY_OPEN_NO_SEARCH, ObjectWrites::OnDisk);
 	}
 
+	Result<Repository> Repository::OpenExactly(const std::filesystem::path& directory, ObjectWrites writes)
+	{
+		return OpenWith(directory, GIT_REPOSITORY_OPEN_NO_SEARCH, writes);
+	}
+
 	Result<Repository> Repository::OpenWith(const std::filesystem::path& where, unsigned int openFlags, ObjectWrites writes)
 	{
 		EnsureLibgit2Initialised();

@@ -61,6 +61,8 @@ namespace Core {
 		// answers NotFound rather than the repository around it.
 		static Result<Repository> OpenExactly(const std::filesystem::path& directory);
 
+		static Result<Repository> OpenExactly(const std::filesystem::path& directory, ObjectWrites writes);
+
 		// A folder that is already a repository is re-initialised in place, which git treats as
 		// harmless. The first branch is named from the user's init.defaultBranch.
 		static Result<Repository> Init(const std::filesystem::path& existingDirectory);

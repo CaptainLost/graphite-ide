@@ -75,6 +75,7 @@ namespace Graphite {
 			ChangesShared& draft = Draft();
 			draft.Message.clear();
 			draft.Amend = false;
+			m_RefMoved = true;
 		}
 
 		Settle();
@@ -90,6 +91,11 @@ namespace Graphite {
 		WorktreeWriteFailure taken = std::move(m_WriteErrors.front());
 		m_WriteErrors.pop_front();
 		return taken;
+	}
+
+	bool WorktreeChanges::TakeRefMoved()
+	{
+		return std::exchange(m_RefMoved, false);
 	}
 
 	std::optional<std::filesystem::path> WorktreeChanges::LookedAt() const
@@ -134,6 +140,7 @@ namespace Graphite {
 		if (m_Worktree.has_value())
 		{
 			expectation.Folder = Core::ToUtf8(Core::NormalizeDirectory(*m_Worktree).filename());
+			expectation.Worktree = *m_Worktree;
 		}
 
 		return expectation;

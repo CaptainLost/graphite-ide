@@ -23,6 +23,17 @@
 
 namespace Graphite {
 
+	// How a port finds the repository of its root.
+	enum class RootReach
+	{
+		// The root may be any folder inside a working tree: the repository is searched for upwards, as git does.
+		SearchUpward,
+
+		// The root is a working tree's own folder and nothing above it is looked at: a worktree folder that lost its
+		// `.git` file answers NotFound, never the checkout around it.
+		Exactly
+	};
+
 	// WARNING: A git_repository must not be used from two threads at once, so each worker thread
 	// caches its own handle per root, and a second one for the content checks, whose objects stay in memory.
 	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public BlamePort, public ReviewPort, public LinesPort,
@@ -31,6 +42,9 @@ namespace Graphite {
 	public:
 		// Each repository's line store is a folder under lineStoreRoot (LineStoreFor).
 		explicit RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot = UserDirectories::GitRepositoriesDirectory());
+
+		RepositoryGitPort(std::filesystem::path root, RootReach reach,
+						  std::filesystem::path lineStoreRoot = UserDirectories::GitRepositoriesDirectory());
 
 		~RepositoryGitPort() override;
 
@@ -170,5 +184,8 @@ namespace Graphite {
 
 		// Set once, read on worker threads.
 		const std::filesystem::path m_LineStoreRoot;
+
+		// Set once, read on worker threads.
+		const RootReach m_Reach = RootReach::SearchUpward;
 	};
 }

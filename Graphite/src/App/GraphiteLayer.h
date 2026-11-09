@@ -439,7 +439,9 @@ namespace Graphite {
 
 		// The worktree the Git window looks at, when it is not the open folder: its own port and model, never bound to the
 		// workspace's events. Its writes go through m_GitWrites with the open folder's, one at a time.
-		RepositoryGitPort m_WorktreeGitPort{std::filesystem::path{}};
+		// WARNING: Opened exactly at the worktree's folder: one that lost its `.git` file must read as no repository, never
+		// as the checkout around it, where its writes would land.
+		RepositoryGitPort m_WorktreeGitPort{std::filesystem::path{}, RootReach::Exactly};
 		WorktreeChanges m_WorktreeChanges{m_WorktreeGitPort,
 										  [this](const std::filesystem::path& root) { PointWorktreePortAt(root); },
 										  [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },

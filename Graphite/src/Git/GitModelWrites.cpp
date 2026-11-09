@@ -21,9 +21,27 @@ namespace Graphite {
 
 	namespace {
 
+		// A folder that cannot be read counts as changed.
+		bool FolderChangedSince(GitPort& port, const std::filesystem::path& folder)
+		{
+			const Core::Result<std::filesystem::path> now = port.GetWorkingDirectory();
+			return !now.HasValue() || !Core::SamePath(now.GetValue(), folder);
+		}
+
 		// Whether the worktree still is what the user saw when they asked for this write; the refusal when it is not.
 		std::optional<Core::Error> RefusalFor(GitPort& port, const GitModel::WriteKind kind, const WriteExpectation& expected, bool amend)
 		{
+			const bool isCommit = kind == GitModel::WriteKind::Commit;
+			const ExpectedWrite write = isCommit ? ExpectedWrite::Commit
+				: kind == GitModel::WriteKind::Stage ? ExpectedWrite::Stage : ExpectedWrite::Unstage;
+
+			// WARNING: First, before HEAD: a worktree folder that lost its `.git` file opens, through a port that searches
+			// upward, as the checkout around it, whose HEAD and status may well be the ones expected.
+			if (!expected.Worktree.empty() && FolderChangedSince(port, expected.Worktree))
+			{
+				return Core::Error{Core::ErrorCode::InvalidArgument, RefusalMessage(ExpectationBreak::OtherFolder, write, expected.Folder)};
+			}
+
 			const Core::Result<Core::HeadState> head = port.QueryHead();
 
 			if (!head.HasValue())
@@ -31,7 +49,6 @@ namespace Graphite {
 				return head.GetError();
 			}
 
-			const bool isCommit = kind == GitModel::WriteKind::Commit;
 			ExpectationBreak broken = CheckExpectation(expected, head.GetValue(), nullptr, amend);
 
 			if (broken == ExpectationBreak::None && isCommit)
@@ -51,17 +68,7 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const ExpectedWrite write = isCommit ? ExpectedWrite::Commit
-				: kind == GitModel::WriteKind::Stage ? ExpectedWrite::Stage : ExpectedWrite::Unstage;
-
 			return Core::Error{Core::ErrorCode::InvalidArgument, RefusalMessage(broken, write, expected.Folder)};
-		}
-
-		// A folder that cannot be read counts as changed.
-		bool FolderChangedSince(GitPort& port, const std::filesystem::path& folder)
-		{
-			const Core::Result<std::filesystem::path> now = port.GetWorkingDirectory();
-			return !now.HasValue() || now.GetValue() != folder;
 		}
 
 		// WARNING: No default, so a kind added later is a warning here, and warnings fail the build.

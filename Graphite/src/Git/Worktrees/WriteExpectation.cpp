@@ -10,6 +10,8 @@ namespace Graphite {
 		{
 			switch (broken)
 			{
+			case ExpectationBreak::OtherFolder:
+				return std::string{folder} + " no longer opens as that worktree";
 			case ExpectationBreak::OtherHead:
 				return std::string{folder} + " has another branch or a detached HEAD checked out since you looked";
 			case ExpectationBreak::NewCommitBeforeAmend:

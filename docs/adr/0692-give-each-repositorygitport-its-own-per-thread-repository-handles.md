@@ -27,6 +27,11 @@ handle, so history and line reads started cold each time.
   are of another root or an older generation, and touches no other port's. Re-pointing the worktree port
   (`SetRoot`) submits it to one job worker and to the write worker; the other job workers let go on their next query of
   that port.
+- **How a port finds its repository.** The open folder's port searches upward from its root, as git does, since the
+  open folder may be any folder inside a working tree. The worktree port opens exactly at its root
+  (`RootReach::Exactly`, `Core::Repository::OpenExactly`), because its root is always a worktree's own folder and a
+  folder that lost its `.git` file must not resolve to the checkout around it
+  ([0690](0690-write-into-another-worktree-only-when-it-is-as-the-user-saw-it.md)).
 - **Lifetime.** A port outlives every queue whose jobs use it: its owner declares the port before the models and the
   models before the queues, so the queues are destroyed first and join their workers. Each worker thread frees its
   `thread_local` maps, every port's handles in them, as it exits. A port's destructor erases only the destroying

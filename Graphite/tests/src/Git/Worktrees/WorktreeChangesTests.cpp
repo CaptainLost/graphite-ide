@@ -379,7 +379,7 @@ TEST_CASE("Worktree changes: the watch firing is told once per debounce, naming 
 	CHECK(fired == std::vector<std::filesystem::path>{kWorktree, kWorktree});
 }
 
-TEST_CASE("Worktree changes: the expectation carries the head, the HEAD commit, the sorted staged paths and the folder name")
+TEST_CASE("Worktree changes: the expectation carries the head, the HEAD commit, the sorted staged paths, the folder name and the folder")
 {
 	Changes changes;
 	changes.Port.Head.Kind = Core::HeadKind::Branch;
@@ -398,6 +398,7 @@ TEST_CASE("Worktree changes: the expectation carries the head, the HEAD commit, 
 	REQUIRE(commit.Staged.has_value());
 	CHECK(*commit.Staged == std::vector<std::filesystem::path>{"a.cpp", "src/b.cpp"});
 	CHECK(commit.Folder == "eager-scribbling-frog");
+	CHECK(commit.Worktree == kWorktree);
 
 	const Graphite::WriteExpectation stage = changes.Model.ExpectationNow(false);
 
@@ -405,6 +406,7 @@ TEST_CASE("Worktree changes: the expectation carries the head, the HEAD commit, 
 	CHECK(stage.Head == OidWithFirstByte(7));
 	CHECK_FALSE(stage.Staged.has_value());
 	CHECK(stage.Folder == "eager-scribbling-frog");
+	CHECK(stage.Worktree == kWorktree);
 }
 
 TEST_CASE("Worktree changes: the expectation of a detached HEAD names no branch")
@@ -489,4 +491,29 @@ TEST_CASE("Worktree changes: a git directory is read from a linked worktree's .g
 	CHECK(Core::SamePath(*named, absolute));
 	CHECK_FALSE(Graphite::LinkedGitDirectoryOf(main).has_value());
 	CHECK_FALSE(Graphite::LinkedGitDirectoryOf(temp.GetPath() / "missing").has_value());
+}
+
+TEST_CASE("Worktree changes: a commit or an amend that lands says once that a ref moved, and a stage does not")
+{
+	Changes changes;
+	changes.Model.Follow(kWorktree, true);
+	changes.Settle();
+
+	CHECK_FALSE(changes.Model.TakeRefMoved());
+
+	changes.Model.Model().RequestStage({"a.txt"});
+	changes.Settle();
+
+	CHECK_FALSE(changes.Model.TakeRefMoved());
+
+	for (const bool amend : {false, true})
+	{
+		CAPTURE(amend);
+
+		changes.Model.Model().RequestCommit(Core::CommitRequest{.Message = "Committed", .Amend = amend});
+		changes.Settle();
+
+		CHECK(changes.Model.TakeRefMoved());
+		CHECK_FALSE(changes.Model.TakeRefMoved());
+	}
 }
