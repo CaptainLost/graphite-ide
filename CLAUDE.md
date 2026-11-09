@@ -87,6 +87,37 @@ selects nothing. Either way the run reports success having executed zero cases.
 When a filtered run passes, check that it actually ran something; when in
 doubt, run the whole suite.
 
+### The Linux part
+
+Part of Core — `Base`, `FileSystem`'s paths, listing, reading and atomic writes,
+and `Git` without `Git/Command` — also builds for Linux, for the WSL helper
+([0693](docs/adr/0693-cross-compile-the-linux-parts-with-a-pinned-zig-fetched-by-a-script.md),
+[0694](docs/adr/0694-build-the-headless-part-of-core-for-linux-from-the-lists-in-build-zig.md)).
+It is cross-compiled from Windows by a pinned zig; no distro is needed to build.
+Fetch zig once, then build and run the Linux tests in WSL:
+
+```powershell
+.\scripts\Get-Zig.ps1                               # once: vendor\bin\zig, checked by SHA-256
+.\vendor\bin\zig\zig.exe build -Dconfiguration=Debug  # or build Core\linux\CoreLinux.vcxproj
+.\scripts\Test-CoreLinux.ps1                        # runs bin\Debug-linux-x86_64\CoreLinuxTests in WSL
+```
+
+Without WSL, `Test-CoreLinux.ps1` prints `Linux tests skipped: WSL is not
+available` and exits 0. Extra arguments go to doctest (`'-tc=*Linux*'`).
+
+Which sources are in it is set by the lists at the top of `build.zig`: folders
+are walked for `.cpp` files, as premake globs them, minus the exclusions. A new
+file in a listed folder joins the Linux build by itself, so a Windows-only file
+added there has to be excluded or given a `CORE_PLATFORM_LINUX` branch. Platform
+code stays in the same file, split by `CORE_PLATFORM_WINDOWS` /
+`CORE_PLATFORM_LINUX` (`PlatformDetection.h` defines the latter). A test about
+Windows behaviour — drive letters, `\` as a separator, names that differ only in
+case — is wrapped in `#ifdef CORE_PLATFORM_WINDOWS` with a line saying why, and
+gets a Linux counterpart when Linux has a behaviour of its own to pin.
+
+clang is stricter than MSVC in places (an unused constant, for one), so a change
+to a file in the Linux set is checked with the Linux build too.
+
 ## ADR tooling
 
 ```powershell
