@@ -148,6 +148,19 @@ namespace Core {
 			// The one platform split in Core that must not return Unsupported, because that would
 			// make an editor that cannot save. A rename is still atomic, only without the metadata
 			// ReplaceFileW keeps.
+			//
+			// The temporary is a new file, created with the default mode, so the rename would
+			// otherwise take a script's executable bit away; the target's own bits go onto it
+			// first. A target that does not exist yet has none to keep.
+			std::error_code statusError;
+			const std::filesystem::file_status targetStatus = std::filesystem::status(target, statusError);
+
+			if (!statusError && std::filesystem::exists(targetStatus))
+			{
+				std::error_code ignoredError;
+				std::filesystem::permissions(temporary, targetStatus.permissions(), ignoredError);
+			}
+
 			std::error_code renameError;
 			std::filesystem::rename(temporary, target, renameError);
 

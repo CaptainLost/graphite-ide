@@ -506,12 +506,9 @@ namespace Core {
 				key = std::move(folded);
 			}
 		}
-#else
-		for (char& character : key)
-		{
-			character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
-		}
 #endif
+		// Elsewhere the key keeps its case: Linux file systems tell Makefile from makefile, and
+		// a key that folded them would call two files one.
 
 		return key;
 	}

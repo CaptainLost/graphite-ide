@@ -17,24 +17,29 @@ const Configuration = enum { Debug, Release };
 const core_source_folders = [_][]const u8{
     "Core/src/Core/Base",
 };
-const core_source_files = [_][]const u8{};
-const core_excluded = [_][]const u8{
-    // These need FileSystem (AtomicWrite, ToUtf8), which joins next; the sink needs the log.
-    "Core/src/Core/Base/JsonFile.cpp",
-    "Core/src/Core/Base/Log.cpp",
-    "Core/src/Core/Base/RingBufferSink.cpp",
+// Only FileSystem's paths, listing, reading and atomic writes: the watcher, locks, holds and
+// file operations are Windows-only until the WSL helper needs them.
+const core_source_files = [_][]const u8{
+    "Core/src/Core/FileSystem/AtomicWrite.cpp",
+    "Core/src/Core/FileSystem/FileName.cpp",
+    "Core/src/Core/FileSystem/FileSystem.cpp",
+    "Core/src/Core/FileSystem/RelativePath.cpp",
+    "Core/src/Core/FileSystem/WslSharePath.cpp",
 };
+const core_excluded = [_][]const u8{};
 
 const core_test_folders = [_][]const u8{
     "Core/tests/src/Base",
 };
 const core_test_files = [_][]const u8{
     "Core/tests/src/Main.cpp",
+    "Core/tests/src/FileSystem/AtomicWriteTests.cpp",
+    "Core/tests/src/FileSystem/FileNameTests.cpp",
+    "Core/tests/src/FileSystem/FileSystemTests.cpp",
+    "Core/tests/src/FileSystem/RelativePathTests.cpp",
+    "Core/tests/src/FileSystem/WslSharePathTests.cpp",
 };
-const core_test_excluded = [_][]const u8{
-    "Core/tests/src/Base/JsonFileTests.cpp",
-    "Core/tests/src/Base/LogTests.cpp",
-};
+const core_test_excluded = [_][]const u8{};
 
 const core_flags = [_][]const u8{
     "-std=c++20",

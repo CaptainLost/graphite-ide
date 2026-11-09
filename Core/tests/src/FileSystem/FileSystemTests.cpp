@@ -361,12 +361,15 @@ TEST_CASE("ReadDirectory of a drive root lists its entries without the dot entri
 }
 #endif
 
+// Windows only: a Linux path is bytes, so FromUtf8 keeps them and converts nothing.
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("FromUtf8 turns bytes from outside that are not valid UTF-8 into replacement characters instead of throwing")
 {
 	std::filesystem::path path;
 	REQUIRE_NOTHROW(path = Core::FromUtf8("caf\xe9.txt"));
 	CHECK(path.wstring() == L"caf\uFFFD.txt");
 }
+#endif
 
 #ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("ToUtf8 turns a lone surrogate which NTFS allows in a name into a replacement character instead of throwing")
@@ -393,6 +396,9 @@ TEST_CASE("ToGenericUtf8 writes every separator as a forward slash the way git s
 	CHECK(Core::ToGenericUtf8(std::filesystem::path{"D:\\work\\src/main.cpp"}) == "D:/work/src/main.cpp");
 }
 
+// Windows only, down to the next #endif: drive letters, and '\' as a separator, which on Linux
+// is an ordinary character in a name. The Linux cases are at the end of this file.
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("NormalizePath resolves dot segments and spells both separators alike but keeps a trailing separator")
 {
 	CHECK(Core::ToUtf8(Core::NormalizePath("D:/work/./src/../main.cpp")) == "D:\\work\\main.cpp");
@@ -424,6 +430,7 @@ TEST_CASE("NormalizeDirectory converts separators and resolves dot segments")
 {
 	CHECK(NormalizeDirectory("D:/work/./project/../project") == std::filesystem::path{"D:\\work\\project"});
 }
+#endif
 
 TEST_CASE("A normalized directory equals the parent of a path built by appending to it or a refresh would reach no node")
 {
@@ -478,6 +485,8 @@ TEST_CASE("RelativeTo gives \".\" for a path equal to the base")
 	CHECK(*relative == ".");
 }
 
+// Windows only: Linux keeps the case of a name, so there the base must be spelled as it is.
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("RelativeTo ignores the case of the base and its drive letter the way Windows does and keeps the case the path was written in")
 {
 	const std::optional<std::filesystem::path> relative = RelativeTo("d:/Work/Project/src/main.cpp", "D:/work/project/");
@@ -487,6 +496,7 @@ TEST_CASE("RelativeTo ignores the case of the base and its drive letter the way 
 
 	CHECK(RelativeTo("D:/Work/Project/Src/Main.cpp", "d:/work/project") == std::filesystem::path{"Src"} / "Main.cpp");
 }
+#endif
 
 #ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("Every path comparison folds case beyond ASCII the way Windows does so that no two of them disagree about one folder")
@@ -501,6 +511,9 @@ TEST_CASE("Every path comparison folds case beyond ASCII the way Windows does so
 }
 #endif
 
+// Windows only, down to the next #endif: drive letters, '\' as a separator and case folding.
+// The Linux cases are at the end of this file.
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("PathKey is one value for every spelling of a directory")
 {
 	CHECK(Core::PathKey("D:\\Repos\\IDE") == Core::PathKey("d:/repos/ide/"));
@@ -540,6 +553,7 @@ TEST_CASE("IsSameOrWithin treats a drive root as containing the whole drive")
 {
 	CHECK(Core::IsSameOrWithin("D:\\anything\\at\\all", "D:\\"));
 }
+#endif
 
 TEST_CASE("ReadFileBytes returns the bytes exactly as they sit on disk")
 {
@@ -675,3 +689,38 @@ TEST_CASE("CompareNamesNaturally puts fewer leading zeros first and never calls 
 	CHECK(Core::CompareNamesNaturally("file01", "file1") > 0);
 	CHECK(Core::CompareNamesNaturally("file01", "file2") < 0);
 }
+
+#if defined(CORE_PLATFORM_LINUX)
+TEST_CASE("On Linux, names that differ only in case are different paths")
+{
+	CHECK_FALSE(Core::SamePath("/tmp/a/Makefile", "/tmp/a/makefile"));
+	CHECK(Core::PathKey("/tmp/a/Makefile") != Core::PathKey("/tmp/a/makefile"));
+}
+
+TEST_CASE("On Linux, a directory holds what is below it, spelled any way, but not a name that differs in case")
+{
+	CHECK(Core::IsSameOrWithin("/home/me/proj", "/home/me/proj"));
+	CHECK(Core::IsSameOrWithin("/home/me/proj/src/a.cpp", "/home/me/proj/"));
+	CHECK(Core::IsSameOrWithin("/home/me/x/../proj/a.cpp", "/home/me/./proj"));
+	CHECK(Core::IsSameOrWithin("/anything/at/all", "/"));
+	CHECK_FALSE(Core::IsSameOrWithin("/home/me/project", "/home/me/proj"));
+	CHECK_FALSE(Core::IsSameOrWithin("/home/me/Proj/a.cpp", "/home/me/proj"));
+	CHECK(Core::NormalizeDirectory("/home/me/./proj/../proj/") == std::filesystem::path{"/home/me/proj"});
+	CHECK(Core::NormalizeDirectory("/") == std::filesystem::path{"/"});
+}
+
+TEST_CASE("On Linux, a path's UTF-8 is its own bytes")
+{
+	const std::string text = "/tmp/za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87";
+
+	CHECK(Core::ToUtf8(Core::FromUtf8(text)) == text);
+	CHECK(Core::FromUtf8(text).native() == text);
+}
+#endif
+
+#if defined(CORE_PLATFORM_WINDOWS)
+TEST_CASE("On Windows, names that differ only in case are the same path")
+{
+	CHECK(Core::SamePath("C:/a/Makefile", "C:/a/makefile"));
+}
+#endif

@@ -131,3 +131,19 @@ TEST_CASE("An alternate data stream survives an atomic write")
 	CHECK(recovered == "kept");
 }
 #endif
+
+#if defined(CORE_PLATFORM_LINUX)
+TEST_CASE("On Linux, rewriting a file keeps its permissions, so a script stays executable")
+{
+	TempDirectory directory;
+	const std::filesystem::path script = directory.MakeFile("build.sh", "#!/bin/sh\n");
+	const auto executable = std::filesystem::perms::owner_all | std::filesystem::perms::group_read |
+							std::filesystem::perms::group_exec | std::filesystem::perms::others_read |
+							std::filesystem::perms::others_exec;
+	std::filesystem::permissions(script, executable);
+
+	REQUIRE(WriteFileAtomically(script, "#!/bin/sh\necho hi\n").HasValue());
+
+	CHECK(std::filesystem::status(script).permissions() == executable);
+}
+#endif
