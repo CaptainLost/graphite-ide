@@ -127,6 +127,18 @@ pub fn build(b: *std.Build) void {
     agent_tests_module.linkLibrary(core);
     agent_tests_module.linkLibrary(libgit2);
     installProgram(b, configuration, "AgentTests", agent_tests_module);
+
+    // The agent itself, installed as bin/<Configuration>-linux-x86_64/GraphiteAgent/graphite-agent.
+    const agent_module = createCppModule(b, target, optimize, configuration);
+    agent_module.addCSourceFiles(.{
+        .files = collectSources(b, &agent_source_folders, &.{}, &.{}),
+        .flags = &core_flags,
+    });
+    agent_module.linkLibrary(core);
+    agent_module.linkLibrary(libgit2);
+    const agent = b.addExecutable(.{ .name = "graphite-agent", .root_module = agent_module, .linkage = .static });
+    const agent_folder = b.fmt("../bin/{s}-linux-x86_64/GraphiteAgent", .{@tagName(configuration)});
+    b.getInstallStep().dependOn(&b.addInstallFileWithDir(agent.getEmittedBin(), .{ .custom = agent_folder }, "graphite-agent").step);
 }
 
 /// A C++ module for one Linux program: the include paths and defines every Core source expects.
