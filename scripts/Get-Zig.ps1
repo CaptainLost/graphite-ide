@@ -39,8 +39,9 @@ if ($PrintPin) {
 $marker = Join-Path $Destination '.pinned-version'
 $zig = Join-Path $Destination 'zig.exe'
 
+# An empty marker reads as $null, left by a run stopped while writing it: no install, then.
 if ((Test-Path -LiteralPath $zig) -and (Test-Path -LiteralPath $marker) -and
-    ((Get-Content -LiteralPath $marker -Raw).Trim() -eq $Pin)) {
+    ("$(Get-Content -LiteralPath $marker -Raw)".Trim() -eq $Pin)) {
     Write-Host "zig $PinnedVersion is already in $Destination"
     exit 0
 }

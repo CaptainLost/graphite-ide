@@ -66,6 +66,20 @@ try {
 }
 finally { Remove-Item $scratch -Recurse -Force }
 
+# --- an empty marker, left by a run stopped while writing it -------------------
+$scratch = New-ScratchDirectory
+try {
+    $destination = Join-Path $scratch 'zig'
+    New-Item -ItemType Directory -Path $destination | Out-Null
+    Set-Content -LiteralPath (Join-Path $destination 'zig.exe') -Value 'stub'
+    New-Item -ItemType File -Path (Join-Path $destination '.pinned-version') | Out-Null
+    $archive = Join-Path $scratch 'not-zig.zip'
+    Compress-Archive -Path $PSCommandPath -DestinationPath $archive
+    $result = Invoke-GetZig -Destination $destination -Archive $archive
+    Assert-That -Because 'treats an empty marker as no install and goes on to the archive' -Condition ($result.Output -match 'checksum mismatch')
+}
+finally { Remove-Item $scratch -Recurse -Force }
+
 # --- the pin itself --------------------------------------------------------------
 $pin = & powershell -NoProfile -ExecutionPolicy Bypass -Command ". '$scriptUnderTest' -PrintPin"
 Assert-That -Because 'pins zig 0.17.0 by its published SHA-256' -Condition ($pin -eq '0.17.0 b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428')

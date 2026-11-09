@@ -10,6 +10,12 @@
 #include <string>
 #include <vector>
 
+#include "Core/Base/PlatformDetection.h"
+
+#if defined(CORE_PLATFORM_LINUX)
+#include <unistd.h>
+#endif
+
 namespace {
 
 	Core::FileStatus StatusOf(const Core::Repository& repository, const std::string& relativePath)
@@ -280,7 +286,14 @@ TEST_CASE("DeleteUntracked reports a path it cannot remove")
 
 	fixture.Write("folder/inside.txt", "x\n");
 
-	// An open file does not stop a removal on Linux; a folder its owner may not write to does.
+	// An open file does not stop a removal on Linux; a folder its owner may not write to does,
+	// except for root, which a distro set up with `wsl --import` runs as by default.
+	if (::geteuid() == 0)
+	{
+		MESSAGE("running as root, which writes into any folder: nothing here can block the removal");
+		return;
+	}
+
 	const std::filesystem::path folder = fixture.GetPath() / "folder";
 	std::filesystem::permissions(folder, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec);
 
