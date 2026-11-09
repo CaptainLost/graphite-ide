@@ -2,6 +2,7 @@
 
 #include "Git/GitDecorationView.h"
 #include "GitFixtures.h"
+#include "TempDirectory.h"
 
 #include <optional>
 #include <vector>
@@ -66,6 +67,29 @@ TEST_CASE("GitDecorationView: a path outside the working directory has no key an
 
 	CHECK_FALSE(view.RelativeOf("C:/repo2/x").has_value());
 	CHECK(view.FileOf("C:/repo2/x") == GitDecoration::None);
+}
+
+TEST_CASE("GitDecorationView: a file under a nested checkout is undecorated even where the folder is listed untracked")
+{
+	TempDirectory folder;
+	folder.MakeFile("nested/.git", "gitdir: elsewhere");
+	const std::filesystem::path inNested = folder.MakeFile("nested/src/x.cpp", "x");
+	const std::filesystem::path plain = folder.MakeFile("other/y.cpp", "y");
+
+	Core::FileStatus nested;
+	nested.Path = u8"nested";
+	nested.IsUntracked = true;
+	nested.IsDirectory = true;
+	Core::FileStatus other = Entry(u8"other/y.cpp", StatusFlags::Modified);
+
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({nested, other}));
+	Graphite::GitDecorationView view;
+	view.Index = &index;
+	view.SetWorkingDirectory(folder.GetPath());
+
+	CHECK(view.FileOf(plain) == GitDecoration::Modified);
+	CHECK(view.FileOf(inNested) == GitDecoration::None);
+	CHECK(view.OwnFileOf(inNested) == GitDecoration::None);
 }
 
 #ifdef _WIN32

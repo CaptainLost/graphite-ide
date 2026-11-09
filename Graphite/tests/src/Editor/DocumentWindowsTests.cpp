@@ -104,6 +104,26 @@ TEST_CASE("A document's window name starts with its file kind's tab glyph, not i
 	CHECK(name.ends_with("###" + Core::ToUtf8(documents.At(kOnlyDocument).Path)));
 }
 
+TEST_CASE("A document in another worktree names that worktree after its title, and keeps its path as the identity")
+{
+	TempDirectory folder;
+	const std::filesystem::path source = folder.MakeFile("x.cpp", "int x;");
+
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(source, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+
+	constexpr std::size_t kOnlyDocument = 0;
+	const std::function<std::optional<std::string>(const std::filesystem::path&)> worktreeOf =
+		[](const std::filesystem::path&) { return std::optional<std::string>{"a"}; };
+
+	const std::string name = Graphite::DocumentWindowName(documents, kOnlyDocument, worktreeOf);
+	const std::string plain = Graphite::DocumentWindowName(documents, kOnlyDocument);
+
+	CHECK(name.find("x.cpp \xC2\xB7 a###") != std::string::npos);
+	CHECK(name.ends_with("###" + Core::ToUtf8(documents.At(kOnlyDocument).Path)));
+	CHECK(plain.find("\xC2\xB7") == std::string::npos);
+}
+
 namespace {
 	using Graphite::LanguageId;
 	using Graphite::LanguageServices;

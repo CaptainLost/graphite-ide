@@ -135,9 +135,11 @@ public:
 		REQUIRE(git_repository_set_head(m_Repository, reference.c_str()) == 0);
 	}
 
-	std::filesystem::path AddWorktree(const std::string& branch)
+	// Beside the repository by default; `inside` names a folder of the working tree to put it in instead.
+	std::filesystem::path AddWorktree(const std::string& branch, const std::filesystem::path& inside = {})
 	{
-		const std::filesystem::path worktreePath = m_Outside.GetPath() / (branch + "-tree");
+		const std::filesystem::path worktreePath =
+			inside.empty() ? m_Outside.GetPath() / (branch + "-tree") : inside / (branch + "-tree");
 
 		git_reference* branchReference = nullptr;
 		REQUIRE(git_branch_lookup(&branchReference, m_Repository, branch.c_str(), GIT_BRANCH_LOCAL) == 0);

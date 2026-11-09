@@ -138,6 +138,13 @@ namespace Graphite {
 
 		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
+		// Which worktree other than the open folder's holds a file: its tab then names that worktree and its tooltip the
+		// file's full path. Unset, no file is in another worktree.
+		void SetWorktreeOf(std::function<std::optional<std::string>(const std::filesystem::path&)> worktreeOf)
+		{
+			m_WorktreeOf = std::move(worktreeOf);
+		}
+
 		WorkspaceState CaptureState() const;
 
 		void RestoreState(const WorkspaceState& state);
@@ -684,11 +691,15 @@ namespace Graphite {
 
 		ExpectedWrites m_ExpectedWrites;
 
+		std::function<std::optional<std::string>(const std::filesystem::path&)> m_WorktreeOf;
+
 		std::optional<WrapGeometry> m_WrapOfLastDrawnEditor;
 		std::optional<WrapGeometry> m_WrapHandedToLoads;
 	};
 
 	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error);
 
-	std::string DocumentWindowName(const Core::DocumentSet& documents, std::size_t index);
+	// The tab's name: its kind's glyph, its title, and for a file of another worktree that worktree's folder name.
+	std::string DocumentWindowName(const Core::DocumentSet& documents, std::size_t index,
+								   const std::function<std::optional<std::string>(const std::filesystem::path&)>& worktreeOf = {});
 }

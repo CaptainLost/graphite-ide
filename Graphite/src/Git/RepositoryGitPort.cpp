@@ -1,5 +1,7 @@
 #include "Git/RepositoryGitPort.h"
 
+#include "Git/Worktrees/WorktreeOfFile.h"
+
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Command/GitExecutable.h"
 #include "Core/Git/Command/GitNetwork.h"
@@ -936,7 +938,7 @@ namespace Graphite {
 
 	namespace {
 
-		// Empty when the file is outside the working directory, ignored, or inside a submodule.
+		// Empty when the file is outside the working directory, ignored, inside a submodule or inside a nested checkout.
 		std::optional<std::filesystem::path> RelativePathOfTrackableFile(Core::Repository& repository,
 																		 const std::filesystem::path& absolutePath)
 		{
@@ -950,6 +952,13 @@ namespace Graphite {
 			}
 
 			if (repository.IsIgnored(absolutePath))
+			{
+				return std::nullopt;
+			}
+
+			// WARNING: A checkout nested in this one, such as a worktree under the working directory that no rule
+			// ignores, answers for its own files; this repository would read them as untracked or missing.
+			if (IsInsideNestedCheckout(repository.GetWorkingDirectory(), relative))
 			{
 				return std::nullopt;
 			}

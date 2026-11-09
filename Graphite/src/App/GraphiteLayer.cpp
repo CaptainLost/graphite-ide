@@ -21,6 +21,7 @@
 #include "Git/Changes/ChangesPanel.h"
 #include "Theme/GitPalette.h"
 #include "Git/GitRequests.h"
+#include "Git/Worktrees/WorktreeOfFile.h"
 #include "Git/GitStatusText.h"
 #include "Git/Branches/BranchAuthors.h"
 #include "Git/Branches/BranchLookup.h"
@@ -247,6 +248,12 @@ namespace Graphite {
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
+
+		// The list is null while unread: until then every file belongs to the open folder's tab naming.
+		m_DocumentWindows.SetWorktreeOf([this](const std::filesystem::path& file) -> std::optional<std::string> {
+			const std::vector<Core::WorktreeEntry>* entries = m_Worktrees.Entries();
+			return entries == nullptr ? std::nullopt : WorktreeFolderOf(file, *entries, m_Workspace.GetRoot());
+		});
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.SetPictureZoom([this](PictureZoom zoom) { return m_DocumentWindows.ZoomFocusedPicture(zoom); });
 		explorer->RegisterCommands(m_Commands);

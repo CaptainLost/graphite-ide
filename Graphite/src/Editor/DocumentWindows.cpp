@@ -287,11 +287,18 @@ namespace Graphite {
 
 	// WARNING: ImGui shows what precedes ### and identifies by what follows, so the path stays
 	// out of sight and the icon moves no window id.
-	std::string DocumentWindowName(const Core::DocumentSet& documents, std::size_t index)
+	std::string DocumentWindowName(const Core::DocumentSet& documents, std::size_t index,
+								   const std::function<std::optional<std::string>(const std::filesystem::path&)>& worktreeOf)
 	{
 		const std::filesystem::path& path = documents.At(index).Path;
 		const std::string icon{GlyphOf(KindOfFile(path))};
-		const std::string title = documents.DisplayTitle(index);
+		std::string title = documents.DisplayTitle(index);
+
+		if (const std::optional<std::string> worktree = worktreeOf ? worktreeOf(path) : std::nullopt)
+		{
+			// UTF-8 for the middle dot.
+			title += " \xC2\xB7 " + *worktree;
+		}
 
 		return icon + "  " + title + "###" + Core::ToUtf8(path);
 	}
@@ -1694,7 +1701,7 @@ namespace Graphite {
 
 	void DocumentWindows::CloseAndForgetLayout(std::size_t index)
 	{
-		ImGui::ClearWindowSettings(DocumentWindowName(m_Documents, index).c_str());
+		ImGui::ClearWindowSettings(DocumentWindowName(m_Documents, index, m_WorktreeOf).c_str());
 		m_RestoredIdentities.erase(DocumentIdentityOf(m_Documents, index));
 		m_Documents.Close(index);
 		PruneDocumentStates();
@@ -3078,7 +3085,7 @@ namespace Graphite {
 		{
 			Core::OpenItem& item = m_Documents.At(index);
 			const std::string identity = DocumentIdentityOf(m_Documents, index);
-			const std::string name = DocumentWindowName(m_Documents, index);
+			const std::string name = DocumentWindowName(m_Documents, index, m_WorktreeOf);
 
 			const bool appearing = IsNewSinceLastFrame(identity);
 			const bool noPendingFocus = false;
@@ -3115,6 +3122,11 @@ namespace Graphite {
 			{
 				m_CloseRequested.reset();
 				open = false;
+			}
+
+			if (m_WorktreeOf && m_WorktreeOf(item.Path) && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				ImGui::SetTooltip("%s", Core::ToUtf8(item.Path).c_str());
 			}
 
 			Core::DrawTabContextMenu(closeRequests,

@@ -557,7 +557,9 @@ namespace Graphite {
 		const float discardWidth =
 			offersDiscard ? RowButtonWidth() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
 
-		const float buttonsWidth = discardWidth + RowButtonWidth();
+		const float openWidth = RowButtonWidth() + ImGui::GetStyle().ItemSpacing.x;
+
+		const float buttonsWidth = openWidth + discardWidth + RowButtonWidth();
 
 		const char letterText[] = {letter, '\0'};
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
@@ -594,6 +596,20 @@ namespace Graphite {
 		if (rowHovered)
 		{
 			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
+
+			// Opens this view's own copy of the file, so a worktree's view opens the worktree's file. A deleted file has
+			// none to open.
+			ImGui::BeginDisabled(letter == 'D');
+
+			if (Core::DrawIconButton("##open", ICON_LC_EXTERNAL_LINK, kNotEngaged, "Open file", kRowButton))
+			{
+				constexpr bool kPermanent = true;
+				m_Events.Publish(OpenFileRequested{.Path = m_Model.GetWorkingDirectory() / file.Path, .Permanent = kPermanent});
+			}
+
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+
 			ImGui::BeginDisabled(m_Model.IsWriteUnsettled() || buttons == RowButtons::HeldForFreshListing);
 
 			if (offersDiscard)

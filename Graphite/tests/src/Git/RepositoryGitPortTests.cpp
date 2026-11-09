@@ -460,6 +460,31 @@ TEST_CASE("An ignored file is not tracked")
 	CHECK_FALSE(bases.GetValue().Tracked);
 }
 
+TEST_CASE("A file of a worktree nested in the working tree, with no ignore rule, has no markers and no blame here")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	repository.Commit("fork point");
+	repository.Branch("side");
+
+	const std::filesystem::path nested = repository.AddWorktree("side", repository.GetPath());
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(nested / "a.txt");
+	REQUIRE(bases.HasValue());
+	CHECK_FALSE(bases.GetValue().Tracked);
+	CHECK_FALSE(bases.GetValue().Head.has_value());
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(nested / "a.txt");
+	REQUIRE(blamed.HasValue());
+	CHECK_FALSE(blamed.GetValue().Tracked);
+	CHECK_FALSE(blamed.GetValue().Blame);
+
+	const Core::Result<Graphite::ChangeBases> own = port.ReadBases(repository.GetPath() / "a.txt");
+	REQUIRE(own.HasValue());
+	CHECK(own.GetValue().Tracked);
+}
+
 TEST_CASE("A file outside the repository is not tracked")
 {
 	TempRepo repo;

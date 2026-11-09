@@ -10,6 +10,7 @@
 #include "Theme/ActiveScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/ModalGate.h"
+#include "Workspace/Workspace.h"
 
 #include "Git/FakeEditorBuffers.h"
 #include "DrawnColours.h"
@@ -282,6 +283,11 @@ namespace {
 	class WorktreeLikePort final : public EmptyGitPort
 	{
 	public:
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override
+		{
+			return std::filesystem::path{"D:/work/eager-scribbling-frog"};
+		}
+
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override
 		{
 			if (StatusFailure.has_value())
@@ -517,6 +523,24 @@ TEST_CASE("Changes view without Discard offers no discard on a file's row or in 
 
 	// The menu is open and read: what it does offer is there.
 	CHECK(host.Frames.ClickMenuItem("Copy File Name", draw));
+}
+
+TEST_CASE("A file row's hover Open icon opens the file of the view's own working directory, and a plain click only selects")
+{
+	WorktreeHost host;
+	std::vector<std::filesystem::path> opened;
+	host.Events.Subscribe<Graphite::OpenFileRequested>(
+		[&opened](const Graphite::OpenFileRequested& request) { opened.push_back(request.Path); });
+
+	constexpr const char* kHost = "Open icon host";
+	const std::function<void()> draw = InHost(kHost, [&host] { host.View.Draw(); });
+
+	REQUIRE(ClickFileRow(host.Frames, kHost, draw));
+	CHECK(opened.empty());
+
+	REQUIRE(ClickFileRowButton(host.Frames, kHost, draw, "##open"));
+	REQUIRE(opened.size() == 1);
+	CHECK(opened.front() == std::filesystem::path{"D:/work/eager-scribbling-frog"} / "a.txt");
 }
 
 TEST_CASE("Changes view offers Discard on a file's row by default")
