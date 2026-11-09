@@ -1302,6 +1302,38 @@ TEST_CASE("Repository port: a worktree's activity reads its reflog, index and HE
 	CHECK(*activity.GetValue().HeadCommit == committedAt);
 }
 
+// Reflog expiry rewrites every worktree's logs/HEAD at once without adding an entry, so the file's modification time says
+// nothing about when the worktree was last used.
+TEST_CASE("Repository port: a worktree's reflog activity is its newest entry's time, whatever the file's modification time")
+{
+	ReviewRepository repository;
+	const std::filesystem::path worktree = AddCommittedWorktree(repository);
+	CommitOnHead(worktree, "in the worktree");
+
+	git_repository* handle = nullptr;
+	REQUIRE(git_repository_open(&handle, Core::ToUtf8(worktree).c_str()) == 0);
+	git_reflog* reflog = nullptr;
+	REQUIRE(git_reflog_read(&reflog, handle, "HEAD") == 0);
+	REQUIRE(git_reflog_entrycount(reflog) > 0);
+	const std::chrono::sys_seconds newestEntry{
+		std::chrono::seconds{git_reflog_entry_committer(git_reflog_entry_byindex(reflog, 0))->when.time}};
+	git_reflog_free(reflog);
+	git_repository_free(handle);
+
+	const std::filesystem::path reflogFile = GitDirectoryOf(worktree) / "logs" / "HEAD";
+	REQUIRE(std::filesystem::exists(reflogFile));
+	const std::chrono::sys_seconds rewrittenAt{std::chrono::seconds{1'000'000'000}};
+	std::filesystem::last_write_time(reflogFile, std::chrono::clock_cast<std::filesystem::file_time_type::clock>(rewrittenAt));
+
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const Core::Result<Graphite::WorktreeActivity> activity = port.QueryActivity(worktree);
+
+	REQUIRE(activity.HasValue());
+	REQUIRE(activity.GetValue().Reflog.has_value());
+	CHECK(*activity.GetValue().Reflog == newestEntry);
+	CHECK(*activity.GetValue().Reflog != rewrittenAt);
+}
+
 TEST_CASE("Repository port: a worktree count names its newest changed file's time")
 {
 	ReviewRepository repository;

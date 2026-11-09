@@ -25,7 +25,9 @@ another worktree.
   worktree holds belongs to no worktree. The answer is cached per file for as long as the worktree list and the
   working directory stay the same, so a frame that changes neither compares no paths.
 - **The tab says so.** A file of another worktree has the worktree's folder name after its own on the tab
-  (`ToolStrip.cpp · eager-scribbling-frog`) and its full path in the tab's tooltip. It is editable and saves into that
+  (`ToolStrip.cpp · eager-scribbling-frog`), drawn as the tab's dim note (`Core::DockTabLook::Note`) after the name,
+  which a narrow tab cuts before the name; the tab's tooltip has the full path with the platform's separators. It is
+  editable and saves into that
   worktree; the editor's handling of external changes covers an agent writing the same file.
 - **The open folder's repository does not answer for it.** A file below a directory that holds a `.git` entry, file or
   folder, strictly between the working directory and the file, belongs to that nested checkout: it gets no change

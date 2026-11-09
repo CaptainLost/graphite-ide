@@ -778,6 +778,7 @@ namespace Graphite {
 
 				// After SelectWorktree, whose SelectRef lets go of the row a branch was opened from before.
 				m_RefOpenedFromWorktreeRow = m_SelectedRef;
+				m_WorktreeOfOpenedRow = worktree;
 			}
 			return;
 		}
@@ -831,6 +832,8 @@ namespace Graphite {
 
 	void GitView::FollowSelectedWorktree()
 	{
+		FollowWorktreeOfOpenedRow();
+
 		// Until the list has answered it is not known whether the worktree is still there.
 		if (!m_SelectedWorktree.has_value() || !m_Worktrees.HasListAnswered())
 		{
@@ -845,6 +848,7 @@ namespace Graphite {
 			const std::filesystem::path worktree = *m_SelectedWorktree;
 			SelectWorktree(worktree);
 			m_RefOpenedFromWorktreeRow = m_SelectedRef;
+			m_WorktreeOfOpenedRow = worktree;
 			return;
 		}
 
@@ -855,6 +859,40 @@ namespace Graphite {
 		{
 			RequestLog(m_Reach, LogAsk::Again);
 		}
+	}
+
+	void GitView::FollowWorktreeOfOpenedRow()
+	{
+		const bool branchFromRow = m_SelectedRef.has_value() && m_SelectedRef == m_RefOpenedFromWorktreeRow;
+		const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
+
+		if (!branchFromRow || !m_WorktreeOfOpenedRow.has_value() || entries == nullptr)
+		{
+			return;
+		}
+
+		const std::optional<std::size_t> index = IndexOfWorktree(*entries, *m_WorktreeOfOpenedRow);
+
+		// A worktree that left the list, or whose folder is gone, leaves its branch's history as it is.
+		if (!index.has_value() || (*entries)[*index].FolderMissing)
+		{
+			return;
+		}
+
+		const Core::HeadState& head = (*entries)[*index].Head;
+		const bool stillOnTheBranch = head.Kind == Core::HeadKind::Branch && !head.BranchName.empty() &&
+									  Core::LocalBranchReference(head.BranchName) == *m_SelectedRef;
+
+		if (stillOnTheBranch)
+		{
+			return;
+		}
+
+		// The worktree detached or switched branch: its row stays the one selected, as a click on it now would.
+		const std::filesystem::path worktree = *m_WorktreeOfOpenedRow;
+		SelectWorktree(worktree);
+		m_RefOpenedFromWorktreeRow = m_SelectedRef;
+		m_WorktreeOfOpenedRow = worktree;
 	}
 
 	void GitView::AnswerSidebarLink(SidebarLink link, const std::string& remote)

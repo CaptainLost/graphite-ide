@@ -83,7 +83,22 @@ namespace Graphite {
 		}
 
 		m_LastAsked = branches;
+		AskList();
+	}
 
+	void WorktreesModel::ListAgain()
+	{
+		// Nothing is asked before the folder's first list: Follow asks that one.
+		if (m_LastAsked == nullptr)
+		{
+			return;
+		}
+
+		AskList();
+	}
+
+	void WorktreesModel::AskList()
+	{
 		const std::uint64_t generation = m_Entries.Begin();
 		const std::uint64_t folder = m_Folder.load();
 

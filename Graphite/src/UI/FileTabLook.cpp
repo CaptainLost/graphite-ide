@@ -14,6 +14,12 @@ namespace Graphite {
 		look.Face = tab.Preview ? italicFace : nullptr;
 		look.Dot = tab.Dot;
 
+		if (!tab.Worktree.empty())
+		{
+			// UTF-8 for the middle dot.
+			look.Note = " \xC2\xB7 " + tab.Worktree;
+		}
+
 		return look;
 	}
 }

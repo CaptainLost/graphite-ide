@@ -329,4 +329,32 @@ namespace Core {
 
 		return std::chrono::sys_seconds{std::chrono::seconds{git_commit_time(commit.GetValue().get())}};
 	}
+
+	Result<std::chrono::sys_seconds> Repository::HeadReflogTime() const
+	{
+		git_reflog* rawReflog = nullptr;
+
+		if (git_reflog_read(&rawReflog, m_Handle.get(), "HEAD") != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot read HEAD's reflog: {}", LastLibgit2Message())};
+		}
+
+		const ReflogHandle reflog{rawReflog};
+
+		// Entry 0 is the newest; an absent reflog file reads as an empty one.
+		if (git_reflog_entrycount(reflog.get()) == 0)
+		{
+			return Error{ErrorCode::NotFound, "HEAD has no reflog entry"};
+		}
+
+		const git_reflog_entry* newest = git_reflog_entry_byindex(reflog.get(), 0);
+		const git_signature* committer = newest != nullptr ? git_reflog_entry_committer(newest) : nullptr;
+
+		if (committer == nullptr)
+		{
+			return Error{ErrorCode::IoFailure, "HEAD's newest reflog entry has no signature"};
+		}
+
+		return std::chrono::sys_seconds{std::chrono::seconds{committer->when.time}};
+	}
 }

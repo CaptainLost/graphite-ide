@@ -15,6 +15,7 @@ struct git_index;
 struct git_object;
 struct git_reference;
 struct git_reference_iterator;
+struct git_reflog;
 struct git_revwalk;
 struct git_signature;
 struct git_status_list;
@@ -37,6 +38,7 @@ namespace Core {
 		void operator()(git_object* object) const;
 		void operator()(git_reference* reference) const;
 		void operator()(git_reference_iterator* iterator) const;
+		void operator()(git_reflog* reflog) const;
 		void operator()(git_revwalk* walk) const;
 		void operator()(git_signature* signature) const;
 		void operator()(git_status_list* list) const;
@@ -56,6 +58,7 @@ namespace Core {
 	using ObjectHandle = std::unique_ptr<git_object, Libgit2Free>;
 	using ReferenceHandle = std::unique_ptr<git_reference, Libgit2Free>;
 	using ReferenceIteratorHandle = std::unique_ptr<git_reference_iterator, Libgit2Free>;
+	using ReflogHandle = std::unique_ptr<git_reflog, Libgit2Free>;
 	using RevwalkHandle = std::unique_ptr<git_revwalk, Libgit2Free>;
 	using SignatureHandle = std::unique_ptr<git_signature, Libgit2Free>;
 	using StatusListHandle = std::unique_ptr<git_status_list, Libgit2Free>;

@@ -92,6 +92,19 @@ namespace Core {
 			return FaceOf(look)->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.0f, nameStart, nameStart + look.Name.size()).x;
 		}
 
+		float NoteWidth(const DockTabLook& look)
+		{
+			const char* const noteStart = look.Note.data();
+
+			return FaceOf(look)->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.0f, noteStart, noteStart + look.Note.size()).x;
+		}
+
+		// The name and the note after it.
+		float LabelWidth(const DockTabLook& look)
+		{
+			return NameWidth(look) + NoteWidth(look);
+		}
+
 		float LeadWidth(const DockTabLook& look)
 		{
 			if (look.Lead.has_value())
@@ -225,6 +238,25 @@ namespace Core {
 			ImGui::PopFont();
 		}
 
+		// The note from where the name ends, cut to `right` with an ellipsis, in the dim text colour and the name's face.
+		void DrawNote(ImDrawList& drawList, const DockTabLook& look, ImVec2 lineTop, float right)
+		{
+			if (look.Note.empty() || right <= lineTop.x)
+			{
+				return;
+			}
+
+			const char* const noteStart = look.Note.data();
+			const char* const noteEnd = noteStart + look.Note.size();
+
+			ImGui::PushFont(FaceOf(look), 0.0f);
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+			ImGui::RenderTextEllipsis(&drawList, lineTop, ImVec2(right, lineTop.y + ImGui::GetFontSize()), right, noteStart,
+									  noteEnd, nullptr);
+			ImGui::PopStyleColor();
+			ImGui::PopFont();
+		}
+
 		bool DrawCloseButton(ImDrawList& drawList, const ImRect& box, ImGuiID id)
 		{
 			if (!ImGui::ItemAdd(box, id))
@@ -314,11 +346,12 @@ namespace Core {
 			const float dotRoom = look.Dot.has_value() ? Scaled(kDotSize) + gap : 0.0f;
 			const float nameRight = closeLeft - gap - dotRoom;
 			DrawName(drawList, look, ImVec2(nameLeft, lineTop.y), nameRight, labelColour);
+			DrawNote(drawList, look, ImVec2(nameLeft + NameWidth(look), lineTop.y), nameRight);
 
 			if (look.Dot.has_value())
 			{
 				const float dotRadius = Scaled(kDotSize) * kHalf;
-				const float dotLeft = std::min(nameLeft + NameWidth(look), nameRight) + gap;
+				const float dotLeft = std::min(nameLeft + LabelWidth(look), nameRight) + gap;
 				drawList.AddCircleFilled(ImVec2(dotLeft + dotRadius, tab.GetCenter().y), dotRadius, *look.Dot);
 			}
 
@@ -373,7 +406,7 @@ namespace Core {
 		const float gap = Scaled(kPartGap);
 		const float lead = LeadWidth(look);
 
-		float width = Scaled(kLabelPaddingLeft) + NameWidth(look) + gap + Scaled(kCloseBoxSize) + Scaled(kLabelPaddingRight);
+		float width = Scaled(kLabelPaddingLeft) + LabelWidth(look) + gap + Scaled(kCloseBoxSize) + Scaled(kLabelPaddingRight);
 
 		if (lead > 0.0f)
 		{

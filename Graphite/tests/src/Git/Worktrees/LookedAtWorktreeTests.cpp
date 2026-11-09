@@ -38,6 +38,21 @@ namespace {
 		const bool* m_Changed = nullptr;
 	};
 
+	// The looked-at worktree's repository: its HEAD as a test sets it, on frog as the list has it at first.
+	class HeadPort final : public EmptyGitPort
+	{
+	public:
+		HeadPort()
+		{
+			Head.Kind = Core::HeadKind::Branch;
+			Head.BranchName = "frog";
+		}
+
+		Core::Result<Core::HeadState> QueryHead() override { return Head; }
+
+		Core::HeadState Head;
+	};
+
 	// The Git window's worktree counts and the looked-at worktree's changes, tied as GraphiteLayer ties them.
 	struct Window
 	{
@@ -45,7 +60,7 @@ namespace {
 		DeferredJobs CountJobs;
 		Graphite::WorktreesModel Counts{CountPort, CountJobs.Submitter(), [] { return std::int64_t{0}; }};
 
-		EmptyGitPort ChangesPort;
+		HeadPort ChangesPort;
 		DeferredJobs ChangesJobs;
 		bool WatchChanged = false;
 		Graphite::WorktreeChanges Changes{ChangesPort, [](const std::filesystem::path&) {}, ChangesJobs.Submitter(),
@@ -131,4 +146,40 @@ TEST_CASE("Looked-at worktree: a watch change counts the worktree watched once, 
 
 	CHECK(window.CountsOf(kLookedAt) == 1);
 	CHECK(window.CountsOf(kOther) == 0);
+}
+
+TEST_CASE("Looked-at worktree: a watch change that finds HEAD detached asks the worktree list again once, and one of files alone does not")
+{
+	Window window;
+	window.Changes.Follow(kLookedAt, true);
+	window.LookedAt.Update(kFrame);
+	window.ChangesJobs.RunAll();
+	window.LookedAt.Update(kFrame);
+	window.CountJobs.RunAll();
+	const int listedBefore = window.CountPort.Listed;
+
+	const auto fireWatch = [&window] {
+		window.WatchChanged = true;
+		window.LookedAt.Update(kFrame);
+		window.WatchChanged = false;
+		window.LookedAt.Update(Core::Timestep{Graphite::Debouncer::kQuietSeconds});
+		window.ChangesJobs.RunAll();
+		window.LookedAt.Update(kFrame);
+		window.LookedAt.Update(kFrame);
+		window.CountJobs.RunAll();
+	};
+
+	// A file changed: HEAD is where the list has it.
+	fireWatch();
+	CHECK(window.CountPort.Listed == listedBefore);
+
+	// Another process detached HEAD: the list is read again, once however many frames follow.
+	window.ChangesPort.Head.Kind = Core::HeadKind::Detached;
+	window.ChangesPort.Head.BranchName.clear();
+	window.ChangesPort.Head.Commit = OidWithFirstByte(0x5A);
+	fireWatch();
+	window.LookedAt.Update(kFrame);
+	window.CountJobs.RunAll();
+
+	CHECK(window.CountPort.Listed == listedBefore + 1);
 }

@@ -15,7 +15,7 @@ namespace Graphite {
 	// missing: no reflog yet, no index yet, an unborn HEAD.
 	struct WorktreeActivity
 	{
-		// <gitdir>/logs/HEAD modification time.
+		// The time of HEAD's newest reflog entry; empty when HEAD has none.
 		std::optional<std::chrono::sys_seconds> Reflog;
 
 		// <gitdir>/index modification time.

@@ -1426,8 +1426,20 @@ namespace Graphite {
 		const std::filesystem::path gitDirectory = repository.GitDirectory();
 
 		WorktreeActivity activity;
-		activity.Reflog = ModifiedAt(gitDirectory / "logs" / "HEAD");
 		activity.Index = ModifiedAt(gitDirectory / "index");
+
+		// WARNING: The newest entry's time, not logs/HEAD's modification time: git's reflog expiry rewrites the file of
+		// every worktree at once without adding an entry, which would make all of them look active that second.
+		const Core::Result<std::chrono::sys_seconds> reflogTime = repository.HeadReflogTime();
+
+		if (reflogTime.HasValue())
+		{
+			activity.Reflog = reflogTime.GetValue();
+		}
+		else if (reflogTime.GetError().Code != Core::ErrorCode::NotFound)
+		{
+			return reflogTime.GetError();
+		}
 
 		const Core::Result<std::chrono::sys_seconds> headTime = repository.HeadCommitTime();
 

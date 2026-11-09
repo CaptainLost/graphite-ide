@@ -312,6 +312,9 @@ namespace Graphite {
 		// shows for it now; one whose HEAD moved has its history asked again from the new commit.
 		void FollowSelectedWorktree();
 
+		// A branch opened from its worktree's row follows that worktree when it detaches or switches branch.
+		void FollowWorktreeOfOpenedRow();
+
 		// Opens the menu on a right-click of the last item.
 		void RenderRefMenu(const Core::Branch& branch);
 
@@ -642,6 +645,10 @@ namespace Graphite {
 		// The branch a click on its worktree's row selected, so that row, not the branch's in Yours, is drawn selected;
 		// let go of by any other selection.
 		std::optional<std::string> m_RefOpenedFromWorktreeRow;
+
+		// The worktree whose row opened m_RefOpenedFromWorktreeRow: should it detach or switch branch, the selection
+		// follows it rather than stay on a branch it no longer holds.
+		std::optional<std::filesystem::path> m_WorktreeOfOpenedRow;
 
 		Core::Ref<const std::vector<Core::Branch>> m_LastSeenBranches;
 		Core::Ref<const std::vector<Core::Tag>> m_LastSeenTags;

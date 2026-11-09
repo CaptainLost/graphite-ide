@@ -664,6 +664,41 @@ TEST_CASE("A modified file's tab shows a dot in the modified colour after its na
 	CHECK(VerticesInColour(TabBarScreen::BarDrawing(document), kModifiedColour, afterTheName) > 0);
 }
 
+TEST_CASE("A tab's note follows its name in the dim colour, and the tab is as wide as both")
+{
+	constexpr const char* kNote = " \xC2\xB7 elsewhere";
+
+	TabBarScreen screen;
+	screen.DocumentLook.Note = kNote;
+	screen.Settle();
+
+	float nameWidth = 0.0f;
+	float noteWidth = 0.0f;
+	float withNote = 0.0f;
+	float withoutNote = 0.0f;
+	ImU32 dim = 0;
+	screen.DuringFrame = [&] {
+		nameWidth = ImGui::CalcTextSize(ICON_LC_FILE).x + 6.0f + ImGui::CalcTextSize("Report.md").x;
+		noteWidth = ImGui::CalcTextSize(kNote).x;
+		withNote = Core::DockTabWidth(screen.DocumentLook);
+		Core::DockTabLook bare = screen.DocumentLook;
+		bare.Note.clear();
+		withoutNote = Core::DockTabWidth(bare);
+		dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+	};
+	screen.Frame();
+
+	CHECK(withNote - withoutNote == doctest::Approx(noteWidth).epsilon(0.05));
+
+	const ImGuiWindow& document = TabBarScreen::DocumentWindow();
+	const ImRect tab = TabBarScreen::TabOf(document);
+	const ImRect theName(ImVec2(tab.Min.x + 12.0f, tab.Min.y), ImVec2(tab.Min.x + 12.0f + nameWidth, tab.Max.y));
+	const ImRect theNote(ImVec2(tab.Min.x + 12.0f + nameWidth, tab.Min.y),
+						 ImVec2(tab.Min.x + 12.0f + nameWidth + noteWidth, tab.Max.y));
+	CHECK(VerticesInColour(TabBarScreen::BarDrawing(document), dim, theNote) > 0);
+	CHECK(VerticesInColour(TabBarScreen::BarDrawing(document), dim, theName) == 0);
+}
+
 TEST_CASE("A line separates tabs and runs under the bar except beneath the active tab")
 {
 	TabBarScreen screen;

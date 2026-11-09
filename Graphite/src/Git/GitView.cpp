@@ -544,6 +544,7 @@ namespace Graphite {
 		m_SelectedStash.reset();
 		m_SelectedWorktree.reset();
 		m_RefOpenedFromWorktreeRow.reset();
+		m_WorktreeOfOpenedRow.reset();
 		m_LastSeenBranches.reset();
 		m_LastSeenTags.reset();
 		m_PendingRename.reset();
@@ -685,6 +686,7 @@ namespace Graphite {
 		m_SelectedWorktree.reset();
 		m_WorktreeHeadsWalked.clear();
 		m_RefOpenedFromWorktreeRow.reset();
+		m_WorktreeOfOpenedRow.reset();
 
 		DeselectStash();
 		StartOpening();

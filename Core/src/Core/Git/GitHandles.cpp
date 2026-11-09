@@ -76,6 +76,11 @@ namespace Core {
 		git_reference_iterator_free(iterator);
 	}
 
+	void Libgit2Free::operator()(git_reflog* reflog) const
+	{
+		git_reflog_free(reflog);
+	}
+
 	void Libgit2Free::operator()(git_tree* tree) const
 	{
 		git_tree_free(tree);

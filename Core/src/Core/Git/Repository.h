@@ -172,6 +172,11 @@ namespace Core {
 		// The committer time of the commit HEAD names. NotFound on an unborn HEAD, as HeadCommit.
 		Result<std::chrono::sys_seconds> HeadCommitTime() const;
 
+		// The time of HEAD's newest reflog entry, as its committer signature records it. NotFound when HEAD has no
+		// reflog entry. Read from the entries, never from the file's modification time, which git's reflog expiry
+		// rewrites for every worktree at once.
+		Result<std::chrono::sys_seconds> HeadReflogTime() const;
+
 		// A full name such as "refs/heads/main" or "refs/remotes/origin/main". NotFound when there
 		// is no such reference, which is the ordinary answer for a branch deleted since it was listed.
 		Result<Oid> ResolveReference(const std::string& fullName) const;

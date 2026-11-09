@@ -14,7 +14,7 @@ all, and seeing what any of them held meant switching Graphite to that folder.
 Three forces shape the list. A repository here had 37 worktrees, so whatever the list costs while idle must not grow
 with their number (ADR 0674's bound). The Git window's rule is that nothing moves on its own while the user looks at it
 and that its first opening waits behind one state rather than filling in piece by piece (spec 2026-11-03 §6). And the
-cheap facts about a worktree (its HEAD, its reflog and index times) are known without a status walk, while its count of
+cheap facts about a worktree (its HEAD, its newest reflog entry and its index time) are known without a status walk, while its count of
 changed files needs one.
 
 ## Decision
@@ -26,8 +26,10 @@ changed files needs one.
   branch or `detached at <short hash>`, `N changed` or `clean`, and the time of the last activity; a locked worktree
   shows a lock with its reason, a missing folder shows `folder missing` instead of the counts. The sidebar's search
   also matches a worktree's folder name and path.
-- **Order.** Below the open folder, rows are ordered by last activity, newest first: the newest of the HEAD reflog's
-  and the index's modification times, the HEAD commit's time, and the newest changed file found by the last count.
+- **Order.** Below the open folder, rows are ordered by last activity, newest first: the newest of the time of HEAD's
+  newest reflog entry, the index's modification time, the HEAD commit's time, and the newest changed file found by the
+  last count. The reflog is read by its entries, not by the file's modification time: git's reflog expiry rewrites every
+  worktree's `logs/HEAD` in the same second without adding an entry, which made all of them look active at once.
   Worktrees idle for 7 days with no known changes fold into one closing row `N more · no changes for 7+ days`; a folded
   worktree found with changes is said in place (`N more · 1 with changes`) and leaves the fold at the next build.
 - **Fixed between rebuilds.** The order is built at an opening of the window, a change of the search, the section
@@ -48,7 +50,10 @@ changed files needs one.
   `HEAD in <folder>`. Its first row is `Changes in <folder>` with `n staged · m not staged` or `no changes`. That one
   worktree is watched (the review tab's `WorktreeWatch`, plus its linked git directory, where another process's stage
   or commit lands) while the window is on screen; it is neither polled nor swept, and each watch firing counts it again
-  so its row keeps its count, activity and live marker. Off screen the window keeps following it but stops watching and
+  so its row keeps its count, activity and live marker. A HEAD that watch reads which the list does not hold (detached,
+  on another branch, or a detached HEAD at another commit) asks the worktree list again, since no ref of the open
+  folder moves for it; a branch opened from a worktree's row then follows that worktree to its new HEAD, while one
+  opened from Yours stays on the branch. Off screen the window keeps following it but stops watching and
   reading, so coming back shows the last state at once instead of "…".
 - **The live marker** is a static green dot in place of the folder icon while the last activity is within 60 s. It
   does not pulse.

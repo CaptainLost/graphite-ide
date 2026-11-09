@@ -798,3 +798,49 @@ TEST_CASE("Changes view's empty message box names the worktree's target, and the
 
 	CHECK(DrawsLine(kHost, *font, "MessagefordetachedHEADineager-scribbling-frog"));
 }
+
+TEST_CASE("Changes view's message hint too long for a narrow box stays inside the box")
+{
+	WorktreeHost host;
+
+	ImFontBaked* font = nullptr;
+	constexpr const char* kHost = "Narrow message hint host";
+	constexpr ImVec2 kNarrowHostSize(260.0f, 600.0f);
+	const std::function<void()> draw = InHost(kHost, [&host, &font] {
+		font = ImGui::GetFontBaked();
+		host.View.Draw();
+	}, ImVec2(0.0f, 0.0f), kNarrowHostSize);
+
+	Graphite::ChangesViewOptions options = host.SwitchedAway();
+	options.MessageHint = [&host] { return Graphite::WorktreeMessageHint(host.Model.GetHead().get(), kWorktreeFolder); };
+	host.View.SetOptions(options);
+	host.Frames.Next(draw);
+	host.Frames.Next(draw);
+	REQUIRE(font != nullptr);
+
+	const ImGuiWindow* box = MessageBoxWindow(kHost);
+	REQUIRE(box != nullptr);
+	const float boxRight = box->Pos.x + box->Size.x;
+	const float boxBottom = box->Pos.y + box->Size.y;
+
+	std::string hintRead;
+	float rightmost = 0.0f;
+
+	for (const DrawnLine& line : HostText(kHost, *font))
+	{
+		if (line.Top < box->Pos.y || line.Top >= boxBottom)
+		{
+			continue;
+		}
+
+		hintRead += line.Text;
+
+		for (const float right : line.Rights)
+		{
+			rightmost = std::max(rightmost, right);
+		}
+	}
+
+	CHECK(hintRead.find("Messagefor") == 0);
+	CHECK(rightmost <= boxRight);
+}

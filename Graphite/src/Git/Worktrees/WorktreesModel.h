@@ -41,6 +41,10 @@ namespace Graphite {
 		// Asks a read when the snapshot differs from the last asked. The open folder's own worktree is never counted.
 		void Follow(const Core::Ref<const std::vector<Core::Branch>>& branches, const std::filesystem::path& openFolder);
 
+		// Asks the list again although no branch moved: a worktree's HEAD detached or switched branch, which changes no
+		// ref of the open folder's snapshot. Nothing is asked before the folder's first list.
+		void ListAgain();
+
 		void SetOnScreen(bool onScreen);
 
 		void Clear();
@@ -120,6 +124,7 @@ namespace Graphite {
 			std::optional<std::size_t> Last;
 		};
 
+		void AskList();
 		void Land(std::uint64_t generation, Core::Result<std::vector<Core::WorktreeEntry>> result);
 		struct Observed
 		{

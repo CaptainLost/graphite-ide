@@ -27,6 +27,10 @@ namespace Core {
 	{
 		std::string Name;
 
+		// Drawn after the name in the dim text colour, such as " · <folder>" for a file of another folder; a tab too
+		// narrow for both cuts the note before it cuts the name.
+		std::string Note;
+
 		// Drawn before the name, in the name's colour, when the tab has no lead.
 		std::string Glyph;
 

@@ -1715,6 +1715,47 @@ TEST_CASE("Git window: a selected detached worktree follows its HEAD to a new co
 	CheckOnlyRowSelected(window, "loose");
 }
 
+TEST_CASE("Git window: a branch worktree opened from its row and then detached follows its worktree to the detached HEAD")
+{
+	GitWindow window("WorktreeDetachesWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+	REQUIRE(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+
+	// Another process detached the linked worktree's HEAD; feature is checked out nowhere now.
+	const Core::Oid detachedAt = OidWithFirstByte(0x79);
+	window.WorktreePort.Listed[1].Head.Kind = Core::HeadKind::Detached;
+	window.WorktreePort.Listed[1].Head.BranchName.clear();
+	window.WorktreePort.Listed[1].Head.Commit = detachedAt;
+	ListWorktreesAgain(window);
+
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Worktree = "C:/linked"});
+	REQUIRE(window.Model.GetAskedLogRequest().has_value());
+	CHECK(window.Model.GetAskedLogRequest()->From == detachedAt);
+	CHECK(DrawsText(window, "HEADinlinked"));
+	CheckOnlyRowSelected(window, "linked");
+}
+
+TEST_CASE("Git window: a branch opened from Yours stays on the branch when its worktree detaches")
+{
+	GitWindow window("WorktreeDetachesFromYoursWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	window.ClickAt(window.InSidebarRows(YoursRowTop(1) + Graphite::SidebarTwoLineRowHeight() * 0.5f));
+	window.Settle();
+	REQUIRE(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+
+	window.WorktreePort.Listed[1].Head.Kind = Core::HeadKind::Detached;
+	window.WorktreePort.Listed[1].Head.BranchName.clear();
+	window.WorktreePort.Listed[1].Head.Commit = OidWithFirstByte(0x79);
+	ListWorktreesAgain(window);
+
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+}
+
 TEST_CASE("Git window: a selected worktree that leaves the list, or whose folder goes missing, falls back to the open folder's HEAD")
 {
 	for (const bool folderMissing : {false, true})

@@ -3104,10 +3104,13 @@ namespace Graphite {
 
 			const GitDecoration decoration =
 				item.Path.empty() ? GitDecoration::None : m_GitDecorations.FileOf(item.Path);
+			const std::optional<std::string> worktree =
+				m_WorktreeOf && !item.Path.empty() ? m_WorktreeOf(item.Path) : std::nullopt;
 			const FileTab tab{.Path = item.Path,
 							  .Title = m_Documents.DisplayTitle(index),
 							  .Preview = preview,
-							  .Dot = TabDotColour(decoration, m_GitDecorations.ColourFor(decoration))};
+							  .Dot = TabDotColour(decoration, m_GitDecorations.ColourFor(decoration)),
+							  .Worktree = worktree.value_or(std::string{})};
 
 			const bool modified = item.Document && item.Document->IsModified();
 			const ImGuiWindowFlags windowFlags =
@@ -3124,9 +3127,11 @@ namespace Graphite {
 				open = false;
 			}
 
-			if (m_WorktreeOf && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && m_WorktreeOf(item.Path))
+			if (worktree.has_value() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
-				ImGui::SetTooltip("%s", Core::ToUtf8(item.Path).c_str());
+				// With the platform's separators, as the window shows every other path: a worktree's path joins its
+				// folder, which git spells with forward slashes, and the file's relative path.
+				ImGui::SetTooltip("%s", Core::ToUtf8(std::filesystem::path{item.Path}.make_preferred()).c_str());
 			}
 
 			Core::DrawTabContextMenu(closeRequests,

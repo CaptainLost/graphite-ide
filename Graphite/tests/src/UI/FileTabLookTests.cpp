@@ -59,3 +59,19 @@ TEST_CASE("A modified file's tab carries a dot in the modified colour, and a cle
 		CHECK_FALSE(Graphite::FileTabLook(ReportTab(), nullptr).Dot.has_value());
 	});
 }
+
+TEST_CASE("A file of another worktree has the worktree's folder as its tab's note, and the open folder's file none")
+{
+	ImGuiFrames frames;
+
+	frames.Next([] {
+		Graphite::FileTab elsewhere = ReportTab();
+		elsewhere.Worktree = "eager-scribbling-frog";
+
+		const Core::DockTabLook look = Graphite::FileTabLook(elsewhere, nullptr);
+		CHECK(look.Name == "Report.md");
+		CHECK(look.Note == " \xC2\xB7 eager-scribbling-frog");
+
+		CHECK(Graphite::FileTabLook(ReportTab(), nullptr).Note.empty());
+	});
+}

@@ -1047,9 +1047,14 @@ namespace Graphite {
 				hint = m_Options.MessageHint();
 			}
 
+			// WARNING: Wrapped to the box and clipped to it: a hint naming a long branch and folder ran past the box's
+			// border into whatever stood beside it.
+			const float wrapWidth = std::max(boxWidth - framePadding.x * 2.0f, 1.0f);
+			const ImVec4 boxClip(messageStart.x, messageStart.y, messageStart.x + boxWidth - framePadding.x,
+								 messageStart.y + MessageBoxHeight());
 			ImGui::GetWindowDrawList()->AddText(
-				ImVec2(messageStart.x + framePadding.x, messageStart.y + framePadding.y),
-				ImGui::GetColorU32(ImGuiCol_TextDisabled), hint.c_str());
+				ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(messageStart.x + framePadding.x, messageStart.y + framePadding.y),
+				ImGui::GetColorU32(ImGuiCol_TextDisabled), hint.c_str(), nullptr, wrapWidth, &boxClip);
 		}
 
 		ImGui::EndDisabled();
