@@ -82,6 +82,23 @@ exit 0
     Assert-That -Because 'runs the binary with --exec, so the Linux shell expands nothing' -Condition ($recorded -match '--exec \| /fake/CoreLinuxTests')
     Remove-Item -LiteralPath $calls -ErrorAction SilentlyContinue
 
+    # --- by default both Linux suites run ----------------------------------------
+    $binaryRoot = Join-Path $scratch 'bin'
+    foreach ($suite in 'CoreLinuxTests', 'AgentTests') {
+        New-Item -ItemType Directory -Path (Join-Path $binaryRoot "Debug-linux-x86_64\$suite") -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $binaryRoot "Debug-linux-x86_64\$suite\$suite") -Value 'not a real binary'
+    }
+    $result = Invoke-InProcess -Named @{ WslExecutable = $stubScript; BinaryRoot = $binaryRoot }
+    $recorded = if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls -Raw } else { '' }
+    Assert-That -Because 'translates both suites'' binaries' -Condition (($recorded -match 'CoreLinuxTests/CoreLinuxTests') -and ($recorded -match 'AgentTests/AgentTests'))
+    Assert-That -Because 'runs a binary once for each suite' -Condition (([regex]::Matches($recorded, '--cd \| /tmp \| --exec')).Count -eq 2)
+    Remove-Item -LiteralPath $calls -ErrorAction SilentlyContinue
+
+    $result = Invoke-InProcess -Named @{ WslExecutable = $stubScript; BinaryRoot = $binaryRoot; Suite = 'AgentTests' }
+    $recorded = if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls -Raw } else { '' }
+    Assert-That -Because 'runs only the suite asked for' -Condition (($recorded -match 'AgentTests/AgentTests') -and ($recorded -notmatch 'CoreLinuxTests/CoreLinuxTests'))
+    Remove-Item -LiteralPath $calls -ErrorAction SilentlyContinue
+
     # --- WSL lists a distro but none is the default ------------------------------
     $env:STUB_NO_DEFAULT = '1'
     try {

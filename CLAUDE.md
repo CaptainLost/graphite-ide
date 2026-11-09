@@ -99,7 +99,7 @@ Fetch zig once, then build and run the Linux tests in WSL:
 ```powershell
 .\scripts\Get-Zig.ps1                               # once: vendor\bin\zig, checked by SHA-256
 .\vendor\bin\zig\zig.exe build -Dconfiguration=Debug  # or build Core\linux\CoreLinux.vcxproj
-.\scripts\Test-CoreLinux.ps1                        # runs bin\Debug-linux-x86_64\CoreLinuxTests in WSL
+.\scripts\Test-CoreLinux.ps1                        # runs CoreLinuxTests and AgentTests in WSL (-Suite picks one)
 ```
 
 Without WSL, `Test-CoreLinux.ps1` prints `Linux tests skipped: WSL is not

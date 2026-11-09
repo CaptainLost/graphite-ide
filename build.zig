@@ -61,6 +61,18 @@ const core_test_excluded = [_][]const u8{
     "Core/tests/src/Remote/AgentEndToEndTests.cpp",
 };
 
+// The WSL agent (Agent/), Linux-only, so premake never sees it. Its entry point is left out of
+// the code its tests link.
+const agent_source_folders = [_][]const u8{
+    "Agent/src",
+};
+const agent_excluded = [_][]const u8{
+    "Agent/src/Main.cpp",
+};
+const agent_test_folders = [_][]const u8{
+    "Agent/tests/src",
+};
+
 const core_flags = [_][]const u8{
     "-std=c++20",
     "-Wall",
@@ -84,40 +96,65 @@ pub fn build(b: *std.Build) void {
 
     const libgit2 = addLibgit2(b, target, optimize);
 
-    const tests_module = b.createModule(.{
+    // The headless part of Core, compiled once and linked by every Linux program below.
+    const core_module = createCppModule(b, target, optimize, configuration);
+    core_module.addCSourceFiles(.{
+        .files = collectSources(b, &core_source_folders, &core_source_files, &core_excluded),
+        .flags = &core_flags,
+    });
+    core_module.linkLibrary(libgit2);
+    const core = b.addLibrary(.{ .name = "CoreHeadless", .root_module = core_module, .linkage = .static });
+
+    const core_tests_module = createCppModule(b, target, optimize, configuration);
+    core_tests_module.addCSourceFiles(.{
+        .files = collectSources(b, &core_test_folders, &core_test_files, &core_test_excluded),
+        .flags = &core_flags,
+    });
+    core_tests_module.linkLibrary(core);
+    core_tests_module.linkLibrary(libgit2);
+    installProgram(b, configuration, "CoreLinuxTests", core_tests_module);
+
+    // The WSL agent's own code, everything but its entry point, shared by the agent and its tests.
+    const agent_tests_module = createCppModule(b, target, optimize, configuration);
+    agent_tests_module.addCSourceFiles(.{
+        .files = collectSources(b, &agent_source_folders, &.{}, &agent_excluded),
+        .flags = &core_flags,
+    });
+    agent_tests_module.addCSourceFiles(.{
+        .files = collectSources(b, &agent_test_folders, &.{}, &.{}),
+        .flags = &core_flags,
+    });
+    agent_tests_module.linkLibrary(core);
+    agent_tests_module.linkLibrary(libgit2);
+    installProgram(b, configuration, "AgentTests", agent_tests_module);
+}
+
+/// A C++ module for one Linux program: the include paths and defines every Core source expects.
+fn createCppModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, configuration: Configuration) *std.Build.Module {
+    const module = b.createModule(.{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = true,
     });
-    for ([_][]const u8{ "Core/src", "Core/tests/src", "Core/tests/fixtures", "vendor/doctest", "vendor/libgit2/include", "vendor/spdlog/include", "vendor/json/single_include" }) |include| {
-        tests_module.addIncludePath(b.path(include));
+    for ([_][]const u8{ "Core/src", "Core/tests/src", "Core/tests/fixtures", "Agent/src", "Agent/tests/src", "vendor/doctest", "vendor/libgit2/include", "vendor/spdlog/include", "vendor/json/single_include" }) |include| {
+        module.addIncludePath(b.path(include));
     }
     switch (configuration) {
-        .Debug => tests_module.addCMacro("CORE_DEBUG", "1"),
+        .Debug => module.addCMacro("CORE_DEBUG", "1"),
         .Release => {
-            tests_module.addCMacro("CORE_RELEASE", "1");
-            tests_module.addCMacro("NDEBUG", "1");
+            module.addCMacro("CORE_RELEASE", "1");
+            module.addCMacro("NDEBUG", "1");
         },
     }
-    tests_module.addCSourceFiles(.{
-        .files = collectSources(b, &core_source_folders, &core_source_files, &core_excluded),
-        .flags = &core_flags,
-    });
-    tests_module.addCSourceFiles(.{
-        .files = collectSources(b, &core_test_folders, &core_test_files, &core_test_excluded),
-        .flags = &core_flags,
-    });
-    tests_module.linkLibrary(libgit2);
+    return module;
+}
 
-    const tests = b.addExecutable(.{
-        .name = "CoreLinuxTests",
-        .root_module = tests_module,
-        .linkage = .static,
-    });
-
-    const output_folder = b.fmt("../bin/{s}-linux-x86_64/CoreLinuxTests", .{@tagName(configuration)});
-    const install = b.addInstallFileWithDir(tests.getEmittedBin(), .{ .custom = output_folder }, "CoreLinuxTests");
+/// Links a static executable from the module and installs it as bin/<Configuration>-linux-x86_64/<name>/<name>.
+fn installProgram(b: *std.Build, configuration: Configuration, name: []const u8, module: *std.Build.Module) void {
+    const program = b.addExecutable(.{ .name = name, .root_module = module, .linkage = .static });
+    const output_folder = b.fmt("../bin/{s}-linux-x86_64/{s}", .{ @tagName(configuration), name });
+    const install = b.addInstallFileWithDir(program.getEmittedBin(), .{ .custom = output_folder }, name);
     b.getInstallStep().dependOn(&install.step);
 }
 

@@ -19,8 +19,15 @@
 .PARAMETER WslExecutable
     wsl.exe; tests point it elsewhere.
 
+.PARAMETER Suite
+    CoreLinuxTests, AgentTests, or All (default): which Linux test binaries to run. With All the
+    script fails when either does.
+
+.PARAMETER BinaryRoot
+    Where the bin\<Configuration>-linux-x86_64 folders are; the repository's bin by default.
+
 .PARAMETER Binary
-    The test binary; defaults to bin\<Configuration>-linux-x86_64\CoreLinuxTests\CoreLinuxTests.
+    One test binary to run instead of the suites; tests use it.
 
 .PARAMETER TestArguments
     Every other argument, passed to doctest unchanged, e.g. '-tc=*Some case*'. They reach the
@@ -31,6 +38,8 @@ param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug',
     [string] $Distro = '',
     [string] $WslExecutable = (Join-Path $env:SystemRoot 'System32\wsl.exe'),
+    [ValidateSet('CoreLinuxTests', 'AgentTests', 'All')] [string] $Suite = 'All',
+    [string] $BinaryRoot = '',
     [string] $Binary = '',
     [Parameter(ValueFromRemainingArguments = $true)] [string[]] $TestArguments = @()
 )
@@ -65,22 +74,39 @@ if ($Distro -ne '') { $distroArguments = @('-d', $Distro) }
 $reachable = Invoke-Wsl @distroArguments --exec true
 if ($reachable.ExitCode -ne 0) { Skip $reachable.Output }
 
-if ($Binary -eq '') {
-    $Binary = Join-Path $PSScriptRoot "..\bin\$Configuration-linux-x86_64\CoreLinuxTests\CoreLinuxTests"
+# Not a parameter default: $PSScriptRoot is empty there in Windows PowerShell 5.1.
+if ($BinaryRoot -eq '') { $BinaryRoot = Join-Path $PSScriptRoot '..\bin' }
+
+$binaries = @()
+if ($Binary -ne '') {
+    $binaries = @($Binary)
 }
-$Binary = [System.IO.Path]::GetFullPath($Binary)
-if (-not (Test-Path -LiteralPath $Binary)) {
-    Write-Host "no Linux test binary at $Binary; build it with: vendor\bin\zig\zig.exe build -Dconfiguration=$Configuration"
-    exit 1
+else {
+    $suites = if ($Suite -eq 'All') { @('CoreLinuxTests', 'AgentTests') } else { @($Suite) }
+    $binaries = @($suites | ForEach-Object { Join-Path $BinaryRoot "$Configuration-linux-x86_64\$_\$_" })
 }
 
-$translated = Invoke-Wsl @distroArguments --exec wslpath -a ($Binary -replace '\\', '/')
-if ($translated.ExitCode -ne 0 -or $translated.Output -eq '') {
-    Write-Host "wslpath could not translate $Binary"
-    if ($translated.Output -ne '') { Write-Host "  $($translated.Output)" }
-    exit 1
+$failed = $false
+foreach ($candidate in $binaries) {
+    $full = [System.IO.Path]::GetFullPath($candidate)
+    if (-not (Test-Path -LiteralPath $full)) {
+        Write-Host "no Linux test binary at $full; build it with: vendor\bin\zig\zig.exe build -Dconfiguration=$Configuration"
+        exit 1
+    }
+
+    $translated = Invoke-Wsl @distroArguments --exec wslpath -a ($full -replace '\\', '/')
+    if ($translated.ExitCode -ne 0 -or $translated.Output -eq '') {
+        Write-Host "wslpath could not translate $full"
+        if ($translated.Output -ne '') { Write-Host "  $($translated.Output)" }
+        exit 1
+    }
+
+    Write-Host "== $(Split-Path -Leaf $full)"
+
+    # Run from /tmp, so a test's relative paths land on the distro's own file system.
+    & $WslExecutable @distroArguments --cd /tmp --exec $translated.Output @TestArguments
+    if ($LASTEXITCODE -ne 0) { $failed = $true }
 }
 
-# Run from /tmp, so a test's relative paths land on the distro's own file system.
-& $WslExecutable @distroArguments --cd /tmp --exec $translated.Output @TestArguments
-exit $LASTEXITCODE
+if ($failed) { exit 1 }
+exit 0
