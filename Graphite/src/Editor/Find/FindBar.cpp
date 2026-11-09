@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <optional>
 #include <string>
@@ -137,12 +138,16 @@ namespace Graphite {
 		std::optional<std::string> SelectionAsQuery(const Core::TextBuffer& buffer,
 													const Core::Caret& caret)
 		{
-			if (!Core::HasSelection(caret))
+			// With nothing selected, the word under the caret is what Find looks for, as most editors do.
+			const bool isWordOnly = !Core::HasSelection(caret);
+			const Core::Caret word = isWordOnly ? Core::SelectWordAt(buffer, caret.Offset) : caret;
+
+			if (!Core::HasSelection(word))
 			{
 				return std::nullopt;
 			}
 
-			const Core::OffsetRange selection = Core::SelectionRange(caret);
+			const Core::OffsetRange selection = Core::SelectionRange(word);
 
 			if (selection.To - selection.From >= kFindQueryLimit)
 			{
@@ -152,6 +157,17 @@ namespace Graphite {
 			std::string text = buffer.Substring(selection.From, selection.To);
 
 			if (text.find('\n') != std::string::npos)
+			{
+				return std::nullopt;
+			}
+
+			// The run of spaces or punctuation the caret may sit in is not worth looking for.
+			const bool holdsWordCharacter = std::any_of(text.begin(), text.end(), [](char character) {
+				return std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_' ||
+					   static_cast<unsigned char>(character) >= 0x80;
+			});
+
+			if (isWordOnly && !holdsWordCharacter)
 			{
 				return std::nullopt;
 			}

@@ -518,6 +518,7 @@ namespace Graphite {
 		QuickOpen m_QuickOpen{[this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  [this](const std::filesystem::path& file) {
 								  constexpr bool kPermanentTab = true;
+								  m_DocumentWindows.NoteDepartureFromActive();
 								  m_DocumentWindows.RequestOpen(file, kPermanentTab);
 							  }};
 	};

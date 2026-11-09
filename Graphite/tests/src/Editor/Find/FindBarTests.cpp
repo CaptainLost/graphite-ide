@@ -83,3 +83,42 @@ TEST_CASE("The find bar is measured and drawn at the interface size inside an ed
 	CHECK(stackAfter == stackBefore);
 	CHECK(document->DC.ChildWindows[0]->Size.y == interfaceFrameHeight);
 }
+
+namespace {
+
+	Core::OpenItem FindItemWith(std::string content, std::size_t caret)
+	{
+		Core::OpenItem item;
+
+		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(content), "C:/p/main.cpp");
+		REQUIRE(document);
+
+		item.Document = std::make_shared<Core::TextDocument>(std::move(document).GetValue());
+		item.Path = "C:/p/main.cpp";
+		item.Caret.Offset = caret;
+		item.Caret.Anchor = caret;
+
+		return item;
+	}
+}
+
+TEST_CASE("Find opened with nothing selected looks for the word under the caret")
+{
+	Graphite::FindBar bar;
+	Core::OpenItem item = FindItemWith("int total = Add(total, v);", 14);
+
+	bar.Open(item);
+
+	CHECK(item.Find.Query == "Add");
+}
+
+TEST_CASE("Find opened on a run of spaces keeps the query it had")
+{
+	Graphite::FindBar bar;
+	Core::OpenItem item = FindItemWith("a    b", 3);
+	item.Find.Query = "earlier";
+
+	bar.Open(item);
+
+	CHECK(item.Find.Query == "earlier");
+}

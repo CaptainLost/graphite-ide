@@ -1009,6 +1009,20 @@ namespace Graphite {
 
 		keys.SetDefault("editor.goToLine", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_G)});
 
+		commands.Add({.Id = "editor.navigateBack",
+					  .Label = "Back",
+					  .Run = [this] { NavigateBack(); },
+					  .Enabled = [this] { return m_NavigationHistory.CanGoBack(); }});
+
+		keys.SetDefault("editor.navigateBack", {.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_LeftArrow)});
+
+		commands.Add({.Id = "editor.navigateForward",
+					  .Label = "Forward",
+					  .Run = [this] { NavigateForward(); },
+					  .Enabled = [this] { return m_NavigationHistory.CanGoForward(); }});
+
+		keys.SetDefault("editor.navigateForward", {.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_RightArrow)});
+
 		commands.Add({.Id = "document.saveAs",
 					  .Label = "Save As...",
 					  .Run = [this] { AskSaveAs(); },
@@ -1032,6 +1046,60 @@ namespace Graphite {
 		keys.SetDefault("document.previousTab",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_PageUp),
 						 .Alternates = {Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Tab)}});
+	}
+
+	std::optional<NavigationPoint> DocumentWindows::ActivePoint() const
+	{
+		const std::optional<std::size_t> index = m_Documents.GetActiveIndex();
+
+		if (!index || m_Documents.At(*index).Document == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const Core::OpenItem& item = m_Documents.At(*index);
+		const Core::Position caret = item.Document->GetBuffer().ToPosition(item.Caret.Offset);
+
+		return NavigationPoint{.Path = item.Path, .Line = caret.Line, .Column = caret.Column};
+	}
+
+	void DocumentWindows::NoteDepartureFromActive()
+	{
+		if (const std::optional<NavigationPoint> here = ActivePoint())
+		{
+			m_NavigationHistory.NoteDeparture(*here);
+		}
+	}
+
+	void DocumentWindows::NavigateTo(const NavigationPoint& point)
+	{
+		static_cast<void>(SelectInDocument(m_Documents, point.Path, point.Line, point.Column, point.Column,
+										   [this](const std::filesystem::path& path) { RequestOpen(path, true); }));
+
+		if (const std::optional<std::size_t> index = m_Documents.Find(point.Path))
+		{
+			m_Documents.At(*index).PendingFocus = true;
+		}
+	}
+
+	void DocumentWindows::NavigateBack()
+	{
+		const std::optional<NavigationPoint> here = ActivePoint();
+
+		if (const std::optional<NavigationPoint> target = m_NavigationHistory.Back(here.value_or(NavigationPoint{})))
+		{
+			NavigateTo(*target);
+		}
+	}
+
+	void DocumentWindows::NavigateForward()
+	{
+		const std::optional<NavigationPoint> here = ActivePoint();
+
+		if (const std::optional<NavigationPoint> target = m_NavigationHistory.Forward(here.value_or(NavigationPoint{})))
+		{
+			NavigateTo(*target);
+		}
 	}
 
 	void DocumentWindows::AskSaveAs()
@@ -1172,6 +1240,8 @@ namespace Graphite {
 			// A line past the end lands on the last; a column past the line's end on its end.
 			const std::size_t line = std::min(target->Line, lineCount - 1);
 			const std::size_t offset = buffer.LineStart(line) + std::min(target->Column, buffer.LineLength(line));
+
+			NoteDepartureFromActive();
 
 			item->Caret = Core::PlaceAt(buffer, item->Caret, offset, Core::SelectionChange::Collapse, item->TabWidth);
 			item->RowAimCaretOffset = Core::NoRowAim;
@@ -2653,6 +2723,7 @@ namespace Graphite {
 
 			if (!candidates.empty())
 			{
+				NoteDepartureFromActive();
 				Jump(m_Documents, candidates.front(), [this](const std::filesystem::path& path) { RequestOpen(path, true); });
 			}
 			break;
@@ -2730,6 +2801,7 @@ namespace Graphite {
 
 			if (ImGui::Selectable(header.c_str()))
 			{
+				NoteDepartureFromActive();
 				Jump(m_Documents, location, [this](const std::filesystem::path& path) { RequestOpen(path, true); });
 				ImGui::CloseCurrentPopup();
 			}

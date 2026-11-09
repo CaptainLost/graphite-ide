@@ -11,6 +11,7 @@
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Navigation/CandidateLine.h"
 #include "Editor/Navigation/NavigationBubble.h"
+#include "Editor/Navigation/NavigationHistory.h"
 #include "Editor/Overlays/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/Overlays/LensModel.h"
@@ -125,6 +126,9 @@ namespace Graphite {
 					ReferencesPanel& referencesPanel);
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
+
+		// Notes the active tab's caret as a place Back returns to, before a jump away from it.
+		void NoteDepartureFromActive();
 
 		// A permanent tab opened without the large-file question: the unsaved changes put back into its document are
 		// reason enough to read it.
@@ -430,6 +434,11 @@ namespace Graphite {
 
 		void AskSaveAs();
 
+		std::optional<NavigationPoint> ActivePoint() const;
+		void NavigateTo(const NavigationPoint& point);
+		void NavigateBack();
+		void NavigateForward();
+
 		// Writes the document of `from` to `to`, opens `to` in its place and closes `from`'s tab, whose file is left as
 		// it was on disk.
 		void SaveDocumentAs(const std::filesystem::path& from, const std::filesystem::path& to);
@@ -584,6 +593,8 @@ namespace Graphite {
 
 		// The system's save dialog, which runs on a thread of its own and answers through Poll.
 		Core::AsyncDialog m_SaveAsDialog;
+
+		NavigationHistory m_NavigationHistory;
 
 		std::optional<std::filesystem::path> m_CloseRequested;
 
