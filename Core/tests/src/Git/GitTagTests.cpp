@@ -17,7 +17,6 @@
 namespace {
 
 	constexpr std::int64_t kFirstCommitTime = 1000000000;
-	constexpr std::int64_t kSecondsBetweenCommits = 60;
 
 	std::chrono::sys_seconds At(std::int64_t seconds)
 	{

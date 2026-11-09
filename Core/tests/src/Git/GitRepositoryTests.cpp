@@ -245,6 +245,8 @@ TEST_CASE("A file inside an ignored directory is ignored")
 	CHECK(opened.GetValue().IsIgnored(temp.GetPath() / "build" / "output.o"));
 }
 
+// Windows only: on Linux another case is another path, and '\' is part of a name.
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("A path spelled with other case and other separators than the working directory is still asked about")
 {
 	TempDirectory temp;
@@ -266,6 +268,7 @@ TEST_CASE("A path spelled with other case and other separators than the working 
 	CHECK(opened.GetValue().IsIgnored(Core::FromUtf8(otherCaseRoot + "/sub/error.log")));
 	CHECK(opened.GetValue().IsIgnored(Core::FromUtf8(otherCaseRoot + "\\sub\\.\\error.log")));
 }
+#endif
 
 namespace {
 	bool NamesFile(const std::vector<std::filesystem::path>& files, const std::filesystem::path& wanted)
@@ -570,3 +573,15 @@ TEST_CASE("A moved-from repository holds no handle and answers every question wi
 	CHECK(source.Checkout(anyCheckoutTarget).Failure.has_value());
 	CHECK_FALSE(source.DiscardAll(Core::UntrackedFiles::Excluded).HasValue());
 }
+
+#if defined(CORE_PLATFORM_LINUX)
+// The point of building Git for Linux: inside the distro the files belong to the user the
+// helper runs as, so the ownership check that refuses a WSL folder from Windows passes here.
+TEST_CASE("On Linux, a repository the running user owns opens with git's ownership check on")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+
+	CHECK(Repository::Open(temp.GetPath()).HasValue());
+}
+#endif

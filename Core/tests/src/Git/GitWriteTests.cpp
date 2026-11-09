@@ -246,6 +246,7 @@ TEST_CASE("DeleteUntracked removes the file from disk")
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "new.txt"));
 }
 
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("DeleteUntracked reports a path it cannot remove")
 {
 	GitFixture fixture;
@@ -268,6 +269,29 @@ TEST_CASE("DeleteUntracked reports a path it cannot remove")
 
 	handleWithoutShareDelete.close();
 }
+#elif defined(CORE_PLATFORM_LINUX)
+TEST_CASE("DeleteUntracked reports a path it cannot remove")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	fixture.Write("folder/inside.txt", "x\n");
+
+	// An open file does not stop a removal on Linux; a folder its owner may not write to does.
+	const std::filesystem::path folder = fixture.GetPath() / "folder";
+	std::filesystem::permissions(folder, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec);
+
+	const Core::Result<void> deleteResult =
+		repository.DeleteUntracked({std::filesystem::path("folder")});
+	CHECK_FALSE(deleteResult.HasValue());
+
+	// Gives the fixture back a folder it can clean up.
+	std::filesystem::permissions(folder, std::filesystem::perms::owner_all);
+}
+#endif
 
 TEST_CASE("Deleting an untracked directory removes it with everything under it")
 {

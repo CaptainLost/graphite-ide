@@ -16,6 +16,7 @@ const Configuration = enum { Debug, Release };
 // The headless part of Core: folders walked for .cpp files, and what is left out of them.
 const core_source_folders = [_][]const u8{
     "Core/src/Core/Base",
+    "Core/src/Core/Git",
 };
 // Only FileSystem's paths, listing, reading and atomic writes: the watcher, locks, holds and
 // file operations are Windows-only until the WSL helper needs them.
@@ -26,10 +27,15 @@ const core_source_files = [_][]const u8{
     "Core/src/Core/FileSystem/RelativePath.cpp",
     "Core/src/Core/FileSystem/WslSharePath.cpp",
 };
-const core_excluded = [_][]const u8{};
+const core_excluded = [_][]const u8{
+    // Starts git.exe through ChildProcess, which has no Linux version until the WSL helper
+    // needs one.
+    "Core/src/Core/Git/Command/",
+};
 
 const core_test_folders = [_][]const u8{
     "Core/tests/src/Base",
+    "Core/tests/src/Git",
 };
 const core_test_files = [_][]const u8{
     "Core/tests/src/Main.cpp",
@@ -39,7 +45,9 @@ const core_test_files = [_][]const u8{
     "Core/tests/src/FileSystem/RelativePathTests.cpp",
     "Core/tests/src/FileSystem/WslSharePathTests.cpp",
 };
-const core_test_excluded = [_][]const u8{};
+const core_test_excluded = [_][]const u8{
+    "Core/tests/src/Git/Command/",
+};
 
 const core_flags = [_][]const u8{
     "-std=c++20",
@@ -70,7 +78,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
         .link_libcpp = true,
     });
-    for ([_][]const u8{ "Core/src", "Core/tests/src", "vendor/doctest", "vendor/libgit2/include", "vendor/spdlog/include", "vendor/json/single_include" }) |include| {
+    for ([_][]const u8{ "Core/src", "Core/tests/src", "Core/tests/fixtures", "vendor/doctest", "vendor/libgit2/include", "vendor/spdlog/include", "vendor/json/single_include" }) |include| {
         tests_module.addIncludePath(b.path(include));
     }
     switch (configuration) {
