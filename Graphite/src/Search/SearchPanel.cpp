@@ -34,6 +34,23 @@ namespace Graphite {
 		constexpr const char* kProjectsUnreadable = "The solution could not be read, so Projects only has no files to search.";
 		constexpr float FillAvailableWidth = -1.0f;
 		constexpr float MaskFieldWidthInFontSizes = 10.0f;
+
+		// Keeps the next item on this line when it fits in what is left of it, and starts a new line when it does not,
+		// so a narrow panel wraps its controls instead of cutting off the last.
+		void SameLineIfRoomFor(float width)
+		{
+			ImGui::SameLine();
+
+			if (ImGui::GetContentRegionAvail().x < width)
+			{
+				ImGui::NewLine();
+			}
+		}
+
+		float TextButtonWidth(const char* label)
+		{
+			return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		}
 	}
 
 	SearchPanel::SearchPanel(SearchService& service, const SearchSettings& settings,
@@ -158,11 +175,11 @@ namespace Graphite {
 															   m_MaskBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
 		const bool maskLeftEdited = ImGui::IsItemDeactivatedAfterEdit();
 
-		ImGui::SameLine();
+		SameLineIfRoomFor(TickBoxWidth("Match case"));
 		const bool matchCaseToggled = DrawTickBox("Match case", &m_MatchCase);
-		ImGui::SameLine();
+		SameLineIfRoomFor(TickBoxWidth("Whole word"));
 		const bool wholeWordToggled = DrawTickBox("Whole word", &m_WholeWord);
-		ImGui::SameLine();
+		SameLineIfRoomFor(TextButtonWidth("Search"));
 
 		// WARNING: An option or the file filter changed after a search runs it again, so the list never shows hits for
 		// options no longer set; a query not yet searched waits for Search or Enter, as before.

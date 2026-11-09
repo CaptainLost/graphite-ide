@@ -102,7 +102,7 @@ namespace {
 		void Draw()
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(kPanelSize);
+			ImGui::SetNextWindowSize(Size);
 			ImGui::Begin("Find in Files", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 			Panel.OnImGuiRender();
 			ImGui::End();
@@ -151,6 +151,7 @@ namespace {
 		}
 
 		DeferredJobs& Jobs;
+		ImVec2 Size = kPanelSize;
 		ImGuiFrames Frames;
 		TempAppSettings Settings;
 		Core::EventBus Events;
@@ -190,6 +191,21 @@ TEST_CASE("Projects only searches the projects of a solution read, and the whole
 		  SearchScope::WaitForSolution);
 	CHECK(Graphite::ScopeOfSearch(SearchScopeInputs{.ProjectsOnly = true, .SolutionSelected = true}) ==
 		  SearchScope::SolutionUnreadable);
+}
+
+TEST_CASE("A narrow panel wraps the search options onto further lines instead of cutting off the Search button")
+{
+	DeferredJobs jobs;
+	SearchScreen screen{jobs};
+	constexpr float kNarrowWidth = 200.0f;
+	screen.Size = ImVec2(kNarrowWidth, kPanelSize.y);
+
+	screen.Next();
+	screen.Next();
+
+	const ImGuiWindow* window = ImGui::FindWindowByName("Find in Files");
+	REQUIRE(window != nullptr);
+	CHECK(window->DC.CursorMaxPos.x <= window->WorkRect.Max.x + 0.5f);
 }
 
 TEST_CASE("A Projects only search asked for while the solution is read shows the loader, then searches its projects alone")
