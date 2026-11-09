@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <string>
 
 namespace Core {
 
@@ -72,6 +73,11 @@ namespace Core {
 		return {};
 	}
 
+	std::string_view TabListLabel(std::string_view windowName)
+	{
+		return windowName.substr(0, windowName.find("##"));
+	}
+
 	void DrawTabContextMenu(TabCloseRequests& requests, const std::function<void()>& extraItems)
 	{
 		// WARNING: GetCurrentWindow marks the window as written to, and ImGui then stops reporting the tab as hovered, so the menu would never open.
@@ -119,7 +125,39 @@ namespace Core {
 			picked = TabCloseAction::All;
 		}
 
+		// Every tab of this group by name, for a tab bar too crowded to show them all.
+		std::optional<std::string> goTo;
+
+		if (tabs.size() > 1)
+		{
+			ImGui::Separator();
+
+			if (ImGui::BeginMenu("Go to Tab"))
+			{
+				for (const std::string& name : tabs)
+				{
+					const std::string label{TabListLabel(name)};
+
+					ImGui::PushID(name.c_str());
+
+					if (ImGui::MenuItem(label.c_str()))
+					{
+						goTo = name;
+					}
+
+					ImGui::PopID();
+				}
+
+				ImGui::EndMenu();
+			}
+		}
+
 		ImGui::EndPopup();
+
+		if (goTo)
+		{
+			ImGui::SetWindowFocus(goTo->c_str());
+		}
 
 		if (picked)
 		{

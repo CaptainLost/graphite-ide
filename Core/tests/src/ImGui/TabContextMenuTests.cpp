@@ -73,6 +73,13 @@ namespace {
 	};
 }
 
+TEST_CASE("Go to Tab lists a tab by its window name up to its hidden part")
+{
+	CHECK(std::string{Core::TabListLabel("main.cpp##D:/src/main.cpp")} == "main.cpp");
+	CHECK(std::string{Core::TabListLabel("Settings###settings")} == "Settings");
+	CHECK(std::string{Core::TabListLabel("Session")} == "Session");
+}
+
 TEST_CASE("Close picks only the clicked tab")
 {
 	CHECK(TabsToClose(kTabs, "Session", TabCloseAction::This) == Names{"Session"});
