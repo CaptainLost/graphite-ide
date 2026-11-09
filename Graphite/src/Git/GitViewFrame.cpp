@@ -117,6 +117,11 @@ namespace Graphite {
 			m_ChangesDiff.Diff = diff;
 			m_ChangesPicked = true;
 		};
+
+		m_WorktreeView.OnFileChosen = [this](const OpenDiff& diff) {
+			m_WorktreeChangesDiff.Diff = diff;
+			m_WorktreeChangesPicked = true;
+		};
 	}
 
 	GitWindowState GitView::CaptureWindowState() const
@@ -816,6 +821,7 @@ namespace Graphite {
 		m_PendingRestore.reset();
 		m_SelectedRef.reset();
 		m_SelectedWorktree = entry->Path;
+		m_WorktreeHeadsWalked.clear();
 
 		DeselectStash();
 		StartOpening();
@@ -923,6 +929,12 @@ namespace Graphite {
 
 	void GitView::RenderChanges(const GitPalette& palette)
 	{
+		if (const std::optional<std::filesystem::path> worktree = Shown().ChangesWorktree())
+		{
+			RenderWorktreeChanges(*worktree, palette);
+			return;
+		}
+
 		m_ChangesDrawn = true;
 
 		// The picked file's diff sits beside the list, which keeps the commit box at its foot.
@@ -937,22 +949,72 @@ namespace Graphite {
 			m_Changes.Draw();
 
 			ImGui::TableSetColumnIndex(1);
-			RenderChangesDiff(palette);
+			RenderChangesDiff(palette, m_ChangesDiff, m_ChangesPicked, m_Model);
 
 			ImGui::EndTable();
 		}
 	}
 
-	void GitView::RenderChangesDiff(const GitPalette& palette)
+	void GitView::RenderWorktreeChanges(const std::filesystem::path& worktree, const GitPalette& palette)
 	{
-		if (!m_ChangesPicked)
+		// WARNING: Until the model follows the worktree shown its lists and draft are another worktree's, so they wait.
+		if (!WorktreeChangesInHand(worktree))
+		{
+			Core::LoadingState("Loading changes");
+			return;
+		}
+
+		m_WorktreeChangesDrawn = true;
+
+		m_WorktreeView.SetShared(m_WorktreeChanges.Draft());
+		m_WorktreeView.SetOptions(WorktreeViewOptions(worktree));
+
+		// The same columns as the open folder's, so a width the reader set holds for both.
+		if (ImGui::BeginTable("gitChanges", kChangesColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+		{
+			ImGui::TableSetupColumn("files", ImGuiTableColumnFlags_WidthFixed,
+									ImGui::GetFontSize() * kChangesListWidthInFontSizes);
+			ImGui::TableSetupColumn("diff", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableNextRow();
+
+			// Under an id of its own, so its lists keep their own scroll.
+			ImGui::TableSetColumnIndex(0);
+			ImGui::PushID("worktree");
+			m_WorktreeView.Draw();
+			ImGui::PopID();
+
+			ImGui::TableSetColumnIndex(1);
+			RenderChangesDiff(palette, m_WorktreeChangesDiff, m_WorktreeChangesPicked, m_WorktreeChanges.Model());
+
+			ImGui::EndTable();
+		}
+	}
+
+	ChangesViewOptions GitView::WorktreeViewOptions(const std::filesystem::path& worktree) const
+	{
+		const std::string folder = Core::ToUtf8(Core::NormalizeDirectory(worktree).filename());
+		const Core::Ref<const Core::HeadState> head = m_WorktreeChanges.Model().GetHead();
+
+		ChangesViewOptions options;
+		options.OffersDiscard = false;
+		options.OffersStash = false;
+		options.WhereLine = "Worktree \xC2\xB7 " + Core::ToUtf8(Core::NormalizeDirectory(worktree));
+		options.CommitLabel = [this, folder] { return WorktreeCommitLabel(m_WorktreeChanges.Model().GetHead().get(), folder); };
+		options.CommitWarns = head != nullptr && head->Kind == Core::HeadKind::Detached;
+		options.Expect = [this](bool forCommit) { return std::optional<WriteExpectation>{m_WorktreeChanges.ExpectationNow(forCommit)}; };
+		return options;
+	}
+
+	void GitView::RenderChangesDiff(const GitPalette& palette, DiffBody& body, bool picked, GitModel& model)
+	{
+		if (!picked)
 		{
 			Core::EmptyState("Pick a file to see its changes");
 			return;
 		}
 
-		OpenDiff& diff = m_ChangesDiff.Diff;
-		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		OpenDiff& diff = body.Diff;
+		const Core::Ref<const Core::WorkingTreeStatus> status = model.GetStatus();
 
 		// A file staged or unstaged since it was picked is followed to the side that now holds it, as a diff tab is.
 		if (status && !diff.Commit.has_value())
@@ -967,11 +1029,11 @@ namespace Graphite {
 			.Syntax = syntax,
 			.Selection = ReadEditorPalette(m_Scheme.Get()).Selection,
 			.Options = m_EditorSettings.GetDiffViewOptions(),
-			.OpenFile = m_DiffWindows.OpenFileIn(m_Model),
+			.OpenFile = m_DiffWindows.OpenFileIn(model),
 			.OnCopied = [this](std::string_view text) { ReportCopied(m_Events, "selection", text); },
 			.OnSetOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); }};
 
-		DrawDiffBody(m_ChangesDiff, m_Model, style);
+		DrawDiffBody(body, model, style);
 	}
 
 	std::string GitView::HistoryTitle() const

@@ -60,6 +60,12 @@ namespace Graphite {
 		// The checked-out branch's or HEAD's history: the Local changes row comes first and says this after its name.
 		std::optional<std::string> LocalChanges;
 
+		// The row's name: another worktree's changes row reads "Changes in <folder>".
+		std::string LocalChangesTitle = "Local changes";
+
+		// The changes are watched: a green "live" marker follows the summary.
+		bool LocalChangesLive = false;
+
 		std::optional<FoldRow> Fold;
 
 		// Drawn dimmed: the line's newer commits shown beside the branch. Null for none.
@@ -195,7 +201,7 @@ namespace Graphite {
 		void RenderBroughtNote(const Core::LogPage* brought, const std::optional<std::string>& failure);
 
 		// Entered in the graph column, where the ring for the work in progress is drawn around `dotCentre`.
-		void RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre);
+		void RenderLocalChangesRow(const HistoryMarks& marks, const GitPalette& palette, ImVec2 dotCentre);
 
 		void RenderFoldRow(const FoldRow& fold);
 		void RenderBannerRow(const std::string& banner, const std::optional<std::string>& action, bool actionDisabled,

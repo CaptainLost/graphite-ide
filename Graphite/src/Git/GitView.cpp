@@ -86,10 +86,10 @@ namespace Graphite {
 	}
 
 	GitView::GitView(GitModel& model, LinesModel& lines, NetworkModel& network, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
-					 const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
+					 WorktreeChanges& worktreeChanges, ChangesView& worktreeView, const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
 					 EditorBuffers& buffers, Core::EventBus& events)
 		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model), m_Lines(lines), m_Network(network), m_Worktrees(worktrees),
-		  m_Content(content), m_Changes(changes), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
+		  m_Content(content), m_Changes(changes), m_WorktreeChanges(worktreeChanges), m_WorktreeView(worktreeView), m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
 		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
@@ -116,13 +116,19 @@ namespace Graphite {
 			WithdrawQuestions();
 		}
 
-		// WARNING: The same holds for the Changes view, which is drawn only while it is the view on screen.
+		// WARNING: The same holds for the Changes views, each drawn only while it is the view on screen.
 		if (!m_ChangesDrawn)
 		{
 			m_Changes.WithdrawQuestions();
 		}
 
+		if (!m_WorktreeChangesDrawn)
+		{
+			m_WorktreeView.WithdrawQuestions();
+		}
+
 		m_ChangesDrawn = false;
+		m_WorktreeChangesDrawn = false;
 
 		ApplyPendingRestore();
 		FollowSelectedRef();
@@ -156,6 +162,37 @@ namespace Graphite {
 		{
 			AskDeleteHeldForPanel();
 		}
+
+		// After the selection has followed the models, so the worktree followed is the one this frame shows.
+		FollowShownWorktree(panelOnScreen);
+	}
+
+	void GitView::FollowShownWorktree(bool panelOnScreen)
+	{
+		// WARNING: Asked with the panel as drawn on the last frame, which holds from frame to frame: a value that flickered
+		// would stop and start the watches, and read the worktree again, each time.
+		const std::optional<std::filesystem::path> worktree =
+			panelOnScreen && m_Model.HasOpenFolder() ? Shown().ChangesWorktree() : std::nullopt;
+
+		m_WorktreeChanges.Follow(worktree, panelOnScreen);
+
+		// A file picked in one worktree is not another's.
+		const std::optional<std::filesystem::path>& followed = m_WorktreeChanges.Worktree();
+		const bool sameFollowed = followed.has_value() == m_WorktreeDiffFor.has_value() &&
+								  (!followed.has_value() || Core::SamePath(*followed, *m_WorktreeDiffFor));
+
+		if (!sameFollowed)
+		{
+			m_WorktreeDiffFor = followed;
+			m_WorktreeChangesPicked = false;
+			m_WorktreeChangesDiff.Diff = {};
+		}
+	}
+
+	bool GitView::WorktreeChangesInHand(const std::filesystem::path& worktree) const
+	{
+		const std::optional<std::filesystem::path>& followed = m_WorktreeChanges.Worktree();
+		return followed.has_value() && Core::SamePath(*followed, worktree);
 	}
 
 	void GitView::FollowSelectedRef()
@@ -542,6 +579,7 @@ namespace Graphite {
 
 		m_ChangesPicked = false;
 		m_ChangesDiff.Diff = {};
+		m_WorktreeHeadsWalked.clear();
 
 		m_LastSeenPage.reset();
 		m_GraphOf.reset();
@@ -643,6 +681,7 @@ namespace Graphite {
 		m_PendingRestore.reset();
 		m_SelectedRef = std::move(fullName);
 		m_SelectedWorktree.reset();
+		m_WorktreeHeadsWalked.clear();
 		m_RefOpenedFromWorktreeRow.reset();
 
 		DeselectStash();
@@ -653,8 +692,10 @@ namespace Graphite {
 
 	void GitView::StartOpening()
 	{
-		// The checked-out branch opens on its Local changes; any other reference on the row its first page gives.
-		m_OpeningRef = !Shown().ShowsLocalChanges();
+		// The checked-out branch opens on its Local changes, and a branch or HEAD checked out in another worktree on that
+		// worktree's changes; any other reference on the row its first page gives.
+		const ShownHistory shown = Shown();
+		m_OpeningRef = !shown.ShowsLocalChanges() && !shown.ChangesWorktree().has_value();
 		m_Commits.ClearSelection();
 
 		if (m_OpeningRef)
@@ -881,6 +922,7 @@ namespace Graphite {
 		if (const Core::WorktreeEntry* const worktree = Shown().WorktreeShown())
 		{
 			log.From = worktree->Head.Commit;
+			m_WorktreeHeadsWalked.insert(*worktree->Head.Commit);
 		}
 
 		WidenToLine(log, line);
@@ -972,14 +1014,27 @@ namespace Graphite {
 		return !Core::Trimmed(m_Filter.Get().Path).empty();
 	}
 
-	std::optional<std::string> GitView::LocalChangesMark() const
+	void GitView::MarkChangesRow(HistoryMarks& marks) const
 	{
-		if (!Shown().ShowsLocalChanges())
+		const ShownHistory shown = Shown();
+
+		if (const std::optional<std::filesystem::path> worktree = shown.ChangesWorktree())
 		{
-			return std::nullopt;
+			// WARNING: Until the model follows this worktree, which waits for a write into the one before to land, the row
+			// holds its place with a pending summary: the model's numbers would be the other worktree's.
+			const bool inHand = WorktreeChangesInHand(*worktree);
+			const GitModel& model = m_WorktreeChanges.Model();
+
+			marks.LocalChangesTitle = "Changes in " + Core::ToUtf8(Core::NormalizeDirectory(*worktree).filename());
+			marks.LocalChanges = DescribeWorktreeChanges(inHand ? model.GetStatus().get() : nullptr);
+			marks.LocalChangesLive = inHand && m_WorktreeChanges.IsWatching();
+			return;
 		}
 
-		return DescribeLocalChanges(m_Model.GetStatus().get());
+		if (shown.ShowsLocalChanges())
+		{
+			marks.LocalChanges = DescribeLocalChanges(m_Model.GetStatus().get());
+		}
 	}
 
 	bool GitView::PageAnswersSelection(const Core::LogRequest& shown) const
@@ -991,6 +1046,16 @@ namespace Graphite {
 		if (const Core::WorktreeEntry* const worktree = Shown().WorktreeShown())
 		{
 			selected.From = worktree->Head.Commit;
+
+			// A commit made in the worktree moves its HEAD: the page walked from the HEAD before keeps the rows on screen
+			// until the page from the new one lands, rather than a wait standing in for them.
+			const bool walkedFromEarlierHead = !shown.Ref.has_value() && !shown.Stash.has_value() && shown.From.has_value() &&
+											   m_WorktreeHeadsWalked.contains(*shown.From);
+
+			if (walkedFromEarlierHead)
+			{
+				return true;
+			}
 		}
 
 		return !AnswersAnotherHistory(shown, selected);
@@ -1128,7 +1193,7 @@ namespace Graphite {
 	HistoryMarks GitView::HistoryMarksFor(const Core::Ref<const Core::LogPage>& page)
 	{
 		HistoryMarks marks;
-		marks.LocalChanges = LocalChangesMark();
+		MarkChangesRow(marks);
 
 		// WARNING: The marks are read from what landed with the page, not from the line now, so the rows they give
 		// change only when a page asked with the new line lands.
@@ -1330,7 +1395,7 @@ namespace Graphite {
 		{
 			// The Local changes row stands above the wait, as it will above the commits.
 			HistoryMarks marks;
-			marks.LocalChanges = LocalChangesMark();
+			MarkChangesRow(marks);
 
 			const LogAttempt attempt =
 				m_Model.IsLogAnswered(m_Model.GetLogGeneration()) ? LogAttempt::Settled : LogAttempt::InFlight;
@@ -1403,7 +1468,7 @@ namespace Graphite {
 			}
 			else
 			{
-				marks.LocalChanges = LocalChangesMark();
+				MarkChangesRow(marks);
 			}
 
 			marks.Banner = m_HistoryBanner;

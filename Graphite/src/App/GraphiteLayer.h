@@ -191,7 +191,15 @@ namespace Graphite {
 		void RenderEmptyEditorArea();
 
 		void ReportGitWriteFailure(const GitModel::WriteFailure& failure);
+
+		// A write into the worktree the Git window looks at: its title names the folder, and a path in its message is shown
+		// relative to that worktree, not to the open folder.
+		void ReportGitWriteFailure(const WorktreeWriteFailure& failure);
 		void ReportGitWriteFailure(const NetworkFailureReport& failure);
+
+		// `workingDirectory` is the one the write ran in: a path under it is shown relative to it.
+		void ShowGitWriteFailure(std::string title, const GitModel::WriteFailure& failure,
+								 const std::filesystem::path& workingDirectory);
 
 		// The toasts of the network operations that failed, and a refresh after every one that ended.
 		void ApplyNetworkResults();
@@ -466,6 +474,11 @@ namespace Graphite {
 		// reference. The Git window's host of the Changes view; the side panel owns its own.
 		ChangesView m_GitWindowChanges{m_Git, m_Modals, m_DocumentBuffers, m_ActiveScheme, m_Events, m_ChangesShared,
 									   "window"};
+
+		// WARNING: Declared after m_WorktreeChanges, whose model and draft it holds, and before m_Panels, where GitView holds
+		// it by reference. The Git window's view of another worktree's changes; GitView hands it that worktree's draft.
+		ChangesView m_WorktreeWindowChanges{m_WorktreeChanges.Model(), m_Modals, m_DocumentBuffers, m_ActiveScheme, m_Events,
+											m_WorktreeChanges.Draft(), "worktree"};
 
 		// WARNING: Declared after m_Git, m_DocumentBuffers, m_ChangeMarkers, m_Blame and m_ChangesShared, which it holds.
 		WriteConsequences m_WriteConsequences{m_Git, m_DocumentBuffers, m_ChangesShared,

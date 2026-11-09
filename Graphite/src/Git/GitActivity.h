@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -49,4 +50,13 @@ namespace Graphite {
 	std::optional<GitActivity> DescribeGitActivity(const std::optional<GitModel::WriteReport>& report,
 												   const std::optional<std::string>& awaitingAnswer,
 												   const NetworkActivity& network = {});
+
+	// A write into another worktree, said as the open folder's writes are, after the folder's name:
+	// "eager-scribbling-frog: Staging a.txt…".
+	std::optional<GitActivity> DescribeWorktreeWrite(const std::optional<GitModel::WriteReport>& report, std::string_view folder);
+
+	// The open folder's activity while it runs or waits for an answer; else a worktree's write while it runs; else the open
+	// folder's done text, and the worktree's when the open folder has nothing to say.
+	std::optional<GitActivity> WithWorktreeWrite(const std::optional<GitActivity>& openFolder,
+												 const std::optional<GitActivity>& worktree);
 }

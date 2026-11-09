@@ -1,5 +1,7 @@
 #include "Git/WriteFailureTitle.h"
 
+#include <format>
+
 namespace Graphite {
 
 	std::string_view WriteFailureTitle(GitModel::WriteKind kind)
@@ -41,5 +43,10 @@ namespace Graphite {
 		}
 
 		return "Git action failed";
+	}
+
+	std::string WorktreeWriteFailureTitle(GitModel::WriteKind kind, std::string_view folder)
+	{
+		return std::format("{} in {}", WriteFailureTitle(kind), folder);
 	}
 }

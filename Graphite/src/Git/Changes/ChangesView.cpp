@@ -45,6 +45,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -164,13 +166,46 @@ namespace Graphite {
 
 	ChangesView::ChangesView(GitModel& model, ModalGate& modals, EditorBuffers& editor, const ActiveScheme& scheme,
 							 Core::EventBus& events, ChangesShared& shared, std::string_view host)
-		: m_Model(model), m_Editor(editor), m_Scheme(scheme), m_Events(events), m_Shared(shared), m_DiscardTitle(QuestionTitle("Discard changes?", "ChangesDiscard", host)),
+		: m_Model(model), m_Editor(editor), m_Scheme(scheme), m_Events(events), m_Shared(&shared), m_DiscardTitle(QuestionTitle("Discard changes?", "ChangesDiscard", host)),
 		  m_DiscardQuestion(modals, m_DiscardTitle.c_str()),
 		  m_StashTitle(QuestionTitle("Stash changes", "ChangesStash", host)),
 		  m_StashQuestion(modals, m_StashTitle.c_str()),
 		  m_AmendTitle(QuestionTitle("Amend a pushed commit?", "ChangesAmendPushed", host)),
 		  m_AmendQuestion(modals, m_AmendTitle.c_str())
 	{
+	}
+
+	void ChangesView::SetOptions(ChangesViewOptions options)
+	{
+		m_Options = std::move(options);
+	}
+
+	void ChangesView::SetShared(ChangesShared& shared)
+	{
+		m_Shared = &shared;
+	}
+
+	std::optional<WriteExpectation> ChangesView::Expectation(bool forCommit) const
+	{
+		return m_Options.Expect ? m_Options.Expect(forCommit) : std::nullopt;
+	}
+
+	void ChangesView::RequestStage(std::vector<std::filesystem::path> paths)
+	{
+		constexpr bool kForCommit = false;
+		m_Model.RequestStage(std::move(paths), Expectation(kForCommit));
+	}
+
+	void ChangesView::RequestUnstage(std::vector<std::filesystem::path> paths)
+	{
+		constexpr bool kForCommit = false;
+		m_Model.RequestUnstage(std::move(paths), Expectation(kForCommit));
+	}
+
+	void ChangesView::RequestCommit(bool amend)
+	{
+		constexpr bool kForCommit = true;
+		m_Model.RequestCommit({.Message = m_Shared->Message, .Amend = amend}, Expectation(kForCommit));
 	}
 
 	// WARNING: The queue goes with the question: a discard clicked while another modal held the
@@ -245,6 +280,8 @@ namespace Graphite {
 		}
 
 		const ChangeSections sections = PartitionStatus(*status);
+
+		RenderWhereLine();
 
 		const float reservedBoxHeight = CommitBoxHeight() + ImGui::GetStyle().ItemSpacing.y;
 
@@ -365,11 +402,11 @@ namespace Graphite {
 
 				if (m_Section == Section::Staged)
 				{
-					m_Model.RequestUnstage(std::move(paths));
+					RequestUnstage(std::move(paths));
 				}
 				else
 				{
-					m_Model.RequestStage(std::move(paths));
+					RequestStage(std::move(paths));
 				}
 			}
 
@@ -490,7 +527,7 @@ namespace Graphite {
 
 		const char* stageIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
-		const bool offersDiscard = m_Section == Section::Unstaged;
+		const bool offersDiscard = m_Options.OffersDiscard && m_Section == Section::Unstaged;
 
 		const char* discardIcon = file.IsUntracked ? ICON_LC_TRASH_2 : ICON_LC_UNDO_2;
 
@@ -552,11 +589,11 @@ namespace Graphite {
 			{
 				if (m_Section == Section::Staged)
 				{
-					m_Model.RequestUnstage({file.Path});
+					RequestUnstage({file.Path});
 				}
 				else
 				{
-					m_Model.RequestStage({file.Path});
+					RequestStage({file.Path});
 				}
 			}
 
@@ -632,7 +669,7 @@ namespace Graphite {
 		const char* chevron = ChevronGlyph(expanded);
 		const char* stageIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
-		const bool offersDiscard = m_Section == Section::Unstaged;
+		const bool offersDiscard = m_Options.OffersDiscard && m_Section == Section::Unstaged;
 
 		const char* discardIcon = file.IsUntracked ? ICON_LC_TRASH_2 : ICON_LC_UNDO_2;
 
@@ -735,11 +772,11 @@ namespace Graphite {
 			{
 				if (m_Section == Section::Staged)
 				{
-					m_Model.RequestUnstage({file.Path});
+					RequestUnstage({file.Path});
 				}
 				else
 				{
-					m_Model.RequestStage({file.Path});
+					RequestStage({file.Path});
 				}
 			}
 
@@ -841,15 +878,15 @@ namespace Graphite {
 		{
 			if (m_Section == Section::Staged)
 			{
-				m_Model.RequestUnstage({file.Path});
+				RequestUnstage({file.Path});
 			}
 			else
 			{
-				m_Model.RequestStage({file.Path});
+				RequestStage({file.Path});
 			}
 		}
 
-		if (m_Section == Section::Unstaged &&
+		if (m_Options.OffersDiscard && m_Section == Section::Unstaged &&
 			ImGui::MenuItem(file.IsUntracked ? "Delete File..." : "Discard Changes...", noShortcut, kNotSelected, writable))
 		{
 			BeginDiscard(file);
@@ -915,6 +952,28 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
+	void ChangesView::RenderWhereLine()
+	{
+		if (m_Options.WhereLine.empty())
+		{
+			return;
+		}
+
+		const Core::PanelMarginScope margin;
+
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + RowPadding());
+
+		// A long path is cut to the line and whole in its tooltip.
+		bool cut = false;
+		const std::string fitted = FitToWidth(m_Options.WhereLine, ImGui::GetContentRegionAvail().x - RowPadding(), &cut);
+		ImGui::TextDisabled("%s", fitted.c_str());
+
+		if (cut)
+		{
+			ImGui::SetItemTooltip("%s", m_Options.WhereLine.c_str());
+		}
+	}
+
 	void ChangesView::RenderCommitBox()
 	{
 		const Core::PanelMarginScope margin;
@@ -929,16 +988,16 @@ namespace Graphite {
 
 		const ImVec2 messageStart = ImGui::GetCursorScreenPos();
 
-		Core::InputTextMultiline("##commitMessage", m_Shared.Message, ImVec2(boxWidth, MessageBoxHeight()));
+		Core::InputTextMultiline("##commitMessage", m_Shared->Message, ImVec2(boxWidth, MessageBoxHeight()));
 
 		// WARNING: InputTextMultiline has no hint of its own, so an empty box is told what it is
 		// for by hand, where the first character would go. With amend on, an empty box keeps the
 		// message of the commit being replaced (CommitRequest::Amend).
-		if (m_Shared.Message.empty())
+		if (m_Shared->Message.empty())
 		{
 			const ImVec2 framePadding = ImGui::GetStyle().FramePadding;
 
-			const char* hint = m_Shared.Amend ? "Keeping the message of the last commit" : "Message";
+			const char* hint = m_Shared->Amend ? "Keeping the message of the last commit" : "Message";
 
 			ImGui::GetWindowDrawList()->AddText(
 				ImVec2(messageStart.x + framePadding.x, messageStart.y + framePadding.y),
@@ -954,30 +1013,39 @@ namespace Graphite {
 			{.WriteInFlight = writesBlocked,
 			 .AnythingStaged = status != nullptr && AnythingStaged(*status),
 			 .Merging = head != nullptr && head->Operation == Core::RepositoryOperation::Merge,
-			 .MessageIsEmpty = Core::Trimmed(m_Shared.Message).empty(),
-			 .Amend = m_Shared.Amend});
+			 .MessageIsEmpty = Core::Trimmed(m_Shared->Message).empty(),
+			 .Amend = m_Shared->Amend});
 
 		const bool canCommit = !whyNot.has_value();
 
 		const float amendWidth = TickBoxWidth("Amend");
 
-		const float stashWidth = ImGui::GetFrameHeight();
+		const float stashWidth = m_Options.OffersStash ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
 
 		// WARNING: ImGui reads a negative width as all but this much and zero as as wide as the
 		// label, so a panel narrower than the three controls would turn the button full-width at
 		// the moment there is least room for it. Held above zero.
 		constexpr float kMinimumCommitWidth = 1.0f;
 		const float commitWidth =
-			std::max(boxWidth - amendWidth - stashWidth - ImGui::GetStyle().ItemSpacing.x * 2.0f,
-					 kMinimumCommitWidth);
+			std::max(boxWidth - amendWidth - stashWidth - ImGui::GetStyle().ItemSpacing.x, kMinimumCommitWidth);
 
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + rowPadding);
 
-		const ImVec4 accent = Core::ToImVec4(ChromePaletteFor(m_Scheme.Get()).Accent);
+		const ImVec4 fill = m_Options.CommitWarns ? ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticWarning)
+													 : Core::ToImVec4(ChromePaletteFor(m_Scheme.Get()).Accent);
 
-		if (DialogLayout::FilledButton(ICON_LC_CHECK "  Commit", accent, commitWidth, canCommit))
+		// A label naming a long branch and folder is cut to the button and whole in its tooltip. WARNING: The id is held
+		// apart from the words, which name the branch and change with it.
+		const std::string icon = std::string{ICON_LC_CHECK} + "  ";
+		const std::string words = m_Options.CommitLabel ? m_Options.CommitLabel() : std::string{"Commit"};
+		const float wordsRoom = commitWidth - ImGui::GetStyle().FramePadding.x * 2.0f - ImGui::CalcTextSize(icon.c_str()).x;
+		bool wordsCut = false;
+		const std::string fittedWords = FitToWidth(words, wordsRoom, &wordsCut);
+		const std::string commitLabel = icon + fittedWords + "###commit";
+
+		if (DialogLayout::FilledButton(commitLabel.c_str(), fill, commitWidth, canCommit))
 		{
-			const std::optional<AmendPushedQuestion> pushed = m_Shared.Amend ? PushedLastCommit() : std::nullopt;
+			const std::optional<AmendPushedQuestion> pushed = m_Shared->Amend ? PushedLastCommit() : std::nullopt;
 
 			if (pushed.has_value())
 			{
@@ -985,7 +1053,7 @@ namespace Graphite {
 			}
 			else
 			{
-				m_Model.RequestCommit({.Message = m_Shared.Message, .Amend = m_Shared.Amend});
+				RequestCommit(m_Shared->Amend);
 			}
 		}
 
@@ -994,17 +1062,36 @@ namespace Graphite {
 		{
 			ImGui::SetTooltip("%.*s", static_cast<int>(whyNot->size()), whyNot->data());
 		}
+		else if (wordsCut)
+		{
+			ImGui::SetItemTooltip("%s", words.c_str());
+		}
 
 		ImGui::SameLine();
 
-		const bool canStash = !writesBlocked && status && !status->Entries.empty();
+		if (m_Options.OffersStash)
+		{
+			RenderStashButton(writesBlocked, status.get());
+			ImGui::SameLine();
+		}
+
+		ImGui::BeginDisabled(writesBlocked);
+		const bool amendToggled = DrawTickBox("Amend", &m_Shared->Amend);
+		ImGui::EndDisabled();
+
+		FillAmendMessage(amendToggled);
+	}
+
+	void ChangesView::RenderStashButton(bool writesBlocked, const Core::WorkingTreeStatus* status)
+	{
+		const bool canStash = !writesBlocked && status != nullptr && !status->Entries.empty();
 
 		ImGui::BeginDisabled(!canStash);
 
 		const float framePaddingY = ImGui::GetStyle().FramePadding.y;
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePaddingY, framePaddingY));
 
-		const bool stashPressed = Core::TextButton(ICON_LC_ARCHIVE "##stash", ImVec2(stashWidth, 0.0f));
+		const bool stashPressed = Core::TextButton(ICON_LC_ARCHIVE "##stash", ImVec2(ImGui::GetFrameHeight(), 0.0f));
 
 		ImGui::PopStyleVar();
 
@@ -1017,21 +1104,13 @@ namespace Graphite {
 		ImGui::EndDisabled();
 
 		ImGui::SetItemTooltip("Stash changes…");
-
-		ImGui::SameLine();
-
-		ImGui::BeginDisabled(writesBlocked);
-		const bool amendToggled = DrawTickBox("Amend", &m_Shared.Amend);
-		ImGui::EndDisabled();
-
-		FillAmendMessage(amendToggled);
 	}
 
 	void ChangesView::FillAmendMessage(bool amendToggled)
 	{
 		// Amend starts from the last commit's message, so a typo is fixed rather than the message typed again; an empty
 		// box would keep it, but there is nothing to edit in one.
-		if (amendToggled && m_Shared.Amend && m_Shared.Message.empty())
+		if (amendToggled && m_Shared->Amend && m_Shared->Message.empty())
 		{
 			m_Model.RequestHeadMessage();
 			m_AmendMessageAsked = m_Model.GetHeadMessage();
@@ -1039,13 +1118,13 @@ namespace Graphite {
 		}
 
 		// Unticked with the message as it was put there, the box goes back to empty, as it was before.
-		if (amendToggled && !m_Shared.Amend)
+		if (amendToggled && !m_Shared->Amend)
 		{
 			m_FillingAmendMessage = false;
 
-			if (!m_AmendMessageFilled.empty() && m_Shared.Message == m_AmendMessageFilled)
+			if (!m_AmendMessageFilled.empty() && m_Shared->Message == m_AmendMessageFilled)
 			{
-				m_Shared.Message.clear();
+				m_Shared->Message.clear();
 			}
 
 			m_AmendMessageFilled.clear();
@@ -1058,9 +1137,9 @@ namespace Graphite {
 		{
 			m_FillingAmendMessage = false;
 
-			if (m_Shared.Amend && m_Shared.Message.empty())
+			if (m_Shared->Amend && m_Shared->Message.empty())
 			{
-				m_Shared.Message = *headMessage;
+				m_Shared->Message = *headMessage;
 				m_AmendMessageFilled = *headMessage;
 			}
 		}
@@ -1341,7 +1420,8 @@ namespace Graphite {
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
-			m_Model.RequestCommit({.Message = m_Shared.Message, .Amend = true});
+			constexpr bool kAmend = true;
+			RequestCommit(kAmend);
 			m_AmendQuestion.Answer();
 		}
 		else if (choice == DialogLayout::Choice::Cancel)

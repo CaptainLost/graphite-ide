@@ -124,4 +124,14 @@ namespace Graphite {
 
 		return Core::FormatCount(sections.Conflicted.size()) + " conflicted \xC2\xB7 " + staged;
 	}
+
+	std::string DescribeWorktreeChanges(const Core::WorkingTreeStatus* status)
+	{
+		if (status != nullptr && status->Entries.empty())
+		{
+			return "no changes";
+		}
+
+		return DescribeLocalChanges(status);
+	}
 }

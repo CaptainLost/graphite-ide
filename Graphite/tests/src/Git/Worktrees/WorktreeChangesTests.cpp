@@ -347,11 +347,14 @@ TEST_CASE("Worktree changes: a write that fails while the switch to another work
 
 	REQUIRE(changes.Model.Worktree() == kOtherWorktree);
 
-	const std::optional<Graphite::GitModel::WriteFailure> failure = changes.Model.TakeWriteError();
+	const std::optional<Graphite::WorktreeWriteFailure> failure = changes.Model.TakeWriteError();
 
 	REQUIRE(failure.has_value());
-	CHECK(failure->Kind == Graphite::GitModel::WriteKind::Stage);
-	CHECK(failure->Error.Message == "Git is busy in eager-scribbling-frog; try again");
+	CHECK(failure->Failure.Kind == Graphite::GitModel::WriteKind::Stage);
+	CHECK(failure->Failure.Error.Message == "Git is busy in eager-scribbling-frog; try again");
+
+	// The failure names the worktree it happened in, not the one followed since.
+	CHECK(failure->Worktree == kWorktree);
 	CHECK_FALSE(changes.Model.TakeWriteError().has_value());
 }
 

@@ -39,6 +39,7 @@
 #include "Git/Sidebar/SidebarText.h"
 #include "Git/Sidebar/SidebarView.h"
 #include "Git/Window/WindowBar.h"
+#include "Git/Worktrees/WorktreeChanges.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
@@ -77,8 +78,9 @@ namespace Graphite {
 	class GitView final : public Core::Panel
 	{
 	public:
+		// `worktreeView` draws `worktreeChanges`' model: another worktree's changes, when the history shows them.
 		GitView(GitModel& model, LinesModel& lines, NetworkModel& network, WorktreesModel& worktrees, ContentModel& content, ChangesView& changes,
-				const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
+				WorktreeChanges& worktreeChanges, ChangesView& worktreeView, const ActiveScheme& scheme, EditorSettings& editorSettings, DiffWindows& diffWindows, ModalGate& modals,
 				EditorBuffers& buffers, Core::EventBus& events);
 
 		void OnUpdate(Core::Timestep timestep) override;
@@ -245,8 +247,21 @@ namespace Graphite {
 		void DrawSidebarRowMenu(const SidebarRow& row);
 
 		// The preview of the history's Local changes row: the Changes view's file list beside the diff of the file picked.
+		// Another worktree's changes row shows that worktree's view and diffs.
 		void RenderChanges(const GitPalette& palette);
-		void RenderChangesDiff(const GitPalette& palette);
+		void RenderWorktreeChanges(const std::filesystem::path& worktree, const GitPalette& palette);
+		void RenderChangesDiff(const GitPalette& palette, DiffBody& body, bool picked, GitModel& model);
+
+		// The worktree whose changes row the history shows is followed while the window is on screen; off screen, with no
+		// folder or no such row, none is, so nothing stays watched or held.
+		void FollowShownWorktree(bool panelOnScreen);
+
+		// The worktree changes' model reads `worktree`: until it does, after a switch that waits for a write, its numbers
+		// and details are another worktree's.
+		bool WorktreeChangesInHand(const std::filesystem::path& worktree) const;
+
+		// What the worktree's Changes view offers (spec §6.1–6.3): no Discard nor Stash, a commit button naming the target.
+		ChangesViewOptions WorktreeViewOptions(const std::filesystem::path& worktree) const;
 
 		void RenderHistory(const GitPalette& palette);
 		void RenderHistoryHeader();
@@ -415,8 +430,9 @@ namespace Graphite {
 		// The path box names a file, so the history is that file's.
 		bool IsFileHistory() const;
 
-		// What the Local changes row says, for a history that has the row.
-		std::optional<std::string> LocalChangesMark() const;
+		// The changes row the history starts with: the open folder's Local changes, another worktree's "Changes in
+		// <folder>", or none.
+		void MarkChangesRow(HistoryMarks& marks) const;
 
 		// The page on screen is the history of the reference or stash selected now.
 		bool PageAnswersSelection(const Core::LogRequest& shown) const;
@@ -500,6 +516,8 @@ namespace Graphite {
 		WorktreesModel& m_Worktrees;
 		ContentModel& m_Content;
 		ChangesView& m_Changes;
+		WorktreeChanges& m_WorktreeChanges;
+		ChangesView& m_WorktreeView;
 		const ActiveScheme& m_Scheme;
 
 		EditorSettings& m_EditorSettings;
@@ -603,6 +621,16 @@ namespace Graphite {
 		DiffBody m_ChangesDiff;
 		bool m_ChangesPicked = false;
 		bool m_ChangesDrawn = false;
+
+		// The same for another worktree's changes, and the worktree its picked file is in.
+		DiffBody m_WorktreeChangesDiff;
+		bool m_WorktreeChangesPicked = false;
+		bool m_WorktreeChangesDrawn = false;
+		std::optional<std::filesystem::path> m_WorktreeDiffFor;
+
+		// The HEADs the selected detached worktree's history was walked from since it was selected: a page from an earlier
+		// one keeps its rows on screen while the page from the new HEAD is read.
+		std::unordered_set<Core::Oid> m_WorktreeHeadsWalked;
 
 		std::optional<std::string> m_SelectedRef;
 

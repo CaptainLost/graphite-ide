@@ -4,6 +4,7 @@
 #include "DrawnColours.h"
 #include "DrawnText.h"
 #include "GitFixtures.h"
+#include "HoveredItems.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
 #include "WorktreeFixtures.h"
@@ -24,9 +25,11 @@
 #include "Git/RepositorySession.h"
 #include "Git/Sidebar/SidebarView.h"
 #include "Git/Window/WindowBar.h"
+#include "Git/Worktrees/WorktreeChanges.h"
 #include "Git/Worktrees/WorktreePort.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Git/WriteConsequences.h"
+#include "Review/WorktreeWatch.h"
 #include "Theme/ActiveScheme.h"
 #include "Theme/GitPalette.h"
 #include "UI/Dialogs/ModalGate.h"
@@ -34,6 +37,7 @@
 #include "Workspace/Workspace.h"
 
 #include "Core/Events/EventBus.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Tag.h"
@@ -238,6 +242,43 @@ namespace {
 		std::vector<Core::WorktreeEntry> Listed;
 	};
 
+	// Another worktree's repository, wherever it is pointed: HEAD on feature, one file staged and two modified.
+	class WorktreeStatusPort final : public EmptyGitPort
+	{
+	public:
+		Core::Result<Core::WorkingTreeStatus> QueryStatus() override
+		{
+			Core::FileStatus staged;
+			staged.Path = "staged.txt";
+			staged.Index = Core::StatusFlags::Modified;
+
+			Core::FileStatus one;
+			one.Path = "one.txt";
+			one.WorkTree = Core::StatusFlags::Modified;
+
+			Core::FileStatus two;
+			two.Path = "two.txt";
+			two.WorkTree = Core::StatusFlags::Modified;
+
+			return WorkingTreeStatusOf({staged, one, two});
+		}
+
+		Core::Result<Core::HeadState> QueryHead() override
+		{
+			Core::HeadState head;
+			head.BranchName = "feature";
+			head.Commit = OidWithFirstByte(2);
+			return head;
+		}
+	};
+
+	// A watch that starts and never reports a change.
+	class QuietWatch final : public Graphite::WorktreeWatch
+	{
+	public:
+		bool TakeChanged() override { return false; }
+	};
+
 	class NoContentPort final : public Graphite::ContentPort
 	{
 	public:
@@ -303,23 +344,28 @@ namespace {
 			const Core::Timestep noTime{0.0f};
 
 			Repository.Update(noTime);
+			WorktreeChanges.OnUpdate(noTime);
 			View.OnUpdate(noTime);
 
-			Frames.Next([this] {
-				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-				ImGui::SetNextWindowSize(kWindowSize);
-				ImGui::Begin(WindowName, nullptr, ImGuiWindowFlags_NoSavedSettings);
-				BarTop = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().WindowPadding.y;
-				Font = ImGui::GetFontBaked();
-				AgeFont = ImGui::GetFont()->GetFontBaked(Graphite::WindowBarEm(kAgeMockupPixels));
-				View.OnImGuiRender();
-				ChipId = ImGui::GetID("##headChip");
-				FetchId = ImGui::GetID("##networkFetch");
-				PushId = ImGui::GetID("##networkPush");
-				ImGui::End();
-			});
+			Frames.Next([this] { DrawWindow(); });
 
 			View.SetDrawnOnLatestFrame(true);
+		}
+
+		// The window's frame alone, with no model updated before it.
+		void DrawWindow()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(kWindowSize);
+			ImGui::Begin(WindowName, nullptr, ImGuiWindowFlags_NoSavedSettings);
+			BarTop = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().WindowPadding.y;
+			Font = ImGui::GetFontBaked();
+			AgeFont = ImGui::GetFont()->GetFontBaked(Graphite::WindowBarEm(kAgeMockupPixels));
+			View.OnImGuiRender();
+			ChipId = ImGui::GetID("##headChip");
+			FetchId = ImGui::GetID("##networkFetch");
+			PushId = ImGui::GetID("##networkPush");
+			ImGui::End();
 		}
 
 		void Settle(int frames = 6)
@@ -642,7 +688,24 @@ namespace {
 			};
 		}
 
-		Graphite::GitModel Model{Port, RunJobsInline()};
+		// While held, what the model is asked to read waits here unread, as a read still on its way does.
+		bool HoldsModelReads = false;
+		DeferredJobs HeldModelReads;
+
+		Core::JobSubmitter ModelJobs()
+		{
+			return [this](std::function<void()> job) {
+				if (HoldsModelReads)
+				{
+					HeldModelReads.Submitter()(std::move(job));
+					return;
+				}
+
+				job();
+			};
+		}
+
+		Graphite::GitModel Model{Port, ModelJobs()};
 		Graphite::LinesModel Lines{LinesPort, LineReadJobs(), [] { return LineReadBuilder::Now().time_since_epoch().count(); }};
 		// While held, a network operation asked waits here unrun, as one still running does.
 		bool HoldsNetworkJobs = false;
@@ -688,13 +751,21 @@ namespace {
 		Graphite::ActiveScheme Scheme;
 		Graphite::ChangesShared Shared;
 		Graphite::ChangesView Changes{Model, Modals, Buffers, Scheme, Events, Shared, "window"};
+
+		WorktreeStatusPort WorktreeGitPort;
+		Graphite::WorktreeChanges WorktreeChanges{WorktreeGitPort, [](const std::filesystem::path&) {}, RunJobsInline(),
+												  RunJobsInline(), [](const std::filesystem::path&) -> Core::Scope<Graphite::WorktreeWatch> {
+													  return Core::CreateScope<QuietWatch>();
+												  }};
+		Graphite::ChangesView WorktreeView{WorktreeChanges.Model(), Modals, Buffers, Scheme, Events, WorktreeChanges.Draft(),
+										   "worktree"};
 		Graphite::WriteConsequences Writes{Model, Buffers, Shared, [](const Graphite::GitModel::WriteFailure&) {}, [] {}};
 		Graphite::RepositorySession Repository{Model, Writes, Network, Lines, Worktrees, Content};
 		TempAppSettings Settings;
 		Graphite::EditorSettings EditorPreferences{Settings.Get()};
 		Graphite::DiffWindows Diffs;
 
-		Graphite::GitView View{Model,  Lines,   Network, Worktrees, Content, Changes, Scheme, EditorPreferences,
+		Graphite::GitView View{Model,  Lines,   Network, Worktrees, Content, Changes, WorktreeChanges, WorktreeView, Scheme, EditorPreferences,
 							   Diffs, Modals, Buffers,   Events};
 
 		float BarTop = 0.0f;
@@ -1573,8 +1644,9 @@ TEST_CASE("Git window: a click on a branch worktree's row selects its branch, an
 	CHECK(DrawsText(window, "HEADinloose"));
 	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Worktree = "C:/loose"});
 
-	// A detached worktree's history has no Local changes row of the open folder's.
-	CHECK_FALSE(window.DrawsLocalChanges());
+	// A detached worktree's history has no Local changes row of the open folder's: its first row is its own changes.
+	CHECK_FALSE(DrawsText(window, "Localchanges"));
+	CHECK(DrawsText(window, "Changesinloose"));
 
 	// The row clicked is the one drawn selected, and the only one.
 	CheckOnlyRowSelected(window, "loose");
@@ -1704,4 +1776,192 @@ TEST_CASE("Git window: a restored worktree shows its history once the worktree l
 		CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{});
 		CHECK(AsksHeadHistory(window));
 	}
+}
+
+namespace {
+
+	// The history's first line of text drawn last frame.
+	std::string FirstHistoryLine(const GitWindow& window)
+	{
+		const std::vector<DrawnLine> lines = HistoryText(window);
+		REQUIRE_FALSE(lines.empty());
+		return lines.front().Text;
+	}
+
+	// Clicks the history's row at `place`, 0 for its first.
+	void ClickHistoryRow(GitWindow& window, int place)
+	{
+		const ImGuiWindow* list = window.WindowNamed("##history");
+		REQUIRE(list != nullptr);
+
+		const float pitch = Graphite::ListRowPitch();
+		window.ClickAt(ImVec2(list->Pos.x + 60.0f, list->DC.CursorStartPos.y + pitch * (static_cast<float>(place) + 0.5f)));
+		window.Settle();
+	}
+
+	// The items under the pointer moved down the history's first three rows, top to bottom.
+	std::vector<ImGuiID> HistoryRowIds(GitWindow& window)
+	{
+		const ImGuiWindow* list = window.WindowNamed("##history");
+		REQUIRE(list != nullptr);
+
+		constexpr float kRowsWalked = 3.0f;
+		const float top = list->DC.CursorStartPos.y;
+		std::vector<ImGuiID> ids;
+
+		for (const HoveredStretch& stretch : HoveredDown(window.Frames, list->Pos.x + 60.0f, top,
+														  top + Graphite::ListRowPitch() * kRowsWalked,
+														  [&window] { window.DrawWindow(); }))
+		{
+			ids.push_back(stretch.Id);
+		}
+
+		return ids;
+	}
+
+	// The line above the linked worktree's lists, as drawn: "Worktree · <its full path>" without its spaces and dot.
+	std::string LinkedWhereLine()
+	{
+		return "Worktree" + Core::ToUtf8(Core::NormalizeDirectory(kLinkedFolder));
+	}
+
+	// The commit message box drawn last frame, whichever Changes view drew it; null when none was.
+	const ImGuiWindow* CommitMessageBox(const GitWindow& window)
+	{
+		return window.WindowNamed("commitMessage");
+	}
+}
+
+TEST_CASE("Git window: a branch checked out in another worktree shows Changes in that folder first, live, with its counts")
+{
+	GitWindow window("WorktreeChangesRowWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+	REQUIRE(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+
+	CHECK(window.WorktreeChanges.Worktree() == kLinkedFolder);
+
+	const std::string first = FirstHistoryLine(window);
+	CHECK(first.find("Changesinlinked") != std::string::npos);
+	CHECK(first.find("1staged") != std::string::npos);
+	CHECK(first.find("2notstaged") != std::string::npos);
+	CHECK(first.find("live") != std::string::npos);
+	CHECK_FALSE(DrawsText(window, "Localchanges"));
+}
+
+TEST_CASE("Git window: selecting another worktree's changes row draws that worktree's Changes view, not the open folder's")
+{
+	GitWindow window("WorktreeChangesDetailsWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+
+	// The branch opens on its changes row, as the checked-out branch opens on Local changes.
+	CHECK(DrawsText(window, LinkedWhereLine()));
+	CHECK(DrawsText(window, "one.txt"));
+	CHECK(DrawsText(window, "Committofeature"));
+
+	// A commit selected shows that commit; the changes row selected again shows the worktree's view again.
+	ClickHistoryRow(window, 1);
+	CHECK_FALSE(DrawsText(window, LinkedWhereLine()));
+
+	ClickHistoryRow(window, 0);
+	CHECK(DrawsText(window, LinkedWhereLine()));
+	CHECK(DrawsText(window, "two.txt"));
+	CHECK_FALSE(DrawsText(window, "Nochanges"));
+}
+
+TEST_CASE("Git window: the open folder's HEAD still shows Local changes after another worktree's changes were shown")
+{
+	GitWindow window("WorktreeThenHeadWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+	ClickWorktreeRow(window, "repo");
+
+	const std::string first = FirstHistoryLine(window);
+	CHECK(first.find("Localchanges") != std::string::npos);
+	CHECK(first.find("Changesin") == std::string::npos);
+	CHECK_FALSE(DrawsText(window, LinkedWhereLine()));
+
+	// No other worktree is shown, so none is followed.
+	CHECK_FALSE(window.WorktreeChanges.Worktree().has_value());
+}
+
+TEST_CASE("Git window: typing in another worktree's commit box fills its own draft and leaves the side panel's alone")
+{
+	GitWindow window("WorktreeDraftWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+	REQUIRE(DrawsText(window, LinkedWhereLine()));
+
+	const ImGuiWindow* box = CommitMessageBox(window);
+	REQUIRE(box != nullptr);
+	window.ClickAt(ImVec2(box->Pos.x + box->Size.x * 0.5f, box->Pos.y + box->Size.y * 0.5f));
+
+	ImGui::GetIO().AddInputCharactersUTF8("wip");
+	window.Settle(2);
+
+	CHECK(window.WorktreeChanges.Draft().Message == "wip");
+	CHECK(window.Shared.Message.empty());
+}
+
+TEST_CASE("Git window: the worktree followed is let go of when the window is not on screen")
+{
+	GitWindow window("WorktreeOffScreenWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+	REQUIRE(window.WorktreeChanges.Worktree() == kLinkedFolder);
+	REQUIRE(window.WorktreeChanges.IsWatching());
+
+	window.View.SetDrawnOnLatestFrame(false);
+	window.View.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(window.WorktreeChanges.Worktree().has_value());
+	CHECK_FALSE(window.WorktreeChanges.IsWatching());
+}
+
+TEST_CASE("Git window: a selected detached worktree whose HEAD moved keeps its rows on screen until the page from the new HEAD lands")
+{
+	GitWindow window("WorktreeHeadMovedRowsWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "loose");
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	REQUIRE(window.Model.GetShownLogRequest()->From == kLooseHead);
+
+	const int rowsBefore = window.HistoryRowCount();
+	const std::vector<ImGuiID> idsBefore = HistoryRowIds(window);
+	REQUIRE(rowsBefore >= 1);
+	REQUIRE_FALSE(idsBefore.empty());
+
+	// A commit made in the worktree, whose new page is still being read.
+	const Core::Oid newHead = OidWithFirstByte(0x78);
+	window.WorktreePort.Listed.back().Head.Commit = newHead;
+	window.HoldsModelReads = true;
+	ListWorktreesAgain(window);
+
+	REQUIRE(window.Model.GetAskedLogRequest().has_value());
+	REQUIRE(window.Model.GetAskedLogRequest()->From == newHead);
+	REQUIRE(window.Model.GetShownLogRequest()->From == kLooseHead);
+
+	// The commit's row stays where it was, rather than a wait standing in for it.
+	CHECK(window.HistoryRowCount() == rowsBefore);
+	CHECK(HistoryRowIds(window) == idsBefore);
+
+	window.HoldsModelReads = false;
+	window.HeldModelReads.RunAll();
+	window.Settle();
+
+	CHECK(window.Model.GetShownLogRequest()->From == newHead);
+	CHECK(window.HistoryRowCount() == rowsBefore);
 }

@@ -74,4 +74,7 @@ namespace Graphite {
 	// What the Local changes row says after its name: "2 staged · 3 not staged", "nothing to commit", or an ellipsis
 	// while the status is not read.
 	std::string DescribeLocalChanges(const Core::WorkingTreeStatus* status);
+
+	// The same for another worktree's changes row, whose clean state reads "no changes".
+	std::string DescribeWorktreeChanges(const Core::WorkingTreeStatus* status);
 }

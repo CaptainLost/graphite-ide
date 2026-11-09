@@ -6,6 +6,7 @@
 #include "Git/Diff/DiffBody.h"
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
+#include "Git/Worktrees/WriteExpectation.h"
 #include "Theme/GitPalette.h"
 #include "Theme/ActiveScheme.h"
 
@@ -25,6 +26,25 @@ namespace Core {
 
 namespace Graphite {
 
+	// What a host lets its Changes view offer and how the view names where it commits; the defaults are the open folder's.
+	struct ChangesViewOptions
+	{
+		bool OffersDiscard = true;
+		bool OffersStash = true;
+
+		// "Worktree · <full path>" above the lists; empty draws nothing.
+		std::string WhereLine;
+
+		// The commit button's words; unset reads "Commit".
+		std::function<std::string()> CommitLabel;
+
+		// The commit button in the warning colour, as for a commit on a detached HEAD.
+		bool CommitWarns = false;
+
+		// What the user sees, carried by every write the view asks: a commit's with forCommit set. Unset carries nothing.
+		std::function<std::optional<WriteExpectation>(bool forCommit)> Expect;
+	};
+
 	// The working tree's changes, the commit box and their dialogs. Each host has a view of its own, with its own
 	// selection and open folders; what the hosts share is held in ChangesShared.
 	class ChangesView
@@ -43,6 +63,11 @@ namespace Graphite {
 
 		// The reader picked a row: the side panel opens a diff tab, the Git window shows the diff beside the list.
 		std::function<void(const OpenDiff& diff)> OnFileChosen;
+
+		void SetOptions(ChangesViewOptions options);
+
+		// The draft the commit box edits from now on.
+		void SetShared(ChangesShared& shared);
 
 		// The lists, the commit box and the dialogs, into the current window.
 		void Draw();
@@ -72,7 +97,17 @@ namespace Graphite {
 
 		void RenderRowContextMenu(const Core::FileStatus& file, char letter);
 
+		void RenderWhereLine();
+
 		void RenderCommitBox();
+
+		void RenderStashButton(bool writesBlocked, const Core::WorkingTreeStatus* status);
+
+		// Each write the view asks carries the host's expectation, a commit's with forCommit set.
+		std::optional<WriteExpectation> Expectation(bool forCommit) const;
+		void RequestStage(std::vector<std::filesystem::path> paths);
+		void RequestUnstage(std::vector<std::filesystem::path> paths);
+		void RequestCommit(bool amend);
 
 		Core::DiffTarget TargetForSection() const;
 
@@ -114,7 +149,9 @@ namespace Graphite {
 
 		Core::EventBus& m_Events;
 
-		ChangesShared& m_Shared;
+		ChangesShared* m_Shared = nullptr;
+
+		ChangesViewOptions m_Options;
 
 		enum class Section
 		{

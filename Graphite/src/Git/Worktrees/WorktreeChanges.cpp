@@ -3,6 +3,7 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Status.h"
 
+#include <format>
 #include <fstream>
 #include <string>
 #include <string_view>
@@ -60,10 +61,12 @@ namespace Graphite {
 
 		m_Model.OnUpdate(timestep);
 
-		// Before Settle, whose switch to another worktree clears the model's own.
+		// Before Settle, whose switch to another worktree clears the model's own; until it, the worktree followed is the
+		// one the write ran in.
 		while (std::optional<GitModel::WriteFailure> failure = m_Model.TakeWriteError())
 		{
-			m_WriteErrors.push_back(std::move(*failure));
+			m_WriteErrors.push_back(
+				WorktreeWriteFailure{.Failure = std::move(*failure), .Worktree = m_Worktree.value_or(std::filesystem::path{})});
 		}
 
 		// Before Settle: a commit that lands is the followed worktree's, which no other is followed before it lands.
@@ -77,14 +80,14 @@ namespace Graphite {
 		Settle();
 	}
 
-	std::optional<GitModel::WriteFailure> WorktreeChanges::TakeWriteError()
+	std::optional<WorktreeWriteFailure> WorktreeChanges::TakeWriteError()
 	{
 		if (m_WriteErrors.empty())
 		{
 			return std::nullopt;
 		}
 
-		GitModel::WriteFailure taken = std::move(m_WriteErrors.front());
+		WorktreeWriteFailure taken = std::move(m_WriteErrors.front());
 		m_WriteErrors.pop_front();
 		return taken;
 	}
@@ -187,6 +190,21 @@ namespace Graphite {
 
 		// Whatever changed while nobody watched is read now, the watch failing to start or not.
 		m_Model.RefreshWorkingTree();
+	}
+
+	std::string WorktreeCommitLabel(const Core::HeadState* head, std::string_view folder)
+	{
+		if (head == nullptr)
+		{
+			return "Commit";
+		}
+
+		if (head->Kind == Core::HeadKind::Detached)
+		{
+			return "Commit on detached HEAD";
+		}
+
+		return std::format("Commit to {} in {}", head->BranchName, folder);
 	}
 
 	std::optional<std::filesystem::path> LinkedGitDirectoryOf(const std::filesystem::path& worktree)

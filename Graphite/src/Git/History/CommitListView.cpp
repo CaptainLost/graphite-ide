@@ -63,8 +63,10 @@ namespace Graphite {
 		// WARNING: AllowOverlap keeps a click reaching the one Selectable under the row instead of being swallowed by the cells drawn over it.
 		constexpr ImGuiSelectableFlags kRowSelectableFlags = ImGuiSelectableFlags_AllowOverlap;
 
-		constexpr std::string_view kLocalChangesTitle = "Local changes";
 		constexpr std::string_view kLocalChangesAge = "now";
+		constexpr std::string_view kLiveWord = "live";
+		constexpr float kLiveDotPixels = 7.0f;
+		constexpr float kLiveDotWordGapPixels = 5.0f;
 		constexpr const char* kBroughtWaiting = "Reading the commits this merge brought\xE2\x80\xA6";
 		constexpr const char* kBroughtFailed = "Cannot read the commits this merge brought: ";
 		constexpr const char* kBroughtNone = "This merge brought no commits of its own";
@@ -113,6 +115,25 @@ namespace Graphite {
 				drawList->PathArcTo(centre, MockupPixels(kRingRadius), from, from + dashAngle, kSegmentsPerDash);
 				drawList->PathStroke(ink, ImDrawFlags_None, MockupPixels(kRingThickness));
 			}
+		}
+
+		float LiveMarkerWidth()
+		{
+			return MockupPixels(kMessagePiecesGap) + MockupPixels(kLiveDotPixels) + MockupPixels(kLiveDotWordGapPixels) +
+				   Core::TextWidth(kLiveWord);
+		}
+
+		// A green dot and the word "live" after it, at the cursor: the changes are watched as they happen.
+		void DrawLiveMarker(ImU32 green)
+		{
+			const ImVec2 start = ImGui::GetCursorScreenPos();
+			const float dot = MockupPixels(kLiveDotPixels);
+			const ImVec2 centre(start.x + dot * kHalf, start.y + ImGui::GetTextLineHeight() * kHalf);
+
+			ImGui::GetWindowDrawList()->AddCircleFilled(centre, dot * kHalf, green);
+
+			ImGui::SetCursorScreenPos(ImVec2(start.x + dot + MockupPixels(kLiveDotWordGapPixels), start.y));
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(green), "%.*s", static_cast<int>(kLiveWord.size()), kLiveWord.data());
 		}
 
 		// The small elbow in front of a brought commit's text, tying it to its merge.
@@ -754,7 +775,7 @@ namespace Graphite {
 						const ImVec2 dotCentre(graphOrigin.x + LaneCentreX(metrics, kFirstLane),
 											   graphOrigin.y + RowCentreY(metrics, static_cast<std::size_t>(displayRow)));
 
-						RenderLocalChangesRow(*marks.LocalChanges, palette, dotCentre);
+						RenderLocalChangesRow(marks, palette, dotCentre);
 						break;
 					}
 					case CommitRowKind::Fold:
@@ -1060,8 +1081,10 @@ namespace Graphite {
 		ImGui::Unindent(MockupPixels(kBroughtIndentPixels));
 	}
 
-	void CommitListView::RenderLocalChangesRow(const std::string& summary, const GitPalette& palette, ImVec2 dotCentre)
+	void CommitListView::RenderLocalChangesRow(const HistoryMarks& marks, const GitPalette& palette, ImVec2 dotCentre)
 	{
+		const std::string& summary = *marks.LocalChanges;
+
 		DrawDashedRing(dotCentre, m_LocalChangesInk != 0 ? m_LocalChangesInk : palette.GutterModified);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Chevron));
@@ -1075,9 +1098,18 @@ namespace Graphite {
 		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
-		DrawFittedCell(kLocalChangesTitle, Core::EmphasisText(), kNoHighlight);
+		DrawFittedCell(marks.LocalChangesTitle, Core::EmphasisText(), kNoHighlight);
 		ImGui::SameLine(kNoOffset, MockupPixels(kMessagePiecesGap));
-		DrawFittedCell(summary, dimmedInk, kNoHighlight);
+
+		// The live marker is kept room for after the summary, which is cut first when the cell is narrow.
+		const float liveWidth = marks.LocalChangesLive ? LiveMarkerWidth() : 0.0f;
+		const bool drewSummary = DrawFittedCell(summary, dimmedInk, kNoHighlight, liveWidth);
+
+		if (marks.LocalChangesLive && drewSummary)
+		{
+			ImGui::SameLine(kNoOffset, MockupPixels(kMessagePiecesGap));
+			DrawLiveMarker(palette.GutterAdded);
+		}
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Age));
 		DrawAge(std::string{kLocalChangesAge}, dimmedInk);

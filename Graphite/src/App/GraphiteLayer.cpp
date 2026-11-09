@@ -213,6 +213,7 @@ namespace Graphite {
 		// WARNING: The toasts' OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
 		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_Lines, m_Network, m_Worktrees, m_Content, m_GitWindowChanges,
+																   m_WorktreeChanges, m_WorktreeWindowChanges,
 																   m_ActiveScheme, m_EditorSettings, m_DiffWindows, m_Modals,
 																   m_DocumentBuffers, m_Events));
 		gitView->Subscribe();
@@ -665,7 +666,7 @@ namespace Graphite {
 		// The worktree the Git window looks at. Its watch keeps it fresh, and the worktree counts with it.
 		m_LookedAtWorktree.Update(timestep);
 
-		while (std::optional<GitModel::WriteFailure> failure = m_WorktreeChanges.TakeWriteError())
+		while (std::optional<WorktreeWriteFailure> failure = m_WorktreeChanges.TakeWriteError())
 		{
 			ReportGitWriteFailure(*failure);
 		}
@@ -1112,6 +1113,10 @@ namespace Graphite {
 			const Core::Ref<const Core::WorkingTreeStatus> gitStatus = m_Git.GetStatus();
 			const GitPanelWait gitWait = m_GitView != nullptr ? m_GitView->CurrentWait() : GitPanelWait{};
 
+			// A stage or commit in the worktree the Git window looks at is said too, naming its folder.
+			const std::string worktreeFolder =
+				Core::ToUtf8(Core::NormalizeDirectory(m_WorktreeChanges.Worktree().value_or(std::filesystem::path{})).filename());
+
 			const GitStatusInputs gitStatusInputs{
 				.FolderOpen = m_Workspace.IsOpen(),
 				.MissingRepository = IsMissingRepository(gitStatus != nullptr, m_Git.GetStatusError()),
@@ -1119,8 +1124,9 @@ namespace Graphite {
 				.Branches = branches.get(),
 				.Status = gitStatus.get(),
 				.CheckingOut = gitWait.CheckingOut,
-				.Activity = DescribeGitActivity(m_Git.GetWriteReport(), gitWait.AwaitingAnswer,
-												DescribeNetworkActivity(m_Network.GetState(), m_Network.GetShownDone())),
+				.Activity = WithWorktreeWrite(DescribeGitActivity(m_Git.GetWriteReport(), gitWait.AwaitingAnswer,
+																  DescribeNetworkActivity(m_Network.GetState(), m_Network.GetShownDone())),
+											  DescribeWorktreeWrite(m_WorktreeChanges.Model().GetWriteReport(), worktreeFolder)),
 			};
 
 			messages.Git = GitStatusText(gitStatusInputs);
@@ -1389,8 +1395,19 @@ namespace Graphite {
 
 	void GraphiteLayer::ReportGitWriteFailure(const GitModel::WriteFailure& failure)
 	{
-		std::string title(WriteFailureTitle(failure.Kind));
-		std::string shown = RelativiseUnder(failure.Error.Message, m_Git.GetWorkingDirectory());
+		ShowGitWriteFailure(std::string{WriteFailureTitle(failure.Kind)}, failure, m_Git.GetWorkingDirectory());
+	}
+
+	void GraphiteLayer::ReportGitWriteFailure(const WorktreeWriteFailure& failure)
+	{
+		const std::string folder = Core::ToUtf8(Core::NormalizeDirectory(failure.Worktree).filename());
+		ShowGitWriteFailure(WorktreeWriteFailureTitle(failure.Failure.Kind, folder), failure.Failure, failure.Worktree);
+	}
+
+	void GraphiteLayer::ShowGitWriteFailure(std::string title, const GitModel::WriteFailure& failure,
+											const std::filesystem::path& workingDirectory)
+	{
+		std::string shown = RelativiseUnder(failure.Error.Message, workingDirectory);
 		std::string copied = title + "\n" + failure.Error.Message;
 
 		m_Notifications.Show(ToastEvent{.Kind = Core::ToastKind::Error, .Title = std::move(title), .Message = std::move(shown), .CopyText = std::move(copied), .Scope = ToastScope::Folder},

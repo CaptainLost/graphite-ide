@@ -46,3 +46,10 @@ TEST_CASE("A kind whose failure never reaches the queue still gets a title")
 		CHECK(WriteFailureTitle(kind) == "Git action failed");
 	}
 }
+
+TEST_CASE("A failed write into another worktree names that worktree's folder")
+{
+	CHECK(Graphite::WorktreeWriteFailureTitle(GitModel::WriteKind::Commit, "eager-scribbling-frog") ==
+		  "Commit failed in eager-scribbling-frog");
+	CHECK(Graphite::WorktreeWriteFailureTitle(GitModel::WriteKind::Stage, "wt") == "Stage failed in wt");
+}

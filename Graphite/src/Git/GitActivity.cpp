@@ -161,6 +161,37 @@ namespace Graphite {
 		return {};
 	}
 
+	std::optional<GitActivity> DescribeWorktreeWrite(const std::optional<GitModel::WriteReport>& report, std::string_view folder)
+	{
+		if (!report.has_value())
+		{
+			return std::nullopt;
+		}
+
+		const bool runs = report->Progress == GitModel::WriteProgress::Running;
+		const std::string words = runs ? WriteRunningText(report->Subject) : WriteDoneText(report->Subject);
+
+		return GitActivity{.Text = std::format("{}: {}", folder, words), .Busy = runs};
+	}
+
+	std::optional<GitActivity> WithWorktreeWrite(const std::optional<GitActivity>& openFolder,
+												 const std::optional<GitActivity>& worktree)
+	{
+		const bool openFolderFirst = openFolder.has_value() && (openFolder->Busy || openFolder->OpensGit);
+
+		if (openFolderFirst || !worktree.has_value())
+		{
+			return openFolder;
+		}
+
+		if (worktree->Busy || !openFolder.has_value())
+		{
+			return worktree;
+		}
+
+		return openFolder;
+	}
+
 	GitPanelWait DescribePanelWait(const GitPanelCheckouts& checkouts)
 	{
 		GitPanelWait wait;

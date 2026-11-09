@@ -5,6 +5,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Head.h"
 #include "Core/Jobs/JobSubmitter.h"
 #include "Git/Changes/ChangesShared.h"
 #include "Git/Debouncer.h"
@@ -18,8 +19,17 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <string>
+#include <string_view>
 
 namespace Graphite {
+
+	// A write into another worktree that failed, and the worktree it ran in.
+	struct WorktreeWriteFailure
+	{
+		GitModel::WriteFailure Failure;
+		std::filesystem::path Worktree;
+	};
 
 	// The uncommitted changes of the worktree the Git window looks at, when that is another worktree than the open folder:
 	// a GitModel of its own over a port pointed at that worktree, a watch on it while it is on screen, and a commit draft
@@ -49,7 +59,7 @@ namespace Graphite {
 		// The model's write failures, taken as each update lands them.
 		// WARNING: Taken from here, never from Model(): following another worktree clears the model, which would drop a
 		// failure of the write the switch waited for before anyone had read it.
-		std::optional<GitModel::WriteFailure> TakeWriteError();
+		std::optional<WorktreeWriteFailure> TakeWriteError();
 
 		GitModel& Model() { return m_Model; }
 		const GitModel& Model() const { return m_Model; }
@@ -96,11 +106,15 @@ namespace Graphite {
 
 		Debouncer m_Debounce;
 
-		std::deque<GitModel::WriteFailure> m_WriteErrors;
+		std::deque<WorktreeWriteFailure> m_WriteErrors;
 
 		std::map<Core::PathKeyText, ChangesShared> m_Drafts;
 		ChangesShared m_NoDraft;
 	};
+
+	// The commit button's words for a worktree: "Commit to <branch> in <folder>", "Commit on detached HEAD"; "Commit" while its
+	// HEAD is unread.
+	std::string WorktreeCommitLabel(const Core::HeadState* head, std::string_view folder);
 
 	// The git directory a linked worktree's `.git` file names; empty when `.git` is a directory or cannot be read.
 	std::optional<std::filesystem::path> LinkedGitDirectoryOf(const std::filesystem::path& worktree);

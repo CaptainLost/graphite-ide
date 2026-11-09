@@ -231,3 +231,40 @@ TEST_CASE("A network operation's done text is said once nothing runs and no writ
 	CHECK(activity->Text == "Fetched");
 	CHECK_FALSE(activity->Busy);
 }
+
+TEST_CASE("A write in another worktree is said as the open folder's are, after its folder's name")
+{
+	const GitModel::WriteSubject stage = PathsSubject(GitModel::WriteKind::Stage, 1, "a.txt");
+
+	const std::optional<Graphite::GitActivity> running = Graphite::DescribeWorktreeWrite(
+		GitModel::WriteReport{.Subject = stage, .Progress = GitModel::WriteProgress::Running}, "eager-scribbling-frog");
+
+	REQUIRE(running.has_value());
+	CHECK(running->Text == "eager-scribbling-frog: Staging a.txt" + kEllipsis);
+	CHECK(running->Busy);
+
+	const std::optional<Graphite::GitActivity> done = Graphite::DescribeWorktreeWrite(
+		GitModel::WriteReport{.Subject = stage, .Progress = GitModel::WriteProgress::Done}, "eager-scribbling-frog");
+
+	REQUIRE(done.has_value());
+	CHECK(done->Text == "eager-scribbling-frog: Staged a.txt");
+	CHECK_FALSE(done->Busy);
+
+	CHECK_FALSE(Graphite::DescribeWorktreeWrite(std::nullopt, "eager-scribbling-frog").has_value());
+}
+
+TEST_CASE("The open folder's running work and questions are said before a worktree's write, and its done text after a running one")
+{
+	const Graphite::GitActivity openRunning{.Text = "Committing", .Busy = true};
+	const Graphite::GitActivity openAsking{.Text = "Checkout of main is waiting for your answer in Git", .OpensGit = true};
+	const Graphite::GitActivity openDone{.Text = "Committed"};
+	const Graphite::GitActivity worktreeRunning{.Text = "wt: Staging a.txt", .Busy = true};
+	const Graphite::GitActivity worktreeDone{.Text = "wt: Staged a.txt"};
+
+	CHECK(Graphite::WithWorktreeWrite(openRunning, worktreeRunning) == openRunning);
+	CHECK(Graphite::WithWorktreeWrite(openAsking, worktreeRunning) == openAsking);
+	CHECK(Graphite::WithWorktreeWrite(openDone, worktreeRunning) == worktreeRunning);
+	CHECK(Graphite::WithWorktreeWrite(openDone, worktreeDone) == openDone);
+	CHECK(Graphite::WithWorktreeWrite(std::nullopt, worktreeDone) == worktreeDone);
+	CHECK_FALSE(Graphite::WithWorktreeWrite(std::nullopt, std::nullopt).has_value());
+}
