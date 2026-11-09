@@ -718,4 +718,8 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0686](0686-force-push-only-with-a-lease-only-to-the-branch-s-own-upstream-and-only-after-a-question.md) | Force push only with a lease, only to the branch's own upstream, and only after a question | proposed | 2026-11-08 |
 | [0687](0687-keep-a-gitignore-of-everything-inside-each-folder-s-graphite.md) | Keep a .gitignore of everything inside each folder's .graphite | proposed | 2026-11-08 |
 | [0688](0688-refuse-to-watch-a-folder-inside-wsl-through-windows.md) | Refuse to watch a folder inside WSL through Windows | proposed | 2026-11-09 |
+| [0689](0689-list-every-worktree-in-the-git-window-s-sidebar-ordered-by-activity-and-fixed-between-rebuilds.md) | List every worktree in the Git window's sidebar, ordered by activity and fixed between rebuilds | proposed | 2026-11-09 |
+| [0690](0690-write-into-another-worktree-only-when-it-is-as-the-user-saw-it.md) | Write into another worktree only when it is as the user saw it | proposed | 2026-11-09 |
+| [0691](0691-attribute-a-file-to-the-deepest-worktree-that-holds-it.md) | Attribute a file to the deepest worktree that holds it | proposed | 2026-11-09 |
+| [0692](0692-give-each-repositorygitport-its-own-per-thread-repository-handles.md) | Give each RepositoryGitPort its own per-thread repository handles | proposed | 2026-11-09 |
 <!-- /adr-index -->

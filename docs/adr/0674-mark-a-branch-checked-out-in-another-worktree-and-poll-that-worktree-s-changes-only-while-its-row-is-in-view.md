@@ -24,6 +24,14 @@ worktree costs real CPU.
   back the same (or fails again), up to 48 s; a count that changed starts it over at 3 s. Coming back on screen makes
   every count due at once. A count of a worktree that left the list, or of a folder closed meanwhile, is dropped.
 
+Amended by [0689](0689-list-every-worktree-in-the-git-window-s-sidebar-ordered-by-activity-and-fixed-between-rebuilds.md):
+the Worktrees section counts more than the rows in view, and the idle cost stays bounded by time rather than by the
+number of worktrees. The first build of a folder counts every worktree once, in parallel and without walking into
+submodules, and waits for those counts at most 3 s on screen; after that, worktrees whose rows are out of view (scrolled
+away or folded) are counted by a sweep of at most one count every 10 s in total, the longest-uncounted first, while the
+window is on screen. The worktree the user is looking at is watched instead, and neither polled nor swept. Rows in view
+keep the poll above.
+
 ## Rationale
 
 Counting only what is in view, and less often what does not change, bounds the cost by the rows on screen rather than
