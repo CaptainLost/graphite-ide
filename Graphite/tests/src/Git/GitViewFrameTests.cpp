@@ -6,6 +6,7 @@
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
+#include "WorktreeFixtures.h"
 #include "Git/FakeEditorBuffers.h"
 #include "Git/Lines/LineReadFixtures.h"
 
@@ -135,7 +136,9 @@ namespace {
 			Core::LogPage page;
 			page.Complete = true;
 
-			if (const std::optional<Core::Oid> tip = request.Stash.has_value() ? request.Stash : TipOf(request.Ref))
+			const std::optional<Core::Oid> start = request.From.has_value() ? request.From : TipOf(request.Ref);
+
+			if (const std::optional<Core::Oid> tip = request.Stash.has_value() ? request.Stash : start)
 			{
 				Core::CommitSummary commit;
 				commit.Id = *tip;
@@ -207,7 +210,8 @@ namespace {
 		Graphite::LineRead m_Read;
 	};
 
-	class NoWorktreesPort final : public Graphite::WorktreePort
+	// No worktree but the ones a test lists, each clean and idle.
+	class ListedWorktreesPort final : public Graphite::WorktreePort
 	{
 	public:
 		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees() override
@@ -217,7 +221,7 @@ namespace {
 				return *ListFailure;
 			}
 
-			return std::vector<Core::WorktreeEntry>{};
+			return Listed;
 		}
 
 		Core::Result<Graphite::WorktreeActivity> QueryActivity(const std::filesystem::path&) override
@@ -231,6 +235,7 @@ namespace {
 		}
 
 		std::optional<Core::Error> ListFailure; // set, the list cannot be read
+		std::vector<Core::WorktreeEntry> Listed;
 	};
 
 	class NoContentPort final : public Graphite::ContentPort
@@ -617,7 +622,7 @@ namespace {
 		Graphite::LineRead Read;
 		FixedHeadPort Port;
 		OneReadLinesPort LinesPort{Read};
-		NoWorktreesPort WorktreePort;
+		ListedWorktreesPort WorktreePort;
 		NoContentPort ContentPort;
 
 		// While held, a line read asked waits here unmade, as one still being made does.
@@ -1380,4 +1385,210 @@ TEST_CASE("Git window: the sidebar's sections wait for the worktree list as well
 TEST_CASE("Git window: a worktree list that cannot be read holds the sidebar's sections no longer")
 {
 	CheckSidebarWaitsForWorktreeList("WorktreeListFailWindow", true);
+}
+
+namespace {
+
+	const std::filesystem::path kLinkedFolder = "C:/linked";
+	const std::filesystem::path kLooseFolder = "C:/loose";
+	const Core::Oid kLooseHead = OidWithFirstByte(0x77);
+
+	Core::WorktreeEntry LooseWorktree()
+	{
+		Core::WorktreeEntry entry;
+		entry.Path = kLooseFolder;
+		entry.Name = "loose";
+		entry.Head.Kind = Core::HeadKind::Detached;
+		entry.Head.Commit = kLooseHead;
+		return entry;
+	}
+
+	// The open folder C:/repo on main, C:/linked on feature and C:/loose detached.
+	std::vector<Core::WorktreeEntry> RepoLinkedAndLoose()
+	{
+		return {Graphite::Fixtures::WorktreeOn("main", "C:/repo"), Graphite::Fixtures::WorktreeOn("feature", kLinkedFolder),
+				LooseWorktree()};
+	}
+
+	// main checked out and feature beside it, so the Worktrees section follows Yours' two rows in view.
+	Graphite::LineRead MainAndFeatureRead()
+	{
+		LineReadBuilder builder;
+		builder.AddLocal("main", {.Head = true, .AgeDays = 40});
+		builder.AddLocal("feature", {.AgeDays = 2});
+
+		Graphite::LineRead read = builder.Build();
+		read.Graph = Core::CreateRef<const Core::AncestryGraph>();
+		return read;
+	}
+
+	// The line the sidebar drew last frame that holds `text`; empty when none does.
+	std::optional<DrawnLine> SidebarLineWith(const GitWindow& window, const std::string& text)
+	{
+		const ImGuiWindow* rows = window.SidebarRows();
+		REQUIRE(rows != nullptr);
+
+		for (const DrawnLine& line : DrawnTextLines(*rows->DrawList, *window.Font))
+		{
+			if (line.Text.find(text) != std::string::npos)
+			{
+				return line;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	// Clicks the worktree row whose first line names `folder`, and lets the history it asks for land.
+	void ClickWorktreeRow(GitWindow& window, const std::string& folder)
+	{
+		const std::optional<DrawnLine> line = SidebarLineWith(window, folder);
+		REQUIRE(line.has_value());
+
+		const ImGuiWindow* rows = window.SidebarRows();
+		window.ClickAt(ImVec2(rows->Pos.x + 60.0f, line->Top + window.Font->Size * 0.5f));
+		window.Settle();
+	}
+
+	// Whether any window of this one drew a line holding `text` last frame, in the window's own face.
+	bool DrawsText(const GitWindow& window, const std::string& text)
+	{
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+		for (const ImGuiWindow* drawn : context.Windows)
+		{
+			if (std::strstr(drawn->Name, window.WindowName) == nullptr || drawn->LastFrameActive != context.FrameCount)
+			{
+				continue;
+			}
+
+			for (const DrawnLine& line : DrawnTextLines(*drawn->DrawList, *window.Font))
+			{
+				if (line.Text.find(text) != std::string::npos)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	// The history the model was last asked for is the open folder's HEAD's: no ref, no stash, no commit to start from.
+	bool AsksHeadHistory(const GitWindow& window)
+	{
+		const std::optional<Core::LogRequest>& asked = window.Model.GetAskedLogRequest();
+		return asked.has_value() && !asked->Ref.has_value() && !asked->Stash.has_value() && !asked->From.has_value();
+	}
+}
+
+TEST_CASE("Git window: a click on a branch worktree's row selects its branch, and on a detached one's shows the history from its HEAD")
+{
+	GitWindow window("WorktreeClickWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+	REQUIRE(window.Worktrees.Entries() != nullptr);
+
+	ClickWorktreeRow(window, "linked");
+
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+
+	ClickWorktreeRow(window, "loose");
+
+	const std::optional<Core::LogRequest>& shown = window.Model.GetShownLogRequest();
+	REQUIRE(shown.has_value());
+	CHECK(shown->From == kLooseHead);
+	CHECK_FALSE(shown->Ref.has_value());
+	CHECK(DrawsText(window, "HEADinloose"));
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Worktree = "C:/loose"});
+
+	// A detached worktree's history has no Local changes row of the open folder's.
+	CHECK_FALSE(window.DrawsLocalChanges());
+
+	// The row clicked is the one drawn selected.
+	const std::optional<DrawnLine> looseLine = SidebarLineWith(window, "loose");
+	const std::optional<float> selected = window.SelectedRowMiddle();
+	REQUIRE(looseLine.has_value());
+	REQUIRE(selected.has_value());
+	const float looseTop = looseLine->Top - window.SidebarRows()->DC.CursorStartPos.y;
+	CHECK(*selected > looseTop - Graphite::SidebarTwoLineRowHeight());
+	CHECK(*selected < looseTop + Graphite::SidebarTwoLineRowHeight());
+
+	// The open folder's own row shows its HEAD's history again.
+	ClickWorktreeRow(window, "repo");
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{});
+	CHECK(AsksHeadHistory(window));
+}
+
+TEST_CASE("Git window: a selected worktree that leaves the list, or whose folder goes missing, falls back to the open folder's HEAD")
+{
+	for (const bool folderMissing : {false, true})
+	{
+		CAPTURE(folderMissing);
+
+		GitWindow window(folderMissing ? "WorktreeMissingWindow" : "WorktreeGoneWindow", HeadOnMain(), {}, MainAndFeatureRead());
+		window.WorktreePort.Listed = RepoLinkedAndLoose();
+		window.Settle();
+
+		ClickWorktreeRow(window, "loose");
+		REQUIRE(window.Model.GetShownLogRequest().has_value());
+		REQUIRE(window.Model.GetShownLogRequest()->From == kLooseHead);
+
+		if (folderMissing)
+		{
+			// The folder is gone, so git can no longer read its HEAD.
+			Core::WorktreeEntry missing = LooseWorktree();
+			missing.FolderMissing = true;
+			missing.Head = Core::HeadState{};
+			window.WorktreePort.Listed.back() = missing;
+		}
+		else
+		{
+			window.WorktreePort.Listed.pop_back();
+		}
+
+		// The worktrees are read again for a new branch snapshot; a worktree removed leaves the branches as they were.
+		REQUIRE(window.Model.GetBranches() != nullptr);
+		window.Worktrees.Follow(Core::CreateRef<const std::vector<Core::Branch>>(*window.Model.GetBranches()),
+								window.Model.GetWorkingDirectory());
+		window.Settle();
+
+		CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{});
+		CHECK(AsksHeadHistory(window));
+		CHECK_FALSE(DrawsText(window, "HEADinloose"));
+	}
+}
+
+TEST_CASE("Git window: a restored worktree shows its history once the worktree list is in, and one no longer listed restores HEAD's")
+{
+	{
+		GitWindow window("WorktreeRestoredWindow", HeadOnMain(), {}, MainAndFeatureRead());
+		window.WorktreePort.Listed = RepoLinkedAndLoose();
+		window.HoldsWorktreeReads = true;
+		window.View.RestoreWindowState(Graphite::GitWindowState{.Worktree = "C:/loose"});
+		window.Settle();
+
+		// Until the list is in it is not known whether the worktree is still there, so no history is asked.
+		CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Worktree = "C:/loose"});
+		CHECK_FALSE(window.Model.GetAskedLogRequest().has_value());
+
+		window.HoldsWorktreeReads = false;
+		window.HeldWorktreeReads.RunAll();
+		window.Settle();
+
+		const std::optional<Core::LogRequest>& asked = window.Model.GetAskedLogRequest();
+		REQUIRE(asked.has_value());
+		CHECK(asked->From == kLooseHead);
+		CHECK(DrawsText(window, "HEADinloose"));
+	}
+
+	{
+		GitWindow window("WorktreeRestoredGoneWindow", HeadOnMain(), {}, MainAndFeatureRead());
+		window.WorktreePort.Listed = RepoLinkedAndLoose();
+		window.View.RestoreWindowState(Graphite::GitWindowState{.Worktree = "C:/removed"});
+		window.Settle();
+
+		CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{});
+		CHECK(AsksHeadHistory(window));
+	}
 }

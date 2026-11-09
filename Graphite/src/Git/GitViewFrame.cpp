@@ -22,6 +22,7 @@
 #include "Git/Window/MainLineQuestion.h"
 #include "Git/Window/GitWindowRestore.h"
 #include "Git/Window/WindowBar.h"
+#include "Git/Worktrees/WorktreeListing.h"
 #include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/FittedText.h"
@@ -90,12 +91,17 @@ namespace Graphite {
 			return error.has_value() ? &*error : nullptr;
 		}
 
-		// The icon the history's name follows, for a history that names a ref or a stash.
-		const char* HistoryIcon(bool stash, bool tag)
+		// The icon the history's name follows, for a history that names a ref, a stash or another worktree's HEAD.
+		const char* HistoryIcon(bool stash, bool tag, bool worktree)
 		{
 			if (stash)
 			{
 				return ICON_LC_ARCHIVE;
+			}
+
+			if (worktree)
+			{
+				return ICON_LC_FOLDER_GIT_2;
 			}
 
 			return tag ? ICON_LC_TAG : ICON_LC_GIT_BRANCH;
@@ -122,6 +128,11 @@ namespace Graphite {
 			return *m_PendingRestore;
 		}
 
+		if (m_SelectedWorktree.has_value())
+		{
+			return GitWindowState{.Worktree = Core::ToUtf8(*m_SelectedWorktree)};
+		}
+
 		return GitWindowState{.Ref = m_SelectedRef.value_or(std::string{})};
 	}
 
@@ -135,6 +146,21 @@ namespace Graphite {
 	{
 		if (!m_PendingRestore.has_value())
 		{
+			return;
+		}
+
+		// A worktree waits for the list that says whether it is still there and what it stands on; one that is not shows
+		// HEAD's history.
+		if (!m_PendingRestore->Worktree.empty())
+		{
+			if (!m_Worktrees.HasListAnswered())
+			{
+				return;
+			}
+
+			const std::filesystem::path worktree = Core::FromUtf8(m_PendingRestore->Worktree);
+			m_PendingRestore.reset();
+			SelectWorktree(worktree);
 			return;
 		}
 
@@ -483,7 +509,7 @@ namespace Graphite {
 
 	std::string GitView::SidebarShownRef() const
 	{
-		if (m_SelectedStash.has_value() || RestoreWaits())
+		if (m_SelectedStash.has_value() || RestoreWaits() || Shown().WorktreeShown() != nullptr)
 		{
 			return {};
 		}
@@ -636,6 +662,27 @@ namespace Graphite {
 			return selection;
 		}
 
+		// The worktree whose HEAD's history is shown: the selected detached one, the one holding the shown branch, or the
+		// open folder's for its own HEAD's.
+		const ShownHistory shown = Shown();
+
+		if (const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries())
+		{
+			if (const std::optional<std::filesystem::path> other = shown.ChangesWorktree())
+			{
+				selection.Worktree = IndexOfWorktree(*entries, *other);
+			}
+			else if (shown.IsHeadHistory())
+			{
+				selection.Worktree = IndexOfWorktree(*entries, m_Model.GetWorkingDirectory());
+			}
+		}
+
+		if (shown.WorktreeShown() != nullptr)
+		{
+			return selection;
+		}
+
 		selection.Tag = SelectedTagIndex();
 
 		if (m_OnScreen.GetLines() == nullptr)
@@ -713,9 +760,88 @@ namespace Graphite {
 				AnswerSidebarLink(*row.Link, row.Remote);
 			}
 			return;
-		case SidebarRowKind::Notice:
 		case SidebarRowKind::Worktree:
+		{
+			// The rows index the entries they were built from, and are built again in the frame the worktrees' paths change.
+			const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
+
+			if (entries != nullptr && row.Worktree.has_value() && *row.Worktree < entries->size())
+			{
+				const std::filesystem::path worktree = (*entries)[*row.Worktree].Path;
+				SelectWorktree(worktree);
+			}
 			return;
+		}
+		case SidebarRowKind::Notice:
+			return;
+		}
+	}
+
+	void GitView::SelectWorktree(const std::filesystem::path& worktree)
+	{
+		const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
+		const std::optional<std::size_t> index = entries != nullptr ? IndexOfWorktree(*entries, worktree) : std::nullopt;
+		const Core::WorktreeEntry* const entry = index.has_value() ? &(*entries)[*index] : nullptr;
+
+		// The open folder's own row is its HEAD's history, as is a worktree no longer listed.
+		if (entry == nullptr || Core::SamePath(entry->Path, m_Model.GetWorkingDirectory()))
+		{
+			SelectRef(std::nullopt);
+			return;
+		}
+
+		// A worktree on a branch is that branch's history, its changes row found through the branch; one listed no more
+		// falls back to HEAD's, as a branch row clicked a read late does.
+		if (entry->Head.Kind == Core::HeadKind::Branch && !entry->Head.BranchName.empty())
+		{
+			const std::string fullName = Core::LocalBranchReference(entry->Head.BranchName);
+			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+			const bool isListed = BranchWithFullName(BranchesOrNone(branches), fullName) != nullptr;
+
+			SelectRef(isListed ? std::optional<std::string>{fullName} : std::nullopt);
+			return;
+		}
+
+		// WARNING: A missing folder's HEAD is not read, and an unborn one has no commit: neither has a history to walk.
+		if (entry->FolderMissing || entry->Head.Kind != Core::HeadKind::Detached || !entry->Head.Commit.has_value())
+		{
+			SelectRef(std::nullopt);
+			return;
+		}
+
+		m_PendingRestore.reset();
+		m_SelectedRef.reset();
+		m_SelectedWorktree = entry->Path;
+
+		DeselectStash();
+		StartOpening();
+
+		RequestLog(HistoryReach{});
+	}
+
+	void GitView::FollowSelectedWorktree()
+	{
+		// Until the list has answered it is not known whether the worktree is still there.
+		if (!m_SelectedWorktree.has_value() || !m_Worktrees.HasListAnswered())
+		{
+			return;
+		}
+
+		const Core::WorktreeEntry* const shown = Shown().WorktreeShown();
+
+		if (shown == nullptr)
+		{
+			const std::filesystem::path worktree = *m_SelectedWorktree;
+			SelectWorktree(worktree);
+			return;
+		}
+
+		// A commit made in the worktree moves its HEAD, and its history is walked again from there.
+		const std::optional<Core::LogRequest>& asked = m_Model.GetAskedLogRequest();
+
+		if (m_LogRequested && asked.has_value() && asked->From != shown->Head.Commit)
+		{
+			RequestLog(m_Reach, LogAsk::Again);
 		}
 	}
 
@@ -865,6 +991,11 @@ namespace Graphite {
 			return "Stash";
 		}
 
+		if (const Core::WorktreeEntry* const worktree = Shown().WorktreeShown())
+		{
+			return "HEAD in " + WorktreeFolderName(*worktree);
+		}
+
 		if (Shown().ShowsTag())
 		{
 			const Core::Ref<const std::vector<Core::Tag>> tags = m_Model.GetTags();
@@ -967,7 +1098,8 @@ namespace Graphite {
 		ImGui::AlignTextToFramePadding();
 		ImGui::BeginGroup();
 
-		const bool namesHead = !m_SelectedStash.has_value() && !m_SelectedRef.has_value();
+		const bool namesWorktree = Shown().WorktreeShown() != nullptr;
+		const bool namesHead = !m_SelectedStash.has_value() && !m_SelectedRef.has_value() && !namesWorktree;
 
 		if (RestoreWaits())
 		{
@@ -985,7 +1117,7 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::TextUnformatted(HistoryIcon(m_SelectedStash.has_value(), Shown().ShowsTag()));
+			ImGui::TextUnformatted(HistoryIcon(m_SelectedStash.has_value(), Shown().ShowsTag(), namesWorktree));
 		}
 
 		ImGui::SameLine();
@@ -1032,12 +1164,14 @@ namespace Graphite {
 
 		ImGui::EndGroup();
 
-		// The branch the header names has its menu here too: the selected ref's, or HEAD's for HEAD's history.
+		// The branch the header names has its menu here too: the selected ref's, or HEAD's for HEAD's history. Another
+		// worktree's detached HEAD names no branch.
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 		const std::vector<Core::Branch>& listed = BranchesOrNone(branches);
 		const Core::Branch* const named =
-			m_SelectedStash.has_value() ? nullptr
-										: (m_SelectedRef.has_value() ? BranchWithFullName(listed, *m_SelectedRef) : CheckedOutBranch(listed));
+			m_SelectedStash.has_value() || namesWorktree
+				? nullptr
+				: (m_SelectedRef.has_value() ? BranchWithFullName(listed, *m_SelectedRef) : CheckedOutBranch(listed));
 
 		// Keyed by the branch, so a menu left open while HEAD moves elsewhere closes rather than naming the new branch.
 		if (named != nullptr)

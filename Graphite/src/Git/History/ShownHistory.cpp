@@ -2,6 +2,8 @@
 
 #include "Git/Content/ContentOrder.h"
 #include "Git/Tags/TagLookup.h"
+#include "Git/Worktrees/WorktreeListing.h"
+#include "Git/Worktrees/WorktreesModel.h"
 
 #include "Core/Git/Ref.h"
 
@@ -21,7 +23,7 @@ namespace Graphite {
 
 	bool ShownHistory::IsHeadHistory() const
 	{
-		if (m_Input.RestoreWaits || m_Input.SelectedStash.has_value())
+		if (m_Input.RestoreWaits || m_Input.SelectedStash.has_value() || WorktreeShown() != nullptr)
 		{
 			return false;
 		}
@@ -47,7 +49,8 @@ namespace Graphite {
 	std::string ShownHistory::RefName() const
 	{
 		// A tag's history is its commit's, combined: no fold row, no vs button, no banner.
-		if (m_Input.SelectedStash.has_value() || m_Input.RestoreWaits || ShowsTag())
+		// A detached worktree's HEAD, like the open folder's, has no line to compare it with.
+		if (m_Input.SelectedStash.has_value() || m_Input.RestoreWaits || ShowsTag() || WorktreeShown() != nullptr)
 		{
 			return {};
 		}
@@ -94,8 +97,9 @@ namespace Graphite {
 
 	bool ShownHistory::WaitsForLines() const
 	{
-		// A tag's history is read from its commit alone: the read has no line for it to wait for.
-		if (m_Input.SelectedStash.has_value() || m_Input.FileHistory || ShowsTag())
+		// A tag's and a detached worktree's history are read from their commit alone: the read has no line for them to
+		// wait for.
+		if (m_Input.SelectedStash.has_value() || m_Input.FileHistory || ShowsTag() || WorktreeShown() != nullptr)
 		{
 			return false;
 		}
@@ -114,7 +118,7 @@ namespace Graphite {
 	bool ShownHistory::ShowsLocalChanges() const
 	{
 		// A file's history is about that file, not about the whole tree's changes; a history still being decided is none.
-		if (m_Input.SelectedStash.has_value() || m_Input.FileHistory || m_Input.RestoreWaits)
+		if (m_Input.SelectedStash.has_value() || m_Input.FileHistory || m_Input.RestoreWaits || WorktreeShown() != nullptr)
 		{
 			return false;
 		}
@@ -127,6 +131,63 @@ namespace Graphite {
 		const Core::HeadState* const head = m_Input.Head;
 
 		return head != nullptr && head->Kind == Core::HeadKind::Branch && Core::LocalBranchReference(head->BranchName) == *m_Input.SelectedRef;
+	}
+
+	const Core::WorktreeEntry* ShownHistory::WorktreeShown() const
+	{
+		// A stash selected later, or a ref, is what the history shows; the owner lets go of the worktree then anyway.
+		if (!m_Input.SelectedWorktree.has_value() || m_Input.Worktrees == nullptr || m_Input.SelectedStash.has_value() ||
+			m_Input.SelectedRef.has_value())
+		{
+			return nullptr;
+		}
+
+		const std::vector<Core::WorktreeEntry>* const entries = m_Input.Worktrees->Entries();
+
+		if (entries == nullptr)
+		{
+			return nullptr;
+		}
+
+		const std::optional<std::size_t> index = IndexOfWorktree(*entries, *m_Input.SelectedWorktree);
+
+		if (!index.has_value())
+		{
+			return nullptr;
+		}
+
+		// WARNING: A missing folder's HEAD is not read, and one that moved onto a branch has that branch's history: either
+		// way there is no commit of the worktree's own to walk from.
+		const Core::WorktreeEntry& entry = (*entries)[*index];
+
+		if (entry.FolderMissing || entry.Head.Kind != Core::HeadKind::Detached || !entry.Head.Commit.has_value())
+		{
+			return nullptr;
+		}
+
+		return &entry;
+	}
+
+	std::optional<std::filesystem::path> ShownHistory::ChangesWorktree() const
+	{
+		// As for Local changes: a file's history is about that file, and a history still being decided shows no row.
+		if (m_Input.SelectedStash.has_value() || m_Input.FileHistory || m_Input.RestoreWaits)
+		{
+			return std::nullopt;
+		}
+
+		if (const Core::WorktreeEntry* const shown = WorktreeShown())
+		{
+			return shown->Path;
+		}
+
+		// The open folder's HEAD and its branch are never another worktree's, and a missing folder is no branch's.
+		if (!m_Input.SelectedRef.has_value() || m_Input.Worktrees == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		return m_Input.Worktrees->OtherWorktreeOf(*m_Input.SelectedRef);
 	}
 
 	std::optional<DistanceTips> ShownHistory::DistanceTipsOf(std::string_view shownRef) const

@@ -92,4 +92,7 @@ namespace Graphite {
 
 	// The last segment of the worktree's path; git's name for it when the path is unknown.
 	std::string WorktreeFolderName(const Core::WorktreeEntry& entry);
+
+	// Where the worktree at that folder stands in the list; empty when it is not listed.
+	std::optional<std::size_t> IndexOfWorktree(const std::vector<Core::WorktreeEntry>& entries, const std::filesystem::path& worktree);
 }

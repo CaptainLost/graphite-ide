@@ -197,4 +197,17 @@ namespace Graphite {
 
 		return Core::ToUtf8(Core::NormalizeDirectory(entry.Path).filename());
 	}
+
+	std::optional<std::size_t> IndexOfWorktree(const std::vector<Core::WorktreeEntry>& entries, const std::filesystem::path& worktree)
+	{
+		const std::vector<Core::WorktreeEntry>::const_iterator found =
+			std::ranges::find_if(entries, [&](const Core::WorktreeEntry& entry) { return Core::SamePath(entry.Path, worktree); });
+
+		if (found == entries.end())
+		{
+			return std::nullopt;
+		}
+
+		return static_cast<std::size_t>(found - entries.begin());
+	}
 }

@@ -21,6 +21,7 @@ namespace Graphite {
 		std::optional<std::size_t> Ref; // a base's local copy selects the base's row
 		std::optional<std::size_t> Stash;
 		std::optional<std::size_t> Tag; // into the tag list the rows were built from
+		std::optional<std::size_t> Worktree; // into WorktreesModel::Entries(), as the rows are
 	};
 
 	struct SidebarColours

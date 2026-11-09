@@ -220,6 +220,11 @@ namespace Graphite {
 				return row.Tag.has_value() && selected.Tag == row.Tag;
 			}
 
+			if (row.Kind == SidebarRowKind::Worktree)
+			{
+				return row.Worktree.has_value() && selected.Worktree == row.Worktree;
+			}
+
 			return row.Kind == SidebarRowKind::Stash && row.Stash.has_value() && selected.Stash == row.Stash;
 		}
 

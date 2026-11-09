@@ -70,6 +70,7 @@ namespace Graphite {
 	{
 		m_PendingRestore.reset();
 		m_SelectedStash = stash;
+		m_SelectedWorktree.reset();
 		m_OpeningRef = false;
 
 		RequestLog(HistoryReach{});

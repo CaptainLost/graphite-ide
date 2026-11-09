@@ -52,6 +52,7 @@ namespace Graphite {
 		// WARNING: Not the "restore.gitWindow.view" and "restore.gitWindow.branch" of the views the window had before, which
 		// are no longer read: a file that still holds them restores HEAD's history.
 		constexpr std::string_view kGitWindowRef = "restore.gitWindow.ref";
+		constexpr std::string_view kGitWindowWorktree = "restore.gitWindow.worktree";
 
 		constexpr std::pair<Core::DiffTarget, std::string_view> kDiffTargetNames[] = {
 			{Core::DiffTarget::WorkTreeToIndex, "unstaged"},
@@ -404,6 +405,7 @@ namespace Graphite {
 		}
 
 		file.Set(kGitWindowRef, state.GitWindow.Ref);
+		file.Set(kGitWindowWorktree, state.GitWindow.Worktree);
 	}
 
 	WorkspaceState ReadWorkspaceState(const Core::JsonFile& file, const std::filesystem::path& root)
@@ -510,6 +512,7 @@ namespace Graphite {
 		}
 
 		state.GitWindow.Ref = file.Get(kGitWindowRef);
+		state.GitWindow.Worktree = file.Get(kGitWindowWorktree);
 
 		return state;
 	}

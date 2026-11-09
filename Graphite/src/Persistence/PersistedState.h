@@ -87,10 +87,14 @@ namespace Graphite {
 		friend bool operator==(const ReviewTabState&, const ReviewTabState&) = default;
 	};
 
-	// What the Git window shows beside its sidebar: the history of one reference.
+	// What the Git window shows beside its sidebar: the history of one reference, or of a worktree without a branch.
 	struct GitWindowState
 	{
 		std::string Ref; // its full name; empty for HEAD's history
+
+		// The path of the detached worktree whose HEAD's history is shown; empty for none. A worktree on a branch is
+		// stored as its branch, in Ref.
+		std::string Worktree;
 
 		friend bool operator==(const GitWindowState&, const GitWindowState&) = default;
 	};

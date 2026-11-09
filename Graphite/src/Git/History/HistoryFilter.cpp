@@ -43,7 +43,7 @@ namespace Graphite {
 
 	bool AnswersAnotherHistory(const Core::LogRequest& shown, const Core::LogRequest& asked)
 	{
-		return shown.Ref != asked.Ref || shown.Stash != asked.Stash;
+		return shown.Ref != asked.Ref || shown.Stash != asked.Stash || shown.From != asked.From;
 	}
 
 	void SettlingFilter::Set(HistoryFilter filter)

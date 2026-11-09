@@ -127,6 +127,7 @@ namespace Graphite {
 		ApplyPendingRestore();
 		FollowSelectedRef();
 		FollowSelectedStash();
+		FollowSelectedWorktree();
 
 		if (const std::optional<Core::CheckoutTarget> heldTarget = m_HeldCheckout.TakeOnceOnScreen(panelOnScreen))
 		{
@@ -349,7 +350,7 @@ namespace Graphite {
 		m_Model.RequestCheckout(std::move(request));
 
 		// The history of no particular ref is HEAD's, so it follows the checkout as it lands.
-		if (m_SelectedRef.has_value() || m_SelectedStash.has_value())
+		if (m_SelectedRef.has_value() || m_SelectedStash.has_value() || m_SelectedWorktree.has_value())
 		{
 			SelectRef(std::nullopt);
 		}
@@ -502,6 +503,7 @@ namespace Graphite {
 
 		m_SelectedRef.reset();
 		m_SelectedStash.reset();
+		m_SelectedWorktree.reset();
 		m_LastSeenBranches.reset();
 		m_LastSeenTags.reset();
 		m_PendingRename.reset();
@@ -639,6 +641,7 @@ namespace Graphite {
 	{
 		m_PendingRestore.reset();
 		m_SelectedRef = std::move(fullName);
+		m_SelectedWorktree.reset();
 
 		DeselectStash();
 		StartOpening();
@@ -871,6 +874,13 @@ namespace Graphite {
 		const HistoryLine line = Shown().LineToShow();
 
 		Core::LogRequest log = BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash, m_FirstParentsOnly);
+
+		// A detached worktree's history is walked from its HEAD's commit.
+		if (const Core::WorktreeEntry* const worktree = Shown().WorktreeShown())
+		{
+			log.From = worktree->Head.Commit;
+		}
+
 		WidenToLine(log, line);
 
 		std::optional<GitModel::MarkedCommitsRequest> marked;
@@ -943,6 +953,8 @@ namespace Graphite {
 		return ShownHistory{ShownHistoryInput{.OnScreen = m_OnScreen,
 											  .SelectedRef = m_SelectedRef,
 											  .SelectedStash = m_SelectedStash,
+											  .SelectedWorktree = m_SelectedWorktree,
+											  .Worktrees = &m_Worktrees,
 											  .RestoreWaits = RestoreWaits(),
 											  .FileHistory = IsFileHistory(),
 											  .Head = m_Model.GetHead().get(),
@@ -974,6 +986,11 @@ namespace Graphite {
 		selected.Ref = m_SelectedRef;
 		selected.Stash = m_SelectedStash;
 
+		if (const Core::WorktreeEntry* const worktree = Shown().WorktreeShown())
+		{
+			selected.From = worktree->Head.Commit;
+		}
+
 		return !AnswersAnotherHistory(shown, selected);
 	}
 
@@ -1001,11 +1018,16 @@ namespace Graphite {
 		// Rows once on screen stay while they show the same branch; only the first time are they held for the fold row's
 		// count.
 		const std::string shownRef = Shown().RefName();
-		const bool shownForThis = m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = shownRef};
+		const bool shownForThis = m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef,
+																	.Stash = m_SelectedStash,
+																	.Worktree = m_SelectedWorktree,
+																	.Shown = shownRef};
 
 		return RowsOfHistory(HistoryRowsInput{
 			.ShownForThis = shownForThis,
-			.ShownWithNoLine = !shownRef.empty() && m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash},
+			.ShownWithNoLine = !shownRef.empty() && m_RowsShownFor == SelectedHistory{.Ref = m_SelectedRef,
+																					   .Stash = m_SelectedStash,
+																					   .Worktree = m_SelectedWorktree},
 			.FirstRowsReady = !shownForThis && FirstRowsReady(*shown)});
 	}
 
@@ -1371,7 +1393,10 @@ namespace Graphite {
 
 			if (rows == HistoryRows::Shown)
 			{
-				m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef, .Stash = m_SelectedStash, .Shown = Shown().RefName()};
+				m_RowsShownFor = SelectedHistory{.Ref = m_SelectedRef,
+												 .Stash = m_SelectedStash,
+												 .Worktree = m_SelectedWorktree,
+												 .Shown = Shown().RefName()};
 				marks = HistoryMarksFor(page);
 			}
 			else

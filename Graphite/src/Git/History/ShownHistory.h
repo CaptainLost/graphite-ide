@@ -7,13 +7,17 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Lines/LineModel.h"
 #include "Core/Git/Oid.h"
+#include "Core/Git/Worktree.h"
 
+#include <filesystem>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
 
 namespace Graphite {
+
+	class WorktreesModel;
 
 	// What the Git window has selected and what its models say now, as the shown history reads it.
 	// WARNING: Holds everything by reference or pointer; it is made for one question and must not outlive what it names.
@@ -23,6 +27,12 @@ namespace Graphite {
 
 		const std::optional<std::string>& SelectedRef; // HEAD's history when empty and no stash is selected
 		const std::optional<Core::Oid>& SelectedStash;
+
+		// A worktree without a branch whose HEAD's history is shown; a branch worktree selects its branch instead.
+		const std::optional<std::filesystem::path>& SelectedWorktree;
+
+		// The repository's worktrees; null while there is no model to ask, which shows no other worktree.
+		const WorktreesModel* Worktrees = nullptr;
 
 		// A restored state still waits for the listing that holds its ref: the history names no reference.
 		bool RestoreWaits = false;
@@ -82,6 +92,17 @@ namespace Graphite {
 
 		// HEAD's or the checked-out branch's history of the whole tree, whose first row is Local changes.
 		bool ShowsLocalChanges() const;
+
+		// The selected detached worktree whose HEAD's history is shown, walked from its commit; null when none is selected,
+		// and when the one selected has left the list, lost its folder or no longer stands on a commit of its own: the
+		// history is then the open folder's HEAD's.
+		// WARNING: Points into the worktrees model's list, which its next update may replace.
+		const Core::WorktreeEntry* WorktreeShown() const;
+
+		// The other worktree whose changes row the history shows first: the one that has the shown branch checked out, or
+		// the selected detached one. Empty for the open folder's HEAD, whose row is Local changes, for a worktree whose
+		// folder is missing, and for a stash's, a file's and a history still being decided.
+		std::optional<std::filesystem::path> ChangesWorktree() const;
 
 		// The two tips whose distance the header counts for `shownRef`: the branch's and its line's, an old copy's and its
 		// base's, or a picked line's; none when the header counts nothing.

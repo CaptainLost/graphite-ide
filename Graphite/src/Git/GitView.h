@@ -186,6 +186,11 @@ namespace Graphite {
 		// The history of the ref, or HEAD's with none.
 		void SelectRef(std::optional<std::string> fullName);
 
+		// The history of the worktree's HEAD: its branch's for a worktree on a branch, the one from its commit for a
+		// detached one, and the open folder's HEAD's for the open folder itself and for a worktree that cannot show its own
+		// (gone from the list, its folder missing, its branch unborn).
+		void SelectWorktree(const std::filesystem::path& worktree);
+
 		// Selects the row the history just opened starts on: Local changes for the checked-out branch's, else the one
 		// its first page gives.
 		void StartOpening();
@@ -287,6 +292,10 @@ namespace Graphite {
 		// `tags` is null while the tags are not listed.
 		void FollowHistoryRef(const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags, bool renameLanded);
 		void FollowSelectedStash();
+
+		// A selected worktree that has left the list, lost its folder or moved onto a branch shows what SelectWorktree
+		// shows for it now; one whose HEAD moved has its history asked again from the new commit.
+		void FollowSelectedWorktree();
 
 		// Opens the menu on a right-click of the last item.
 		void RenderRefMenu(const Core::Branch& branch);
@@ -454,6 +463,7 @@ namespace Graphite {
 		{
 			std::optional<std::string> Ref;
 			std::optional<Core::Oid> Stash;
+			std::optional<std::filesystem::path> Worktree;
 
 			// The branch the rows were shown for, which for HEAD's history moves with a checkout.
 			std::string Shown;
@@ -597,6 +607,9 @@ namespace Graphite {
 		std::optional<std::string> m_SelectedRef;
 
 		std::optional<Core::Oid> m_SelectedStash;
+
+		// Set only for a worktree without a branch: a worktree on a branch selects that branch's ref.
+		std::optional<std::filesystem::path> m_SelectedWorktree;
 
 		Core::Ref<const std::vector<Core::Branch>> m_LastSeenBranches;
 		Core::Ref<const std::vector<Core::Tag>> m_LastSeenTags;

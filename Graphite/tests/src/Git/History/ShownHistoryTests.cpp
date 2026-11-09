@@ -2,8 +2,12 @@
 
 #include "Git/History/ShownHistory.h"
 
+#include "DeferredJobs.h"
+#include "WorktreeFixtures.h"
+
 #include "Git/Lines/LineReader.h"
 #include "Git/Lines/HeldLines.h"
+#include "Git/Worktrees/WorktreesModel.h"
 
 #include "Core/Base/Base.h"
 #include "Core/Git/Head.h"
@@ -11,6 +15,7 @@
 #include "Core/Git/Ref.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <set>
 #include <string>
@@ -55,6 +60,8 @@ namespace {
 		HeldLines OnScreen;
 		std::optional<std::string> SelectedRef;
 		std::optional<Core::Oid> SelectedStash;
+		std::optional<std::filesystem::path> SelectedWorktree;
+		const WorktreesModel* Worktrees = nullptr;
 		std::set<std::string> NewerShown;
 		Core::HeadState Head{.Kind = Core::HeadKind::Branch, .BranchName = "main"};
 		bool Reading = false;
@@ -67,6 +74,8 @@ namespace {
 			return ShownHistory{ShownHistoryInput{.OnScreen = OnScreen,
 												  .SelectedRef = SelectedRef,
 												  .SelectedStash = SelectedStash,
+												  .SelectedWorktree = SelectedWorktree,
+												  .Worktrees = Worktrees,
 												  .RestoreWaits = RestoreWaits,
 												  .FileHistory = FileHistory,
 												  .Head = &Head,
@@ -202,4 +211,140 @@ TEST_CASE("Git window: a branch's history waits for a first read, and for one th
 
 	window.Reading = false;
 	CHECK_FALSE(window.Shown().WaitsForLines());
+}
+
+namespace {
+
+	const std::filesystem::path kOpenFolder = "D:/repo";
+	const std::filesystem::path kSideFolder = "D:/side";
+	const std::filesystem::path kLooseFolder = "D:/loose";
+
+	Core::WorktreeEntry DetachedWorktreeAt(std::filesystem::path path, std::uint8_t commit)
+	{
+		Core::WorktreeEntry entry;
+		entry.Path = std::move(path);
+		entry.Head.Kind = Core::HeadKind::Detached;
+		entry.Head.Commit = OidNumbered(commit);
+		return entry;
+	}
+
+	// The repository's worktrees as the worktrees model lists them for the open folder D:/repo.
+	struct ListedWorktrees
+	{
+		Fixtures::FakeWorktreePort Port;
+		DeferredJobs Jobs;
+		WorktreesModel Model{Port, Jobs.Submitter(), [] { return std::int64_t{0}; }};
+
+		void List(std::vector<Core::WorktreeEntry> entries)
+		{
+			Port.Entries = std::move(entries);
+			Model.Follow(Core::CreateRef<const std::vector<Core::Branch>>(), kOpenFolder);
+			Jobs.RunAll();
+			Model.OnUpdate(Core::Timestep{0.0f});
+		}
+	};
+
+	// main checked out in the open folder, feature in D:/side, and D:/loose detached at commit 7.
+	std::vector<Core::WorktreeEntry> MainSideAndLoose()
+	{
+		return {Fixtures::WorktreeOn("main", kOpenFolder), Fixtures::WorktreeOn("feature", kSideFolder),
+				DetachedWorktreeAt(kLooseFolder, 7)};
+	}
+}
+
+TEST_CASE("Git window: a branch checked out in another worktree shows that worktree's changes row, and HEAD's keeps Local changes")
+{
+	ListedWorktrees worktrees;
+	worktrees.List(MainSideAndLoose());
+
+	Window window;
+	window.OnScreen.Follow(ReadOfMainAndFeature());
+	window.Worktrees = &worktrees.Model;
+
+	window.SelectedRef = "refs/heads/feature";
+	CHECK(window.Shown().ChangesWorktree() == kSideFolder);
+	CHECK_FALSE(window.Shown().ShowsLocalChanges());
+	CHECK(window.Shown().WorktreeShown() == nullptr);
+
+	// The open folder's HEAD, by no ref or by its branch's, has Local changes as before and no other worktree's row.
+	window.SelectedRef.reset();
+	CHECK_FALSE(window.Shown().ChangesWorktree().has_value());
+	CHECK(window.Shown().ShowsLocalChanges());
+
+	window.SelectedRef = "refs/heads/main";
+	CHECK_FALSE(window.Shown().ChangesWorktree().has_value());
+	CHECK(window.Shown().ShowsLocalChanges());
+
+	// A file's history is about that file, not about a worktree's changes.
+	window.SelectedRef = "refs/heads/feature";
+	window.FileHistory = true;
+	CHECK_FALSE(window.Shown().ChangesWorktree().has_value());
+}
+
+TEST_CASE("Git window: a detached worktree selected shows the history from its HEAD, with that worktree's changes row")
+{
+	ListedWorktrees worktrees;
+	worktrees.List(MainSideAndLoose());
+
+	Window window;
+	window.OnScreen.Follow(ReadOfMainAndFeature());
+	window.Worktrees = &worktrees.Model;
+	window.SelectedWorktree = kLooseFolder;
+
+	const ShownHistory shown = window.Shown();
+	REQUIRE(shown.WorktreeShown() != nullptr);
+	CHECK(shown.WorktreeShown()->Path == kLooseFolder);
+	CHECK(shown.WorktreeShown()->Head.Commit == OidNumbered(7));
+	CHECK(shown.ChangesWorktree() == kLooseFolder);
+
+	// It is neither HEAD's history nor a branch's: no Local changes row, no line, nothing to wait for.
+	CHECK_FALSE(shown.IsHeadHistory());
+	CHECK_FALSE(shown.ShowsLocalChanges());
+	CHECK(shown.RefName().empty());
+	CHECK(shown.RefLine() == HistoryLine{});
+	CHECK_FALSE(shown.WaitsForLines());
+}
+
+TEST_CASE("Git window: a selected worktree that leaves the list falls back to the open folder's HEAD")
+{
+	ListedWorktrees worktrees;
+	worktrees.List(MainSideAndLoose());
+
+	Window window;
+	window.OnScreen.Follow(ReadOfMainAndFeature());
+	window.Worktrees = &worktrees.Model;
+	window.SelectedWorktree = kLooseFolder;
+	REQUIRE(window.Shown().WorktreeShown() != nullptr);
+
+	worktrees.List({Fixtures::WorktreeOn("main", kOpenFolder), Fixtures::WorktreeOn("feature", kSideFolder)});
+
+	CHECK(window.Shown().WorktreeShown() == nullptr);
+	CHECK_FALSE(window.Shown().ChangesWorktree().has_value());
+	CHECK(window.Shown().IsHeadHistory());
+	CHECK(window.Shown().ShowsLocalChanges());
+	CHECK(window.Shown().RefName() == "refs/heads/main");
+}
+
+TEST_CASE("Git window: a worktree whose folder is missing has no changes row, selected or holding the branch shown")
+{
+	std::vector<Core::WorktreeEntry> entries = MainSideAndLoose();
+	entries[1].FolderMissing = true;
+	entries[2].FolderMissing = true;
+
+	ListedWorktrees worktrees;
+	worktrees.List(entries);
+
+	Window window;
+	window.OnScreen.Follow(ReadOfMainAndFeature());
+	window.Worktrees = &worktrees.Model;
+
+	window.SelectedRef = "refs/heads/feature";
+	CHECK_FALSE(window.Shown().ChangesWorktree().has_value());
+
+	// A detached one cannot show its own history either, so the open folder's HEAD's is shown.
+	window.SelectedRef.reset();
+	window.SelectedWorktree = kLooseFolder;
+	CHECK(window.Shown().WorktreeShown() == nullptr);
+	CHECK_FALSE(window.Shown().ChangesWorktree().has_value());
+	CHECK(window.Shown().IsHeadHistory());
 }

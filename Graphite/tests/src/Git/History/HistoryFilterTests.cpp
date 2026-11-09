@@ -269,6 +269,22 @@ TEST_CASE("A page of another ref or stash answers another history, a narrower or
 	CHECK_FALSE(Graphite::AnswersAnotherHistory(branch, branch));
 }
 
+TEST_CASE("A page walked from another commit answers another history: a detached worktree's HEAD is not the open folder's")
+{
+	Core::LogRequest head;
+
+	Core::LogRequest worktree;
+	worktree.From = Core::Oid{};
+	worktree.From->Bytes[0] = 7;
+
+	Core::LogRequest moved = worktree;
+	moved.From->Bytes[0] = 8;
+
+	CHECK(Graphite::AnswersAnotherHistory(head, worktree));
+	CHECK(Graphite::AnswersAnotherHistory(worktree, moved));
+	CHECK_FALSE(Graphite::AnswersAnotherHistory(worktree, worktree));
+}
+
 TEST_CASE("The frame a change is typed in does not count toward its wait, even when it carries the whole idle sleep")
 {
 	SettlingFilter settling;

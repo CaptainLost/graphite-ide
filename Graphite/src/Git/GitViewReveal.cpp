@@ -45,6 +45,7 @@ namespace Graphite {
 		m_RevealedFile.reset();
 
 		m_SelectedRef.reset();
+		m_SelectedWorktree.reset();
 		DeselectStash();
 		m_PendingRestore.reset();
 
