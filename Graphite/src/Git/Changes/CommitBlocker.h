@@ -8,6 +8,10 @@ namespace Graphite {
 	struct CommitBlockerInputs
 	{
 		bool WriteInFlight = false;
+
+		// The host's writes expect the HEAD the user saw, and none has been read yet.
+		bool HeadUnread = false;
+
 		bool AnythingStaged = false;
 		bool Merging = false;
 

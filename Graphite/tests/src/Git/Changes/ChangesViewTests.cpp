@@ -10,6 +10,7 @@
 #include "Theme/ActiveScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/ModalGate.h"
+#include "UI/TickBox.h"
 #include "Workspace/Workspace.h"
 
 #include "Git/FakeEditorBuffers.h"
@@ -380,6 +381,55 @@ namespace {
 	};
 
 	constexpr ImVec2 kWideHostSize(960.0f, 600.0f);
+
+	// The worktree's branch as the open folder's list answers it: its last commit already on its upstream.
+	std::optional<Core::Branch> PushedWorktreeBranch()
+	{
+		Core::Branch branch;
+		branch.Name = kWorktreeBranch;
+		branch.FullName = std::string{"refs/heads/"} + kWorktreeBranch;
+		branch.IsHead = true;
+		branch.Upstream = std::string{"origin/"} + kWorktreeBranch;
+		branch.DistanceKnown = true;
+		branch.Ahead = 0;
+		return branch;
+	}
+
+	// Clicks the Amend button of the pushed-commit question open in the host, the last of its row; false when no such
+	// question is drawn.
+	bool ClickAmendInQuestion(ImGuiFrames& frames, const std::function<void()>& draw)
+	{
+		frames.Next(draw);
+
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+		const ImGuiWindow* question = nullptr;
+
+		for (const ImGuiWindow* window : context.Windows)
+		{
+			if (std::string_view{window->Name}.find("ChangesAmendPushed") != std::string_view::npos &&
+				window->LastFrameActive == context.FrameCount)
+			{
+				question = window;
+			}
+		}
+
+		if (question == nullptr)
+		{
+			return false;
+		}
+
+		const float rowMiddle = question->DC.CursorMaxPos.y - ImGui::GetFrameHeight() * 0.5f;
+		const std::vector<HoveredStretch> buttons =
+			HoveredAcross(frames, rowMiddle, question->Pos.x, question->Pos.x + question->Size.x, draw);
+
+		if (buttons.empty())
+		{
+			return false;
+		}
+
+		frames.Click(ImVec2(buttons.back().Middle(), rowMiddle), draw);
+		return true;
+	}
 }
 
 TEST_CASE("Picking a file hands its diff to the host")
@@ -708,16 +758,7 @@ TEST_CASE("Changes view asks before amending a pushed commit when its branch is 
 	host.Shared.Amend = true;
 
 	Graphite::ChangesViewOptions options = host.SwitchedAway();
-	options.CheckedOutBranch = [] {
-		Core::Branch branch;
-		branch.Name = kWorktreeBranch;
-		branch.FullName = std::string{"refs/heads/"} + kWorktreeBranch;
-		branch.IsHead = true;
-		branch.Upstream = std::string{"origin/"} + kWorktreeBranch;
-		branch.DistanceKnown = true;
-		branch.Ahead = 0;
-		return std::optional<Core::Branch>{branch};
-	};
+	options.CheckedOutBranch = PushedWorktreeBranch;
 	host.View.SetOptions(options);
 
 	constexpr const char* kHost = "Amend pushed host";
@@ -728,7 +769,8 @@ TEST_CASE("Changes view asks before amending a pushed commit when its branch is 
 	host.Model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(host.Modals.IsBusy());
-	CHECK(host.Asked.empty());
+	// What the user saw is taken at the click, before the question.
+	CHECK(host.Asked == std::vector<bool>{true});
 	CHECK(host.Port.CommitCalls == 0);
 
 	host.View.WithdrawQuestions();
@@ -843,4 +885,93 @@ TEST_CASE("Changes view's message hint too long for a narrow box stays inside th
 
 	CHECK(hintRead.find("Messagefor") == 0);
 	CHECK(rightmost <= boxRight);
+}
+
+TEST_CASE("Changes view's amend of a pushed commit carries what the user saw at the click, so a HEAD moved while it asked refuses it")
+{
+	WorktreeHost host;
+	host.Shared.Message = "fix";
+	host.Shared.Amend = true;
+
+	// What the view draws: the model's HEAD, as the worktree view's expectation reads it.
+	Graphite::ChangesViewOptions options = host.SwitchedAway();
+	options.Expect = [&host](bool) {
+		Graphite::WriteExpectation expected;
+		expected.BranchName = host.Model.GetHead()->BranchName;
+		expected.Head = host.Model.GetHead()->Commit;
+		expected.Staged = std::vector<std::filesystem::path>{"staged.txt"};
+		expected.Folder = kWorktreeFolder;
+		return std::optional<Graphite::WriteExpectation>{expected};
+	};
+	options.CheckedOutBranch = PushedWorktreeBranch;
+	host.View.SetOptions(options);
+
+	constexpr const char* kHost = "Amend seen host";
+	const std::function<void()> draw = InHost(kHost, [&host] { host.View.Draw(); }, ImVec2(0.0f, 0.0f), kWideHostSize);
+
+	ClickCommit(host.Frames, kHost, draw);
+	host.Frames.Next(draw);
+	REQUIRE(host.Modals.IsBusy());
+
+	// An agent commits in the worktree while the question is up, and the view reads the new HEAD.
+	host.Port.Head.Commit = OidWithFirstByte(4);
+	host.Model.RequestHead();
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(host.Model.GetHead()->Commit == OidWithFirstByte(4));
+
+	REQUIRE(ClickAmendInQuestion(host.Frames, draw));
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(host.Port.CommitCalls == 0);
+	const std::optional<Graphite::GitModel::WriteFailure> refused = host.Model.TakeWriteError();
+	REQUIRE(refused.has_value());
+	CHECK(refused->Error.Message == "Not committed: eager-scribbling-frog got a new commit since you looked");
+}
+
+TEST_CASE("Changes view whose commit waits for HEAD offers neither Commit nor Amend until HEAD is read")
+{
+	WorktreeHost host;
+	host.Model.Clear();
+	host.Model.SetRoot("D:/work/eager-scribbling-frog");
+	host.Model.RequestStatus();
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(host.Model.GetHead() == nullptr);
+	host.Shared.Message = "fix";
+
+	Graphite::ChangesViewOptions options = host.SwitchedAway();
+	options.CommitWaitsForHead = true;
+	host.View.SetOptions(options);
+
+	constexpr const char* kHost = "Head unread host";
+	const std::function<void()> draw = InHost(kHost, [&host] { host.View.Draw(); }, ImVec2(0.0f, 0.0f), kWideHostSize);
+
+	const auto clickAmend = [&host, &draw] {
+		host.Frames.Next(draw);
+		const ImGuiWindow* box = MessageBoxWindow(kHost);
+		const std::optional<float> middle = CommitRowMiddle(kHost);
+		REQUIRE(box != nullptr);
+		REQUIRE(middle.has_value());
+		host.Frames.Click(ImVec2(box->Pos.x + box->Size.x - Graphite::TickBoxWidth("Amend") * 0.5f, *middle), draw);
+	};
+
+	ClickCommit(host.Frames, kHost, draw);
+	clickAmend();
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(host.Asked.empty());
+	CHECK_FALSE(host.Shared.Amend);
+	CHECK_FALSE(host.Modals.IsBusy());
+
+	host.Model.RequestHead();
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(host.Model.GetHead() != nullptr);
+
+	clickAmend();
+
+	CHECK(host.Shared.Amend);
+
+	ClickCommit(host.Frames, kHost, draw);
+	host.Model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(host.Asked == std::vector<bool>{true});
 }

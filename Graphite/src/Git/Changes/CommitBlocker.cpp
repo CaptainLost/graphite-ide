@@ -9,6 +9,11 @@ namespace Graphite {
 			return "A write is in progress";
 		}
 
+		if (inputs.HeadUnread)
+		{
+			return "Reading where HEAD is";
+		}
+
 		if (inputs.Amend)
 		{
 			return std::nullopt;

@@ -1050,6 +1050,9 @@ namespace Graphite {
 		options.CommitWarns = head != nullptr && head->Kind == Core::HeadKind::Detached;
 		options.Expect = [this](bool forCommit) { return std::optional<WriteExpectation>{m_WorktreeChanges.ExpectationNow(forCommit)}; };
 
+		// A commit clicked before HEAD is read would expect no branch at all and be refused as another branch's.
+		options.CommitWaitsForHead = true;
+
 		// The worktree's model lists no branches; the open folder's are the same repository's.
 		options.CheckedOutBranch = [this]() -> std::optional<Core::Branch> {
 			const Core::Ref<const Core::HeadState> worktreeHead = m_WorktreeChanges.Model().GetHead();

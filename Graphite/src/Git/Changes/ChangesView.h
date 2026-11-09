@@ -54,6 +54,10 @@ namespace Graphite {
 
 		// What the empty message box says, Amend off; unset reads "Message".
 		std::function<std::string()> MessageHint;
+
+		// Commit and Amend wait until the model has read HEAD: what a write expects names the HEAD the user saw, and
+		// before it is read the user has seen none.
+		bool CommitWaitsForHead = false;
 	};
 
 	// The working tree's changes, the commit box and their dialogs. Each host has a view of its own, with its own
@@ -123,7 +127,7 @@ namespace Graphite {
 		std::optional<WriteExpectation> Expectation(bool forCommit) const;
 		void RequestStage(std::vector<std::filesystem::path> paths);
 		void RequestUnstage(std::vector<std::filesystem::path> paths);
-		void RequestCommit(bool amend);
+		void RequestCommit(bool amend, std::optional<WriteExpectation> expected);
 
 		Core::DiffTarget TargetForSection() const;
 
@@ -140,6 +144,10 @@ namespace Graphite {
 		{
 			std::string Branch;
 			std::string Upstream;
+
+			// What the user saw when they clicked Commit, which the amend carries once the question is answered: anything
+			// that changed while it was up is a change the user has not looked at.
+			std::optional<WriteExpectation> Expected;
 
 			bool operator==(const AmendPushedQuestion&) const = default;
 		};

@@ -72,3 +72,15 @@ TEST_CASE("A merge needs no staged change but still needs a message")
 
 	CHECK_FALSE(WhyCommitIsDisabled(inputs).has_value());
 }
+
+TEST_CASE("A HEAD not read yet blocks the commit and the amend, as HEAD is what a write expects")
+{
+	CommitBlockerInputs inputs = Ready();
+	inputs.HeadUnread = true;
+
+	CHECK(WhyCommitIsDisabled(inputs) == "Reading where HEAD is");
+
+	inputs.Amend = true;
+
+	CHECK(WhyCommitIsDisabled(inputs) == "Reading where HEAD is");
+}

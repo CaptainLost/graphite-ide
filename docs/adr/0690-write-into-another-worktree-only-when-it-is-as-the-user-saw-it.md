@@ -19,11 +19,20 @@ an agent's git is writing, the worktree's `index.lock` is held.
 ## Decision
 
 - **A write carries what the user saw.** Every stage, unstage and commit asked from another worktree's changes view
-  carries a `WriteExpectation`: the HEAD kind, the branch, the HEAD commit and the folder name, and for Commit and Amend
-  the sorted set of staged paths. It is built from the state the view drew.
+  carries a `WriteExpectation`: the HEAD kind, the branch, the HEAD commit, the worktree's folder and its name, and for
+  Commit and Amend the sorted set of staged paths. It is built from the state the view drew when the user clicked: an
+  Amend of a pushed commit carries what was seen at the click into its question, not what is there once the question
+  is answered. Commit and Amend wait until the worktree's HEAD has been read, since before that the user has seen no
+  branch to commit to.
+- **The worktree's port reads that folder and no other.** It opens the repository exactly at the worktree's folder
+  (`RootReach::Exactly`, ADR 0692), never searching above it: a worktree folder that lost its `.git` file, as when
+  `git worktree remove` fails partway on a locked file, reads as no repository instead of as the checkout around it,
+  where a stage or commit would otherwise land.
 - **The write worker checks it just before the write**, on the same worker and with the same port the write uses,
   reading HEAD and, for a commit, the status with a fresh index. The write is refused, with nothing changed and the
   lists read again, when:
+  - the port opens another working directory than the worktree's folder (`Not staged: <folder> no longer opens as that
+    worktree`) — every write, checked before HEAD, whose answer would be the other checkout's;
   - HEAD is on another branch, attached or detached differently than shown, or, for a detached HEAD, at another
     commit than shown (a detached HEAD has no branch to commit on top of) — every write;
   - HEAD has moved and the write is an Amend — it would rewrite a commit the user has not seen;
@@ -49,6 +58,9 @@ an agent's git is writing, the worktree's `index.lock` is held.
   panel; the open folder's draft stays shared as ADR 0656 says.
 - Writes into another worktree run on the same write worker as the open folder's, one at a time, and are reported in
   the status bar naming the folder. ADR 0554 applies as in the open folder.
+- **A commit or an amend that lands tells the open folder.** It moves a branch every worktree of the repository shares,
+  and the workspace's watcher never sees `.git/refs` when the open folder is a subfolder of the repository or a linked
+  worktree itself, so the application publishes `RepositoryChangedEvent` as it does after a fetch.
 
 ## Rationale
 
@@ -97,6 +109,8 @@ the branch the user saw.
   the section and the changes row the writes are asked from.
 - [0500](0500-serialise-git-writes-in-one-queue.md), [0636](0636-run-git-writes-on-a-worker-of-their-own.md): the
   write worker.
+- [0692](0692-give-each-repositorygitport-its-own-per-thread-repository-handles.md): the worktree's own port, which
+  opens exactly at its folder.
 - [0635](0635-report-each-git-write-in-the-status-bar-from-the-click-until-the-status-after-it-lands.md): the status
   bar report.
 - [0554](0554-refuse-a-commit-that-records-head-s-tree-unless-it-amends-or-concludes-a-merge.md),

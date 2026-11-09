@@ -219,10 +219,9 @@ namespace Graphite {
 		m_Model.RequestUnstage(std::move(paths), Expectation(kForCommit));
 	}
 
-	void ChangesView::RequestCommit(bool amend)
+	void ChangesView::RequestCommit(bool amend, std::optional<WriteExpectation> expected)
 	{
-		constexpr bool kForCommit = true;
-		m_Model.RequestCommit({.Message = m_Shared->Message, .Amend = amend}, Expectation(kForCommit));
+		m_Model.RequestCommit({.Message = m_Shared->Message, .Amend = amend}, std::move(expected));
 	}
 
 	// WARNING: The queue goes with the question: a discard clicked while another modal held the
@@ -1062,8 +1061,11 @@ namespace Graphite {
 		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
 
+		const bool headUnread = m_Options.CommitWaitsForHead && head == nullptr;
+
 		const std::optional<std::string_view> whyNot = WhyCommitIsDisabled(
 			{.WriteInFlight = writesBlocked,
+			 .HeadUnread = headUnread,
 			 .AnythingStaged = status != nullptr && AnythingStaged(*status),
 			 .Merging = head != nullptr && head->Operation == Core::RepositoryOperation::Merge,
 			 .MessageIsEmpty = Core::Trimmed(m_Shared->Message).empty(),
@@ -1098,15 +1100,19 @@ namespace Graphite {
 
 		if (DialogLayout::FilledButton(commitLabel.c_str(), fill, commitWidth, canCommit))
 		{
-			const std::optional<AmendPushedQuestion> pushed = m_Shared->Amend ? PushedLastCommit() : std::nullopt;
+			// Taken at the click, whether the commit goes now or after the question.
+			constexpr bool kForCommit = true;
+			std::optional<WriteExpectation> expected = Expectation(kForCommit);
+			std::optional<AmendPushedQuestion> pushed = m_Shared->Amend ? PushedLastCommit() : std::nullopt;
 
 			if (pushed.has_value())
 			{
-				m_AmendQuestion.Ask(*pushed);
+				pushed->Expected = std::move(expected);
+				m_AmendQuestion.Ask(std::move(*pushed));
 			}
 			else
 			{
-				RequestCommit(m_Shared->Amend);
+				RequestCommit(m_Shared->Amend, std::move(expected));
 			}
 		}
 
@@ -1128,7 +1134,7 @@ namespace Graphite {
 			ImGui::SameLine();
 		}
 
-		ImGui::BeginDisabled(writesBlocked);
+		ImGui::BeginDisabled(writesBlocked || headUnread);
 		const bool amendToggled = DrawTickBox("Amend", &m_Shared->Amend);
 		ImGui::EndDisabled();
 
@@ -1483,7 +1489,7 @@ namespace Graphite {
 		if (choice == DialogLayout::Choice::Destructive)
 		{
 			constexpr bool kAmend = true;
-			RequestCommit(kAmend);
+			RequestCommit(kAmend, asked->Expected);
 			m_AmendQuestion.Answer();
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
