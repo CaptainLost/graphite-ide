@@ -553,6 +553,40 @@ TEST_CASE("Git window: worktrees out of view are swept one at a time, at most ev
 	CHECK(port.Counted[2] == Folder(2));
 }
 
+TEST_CASE("Git window: the worktree looked at is counted once when asked, and not again while that count is on its way")
+{
+	FakeWorktreePort port;
+	ListFolders(port, 2);
+	DeferredJobs jobs;
+	WorktreesModel model(port, jobs.Submitter(), [] { return kNow; });
+
+	model.SetOnScreen(true);
+	model.SetLookedAt(Folder(0));
+	model.Follow(NewSnapshot(), kOpen);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+	port.Counted.clear();
+	port.ActivityQueried.clear();
+	port.Changes[Folder(0).generic_string()] = 4;
+
+	model.RecountNow(Folder(0));
+	model.RecountNow(Folder(0));
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Counted == std::vector<std::filesystem::path>{Folder(0)});
+	CHECK(port.ActivityQueried == std::vector<std::filesystem::path>{Folder(0)});
+	CHECK(model.CountOf(Folder(0)) == std::size_t{4});
+
+	model.RecountNow(kOpen);
+	model.RecountNow("D:/not-a-worktree");
+	jobs.RunAll();
+
+	CHECK(port.Counted.size() == 1);
+}
+
 TEST_CASE("Git window: the worktree looked at is neither polled nor swept")
 {
 	FakeWorktreePort port;

@@ -662,11 +662,10 @@ namespace Graphite {
 		m_Repository.Update(timestep);
 		ApplyNetworkResults();
 
-		// The worktree the Git window looks at. Its watch keeps it fresh, so the worktree counts leave it alone.
-		m_WorktreeChanges.OnUpdate(timestep);
-		m_Worktrees.SetLookedAt(m_WorktreeChanges.LookedAt());
+		// The worktree the Git window looks at. Its watch keeps it fresh, and the worktree counts with it.
+		m_LookedAtWorktree.Update(timestep);
 
-		while (std::optional<GitModel::WriteFailure> failure = m_WorktreeChanges.Model().TakeWriteError())
+		while (std::optional<GitModel::WriteFailure> failure = m_WorktreeChanges.TakeWriteError())
 		{
 			ReportGitWriteFailure(*failure);
 		}

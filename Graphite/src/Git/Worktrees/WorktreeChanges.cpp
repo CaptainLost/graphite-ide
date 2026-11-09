@@ -51,9 +51,20 @@ namespace Graphite {
 		if (m_Debounce.Advance(timestep))
 		{
 			m_Model.RefreshWorkingTree();
+
+			if (OnWatchFired && m_Worktree.has_value())
+			{
+				OnWatchFired(*m_Worktree);
+			}
 		}
 
 		m_Model.OnUpdate(timestep);
+
+		// Before Settle, whose switch to another worktree clears the model's own.
+		while (std::optional<GitModel::WriteFailure> failure = m_Model.TakeWriteError())
+		{
+			m_WriteErrors.push_back(std::move(*failure));
+		}
 
 		// Before Settle: a commit that lands is the followed worktree's, which no other is followed before it lands.
 		if (m_Model.TakeCommitted().has_value())
@@ -64,6 +75,18 @@ namespace Graphite {
 		}
 
 		Settle();
+	}
+
+	std::optional<GitModel::WriteFailure> WorktreeChanges::TakeWriteError()
+	{
+		if (m_WriteErrors.empty())
+		{
+			return std::nullopt;
+		}
+
+		GitModel::WriteFailure taken = std::move(m_WriteErrors.front());
+		m_WriteErrors.pop_front();
+		return taken;
 	}
 
 	std::optional<std::filesystem::path> WorktreeChanges::LookedAt() const

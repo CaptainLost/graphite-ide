@@ -425,4 +425,25 @@ namespace Graphite {
 	{
 		m_LookedAt = worktree.has_value() ? Core::PathKey(*worktree) : Core::PathKeyText{};
 	}
+
+	void WorktreesModel::RecountNow(const std::filesystem::path& worktree)
+	{
+		const Core::Ref<const std::vector<Core::WorktreeEntry>> entries = m_Entries.Get();
+
+		if (entries == nullptr)
+		{
+			return;
+		}
+
+		const Core::PathKeyText key = Core::PathKey(worktree);
+		const std::vector<Core::WorktreeEntry>::const_iterator entry =
+			std::ranges::find_if(*entries, [&](const Core::WorktreeEntry& listed) { return Core::PathKey(listed.Path) == key; });
+
+		if (entry == entries->end() || !IsCountable(*entry))
+		{
+			return;
+		}
+
+		AskCount(key, entry->Path);
+	}
 }

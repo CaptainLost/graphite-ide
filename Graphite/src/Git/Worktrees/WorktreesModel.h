@@ -75,6 +75,10 @@ namespace Graphite {
 		// The worktree the user is looking at: never polled nor swept, since its watcher keeps it fresh.
 		void SetLookedAt(std::optional<std::filesystem::path> worktree);
 
+		// Counts the worktree and reads its activity once, outside the polling, as its watch says it changed. Nothing is
+		// asked while a count of it is on its way, nor for the open folder, a missing folder or a worktree not listed.
+		void RecountNow(const std::filesystem::path& worktree);
+
 		// The folder of the worktree that has that local branch checked out; empty for none, and for a worktree whose folder is missing.
 		std::optional<std::filesystem::path> WorktreeOf(std::string_view branchFullName) const;
 

@@ -88,6 +88,18 @@ namespace {
 
 		Core::Result<Core::Oid> Commit(const Core::CommitRequest&) override { return OidWithFirstByte(9); }
 
+		Core::Result<void> Stage(const Paths&) override
+		{
+			if (StageFailure.has_value())
+			{
+				return *StageFailure;
+			}
+
+			return Core::Result<void>::Ok();
+		}
+
+		std::optional<Core::Error> StageFailure;
+
 		Core::WorkingTreeStatus Status;
 		Core::HeadState Head;
 		int StatusCalls = 0;
@@ -320,6 +332,48 @@ TEST_CASE("Worktree changes: a write in flight finishes in its own worktree befo
 	CHECK(changes.PortRoots == std::vector<std::filesystem::path>{kWorktree, kOtherWorktree});
 	CHECK(changes.Model.Worktree() == kOtherWorktree);
 	CHECK(changes.Watches.Started == std::vector<std::filesystem::path>{kWorktree, kOtherWorktree});
+}
+
+TEST_CASE("Worktree changes: a write that fails while the switch to another worktree waits for it keeps its failure")
+{
+	Changes changes;
+	changes.Port.StageFailure = Core::Error{Core::ErrorCode::IoFailure, "Git is busy in eager-scribbling-frog; try again"};
+	changes.Model.Follow(kWorktree, true);
+	changes.Settle();
+
+	changes.Model.Model().RequestStage({"a.txt"});
+	changes.Model.Follow(kOtherWorktree, true);
+	changes.Settle();
+
+	REQUIRE(changes.Model.Worktree() == kOtherWorktree);
+
+	const std::optional<Graphite::GitModel::WriteFailure> failure = changes.Model.TakeWriteError();
+
+	REQUIRE(failure.has_value());
+	CHECK(failure->Kind == Graphite::GitModel::WriteKind::Stage);
+	CHECK(failure->Error.Message == "Git is busy in eager-scribbling-frog; try again");
+	CHECK_FALSE(changes.Model.TakeWriteError().has_value());
+}
+
+TEST_CASE("Worktree changes: the watch firing is told once per debounce, naming the worktree")
+{
+	Changes changes;
+	std::vector<std::filesystem::path> fired;
+	changes.Model.OnWatchFired = [&fired](const std::filesystem::path& worktree) { fired.push_back(worktree); };
+
+	changes.Model.Follow(kWorktree, true);
+	changes.Settle();
+
+	CHECK(fired.empty());
+
+	changes.ChangeWorktreeAndWaitOutDebounce();
+
+	CHECK(fired == std::vector<std::filesystem::path>{kWorktree});
+
+	changes.Model.OnUpdate(Core::Timestep{Graphite::Debouncer::kMaxSeconds});
+	changes.ChangeWorktreeAndWaitOutDebounce();
+
+	CHECK(fired == std::vector<std::filesystem::path>{kWorktree, kWorktree});
 }
 
 TEST_CASE("Worktree changes: the expectation carries the head, the HEAD commit, the sorted staged paths and the folder name")

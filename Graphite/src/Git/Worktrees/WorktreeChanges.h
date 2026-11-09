@@ -13,6 +13,7 @@
 #include "Git/Worktrees/WriteExpectation.h"
 #include "Review/WorktreeWatch.h"
 
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -41,6 +42,14 @@ namespace Graphite {
 
 		// Applies what the model's jobs finished; a watch change asks the status and HEAD again after a debounce.
 		void OnUpdate(Core::Timestep timestep);
+
+		// Told the watched worktree each time its watch's debounce fires, after the model has been asked to read it again.
+		std::function<void(const std::filesystem::path& worktree)> OnWatchFired;
+
+		// The model's write failures, taken as each update lands them.
+		// WARNING: Taken from here, never from Model(): following another worktree clears the model, which would drop a
+		// failure of the write the switch waited for before anyone had read it.
+		std::optional<GitModel::WriteFailure> TakeWriteError();
 
 		GitModel& Model() { return m_Model; }
 		const GitModel& Model() const { return m_Model; }
@@ -86,6 +95,8 @@ namespace Graphite {
 		Core::Scope<WorktreeWatch> m_GitDirectoryWatch;
 
 		Debouncer m_Debounce;
+
+		std::deque<GitModel::WriteFailure> m_WriteErrors;
 
 		std::map<Core::PathKeyText, ChangesShared> m_Drafts;
 		ChangesShared m_NoDraft;

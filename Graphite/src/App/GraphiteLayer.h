@@ -29,6 +29,7 @@
 #include "Git/RepositoryGitPort.h"
 #include "Git/RepositorySession.h"
 #include "Git/WriteConsequences.h"
+#include "Git/Worktrees/LookedAtWorktree.h"
 #include "Git/Worktrees/WorktreeChanges.h"
 #include "Git/Worktrees/WorktreesModel.h"
 #include "Hex/HexFiles.h"
@@ -442,6 +443,9 @@ namespace Graphite {
 		// One fetch, pull or push at a time, apart from the writes, so a long fetch never holds a commit back.
 		static constexpr std::size_t kNetworkWorkers = 1;
 		Core::JobQueue m_NetworkJobs{kNetworkWorkers};
+
+		// WARNING: Declared after m_Worktrees and m_WorktreeChanges, which it holds and ties together; it submits nothing.
+		LookedAtWorktree m_LookedAtWorktree{m_WorktreeChanges, m_Worktrees};
 
 		// WARNING: m_Events is destroyed after m_Git although m_Git subscribes handlers into it that capture `this`.
 		// That is unreachable today, because nothing publishes from a destructor and EventBus has no unsubscribe;
