@@ -44,9 +44,16 @@ support design gives to a helper running there.
 - If a future WSL release delivers notifications through the share, this refusal hides a
   watch that would have worked; the probe has to be repeated to lift it.
 
+- The refusal reads the path as given, so a WSL folder reached another way — a drive letter
+  mapped to `\\wsl$\<distro>` or a directory link into the share — is still watched and still
+  goes stale without a word. Asking the opened handle for its final path would catch it, but
+  was left out until it can be checked against a real mapping; the WSL design's stage 2,
+  which recognises WSL folders on entry, has to cover these spellings too.
+
 ### Neutral
 
-- Ordinary SMB shares are not affected; only the `wsl.localhost` and `wsl$` hosts are.
+- Ordinary SMB shares are not affected; only paths spelled with the `wsl.localhost` and
+  `wsl$` hosts are.
 
 ## Alternatives Considered
 
