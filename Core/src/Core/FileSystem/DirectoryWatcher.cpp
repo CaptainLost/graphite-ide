@@ -52,41 +52,6 @@ namespace Core {
 
 			~ArmSignal() { Report(std::move(Unarmed)); }
 		};
-
-		constexpr const char* kIgnoreRulesFileName = ".gitignore";
-
-		bool IsRepositoryStateFile(const std::filesystem::path& fileName)
-		{
-			return fileName == "HEAD" || fileName == "index" || fileName == "packed-refs";
-		}
-
-		bool IsInsideGitDirectory(const std::filesystem::path& pathRelativeToRoot)
-		{
-			for (const std::filesystem::path& enclosingDirectory : pathRelativeToRoot.parent_path())
-			{
-				if (enclosingDirectory == ".git")
-				{
-					return true;
-				}
-			}
-
-			return false;
-		}
-
-		bool IsGitExcludeFile(const std::filesystem::path& pathRelativeToRoot)
-		{
-			return pathRelativeToRoot == std::filesystem::path{".git"} / "info" / "exclude";
-		}
-
-		bool IsGitConfigFile(const std::filesystem::path& pathRelativeToRoot)
-		{
-			return pathRelativeToRoot == std::filesystem::path{".git"} / "config";
-		}
-
-		bool AppliesToTheWholeTree(const std::filesystem::path& pathRelativeToRoot)
-		{
-			return IsGitExcludeFile(pathRelativeToRoot) || IsGitConfigFile(pathRelativeToRoot);
-		}
 	}
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -213,6 +178,7 @@ namespace Core {
 		Scope<DirectoryWatcher> watcher{new DirectoryWatcher};
 
 		watcher->m_Root = root;
+		watcher->m_Batcher.Respell(root);
 		watcher->m_Directory = std::move(directory);
 		watcher->m_StopEvent = std::move(stopEvent);
 
@@ -399,7 +365,7 @@ namespace Core {
 	void DirectoryWatcher::RecordOverflow()
 	{
 		std::scoped_lock lock{m_Mutex};
-		m_Collector.AddOverflow(ChangeCollector::Clock::now());
+		m_Batcher.RecordOverflow();
 	}
 
 	std::filesystem::path DirectoryWatcher::QueryHandlePath() const
@@ -457,6 +423,9 @@ namespace Core {
 		{
 			m_WatchedPath = currentPath;
 			m_Root = currentPath;
+
+			std::scoped_lock lock{m_Mutex};
+			m_Batcher.Respell(currentPath);
 			return;
 		}
 
@@ -477,7 +446,7 @@ namespace Core {
 		// What was already collected is spelled under the old location, and is dropped here
 		// because a change still within its quiet period would otherwise surface in a later
 		// batch, one without MovedTo, looking current.
-		m_Collector = ChangeCollector{};
+		m_Batcher.Rebase(currentPath);
 		m_MovedTo = currentPath;
 		Redraw::Request();
 #endif
@@ -496,82 +465,11 @@ namespace Core {
 		CheckForMove();
 	}
 
-	bool NamesRepositoryState(const std::filesystem::path& pathRelativeToRoot)
-	{
-		std::filesystem::path::iterator component = pathRelativeToRoot.begin();
-
-		if (component == pathRelativeToRoot.end() || *component != ".git")
-		{
-			return false;
-		}
-
-		++component;
-
-		if (component == pathRelativeToRoot.end())
-		{
-			return false;
-		}
-
-		const bool isUnderRefs = *component == "refs";
-
-		if (isUnderRefs)
-		{
-			return true;
-		}
-
-		const bool isDirectlyInsideGitDirectory = std::next(component) == pathRelativeToRoot.end();
-
-		if (!isDirectlyInsideGitDirectory)
-		{
-			return false;
-		}
-
-		return IsRepositoryStateFile(*component);
-	}
-
-	bool NamesIgnoreRules(const std::filesystem::path& pathRelativeToRoot)
-	{
-		const bool isAFolderRulesFile =
-			pathRelativeToRoot.filename() == kIgnoreRulesFileName && !IsInsideGitDirectory(pathRelativeToRoot);
-
-		return isAFolderRulesFile || IsGitExcludeFile(pathRelativeToRoot) || IsGitConfigFile(pathRelativeToRoot);
-	}
-
 	void DirectoryWatcher::RecordChange([[maybe_unused]] const std::filesystem::path& changedPath)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		const std::filesystem::path pathRelativeToRoot = changedPath.lexically_relative(m_Root);
-
-		if (NamesIgnoreRules(pathRelativeToRoot))
-		{
-			std::scoped_lock lock{m_Mutex};
-			m_Collector.AddIgnoreRulesChange(ChangeCollector::Clock::now());
-		}
-
-		if (AppliesToTheWholeTree(pathRelativeToRoot))
-		{
-			std::scoped_lock lock{m_Mutex};
-			m_Collector.Add(m_Root, ChangeCollector::Clock::now());
-			return;
-		}
-
-		if (NamesRepositoryState(pathRelativeToRoot))
-		{
-			std::scoped_lock lock{m_Mutex};
-			m_RepositoryStateChanged = true;
-			return;
-		}
-
-		if (IsInsideGitDirectory(pathRelativeToRoot))
-		{
-			return;
-		}
-
-		std::filesystem::path directoryHoldingTheEntry = changedPath.parent_path();
-		directoryHoldingTheEntry.make_preferred();
-
 		std::scoped_lock lock{m_Mutex};
-		m_Collector.Add(directoryHoldingTheEntry, ChangeCollector::Clock::now());
+		m_Batcher.Record(changedPath);
 #endif
 	}
 
@@ -579,20 +477,19 @@ namespace Core {
 	{
 		std::scoped_lock lock{m_Mutex};
 
-		std::vector<std::filesystem::path> settledDirectories = m_Collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
+		ChangeBatch batch = m_Batcher.TakeSettled(kQuietPeriod);
 
-		// HasOverflowed describes the batch the most recent TakeSettled handed over, so it is read after that call.
 		Changes changes{
-			.Directories = std::move(settledDirectories),
-			.Overflowed = m_Collector.HasOverflowed(),
-			.IgnoreRulesChanged = m_Collector.HasIgnoreRulesChanged(),
-			.RepositoryStateChanged = std::exchange(m_RepositoryStateChanged, false),
+			.Directories = std::move(batch.Directories),
+			.Overflowed = batch.Overflowed,
+			.IgnoreRulesChanged = batch.IgnoreRulesChanged,
+			.RepositoryStateChanged = batch.RepositoryStateChanged,
 			.MovedTo = std::exchange(m_MovedTo, std::nullopt),
 		};
 
 		// The changes woke the loop for a few frames, not for the whole quiet period, so the
 		// frame that will find this batch settled has to be asked for.
-		const std::optional<ChangeCollector::Clock::time_point> pendingBatchSettlesAt = m_Collector.SettlesAt(kQuietPeriod);
+		const std::optional<ChangeCollector::Clock::time_point> pendingBatchSettlesAt = m_Batcher.SettlesAt(kQuietPeriod);
 
 		if (pendingBatchSettlesAt)
 		{

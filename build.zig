@@ -23,6 +23,8 @@ const core_source_folders = [_][]const u8{
 // file operations are Windows-only until the WSL helper needs them.
 const core_source_files = [_][]const u8{
     "Core/src/Core/FileSystem/AtomicWrite.cpp",
+    "Core/src/Core/FileSystem/ChangeBatcher.cpp",
+    "Core/src/Core/FileSystem/ChangeCollector.cpp",
     "Core/src/Core/FileSystem/FileName.cpp",
     "Core/src/Core/FileSystem/FileSystem.cpp",
     "Core/src/Core/FileSystem/RelativePath.cpp",
@@ -45,6 +47,8 @@ const core_test_folders = [_][]const u8{
 const core_test_files = [_][]const u8{
     "Core/tests/src/Main.cpp",
     "Core/tests/src/FileSystem/AtomicWriteTests.cpp",
+    "Core/tests/src/FileSystem/ChangeBatcherTests.cpp",
+    "Core/tests/src/FileSystem/ChangeCollectorTests.cpp",
     "Core/tests/src/FileSystem/FileNameTests.cpp",
     "Core/tests/src/FileSystem/FileSystemTests.cpp",
     "Core/tests/src/FileSystem/RelativePathTests.cpp",

@@ -4,7 +4,7 @@
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
-#include "Core/FileSystem/ChangeCollector.h"
+#include "Core/FileSystem/ChangeBatcher.h"
 #include "Core/Platform/UniqueHandle.h"
 
 #include <atomic>
@@ -20,10 +20,6 @@
 #include <vector>
 
 namespace Core {
-
-	bool NamesRepositoryState(const std::filesystem::path& pathRelativeToRoot);
-
-	bool NamesIgnoreRules(const std::filesystem::path& pathRelativeToRoot);
 
 	class DirectoryWatcher final : NonCopyable
 	{
@@ -70,15 +66,13 @@ namespace Core {
 
 		static constexpr std::chrono::milliseconds kMoveCheckInterval{2000};
 
-		bool m_RepositoryStateChanged = false;
-
 		std::filesystem::path m_Root;
 		std::thread m_Thread;
 
-		// Guards m_Collector, m_RepositoryStateChanged and m_MovedTo, which together make one
-		// batch: a take that read one of them without the others could split the batch.
+		// Guards m_Batcher and m_MovedTo, which together make one batch: a take that read one of
+		// them without the other could split the batch.
 		std::mutex m_Mutex;
-		ChangeCollector m_Collector;
+		ChangeBatcher m_Batcher{std::filesystem::path{}};
 
 		std::atomic<bool> m_Running{true};
 
