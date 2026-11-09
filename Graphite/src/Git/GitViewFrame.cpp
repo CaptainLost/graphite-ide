@@ -662,25 +662,26 @@ namespace Graphite {
 			return selection;
 		}
 
-		// The worktree whose HEAD's history is shown: the selected detached one, the one holding the shown branch, or the
-		// open folder's for its own HEAD's.
+		// WARNING: One row is drawn selected, or it reads as a choice of several: the worktree row the history was opened
+		// from, a detached worktree's always, else the reference's own row, HEAD's branch for HEAD's history.
 		const ShownHistory shown = Shown();
+		const bool openedFromWorktreeRow = m_SelectedRef.has_value() && m_SelectedRef == m_RefOpenedFromWorktreeRow;
 
-		if (const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries())
+		if (shown.WorktreeShown() != nullptr || openedFromWorktreeRow)
 		{
-			if (const std::optional<std::filesystem::path> other = shown.ChangesWorktree())
-			{
-				selection.Worktree = IndexOfWorktree(*entries, *other);
-			}
-			else if (shown.IsHeadHistory())
-			{
-				selection.Worktree = IndexOfWorktree(*entries, m_Model.GetWorkingDirectory());
-			}
-		}
+			const std::vector<Core::WorktreeEntry>* const entries = m_Worktrees.Entries();
+			const std::optional<std::filesystem::path> worktree = shown.ChangesWorktree();
 
-		if (shown.WorktreeShown() != nullptr)
-		{
-			return selection;
+			if (entries != nullptr && worktree.has_value())
+			{
+				selection.Worktree = IndexOfWorktree(*entries, *worktree);
+			}
+
+			// A branch whose worktree has gone keeps its own row selected.
+			if (selection.Worktree.has_value() || shown.WorktreeShown() != nullptr)
+			{
+				return selection;
+			}
 		}
 
 		selection.Tag = SelectedTagIndex();
@@ -769,6 +770,9 @@ namespace Graphite {
 			{
 				const std::filesystem::path worktree = (*entries)[*row.Worktree].Path;
 				SelectWorktree(worktree);
+
+				// After SelectWorktree, whose SelectRef lets go of the row a branch was opened from before.
+				m_RefOpenedFromWorktreeRow = m_SelectedRef;
 			}
 			return;
 		}
@@ -831,8 +835,10 @@ namespace Graphite {
 
 		if (shown == nullptr)
 		{
+			// A worktree that moved onto a branch keeps its row selected, as a click on it then would.
 			const std::filesystem::path worktree = *m_SelectedWorktree;
 			SelectWorktree(worktree);
+			m_RefOpenedFromWorktreeRow = m_SelectedRef;
 			return;
 		}
 

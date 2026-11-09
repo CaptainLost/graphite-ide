@@ -611,6 +611,10 @@ namespace Graphite {
 		// Set only for a worktree without a branch: a worktree on a branch selects that branch's ref.
 		std::optional<std::filesystem::path> m_SelectedWorktree;
 
+		// The branch a click on its worktree's row selected, so that row, not the branch's in Yours, is drawn selected;
+		// let go of by any other selection.
+		std::optional<std::string> m_RefOpenedFromWorktreeRow;
+
 		Core::Ref<const std::vector<Core::Branch>> m_LastSeenBranches;
 		Core::Ref<const std::vector<Core::Tag>> m_LastSeenTags;
 		std::optional<BranchRenameSent> m_PendingRename;

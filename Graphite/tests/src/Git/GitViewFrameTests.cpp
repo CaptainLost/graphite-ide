@@ -1480,6 +1480,77 @@ namespace {
 		const std::optional<Core::LogRequest>& asked = window.Model.GetAskedLogRequest();
 		return asked.has_value() && !asked->Ref.has_value() && !asked->Stash.has_value() && !asked->From.has_value();
 	}
+
+	// How far down the list's content the backgrounds the sidebar drew selected last frame start and end; empty when it
+	// drew none.
+	std::optional<std::pair<float, float>> SelectedSpan(const GitWindow& window)
+	{
+		const ImGuiWindow* rows = window.SidebarRows();
+		REQUIRE(rows != nullptr);
+
+		const ImU32 selected = ImGui::GetColorU32(Graphite::CurrentListRowColours().Selected);
+		std::optional<std::pair<float, float>> span;
+
+		for (const ImDrawVert& vertex : rows->DrawList->VtxBuffer)
+		{
+			if (vertex.col != selected)
+			{
+				continue;
+			}
+
+			const float down = vertex.pos.y - rows->DC.CursorStartPos.y;
+			span = span.has_value() ? std::pair{std::min(span->first, down), std::max(span->second, down)} : std::pair{down, down};
+		}
+
+		return span;
+	}
+
+	// The sidebar draws exactly one row selected, whatever row it is: a second one would stretch the span past one row.
+	bool DrawsOneRowSelected(const GitWindow& window)
+	{
+		const std::optional<std::pair<float, float>> span = SelectedSpan(window);
+		return span.has_value() && span->second - span->first <= Graphite::SidebarTwoLineRowHeight() + 1.0f;
+	}
+
+	// The sidebar draws exactly one row selected, the one whose first line holds `text`.
+	void CheckOnlyRowSelected(const GitWindow& window, const std::string& text)
+	{
+		const std::optional<DrawnLine> line = SidebarLineWith(window, text);
+		REQUIRE(line.has_value());
+		REQUIRE(DrawsOneRowSelected(window));
+
+		const float top = line->Top - window.SidebarRows()->DC.CursorStartPos.y;
+		const std::optional<std::pair<float, float>> span = SelectedSpan(window);
+		CHECK(span->first < top);
+		CHECK(span->second > top);
+	}
+
+	// The sidebar draws exactly one row selected, the branch row at `place` in Yours.
+	void CheckOnlyYoursRowSelected(const GitWindow& window, int place)
+	{
+		REQUIRE(DrawsOneRowSelected(window));
+		CHECK(InSlot(window.SelectedRowMiddle(), YoursRowTop(place), Graphite::SidebarTwoLineRowHeight()));
+	}
+
+	// The worktrees are read again, as for a new branch snapshot: a worktree removed or moved leaves the branches as they
+	// were.
+	void ListWorktreesAgain(GitWindow& window)
+	{
+		REQUIRE(window.Model.GetBranches() != nullptr);
+		window.Worktrees.Follow(Core::CreateRef<const std::vector<Core::Branch>>(*window.Model.GetBranches()),
+								window.Model.GetWorkingDirectory());
+		window.Settle();
+	}
+}
+
+TEST_CASE("Git window: with worktrees listed HEAD's history draws one row selected, HEAD's branch in Yours, not this folder's row too")
+{
+	GitWindow window("WorktreeDefaultSelectionWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+	REQUIRE(SidebarLineWith(window, "thisfolder").has_value());
+
+	CheckOnlyYoursRowSelected(window, 0);
 }
 
 TEST_CASE("Git window: a click on a branch worktree's row selects its branch, and on a detached one's shows the history from its HEAD")
@@ -1505,19 +1576,65 @@ TEST_CASE("Git window: a click on a branch worktree's row selects its branch, an
 	// A detached worktree's history has no Local changes row of the open folder's.
 	CHECK_FALSE(window.DrawsLocalChanges());
 
-	// The row clicked is the one drawn selected.
-	const std::optional<DrawnLine> looseLine = SidebarLineWith(window, "loose");
-	const std::optional<float> selected = window.SelectedRowMiddle();
-	REQUIRE(looseLine.has_value());
-	REQUIRE(selected.has_value());
-	const float looseTop = looseLine->Top - window.SidebarRows()->DC.CursorStartPos.y;
-	CHECK(*selected > looseTop - Graphite::SidebarTwoLineRowHeight());
-	CHECK(*selected < looseTop + Graphite::SidebarTwoLineRowHeight());
+	// The row clicked is the one drawn selected, and the only one.
+	CheckOnlyRowSelected(window, "loose");
 
-	// The open folder's own row shows its HEAD's history again.
+	// The open folder's own row shows its HEAD's history again, HEAD's branch in Yours the row selected.
 	ClickWorktreeRow(window, "repo");
 	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{});
 	CHECK(AsksHeadHistory(window));
+
+	CheckOnlyYoursRowSelected(window, 0);
+}
+
+TEST_CASE("Git window: a branch opened from its worktree's row draws that row selected alone, and from Yours its own row alone")
+{
+	GitWindow window("WorktreeBranchSelectionWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "linked");
+	REQUIRE(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+	CheckOnlyRowSelected(window, "linked");
+
+	// The same branch clicked in Yours is selected there.
+	window.ClickAt(window.InSidebarRows(YoursRowTop(1) + Graphite::SidebarTwoLineRowHeight() * 0.5f));
+	window.Settle();
+	REQUIRE(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+
+	CheckOnlyYoursRowSelected(window, 1);
+}
+
+TEST_CASE("Git window: a selected detached worktree follows its HEAD to a new commit, and onto a branch")
+{
+	GitWindow window("WorktreeFollowsHeadWindow", HeadOnMain(), {}, MainAndFeatureRead());
+	window.WorktreePort.Listed = RepoLinkedAndLoose();
+	window.Settle();
+
+	ClickWorktreeRow(window, "loose");
+	REQUIRE(window.Model.GetAskedLogRequest().has_value());
+	REQUIRE(window.Model.GetAskedLogRequest()->From == kLooseHead);
+
+	// A commit made in the worktree: its history is walked from the new HEAD.
+	const Core::Oid newHead = OidWithFirstByte(0x78);
+	window.WorktreePort.Listed.back().Head.Commit = newHead;
+	ListWorktreesAgain(window);
+
+	REQUIRE(window.Model.GetAskedLogRequest().has_value());
+	CHECK(window.Model.GetAskedLogRequest()->From == newHead);
+	REQUIRE(window.Model.GetShownLogRequest().has_value());
+	CHECK(window.Model.GetShownLogRequest()->From == newHead);
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Worktree = "C:/loose"});
+	CHECK(DrawsText(window, "HEADinloose"));
+
+	// The worktree switched onto feature, which the linked worktree let go of: the history is feature's, and the
+	// worktree's row stays the one selected.
+	window.WorktreePort.Listed = {Graphite::Fixtures::WorktreeOn("main", "C:/repo"), Graphite::Fixtures::WorktreeOn("feature", kLooseFolder)};
+	ListWorktreesAgain(window);
+
+	CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{.Ref = "refs/heads/feature"});
+	CHECK_FALSE(DrawsText(window, "HEADinloose"));
+	CheckOnlyRowSelected(window, "loose");
 }
 
 TEST_CASE("Git window: a selected worktree that leaves the list, or whose folder goes missing, falls back to the open folder's HEAD")
@@ -1547,11 +1664,7 @@ TEST_CASE("Git window: a selected worktree that leaves the list, or whose folder
 			window.WorktreePort.Listed.pop_back();
 		}
 
-		// The worktrees are read again for a new branch snapshot; a worktree removed leaves the branches as they were.
-		REQUIRE(window.Model.GetBranches() != nullptr);
-		window.Worktrees.Follow(Core::CreateRef<const std::vector<Core::Branch>>(*window.Model.GetBranches()),
-								window.Model.GetWorkingDirectory());
-		window.Settle();
+		ListWorktreesAgain(window);
 
 		CHECK(window.View.CaptureWindowState() == Graphite::GitWindowState{});
 		CHECK(AsksHeadHistory(window));

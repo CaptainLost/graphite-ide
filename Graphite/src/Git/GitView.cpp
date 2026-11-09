@@ -504,6 +504,7 @@ namespace Graphite {
 		m_SelectedRef.reset();
 		m_SelectedStash.reset();
 		m_SelectedWorktree.reset();
+		m_RefOpenedFromWorktreeRow.reset();
 		m_LastSeenBranches.reset();
 		m_LastSeenTags.reset();
 		m_PendingRename.reset();
@@ -642,6 +643,7 @@ namespace Graphite {
 		m_PendingRestore.reset();
 		m_SelectedRef = std::move(fullName);
 		m_SelectedWorktree.reset();
+		m_RefOpenedFromWorktreeRow.reset();
 
 		DeselectStash();
 		StartOpening();

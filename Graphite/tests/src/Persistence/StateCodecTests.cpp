@@ -653,7 +653,7 @@ TEST_CASE("Git window: the window state round-trips the shown ref")
 TEST_CASE("Git window: the window state round-trips the selected worktree, and none is stored for a ref's history")
 {
 	WorkspaceState state;
-	state.GitWindow = GitWindowState{.Worktree = Core::ToUtf8(Core::FromUtf8("D:/agents/ÅºrÃ³" "dÅ" "o"))};
+	state.GitWindow = GitWindowState{.Worktree = Core::ToUtf8(Core::FromUtf8("D:/agents/\xC5\xBAr\xC3\xB3" "d\xC5\x82o"))};
 
 	Core::JsonFile file;
 	WriteWorkspaceState(state, kRoot, file);
