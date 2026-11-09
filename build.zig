@@ -17,6 +17,7 @@ const Configuration = enum { Debug, Release };
 const core_source_folders = [_][]const u8{
     "Core/src/Core/Base",
     "Core/src/Core/Git",
+    "Core/src/Core/Remote",
 };
 // Only FileSystem's paths, listing, reading and atomic writes: the watcher, locks, holds and
 // file operations are Windows-only until the WSL helper needs them.
@@ -31,11 +32,15 @@ const core_excluded = [_][]const u8{
     // Starts git.exe through ChildProcess, which has no Linux version until the WSL helper
     // needs one.
     "Core/src/Core/Git/Command/",
+    // The host's side of the agent: it starts wsl.exe, so it is Windows-only.
+    "Core/src/Core/Remote/AgentConnection.cpp",
+    "Core/src/Core/Remote/AgentDeployment.cpp",
 };
 
 const core_test_folders = [_][]const u8{
     "Core/tests/src/Base",
     "Core/tests/src/Git",
+    "Core/tests/src/Remote",
 };
 const core_test_files = [_][]const u8{
     "Core/tests/src/Main.cpp",
@@ -47,6 +52,9 @@ const core_test_files = [_][]const u8{
 };
 const core_test_excluded = [_][]const u8{
     "Core/tests/src/Git/Command/",
+    "Core/tests/src/Remote/AgentConnectionTests.cpp",
+    "Core/tests/src/Remote/AgentDeploymentTests.cpp",
+    "Core/tests/src/Remote/AgentEndToEndTests.cpp",
 };
 
 const core_flags = [_][]const u8{

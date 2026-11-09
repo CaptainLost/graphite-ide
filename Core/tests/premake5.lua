@@ -44,7 +44,8 @@ project "CoreTests"
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.Icons}",
-        "%{IncludeDir.spdlog}"
+        "%{IncludeDir.spdlog}",
+        "%{IncludeDir.json}"
     }
 
     externalwarnings "Off"

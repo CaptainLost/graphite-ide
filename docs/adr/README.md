@@ -724,4 +724,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0692](0692-give-each-repositorygitport-its-own-per-thread-repository-handles.md) | Give each RepositoryGitPort its own per-thread repository handles | proposed | 2026-11-09 |
 | [0693](0693-cross-compile-the-linux-parts-with-a-pinned-zig-fetched-by-a-script.md) | Cross-compile the Linux parts with a pinned zig fetched by a script | proposed | 2026-11-09 |
 | [0694](0694-build-the-headless-part-of-core-for-linux-from-the-lists-in-build-zig.md) | Build the headless part of Core for Linux from the lists in build.zig | proposed | 2026-11-09 |
+| [0695](0695-talk-to-the-wsl-agent-in-length-prefixed-frames-of-a-json-header-and-raw-bytes.md) | Talk to the WSL agent in length-prefixed frames of a JSON header and raw bytes | proposed | 2026-11-10 |
 <!-- /adr-index -->
