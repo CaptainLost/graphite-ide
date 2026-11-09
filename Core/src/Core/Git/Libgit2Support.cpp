@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslSharePath.h"
 
 #include <git2.h>
 #include <git2/sys/errors.h>
@@ -105,6 +106,34 @@ namespace Core {
 	Error RepositoryNotOpen()
 	{
 		return Error{ErrorCode::NotFound, "the repository is not open"};
+	}
+
+	Error RepositoryOpenFailure(int result, std::string_view path, std::string_view libgit2Message)
+	{
+		if (result == GIT_EOWNER)
+		{
+			// The folders inside WSL are where users meet this most: their files belong to the
+			// distro's user, never to the Windows account Graphite runs as.
+			const std::string_view notSupportedInsideWsl =
+				ParseWslSharePath(FromUtf8(path)).has_value() ? "; folders inside WSL are not supported yet" : "";
+
+			return Error{ErrorCode::AccessDenied,
+						 std::format("git refuses to open the repository at '{}' because its files belong to another user{}",
+									 path, notSupportedInsideWsl)};
+		}
+
+		ErrorCode errorCode = ErrorCode::IoFailure;
+
+		if (result == GIT_ENOTFOUND)
+		{
+			errorCode = ErrorCode::NotFound;
+		}
+		else if (result == GIT_EAUTH)
+		{
+			errorCode = ErrorCode::AccessDenied;
+		}
+
+		return Error{errorCode, std::format("cannot open a git repository at '{}': {}", path, libgit2Message)};
 	}
 
 	Result<CommitHandle> LookupCommit(git_repository* handle, const Oid& id)

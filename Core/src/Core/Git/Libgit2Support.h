@@ -46,6 +46,10 @@ namespace Core {
 	// What a Repository call returns when Open never succeeded.
 	Error RepositoryNotOpen();
 
+	// What opening the repository at path returns when libgit2 answered result; libgit2Message
+	// is its last error. An ownership refusal is AccessDenied with a plain message of its own.
+	Error RepositoryOpenFailure(int result, std::string_view path, std::string_view libgit2Message);
+
 	// NotFound, naming the id, when the repository holds no such commit.
 	Result<CommitHandle> LookupCommit(git_repository* handle, const Oid& id);
 

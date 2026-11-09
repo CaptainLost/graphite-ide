@@ -726,8 +726,17 @@ namespace Graphite {
 
 		if (!repository)
 		{
-			APP_TRACE("'{}' is not inside a git repository: {}", Core::ToUtf8(m_Root),
-					  repository.GetError().Message);
+			const Core::Error& failure = repository.GetError();
+
+			if (failure.Code == Core::ErrorCode::NotFound)
+			{
+				APP_TRACE("'{}' is not inside a git repository: {}", Core::ToUtf8(m_Root), failure.Message);
+			}
+			else
+			{
+				APP_WARN("Cannot open the git repository around '{}': {}", Core::ToUtf8(m_Root), failure.Message);
+			}
+
 			return;
 		}
 

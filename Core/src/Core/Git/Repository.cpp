@@ -162,20 +162,7 @@ namespace Core {
 
 		if (openResult != 0 || openedHandle == nullptr)
 		{
-			const std::string message = LastLibgit2Message();
-
-			ErrorCode errorCode = ErrorCode::IoFailure;
-
-			if (openResult == GIT_ENOTFOUND)
-			{
-				errorCode = ErrorCode::NotFound;
-			}
-			else if (openResult == GIT_EAUTH)
-			{
-				errorCode = ErrorCode::AccessDenied;
-			}
-
-			return Error{errorCode, std::format("cannot open a git repository at '{}': {}", path, message)};
+			return RepositoryOpenFailure(openResult, path, LastLibgit2Message());
 		}
 
 		Repository repository;
