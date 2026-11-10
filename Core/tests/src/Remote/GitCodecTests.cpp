@@ -2,8 +2,10 @@
 
 #include "Core/Remote/GitCodec.h"
 
+#include <chrono>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -121,4 +123,211 @@ TEST_CASE("A field of the wrong type is an invalid argument that names the field
 	REQUIRE_FALSE(back.HasValue());
 	CHECK(back.GetError().Code == Core::ErrorCode::InvalidArgument);
 	CHECK(back.GetError().Message.find("branch") != std::string::npos);
+}
+
+namespace {
+
+	Core::CommitSummary SampleCommitSummary()
+	{
+		return Core::CommitSummary{
+			.Id = kSomeCommit,
+			.Parents = {kOtherCommit, kSomeCommit},
+			.Author = {.Name = "Anna", .Email = "anna@example.com", .When = std::chrono::sys_seconds{std::chrono::seconds{1700000000}}},
+			.Committer = {.Name = "Bob", .Email = "bob@example.com", .When = std::chrono::sys_seconds{std::chrono::seconds{1700000500}}},
+			.Summary = "fix: x",
+			.Body = "the body\nof it",
+		};
+	}
+}
+
+TEST_CASE("A branch list round-trips with upstreams, distances and the tip's commit")
+{
+	const std::vector<Core::Branch> branches{
+		Core::Branch{.Name = "main",
+					 .FullName = "refs/heads/main",
+					 .Kind = Core::RefKind::Local,
+					 .Tip = kSomeCommit,
+					 .IsHead = true,
+					 .Upstream = "origin/main",
+					 .Ahead = 2,
+					 .Behind = 3,
+					 .DistanceKnown = true,
+					 .TipCommit = SampleCommitSummary()},
+		Core::Branch{.Name = "origin/gone",
+					 .FullName = "refs/remotes/origin/gone",
+					 .Kind = Core::RefKind::Remote,
+					 .Tip = kOtherCommit,
+					 .IsRemoteDefault = true,
+					 .MissingUpstream = "origin/x"},
+	};
+
+	const Core::Result<std::vector<Core::Branch>> back = Core::BranchesFromJson(Core::ToJsonList(branches));
+
+	REQUIRE(back.HasValue());
+	CHECK(back.GetValue() == branches);
+}
+
+TEST_CASE("A branch list with a mistyped tip is refused, naming the field")
+{
+	nlohmann::json listed = Core::ToJsonList(std::vector<Core::Branch>{Core::Branch{.Name = "main", .FullName = "refs/heads/main", .Tip = kSomeCommit}});
+	listed[0]["tip"] = "zz";
+
+	const Core::Result<std::vector<Core::Branch>> back = Core::BranchesFromJson(listed);
+
+	REQUIRE_FALSE(back.HasValue());
+	CHECK(back.GetError().Code == Core::ErrorCode::InvalidArgument);
+	CHECK(back.GetError().Message.find("tip") != std::string::npos);
+}
+
+TEST_CASE("Tags and remotes round-trip")
+{
+	const std::vector<Core::Tag> tags{
+		Core::Tag{.Name = "v1",
+				  .FullName = "refs/tags/v1",
+				  .Target = kSomeCommit,
+				  .When = std::chrono::sys_seconds{std::chrono::seconds{42}},
+				  .Annotated = true,
+				  .Subject = "first"},
+		Core::Tag{.Name = "light", .FullName = "refs/tags/light", .Target = kOtherCommit},
+	};
+	const std::vector<Core::Remote> remotes{Core::Remote{.Name = "origin", .Url = "git@example.com:a/b.git"}, Core::Remote{.Name = "bare"}};
+
+	const Core::Result<std::vector<Core::Tag>> tagsBack = Core::TagsFromJson(Core::ToJsonList(tags));
+	const Core::Result<std::vector<Core::Remote>> remotesBack = Core::RemotesFromJson(Core::ToJsonList(remotes));
+
+	REQUIRE(tagsBack.HasValue());
+	CHECK(tagsBack.GetValue() == tags);
+	REQUIRE(remotesBack.HasValue());
+	CHECK(remotesBack.GetValue() == remotes);
+}
+
+TEST_CASE("A log request round-trips with every field it can carry")
+{
+	const Core::LogRequest request{
+		.Ref = "refs/heads/main",
+		.From = kSomeCommit,
+		.AlsoFrom = {kOtherCommit},
+		.FirstParentOnly = true,
+		.Exclude = kOtherCommit,
+		.Stash = kSomeCommit,
+		.File = Utf8Path("dir/a b.txt"),
+		.Lines = Core::OneBasedLineRange{.First = 3, .Last = 7},
+		.Filter = {.Text = "kept width"},
+		.FollowRenames = false,
+		.MaxWalk = 123,
+		.MaxCount = 45,
+	};
+
+	const Core::Result<Core::LogRequest> back = Core::LogRequestFromJson(Core::ToJson(request));
+
+	REQUIRE(back.HasValue());
+	const Core::LogRequest& got = back.GetValue();
+	CHECK(got.Ref == request.Ref);
+	CHECK(got.From == request.From);
+	CHECK(got.AlsoFrom == request.AlsoFrom);
+	CHECK(got.FirstParentOnly);
+	CHECK(got.Exclude == request.Exclude);
+	CHECK(got.Stash == request.Stash);
+	CHECK(got.File == request.File);
+	REQUIRE(got.Lines.has_value());
+	CHECK(got.Lines->First == 3);
+	CHECK(got.Lines->Last == 7);
+	CHECK(got.Filter.Text == "kept width");
+	CHECK_FALSE(got.FollowRenames);
+	CHECK(got.MaxWalk == 123);
+	CHECK(got.MaxCount == 45);
+}
+
+TEST_CASE("A plain log request round-trips without the fields it leaves out")
+{
+	const Core::Result<Core::LogRequest> back = Core::LogRequestFromJson(Core::ToJson(Core::LogRequest{}));
+
+	REQUIRE(back.HasValue());
+	CHECK_FALSE(back.GetValue().Ref.has_value());
+	CHECK_FALSE(back.GetValue().From.has_value());
+	CHECK_FALSE(back.GetValue().File.has_value());
+	CHECK_FALSE(back.GetValue().Lines.has_value());
+	CHECK(back.GetValue().FollowRenames);
+	CHECK(back.GetValue().MaxCount == Core::kLogPageSize);
+}
+
+TEST_CASE("A log page round-trips with its commits, unpushed set and completeness")
+{
+	Core::LogPage page;
+	page.Commits = {SampleCommitSummary()};
+	page.Complete = false;
+	page.Walked = 812;
+	page.Unpushed = {kSomeCommit, kOtherCommit};
+	page.UpstreamKnown = true;
+
+	const Core::Result<Core::LogPage> back = Core::LogPageFromJson(Core::ToJson(page));
+
+	REQUIRE(back.HasValue());
+	CHECK(back.GetValue().Commits == page.Commits);
+	CHECK_FALSE(back.GetValue().Complete);
+	CHECK(back.GetValue().Walked == 812);
+	CHECK(back.GetValue().Unpushed == page.Unpushed);
+	CHECK(back.GetValue().UpstreamKnown);
+}
+
+TEST_CASE("An own-authors request and its answer round-trip")
+{
+	const Core::OwnAuthorsRequest request{.Tips = {kSomeCommit, kSomeCommit}, .Hidden = {kOtherCommit}, .MaxCommitsPerTip = 9};
+	const std::vector<Core::TipAuthors> answer{Core::TipAuthors{
+		.Tip = kSomeCommit,
+		.Authors = {Core::Signature{.Name = "Anna", .Email = "anna@example.com", .When = std::chrono::sys_seconds{std::chrono::seconds{5}}}},
+		.OwnCommits = 4,
+		.Truncated = true}};
+
+	const Core::Result<Core::OwnAuthorsRequest> requestBack = Core::OwnAuthorsRequestFromJson(Core::ToJson(request));
+	const Core::Result<std::vector<Core::TipAuthors>> answerBack = Core::TipAuthorsFromJson(Core::ToJsonList(answer));
+
+	REQUIRE(requestBack.HasValue());
+	CHECK(requestBack.GetValue() == request);
+	REQUIRE(answerBack.HasValue());
+	REQUIRE(answerBack.GetValue().size() == 1);
+	CHECK(answerBack.GetValue()[0].Tip == kSomeCommit);
+	CHECK(answerBack.GetValue()[0].Authors == answer[0].Authors);
+	CHECK(answerBack.GetValue()[0].OwnCommits == 4);
+	CHECK(answerBack.GetValue()[0].Truncated);
+}
+
+TEST_CASE("Stashes round-trip")
+{
+	const std::vector<Core::StashEntry> stashes{Core::StashEntry{.Index = 1, .Message = "On main: x", .Id = kSomeCommit, .SecondsSinceEpoch = 77}};
+
+	const Core::Result<std::vector<Core::StashEntry>> back = Core::StashesFromJson(Core::ToJsonList(stashes));
+
+	REQUIRE(back.HasValue());
+	REQUIRE(back.GetValue().size() == 1);
+	CHECK(back.GetValue()[0].Index == 1);
+	CHECK(back.GetValue()[0].Message == "On main: x");
+	CHECK(back.GetValue()[0].Id == kSomeCommit);
+	CHECK(back.GetValue()[0].SecondsSinceEpoch == 77);
+}
+
+TEST_CASE("A checkout's target, plan and outcome round-trip, a half-done outcome keeping both its paths and its failure")
+{
+	const Core::CheckoutTarget target{.Kind = Core::CheckoutKind::Commit, .Name = "x", .Commit = kOtherCommit};
+	const Core::CheckoutPlan plan{.Overwritten = {Utf8Path("a b.txt")}, .Updated = {Utf8Path("dir/c.txt"), Utf8Path("d.txt")}};
+	const Core::CheckoutOutcome outcome{.Changed = {Utf8Path("dir/c.txt")}, .Failure = Core::Error{Core::ErrorCode::IoFailure, "disk full"}};
+
+	const Core::Result<Core::CheckoutTarget> targetBack = Core::CheckoutTargetFromJson(Core::ToJson(target));
+	const Core::Result<Core::CheckoutPlan> planBack = Core::CheckoutPlanFromJson(Core::ToJson(plan));
+	const Core::Result<Core::CheckoutOutcome> outcomeBack = Core::CheckoutOutcomeFromJson(Core::ToJson(outcome));
+
+	REQUIRE(targetBack.HasValue());
+	CHECK(targetBack.GetValue() == target);
+	REQUIRE(planBack.HasValue());
+	CHECK(planBack.GetValue().Overwritten == plan.Overwritten);
+	CHECK(planBack.GetValue().Updated == plan.Updated);
+	REQUIRE(outcomeBack.HasValue());
+	CHECK(outcomeBack.GetValue().Changed == outcome.Changed);
+	REQUIRE(outcomeBack.GetValue().Failure.has_value());
+	CHECK(outcomeBack.GetValue().Failure->Code == Core::ErrorCode::IoFailure);
+	CHECK(outcomeBack.GetValue().Failure->Message == "disk full");
+
+	const Core::Result<Core::CheckoutOutcome> cleanBack = Core::CheckoutOutcomeFromJson(Core::ToJson(Core::CheckoutOutcome{}));
+	REQUIRE(cleanBack.HasValue());
+	CHECK_FALSE(cleanBack.GetValue().Failure.has_value());
 }
