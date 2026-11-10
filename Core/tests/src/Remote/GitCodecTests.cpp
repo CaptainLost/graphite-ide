@@ -331,3 +331,76 @@ TEST_CASE("A checkout's target, plan and outcome round-trip, a half-done outcome
 	REQUIRE(cleanBack.HasValue());
 	CHECK_FALSE(cleanBack.GetValue().Failure.has_value());
 }
+
+TEST_CASE("A blame round-trips with its hunks and the commits they name")
+{
+	Core::Blame blame;
+	blame.At = kSomeCommit;
+	blame.File = Utf8Path("dir/a b.txt");
+	blame.LineCount = 5;
+	blame.Hunks = {Core::BlameHunk{.FirstLine = 1, .LineCount = 2, .Commit = kSomeCommit, .OriginalPath = Utf8Path("old/a.txt"), .OriginalFirstLine = 3},
+				   Core::BlameHunk{.FirstLine = 3, .LineCount = 3, .Commit = kOtherCommit, .OriginalPath = Utf8Path("dir/a b.txt"), .OriginalFirstLine = 1}};
+	blame.Commits[kSomeCommit] = SampleCommitSummary();
+	Core::CommitSummary other = SampleCommitSummary();
+	other.Id = kOtherCommit;
+	blame.Commits[kOtherCommit] = other;
+
+	const Core::Result<Core::Blame> back = Core::BlameFromJson(Core::ToJson(blame));
+
+	REQUIRE(back.HasValue());
+	CHECK(back.GetValue().At == blame.At);
+	CHECK(back.GetValue().File == blame.File);
+	CHECK(back.GetValue().LineCount == 5);
+	REQUIRE(back.GetValue().Hunks.size() == 2);
+	CHECK(back.GetValue().Hunks[0].OriginalPath == Utf8Path("old/a.txt"));
+	CHECK(back.GetValue().Hunks[0].OriginalFirstLine == 3);
+	CHECK(back.GetValue().Hunks[1].Commit == kOtherCommit);
+	CHECK(back.GetValue().Commits == blame.Commits);
+}
+
+TEST_CASE("A line history and its request round-trip")
+{
+	const Core::LineHistoryRequest request{.From = kSomeCommit, .File = Utf8Path("a.txt"), .Line = 12, .MaxWalk = 99};
+	Core::LineHistory history;
+	history.Complete = false;
+	history.Changes.push_back(Core::LineChange{
+		.Commit = SampleCommitSummary(),
+		.Path = Utf8Path("a.txt"),
+		.Line = 12,
+		.ParentLine = 10,
+		.Hunks = {Core::Hunk{.OldStart = 9, .OldCount = 2, .NewStart = 11, .NewCount = 3, .Header = "@@ -9,2 +11,3 @@",
+							 .Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Added, .OldLine = -1, .NewLine = 12, .Text = "x"}}}}});
+	history.Changes.push_back(Core::LineChange{.Commit = SampleCommitSummary(), .Path = Utf8Path("b.txt"), .Line = 4});
+
+	const Core::Result<Core::LineHistoryRequest> requestBack = Core::LineHistoryRequestFromJson(Core::ToJson(request));
+	const Core::Result<Core::LineHistory> historyBack = Core::LineHistoryFromJson(Core::ToJson(history));
+
+	REQUIRE(requestBack.HasValue());
+	CHECK(requestBack.GetValue() == request);
+	REQUIRE(historyBack.HasValue());
+	CHECK_FALSE(historyBack.GetValue().Complete);
+	REQUIRE(historyBack.GetValue().Changes.size() == 2);
+	const Core::LineChange& first = historyBack.GetValue().Changes[0];
+	CHECK(first.ParentLine == std::optional<std::size_t>{10});
+	REQUIRE(first.Hunks.size() == 1);
+	CHECK(first.Hunks[0].Header == "@@ -9,2 +11,3 @@");
+	REQUIRE(first.Hunks[0].Lines.size() == 1);
+	CHECK(first.Hunks[0].Lines[0].NewLine == 12);
+	CHECK_FALSE(historyBack.GetValue().Changes[1].ParentLine.has_value());
+	CHECK(historyBack.GetValue().Changes[1].Path == Utf8Path("b.txt"));
+}
+
+TEST_CASE("A worktree list round-trips with each worktree's HEAD and lock")
+{
+	const std::vector<Core::WorktreeEntry> worktrees{
+		Core::WorktreeEntry{.Path = Utf8Path("/home/me/p"), .Name = "p", .IsMain = true,
+							.Head = Core::HeadState{.Kind = Core::HeadKind::Branch, .BranchName = "main", .Commit = kSomeCommit}},
+		Core::WorktreeEntry{.Path = Utf8Path("/home/me/wt"), .Name = "wt", .Head = Core::HeadState{.Kind = Core::HeadKind::Detached, .Commit = kOtherCommit},
+							.Locked = true, .LockReason = "on a stick", .FolderMissing = true},
+	};
+
+	const Core::Result<std::vector<Core::WorktreeEntry>> back = Core::WorktreesFromJson(Core::ToJsonList(worktrees));
+
+	REQUIRE(back.HasValue());
+	CHECK(back.GetValue() == worktrees);
+}

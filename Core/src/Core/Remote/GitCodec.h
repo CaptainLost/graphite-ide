@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Git/Blame.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/LineHistory.h"
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Remote.h"
@@ -12,6 +14,7 @@
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
 #include "Core/Git/Tag.h"
+#include "Core/Git/Worktree.h"
 
 #include <nlohmann/json.hpp>
 
@@ -40,6 +43,10 @@ namespace Core {
 	nlohmann::json ToJson(const CheckoutTarget& target);
 	nlohmann::json ToJson(const CheckoutPlan& plan);
 	nlohmann::json ToJson(const CheckoutOutcome& outcome);
+	nlohmann::json ToJson(const Blame& blame);
+	nlohmann::json ToJson(const LineHistoryRequest& request);
+	nlohmann::json ToJson(const LineHistory& history);
+	nlohmann::json ToJson(const WorktreeEntry& worktree);
 
 	// A list of anything ToJson takes, as a JSON array in the same order.
 	template<typename Value>
@@ -71,4 +78,8 @@ namespace Core {
 	Result<CheckoutTarget> CheckoutTargetFromJson(const nlohmann::json& json);
 	Result<CheckoutPlan> CheckoutPlanFromJson(const nlohmann::json& json);
 	Result<CheckoutOutcome> CheckoutOutcomeFromJson(const nlohmann::json& json);
+	Result<Blame> BlameFromJson(const nlohmann::json& json);
+	Result<LineHistoryRequest> LineHistoryRequestFromJson(const nlohmann::json& json);
+	Result<LineHistory> LineHistoryFromJson(const nlohmann::json& json);
+	Result<std::vector<WorktreeEntry>> WorktreesFromJson(const nlohmann::json& json);
 }

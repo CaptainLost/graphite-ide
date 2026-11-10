@@ -433,6 +433,50 @@ namespace Core {
 			return values;
 		}
 
+		nlohmann::json HunkJson(const Hunk& hunk)
+		{
+			nlohmann::json lines = nlohmann::json::array();
+
+			for (const DiffLine& line : hunk.Lines)
+			{
+				lines.push_back({{"kind", NameOf(kLineKinds, line.Kind)}, {"old", line.OldLine}, {"new", line.NewLine}, {"text", line.Text}});
+			}
+
+			return nlohmann::json{{"oldStart", hunk.OldStart},
+								  {"oldCount", hunk.OldCount},
+								  {"newStart", hunk.NewStart},
+								  {"newCount", hunk.NewCount},
+								  {"header", hunk.Header},
+								  {"lines", std::move(lines)}};
+		}
+
+		HeadState HeadFrom(const nlohmann::json& json)
+		{
+			const nlohmann::json& object = ObjectAt(json, "head");
+
+			return HeadState{
+				.Kind = EnumFrom(kHeadKinds, object, "kind"),
+				.BranchName = Field<std::string>(object, "branch"),
+				.Commit = OptionalOidFrom(object, "commit"),
+				.Operation = EnumFrom(kOperations, object, "operation"),
+			};
+		}
+
+		WorktreeEntry WorktreeFrom(const nlohmann::json& json)
+		{
+			const nlohmann::json& object = ObjectAt(json, "worktree");
+
+			return WorktreeEntry{
+				.Path = PathFrom(object, "path"),
+				.Name = Field<std::string>(object, "name"),
+				.IsMain = Field<bool>(object, "main"),
+				.Head = HeadFrom(object.contains("head") ? object.at("head") : nlohmann::json{}),
+				.Locked = Field<bool>(object, "locked"),
+				.LockReason = Field<std::string>(object, "lockReason"),
+				.FolderMissing = Field<bool>(object, "folderMissing"),
+			};
+		}
+
 		// Runs a decoder, turning a missing or mistyped field into InvalidArgument naming it.
 		template<typename Value, typename Decode>
 		Result<Value> Decoded(std::string_view what, Decode decode)
@@ -531,19 +575,7 @@ namespace Core {
 
 			for (const Hunk& hunk : file.Hunks)
 			{
-				nlohmann::json lines = nlohmann::json::array();
-
-				for (const DiffLine& line : hunk.Lines)
-				{
-					lines.push_back({{"kind", NameOf(kLineKinds, line.Kind)}, {"old", line.OldLine}, {"new", line.NewLine}, {"text", line.Text}});
-				}
-
-				hunks.push_back({{"oldStart", hunk.OldStart},
-								 {"oldCount", hunk.OldCount},
-								 {"newStart", hunk.NewStart},
-								 {"newCount", hunk.NewCount},
-								 {"header", hunk.Header},
-								 {"lines", std::move(lines)}});
+				hunks.push_back(HunkJson(hunk));
 			}
 
 			files.push_back({{"oldPath", PathText(file.OldPath)},
@@ -579,16 +611,7 @@ namespace Core {
 
 	Result<HeadState> HeadStateFromJson(const nlohmann::json& json)
 	{
-		return Decoded<HeadState>("HEAD", [&] {
-			const nlohmann::json& object = ObjectAt(json, "head");
-
-			return HeadState{
-				.Kind = EnumFrom(kHeadKinds, object, "kind"),
-				.BranchName = Field<std::string>(object, "branch"),
-				.Commit = OptionalOidFrom(object, "commit"),
-				.Operation = EnumFrom(kOperations, object, "operation"),
-			};
-		});
+		return Decoded<HeadState>("HEAD", [&] { return HeadFrom(json); });
 	}
 
 	Result<DiffRequest> DiffRequestFromJson(const nlohmann::json& json)
@@ -920,5 +943,148 @@ namespace Core {
 
 			return outcome;
 		});
+	}
+
+	nlohmann::json ToJson(const Blame& blame)
+	{
+		nlohmann::json hunks = nlohmann::json::array();
+
+		for (const BlameHunk& hunk : blame.Hunks)
+		{
+			hunks.push_back({{"firstLine", hunk.FirstLine},
+							 {"lineCount", hunk.LineCount},
+							 {"commit", OidText(hunk.Commit)},
+							 {"originalPath", PathText(hunk.OriginalPath)},
+							 {"originalFirstLine", hunk.OriginalFirstLine}});
+		}
+
+		nlohmann::json commits = nlohmann::json::array();
+
+		for (const auto& [id, commit] : blame.Commits)
+		{
+			commits.push_back(ToJson(commit));
+		}
+
+		return nlohmann::json{{"at", OidText(blame.At)}, {"file", PathText(blame.File)}, {"lineCount", blame.LineCount}, {"hunks", std::move(hunks)}, {"commits", std::move(commits)}};
+	}
+
+	nlohmann::json ToJson(const LineHistoryRequest& request)
+	{
+		return nlohmann::json{{"from", OidText(request.From)}, {"file", PathText(request.File)}, {"line", request.Line}, {"maxWalk", request.MaxWalk}};
+	}
+
+	nlohmann::json ToJson(const LineHistory& history)
+	{
+		nlohmann::json changes = nlohmann::json::array();
+
+		for (const LineChange& change : history.Changes)
+		{
+			nlohmann::json hunks = nlohmann::json::array();
+
+			for (const Hunk& hunk : change.Hunks)
+			{
+				hunks.push_back(HunkJson(hunk));
+			}
+
+			nlohmann::json json{{"commit", ToJson(change.Commit)}, {"path", PathText(change.Path)}, {"line", change.Line}, {"hunks", std::move(hunks)}};
+
+			if (change.ParentLine)
+			{
+				json["parentLine"] = *change.ParentLine;
+			}
+
+			changes.push_back(std::move(json));
+		}
+
+		return nlohmann::json{{"changes", std::move(changes)}, {"complete", history.Complete}};
+	}
+
+	nlohmann::json ToJson(const WorktreeEntry& worktree)
+	{
+		return nlohmann::json{
+			{"path", PathText(worktree.Path)},
+			{"name", worktree.Name},
+			{"main", worktree.IsMain},
+			{"head", ToJson(worktree.Head)},
+			{"locked", worktree.Locked},
+			{"lockReason", worktree.LockReason},
+			{"folderMissing", worktree.FolderMissing},
+		};
+	}
+
+	Result<Blame> BlameFromJson(const nlohmann::json& json)
+	{
+		return Decoded<Blame>("a blame", [&] {
+			const nlohmann::json& object = ObjectAt(json, "blame");
+			Blame blame{.At = OidFrom(object, "at"), .File = PathFrom(object, "file"), .LineCount = Field<std::size_t>(object, "lineCount")};
+
+			for (const nlohmann::json& one : ArrayField(object, "hunks"))
+			{
+				const nlohmann::json& hunk = ObjectAt(one, "hunks");
+				blame.Hunks.push_back(BlameHunk{
+					.FirstLine = Field<std::size_t>(hunk, "firstLine"),
+					.LineCount = Field<std::size_t>(hunk, "lineCount"),
+					.Commit = OidFrom(hunk, "commit"),
+					.OriginalPath = PathFrom(hunk, "originalPath"),
+					.OriginalFirstLine = Field<std::size_t>(hunk, "originalFirstLine"),
+				});
+			}
+
+			for (const nlohmann::json& commit : ArrayField(object, "commits"))
+			{
+				CommitSummary summary = CommitSummaryFrom(commit);
+				const Oid id = summary.Id;
+				blame.Commits.emplace(id, std::move(summary));
+			}
+
+			return blame;
+		});
+	}
+
+	Result<LineHistoryRequest> LineHistoryRequestFromJson(const nlohmann::json& json)
+	{
+		return Decoded<LineHistoryRequest>("a line history request", [&] {
+			const nlohmann::json& object = ObjectAt(json, "request");
+
+			return LineHistoryRequest{
+				.From = OidFrom(object, "from"),
+				.File = PathFrom(object, "file"),
+				.Line = Field<std::size_t>(object, "line"),
+				.MaxWalk = Field<std::size_t>(object, "maxWalk"),
+			};
+		});
+	}
+
+	Result<LineHistory> LineHistoryFromJson(const nlohmann::json& json)
+	{
+		return Decoded<LineHistory>("a line history", [&] {
+			const nlohmann::json& object = ObjectAt(json, "history");
+			LineHistory history{.Complete = Field<bool>(object, "complete")};
+
+			for (const nlohmann::json& one : ArrayField(object, "changes"))
+			{
+				const nlohmann::json& change = ObjectAt(one, "changes");
+				LineChange decoded{
+					.Commit = CommitSummaryFrom(change.contains("commit") ? change.at("commit") : nlohmann::json{}),
+					.Path = PathFrom(change, "path"),
+					.Line = Field<std::size_t>(change, "line"),
+					.ParentLine = OptionalField<std::size_t>(change, "parentLine"),
+				};
+
+				for (const nlohmann::json& hunk : ArrayField(change, "hunks"))
+				{
+					decoded.Hunks.push_back(HunkFrom(hunk));
+				}
+
+				history.Changes.push_back(std::move(decoded));
+			}
+
+			return history;
+		});
+	}
+
+	Result<std::vector<WorktreeEntry>> WorktreesFromJson(const nlohmann::json& json)
+	{
+		return Decoded<std::vector<WorktreeEntry>>("a worktree list", [&] { return ListFrom<WorktreeEntry>(json, "worktrees", WorktreeFrom); });
 	}
 }
