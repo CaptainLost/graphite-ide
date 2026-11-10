@@ -79,12 +79,77 @@
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![The Git window: branches, tags and a stash in the sidebar, the history with its graph and the commits not yet pushed, and a staged file's diff](docs/images/git-window.png) | ![The Command Palette over the editor, with the Changes panel on the left](docs/images/command-palette.png) |
-| **Git window** — history graph, branches, stash, unpushed commits and a diff | **Command Palette** — with the Changes panel |
-| ![The editor in the Gruvbox Dark theme](docs/images/theme-gruvbox.png) | ![The Appearance page of Settings, listing the built-in themes](docs/images/settings.png) |
-| **Themes** — Gruvbox Dark | **Settings** — Appearance |
+<details open>
+<summary><b>Git window</b> — history graph, branches, tags, a stash, commits not yet pushed and a diff</summary>
+
+![The Git window: branches, tags and a stash in the sidebar, the history with its graph and the commits not yet pushed, and the diff of a changed file](docs/images/git-window.png)
+
+</details>
+
+<details>
+<summary><b>Branch review</b> — a branch against its base, with files marked as viewed</summary>
+
+![A review of a feature branch against origin/main: the changed files with two marked as viewed, and the diff of a new file](docs/images/branch-review.png)
+
+</details>
+
+<details>
+<summary><b>Diff</b> — uncommitted changes side by side</summary>
+
+![The Changes panel and a side-by-side diff of a modified file](docs/images/diff.png)
+
+</details>
+
+<details>
+<summary><b>Command Palette</b> — every command by a few letters of its name</summary>
+
+![The Command Palette over the editor, filtered to the Go to commands, with the Changes panel on the left](docs/images/command-palette.png)
+
+</details>
+
+<details>
+<summary><b>Find in Files</b></summary>
+
+![Find in Files under the editor, listing the matches grouped by file](docs/images/find-in-files.png)
+
+</details>
+
+<details>
+<summary><b>Solution view</b> — a Visual Studio solution's projects and folders</summary>
+
+![The Explorer showing a Visual Studio solution with its projects grouped into folders](docs/images/solution-view.png)
+
+</details>
+
+<details>
+<summary><b>Image viewer</b></summary>
+
+![An icon file open in the image viewer, with the zoom and background controls](docs/images/image-viewer.png)
+
+</details>
+
+<details>
+<summary><b>Hex viewer</b> — for files that are not text</summary>
+
+![A font file open in the hex viewer, with a selected byte and its values in the status bar](docs/images/hex-viewer.png)
+
+</details>
+
+<details>
+<summary><b>Themes</b> — the editor in Gruvbox Dark, and the built-in themes</summary>
+
+![The editor in the Gruvbox Dark theme](docs/images/theme-gruvbox.png)
+
+![The Appearance page of Settings with the list of built-in themes open](docs/images/settings.png)
+
+</details>
+
+<details>
+<summary><b>Key bindings</b> — every shortcut rebindable, with where it applies</summary>
+
+![The Key Bindings page of Settings filtered to line commands, with their shortcuts and where each one fires](docs/images/key-bindings.png)
+
+</details>
 
 ## Platform support
 
