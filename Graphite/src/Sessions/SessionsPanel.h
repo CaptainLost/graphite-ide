@@ -28,6 +28,8 @@ namespace Graphite {
 	class SessionWindows;
 	class Workspace;
 
+	enum class OverviewContent : std::uint8_t;
+
 	enum class SessionsTab : std::uint8_t
 	{
 		Overview,
@@ -80,6 +82,7 @@ namespace Graphite {
 
 		void RenderToolbar();
 		void RenderToolbarEnd();
+		OverviewContent OverviewShows() const;
 		void RenderOverview();
 		void RenderList();
 		void RenderDayFilter();

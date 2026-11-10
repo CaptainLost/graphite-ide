@@ -137,6 +137,31 @@ namespace Graphite {
 		return cacheGaveNothing && SessionScanIsUnderway(indexing, initialScanRunning);
 	}
 
+	OverviewContent OverviewContentFor(bool indexing, bool initialScanRunning, bool cacheGaveNothing, bool hasSessions)
+	{
+		if (OverviewWaitsForScan(indexing, initialScanRunning, cacheGaveNothing))
+		{
+			return OverviewContent::Loading;
+		}
+
+		if (hasSessions)
+		{
+			return OverviewContent::Dashboard;
+		}
+
+		return SessionScanIsUnderway(indexing, initialScanRunning) ? OverviewContent::Loading : OverviewContent::Empty;
+	}
+
+	std::string OverviewEmptyMessage(bool folderInScope)
+	{
+		if (folderInScope)
+		{
+			return "No Claude sessions in this folder\nUntick \"This workspace only\" to see every folder";
+		}
+
+		return "No Claude sessions yet";
+	}
+
 	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal)
 	{
 		if (terminal.Exited)

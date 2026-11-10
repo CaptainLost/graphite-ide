@@ -468,13 +468,29 @@ namespace Graphite {
 		}
 	}
 
+	OverviewContent SessionsPanel::OverviewShows() const
+	{
+		return OverviewContentFor(m_Indexing, m_InitialScan, m_CacheGaveNothing, !m_Overview.GetModel().Sessions.empty());
+	}
+
 	void SessionsPanel::RenderOverview()
 	{
-		if (OverviewWaitsForScan(m_Indexing, m_InitialScan, m_CacheGaveNothing))
+		switch (OverviewShows())
+		{
+		case OverviewContent::Loading:
 		{
 			const Core::PanelMarginScope margin;
 			Core::LoadingState(ScanProgressText(m_ScanProgress.Scanned, m_ScanProgress.Total).c_str());
 			return;
+		}
+		case OverviewContent::Empty:
+		{
+			const Core::PanelMarginScope margin;
+			Core::EmptyState(OverviewEmptyMessage(!ScopeFolder().empty()));
+			return;
+		}
+		case OverviewContent::Dashboard:
+			break;
 		}
 
 		const DashboardModel& model = m_Overview.GetModel();

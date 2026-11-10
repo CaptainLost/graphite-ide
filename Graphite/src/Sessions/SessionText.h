@@ -34,6 +34,18 @@ namespace Graphite {
 
 	bool OverviewWaitsForScan(bool indexing, bool initialScanRunning, bool cacheGaveNothing);
 
+	enum class OverviewContent : std::uint8_t
+	{
+		Loading,
+		Empty,
+		Dashboard
+	};
+
+	// WARNING: Nothing in scope reads as empty only once the scan is done; before that it may be still coming.
+	OverviewContent OverviewContentFor(bool indexing, bool initialScanRunning, bool cacheGaveNothing, bool hasSessions);
+
+	std::string OverviewEmptyMessage(bool folderInScope);
+
 	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal);
 
 	std::string UnfoundSessionText(std::string_view problem);

@@ -311,6 +311,34 @@ TEST_CASE("The overview waits for the scan only when the cache gave nothing to d
 	CHECK_FALSE(OverviewWaitsForScan(kIndexing, kInitialScanDone, kCacheGaveNothing));
 }
 
+TEST_CASE("The overview shows an empty state once the scan is done and nothing is in scope")
+{
+	constexpr bool kIndexing = true;
+	constexpr bool kInitialScanRunning = true;
+	constexpr bool kInitialScanDone = false;
+	constexpr bool kCacheGaveNothing = true;
+	constexpr bool kCacheGaveSummaries = false;
+	constexpr bool kHasSessions = true;
+	constexpr bool kNoSessions = false;
+
+	CHECK(OverviewContentFor(kIndexing, kInitialScanRunning, kCacheGaveNothing, kHasSessions) == OverviewContent::Loading);
+	CHECK(OverviewContentFor(kIndexing, kInitialScanRunning, kCacheGaveSummaries, kNoSessions) == OverviewContent::Loading);
+	CHECK(OverviewContentFor(kIndexing, kInitialScanRunning, kCacheGaveSummaries, kHasSessions) == OverviewContent::Dashboard);
+	CHECK(OverviewContentFor(kIndexing, kInitialScanDone, kCacheGaveNothing, kNoSessions) == OverviewContent::Empty);
+	CHECK(OverviewContentFor(kIndexing, kInitialScanDone, kCacheGaveSummaries, kNoSessions) == OverviewContent::Empty);
+	CHECK(OverviewContentFor(kIndexing, kInitialScanDone, kCacheGaveNothing, kHasSessions) == OverviewContent::Dashboard);
+}
+
+TEST_CASE("The overview's empty state says whether a folder or the machine has no sessions")
+{
+	constexpr bool kFolderInScope = true;
+	constexpr bool kEveryFolder = false;
+
+	CHECK(OverviewEmptyMessage(kFolderInScope).starts_with("No Claude sessions in this folder"));
+	CHECK(OverviewEmptyMessage(kFolderInScope).find("Untick \"This workspace only\"") != std::string::npos);
+	CHECK(OverviewEmptyMessage(kEveryFolder) == "No Claude sessions yet");
+}
+
 TEST_CASE("A pending session keeps waiting while Claude's terminal runs")
 {
 	const CommandTerminal running;

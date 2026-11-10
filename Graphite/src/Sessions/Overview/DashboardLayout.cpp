@@ -154,7 +154,7 @@ namespace Graphite {
 			{
 				day.Kind = MapDayKind::Future;
 			}
-			else if (!oldest || date < *oldest)
+			else if (oldest && date < *oldest)
 			{
 				day.Kind = MapDayKind::Gone;
 			}

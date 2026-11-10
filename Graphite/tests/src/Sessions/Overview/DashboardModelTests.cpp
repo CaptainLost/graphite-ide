@@ -1,10 +1,12 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/Overview/DashboardFigures.h"
+#include "Sessions/Overview/DashboardLayout.h"
 #include "Sessions/Overview/DashboardModel.h"
 
 #include "Core/FileSystem/FileSystem.h"
 
+#include <algorithm>
 #include <vector>
 
 using namespace Graphite;
@@ -317,6 +319,16 @@ TEST_CASE("Unpriced requests are counted and cost nothing")
 	CHECK(model.Sessions[0].UnpricedRequests == 3);
 	CHECK(model.Sessions[0].UnpricedByFamily[Family(ModelFamily::Other)] == 3);
 	CHECK(model.Sessions[0].UnpricedModels == std::set<std::string>{"claude-unknown-9"});
+}
+
+TEST_CASE("A map with no oldest day hatches nothing")
+{
+	const MapDays days = MapDaysOf(Build({}, Day(2026, 11, 10)));
+
+	CHECK(std::none_of(days.Days.begin(), days.Days.end(), [](const MapDay& day) { return day.Kind == MapDayKind::Gone; }));
+	CHECK(std::all_of(days.Days.begin(), days.Days.end(), [](const MapDay& day) { return day.Level == 0 && !day.Index; }));
+	CHECK(days.Days[kMapDayCount - 6].Kind == MapDayKind::OnDisk);
+	CHECK(days.Days[kMapDayCount - 5].Kind == MapDayKind::Future);
 }
 
 TEST_CASE("ThisWeek pairs each day since Monday with the same weekday a week before")
