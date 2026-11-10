@@ -9,6 +9,10 @@
 #include "Git/Worktrees/WorktreePort.h"
 #include "Review/ReviewPort.h"
 #include "Settings/UserDirectories.h"
+#include "Wsl/WslGit.h"
+
+#include <functional>
+#include <memory>
 
 #include <atomic>
 #include <chrono>
@@ -146,6 +150,11 @@ namespace Graphite {
 
 		void SetRoot(std::filesystem::path root);
 
+		// How the port reaches a repository inside WSL (stage 3a): through the distro's agent. Without a
+		// factory, or on any other root, the port opens repositories with libgit2 as before.
+		using WslGitFactory = std::function<std::shared_ptr<WslGit>(const Core::WslSharePath& root, WslGit::Reach reach)>;
+		void SetWslGitFactory(WslGitFactory factory);
+
 		// WARNING: Reaches the calling thread's handles of this port only, so it is run on the thread whose handles of a
 		// closed or replaced folder must go, without opening the current one.
 		void LetGoOfHandlesNoLongerCurrent();
@@ -179,6 +188,14 @@ namespace Graphite {
 		std::mutex m_RootMutex;
 		std::string m_Root;
 		std::uint64_t m_Generation = 0;
+
+		// Under m_RootMutex too: the agent client of the current root when it is inside WSL.
+		WslGitFactory m_WslFactory;
+		std::shared_ptr<WslGit> m_Wsl;
+
+		// The current root's agent client, or null when the root is not inside WSL.
+		std::shared_ptr<WslGit> WslForRoot();
+		void RefreshWslLocked();
 
 		std::atomic<std::uint64_t> m_OpenCount{0};
 

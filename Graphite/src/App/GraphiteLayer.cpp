@@ -181,6 +181,14 @@ namespace Graphite {
 		// Writes under a WSL share go to the distro's agent from here on (ADR 0696).
 		Core::SetWslFileOperations(&m_WslAgents);
 
+		// A repository inside WSL is asked through its distro's agent too (stage 3a). m_WslAgents is
+		// declared before both ports, so it outlives the clients they keep.
+		const auto wslGit = [this](const Core::WslSharePath& root, WslGit::Reach reach) {
+			return std::make_shared<WslGit>(m_WslAgents, root, reach);
+		};
+		m_GitPort.SetWslGitFactory(wslGit);
+		m_WorktreeGitPort.SetWslGitFactory(wslGit);
+
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
