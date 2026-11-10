@@ -395,6 +395,12 @@ namespace Graphite {
 		}
 	}
 
+	bool IsEmpty(const TipCard& card)
+	{
+		return card.Head.empty() && card.HeadValue.empty() && card.Banner.empty() && card.Body.empty() &&
+			   card.Notes.empty() && card.Sections.empty();
+	}
+
 	TipCard NumberTip(const DashboardModel& model, NumberTile tile, std::optional<std::size_t> hoveredDay)
 	{
 		TipCard card = TileCard(model, tile);

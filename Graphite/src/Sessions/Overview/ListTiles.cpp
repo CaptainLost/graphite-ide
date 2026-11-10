@@ -17,7 +17,7 @@
 namespace Graphite {
 
 	namespace {
-		constexpr float kHalf = 0.5f;
+		using DashboardDrawing::kHalf;
 
 		// WARNING: Lengths are in font sizes, from the mockup; each is multiplied by the unit before it is drawn.
 		constexpr float kRowPitch = 1.45f;
@@ -39,7 +39,7 @@ namespace Graphite {
 		constexpr std::size_t kModelStats = 3;
 		constexpr std::size_t kCacheParts = 3;
 		constexpr double kThinnestPart = 0.004;
-		constexpr double kNothing = 1e-9;
+		using DashboardDrawing::kNothing;
 		constexpr std::string_view kWidestMoney = "$000.00";
 		constexpr bool kSaved = false;
 		constexpr bool kLost = true;
@@ -232,7 +232,7 @@ namespace Graphite {
 				const float width = static_cast<float>(shares[index] / shareTotal) * bar.GetWidth();
 				const ImRect piece(ImVec2(x, bar.Min.y), ImVec2(x + width, bar.Max.y));
 				const ImU32 colour = parts[index].second;
-				canvas.Drawing.AddRectFilled(piece.Min, piece.Max, canvas.IsHot(piece) ? Brighter(colour) : colour);
+				canvas.Drawing.AddRectFilled(piece.Min, piece.Max, canvas.IsHot(piece) ? Brighter(colour, canvas.Colours) : colour);
 				canvas.Add({.Rect = piece, .Tip = [tipOf, index] { return tipOf(index); }});
 				x += width;
 			}
@@ -328,7 +328,7 @@ namespace Graphite {
 		for (std::size_t index = 0; index < present.size(); ++index)
 		{
 			const ImRect row(ImVec2(content.Min.x, top), ImVec2(content.Max.x, top + pitch));
-			DrawSwatch(canvas, row.Min.x, top, pitch, canvas.Colours.Families[static_cast<std::size_t>(present[index])]);
+			DrawSwatch(canvas.Drawing, canvas.Unit, row.Min.x, top, pitch, canvas.Colours.Families[static_cast<std::size_t>(present[index])]);
 			DrawTextAt(canvas.Drawing, ImVec2(row.Min.x + SwatchRoom(canvas.Unit), BodyTop(top, pitch, body)), body,
 					   canvas.Colours.Ink, FitAt(FamilyLabel(model, present[index]), nameRoom, body));
 			DrawRightAligned(canvas, costRight, top, pitch, body, canvas.Colours.Ink, costs[index]);
@@ -563,7 +563,7 @@ namespace Graphite {
 		for (std::size_t index = 0; index < kCacheParts; ++index)
 		{
 			const ImRect row(ImVec2(content.Min.x, top), ImVec2(content.Max.x, top + pitch));
-			DrawSwatch(canvas, row.Min.x, top, pitch, pieces[index].Colour);
+			DrawSwatch(canvas.Drawing, canvas.Unit, row.Min.x, top, pitch, pieces[index].Colour);
 			DrawTextAt(canvas.Drawing, ImVec2(row.Min.x + SwatchRoom(canvas.Unit), BodyTop(top, pitch, body)), body,
 					   canvas.Colours.Ink, FitAt(pieces[index].Label, labelRoom, body));
 			DrawRightAligned(canvas, tokensRight, top, pitch, body, canvas.Colours.Ink, tokens[index]);

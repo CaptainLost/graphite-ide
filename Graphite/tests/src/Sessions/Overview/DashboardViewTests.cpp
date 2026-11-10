@@ -714,6 +714,18 @@ TEST_CASE("A long body stops at four lines")
 	CHECK(lines.size() == 4);
 }
 
+TEST_CASE("Brighter goes toward white on a dark tile and toward black on a light one")
+{
+	DashboardColours dark{};
+	dark.Tile = IM_COL32(35, 36, 40, 255);
+	DashboardColours light{};
+	light.Tile = IM_COL32(236, 236, 236, 255);
+	const ImU32 grey = Grey(128);
+
+	CHECK(ChannelOf(Brighter(grey, dark), IM_COL32_R_SHIFT) > 128);
+	CHECK(ChannelOf(Brighter(grey, light), IM_COL32_R_SHIFT) < 128);
+}
+
 TEST_CASE("DashboardColoursFrom maps the palette as decided, with rules and edges lifted off the surface")
 {
 	ImGuiFrames frames;

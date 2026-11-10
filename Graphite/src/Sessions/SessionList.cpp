@@ -32,7 +32,7 @@ namespace Graphite {
 		constexpr float kChipSize = 0.88f;
 		constexpr float kChipPaddingX = 0.62f;
 		constexpr float kChipPaddingY = 0.1f;
-		constexpr float kHalf = 0.5f;
+		using DashboardDrawing::kHalf;
 
 		// WARNING: Liveness comes from the fingerprint, which the index refreshes whenever the transcript changes.
 		// Asking the filesystem instead would cost a stat per row per frame.
@@ -82,11 +82,6 @@ namespace Graphite {
 			}
 
 			return earlier.Session->Summary->EndedAt > later.Session->Summary->EndedAt;
-		}
-
-		bool IsEmpty(const TipCard& card)
-		{
-			return card.Head.empty() && card.Body.empty() && card.Notes.empty() && card.Sections.empty();
 		}
 
 		CostResult TotalCost(const SessionSummary& summary, const Pricing& pricing)

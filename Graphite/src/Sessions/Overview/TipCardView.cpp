@@ -26,15 +26,12 @@ namespace Graphite {
 		constexpr float kTitleSize = 0.8f;
 		constexpr float kSectionMargin = 0.45f;
 		constexpr float kSectionPadding = 0.4f;
-		constexpr float kSwatchSize = 0.6f;
-		constexpr float kSwatchGap = 0.4f;
-		constexpr float kSwatchRounding = 0.15f;
 		constexpr float kBannerPaddingX = 0.45f;
 		constexpr float kBannerPaddingY = 0.15f;
 		constexpr float kBannerGap = 0.4f;
 		constexpr float kBannerRounding = 0.3f;
 		constexpr float kNoteGap = 0.2f;
-		constexpr float kHalf = 0.5f;
+		using DashboardDrawing::kHalf;
 		constexpr std::size_t kBodyLines = 4;
 
 		// WARNING: From the mockup's .tip: padding 8 px by 10 px, radius 6 px, shadow 0 6 px 24 px, at 13 px a font size.
@@ -69,7 +66,7 @@ namespace Graphite {
 
 		float RowSwatchRoom(const TipRow& row, float unit)
 		{
-			return row.Swatch ? (kSwatchSize + kSwatchGap) * unit : 0.0f;
+			return row.Swatch ? SwatchRoom(unit) : 0.0f;
 		}
 
 		TextFace LabelFace(const TipRow& row)
@@ -255,10 +252,8 @@ namespace Graphite {
 
 				if (row.Swatch)
 				{
-					const float swatch = kSwatchSize * m_Unit;
-					const ImVec2 min(m_Origin.x, m_Y + (kTipLinePitch * m_Unit - swatch) * kHalf);
-					m_Drawing.AddRectFilled(min, ImVec2(min.x + swatch, min.y + swatch),
-											m_Colours.Families[static_cast<std::size_t>(*row.Swatch)], kSwatchRounding * m_Unit);
+					DrawSwatch(m_Drawing, m_Unit, m_Origin.x, m_Y, kTipLinePitch * m_Unit,
+							   m_Colours.Families[static_cast<std::size_t>(*row.Swatch)]);
 					labelLeft += RowSwatchRoom(row, m_Unit);
 				}
 

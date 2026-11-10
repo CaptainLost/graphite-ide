@@ -75,6 +75,20 @@ namespace Graphite {
 			const LocalCalendar& Calendar;
 			DashboardModel& Model;
 			std::map<Date, DayTotals> Days;
+			std::unordered_map<UtcHour::rep, LocalHour> LocalHours;
+
+			// WARNING: A time zone lookup is slow and sessions share their hours, so each hour is looked up once.
+			const LocalHour& LocalOf(UtcHour hour)
+			{
+				const auto [entry, isNew] = LocalHours.try_emplace(hour.time_since_epoch().count());
+
+				if (isNew)
+				{
+					entry->second = Calendar.At(hour);
+				}
+
+				return entry->second;
+			}
 
 			DayTotals& DayAt(Date date)
 			{
@@ -87,7 +101,7 @@ namespace Graphite {
 			{
 				for (const auto& [utcHour, activity] : hours)
 				{
-					AddHour(Calendar.At(utcHour), activity, thread, session);
+					AddHour(LocalOf(utcHour), activity, thread, session);
 				}
 			}
 
@@ -395,7 +409,7 @@ namespace Graphite {
 	{
 		DashboardModel model;
 		model.Today = today;
-		Accumulator accumulator{pricing, calendar, model, {}};
+		Accumulator accumulator{pricing, calendar, model, {}, {}};
 
 		for (const SessionSummary* summary : sessions)
 		{

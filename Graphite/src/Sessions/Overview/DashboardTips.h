@@ -66,6 +66,8 @@ namespace Graphite {
 		Uncached
 	};
 
+	bool IsEmpty(const TipCard& card);
+
 	// hoveredDay is an index into DashboardModel::Days
 	TipCard NumberTip(const DashboardModel& model, NumberTile tile, std::optional<std::size_t> hoveredDay);
 
@@ -81,8 +83,7 @@ namespace Graphite {
 
 	TipCard ToolTip(const DashboardModel& model, std::size_t toolIndex);
 
-	TipCard SkillTip(const DashboardModel& model, std::size_t skillIndex,
-					 const LocalCalendar& calendar = LocalCalendar::Current());
+	TipCard SkillTip(const DashboardModel& model, std::size_t skillIndex, const LocalCalendar& calendar);
 
 	TipCard PunchTip(const DashboardModel& model, int weekday, int hour); // weekday 0 = Monday, local hour
 

@@ -17,6 +17,11 @@
 
 namespace Graphite {
 
+	namespace DashboardDrawing {
+		inline constexpr float kHalf = 0.5f;
+		inline constexpr double kNothing = 1e-9; // the least a highest value is taken to be, so nothing divides by zero
+	}
+
 	enum class TextFace : std::uint8_t
 	{
 		Regular,
@@ -56,7 +61,7 @@ namespace Graphite {
 
 	ImU32 Faint(const DashboardColours& colours);
 
-	ImU32 Brighter(ImU32 colour);
+	ImU32 Brighter(ImU32 colour, const DashboardColours& colours); // toward white on a dark tile, toward black on a light one
 
 	struct DashboardRegion
 	{
@@ -98,7 +103,7 @@ namespace Graphite {
 
 	std::string UpperCase(std::string_view text);
 
-	void DrawSwatch(DashboardCanvas& canvas, float left, float top, float pitch, ImU32 colour);
+	void DrawSwatch(ImDrawList& drawing, float unit, float left, float top, float pitch, ImU32 colour);
 
 	float SwatchRoom(float unit);
 }

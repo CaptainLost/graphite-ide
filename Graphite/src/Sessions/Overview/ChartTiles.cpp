@@ -19,7 +19,7 @@ namespace Graphite {
 	namespace {
 		using Date = std::chrono::year_month_day;
 
-		constexpr float kHalf = 0.5f;
+		using DashboardDrawing::kHalf;
 		constexpr std::size_t kHoursPerDay = 24;
 
 		// WARNING: Lengths are in font sizes, from the mockup; each is multiplied by the unit before it is drawn.
@@ -40,7 +40,7 @@ namespace Graphite {
 		constexpr float kSparkFloor = 0.05f;
 		constexpr float kSparkHeadroom = 0.15f;
 		constexpr float kMarkerAlpha = 0.7f;
-		constexpr double kNothing = 1e-9;
+		using DashboardDrawing::kNothing;
 
 		constexpr float kCellPitch = 1.23f;
 		constexpr float kCell = 1.0f;
@@ -495,7 +495,8 @@ namespace Graphite {
 						const ImU32 colour = canvas.Colours.Families[family];
 						const bool top = family == topFamily;
 						canvas.Drawing.AddRectFilled(ImVec2(left, bottom - piece), ImVec2(left + slot - gap, bottom),
-													 hot ? Brighter(colour) : colour, top ? canvas.Units(kColumnRounding) : 0.0f,
+													 hot ? Brighter(colour, canvas.Colours) : colour,
+													 top ? canvas.Units(kColumnRounding) : 0.0f,
 													 top ? ImDrawFlags_RoundCornersTop : ImDrawFlags_None);
 						bottom -= piece;
 					}
@@ -584,7 +585,7 @@ namespace Graphite {
 					return;
 				}
 
-				DrawSwatch(canvas, x, top, pitch, canvas.Colours.Families[family]);
+				DrawSwatch(canvas.Drawing, canvas.Unit, x, top, pitch, canvas.Colours.Families[family]);
 				DrawTextAt(canvas.Drawing, ImVec2(x + SwatchRoom(canvas.Unit), top + (pitch - small) * kHalf), small,
 						   canvas.Colours.Dim, name);
 				x += width + canvas.Units(kKeyGap);
@@ -919,7 +920,8 @@ namespace Graphite {
 								 ImVec2(left + static_cast<float>(hour + 1) * column, top + row));
 				const auto growth = static_cast<float>(std::sqrt(std::max(0.0, cell.Cost) / highest));
 				const float diameter = std::min(largest, canvas.Units(kSmallestDot + kDotGrowth * growth));
-				canvas.Drawing.AddCircleFilled(box.GetCenter(), diameter * kHalf, canvas.IsHot(box) ? Brighter(dot) : dot);
+				canvas.Drawing.AddCircleFilled(box.GetCenter(), diameter * kHalf,
+											   canvas.IsHot(box) ? Brighter(dot, canvas.Colours) : dot);
 				canvas.Add({.Rect = box,
 							.Tip = [&model, weekday, hour = static_cast<int>(hour)] { return PunchTip(model, weekday, hour); }});
 			}

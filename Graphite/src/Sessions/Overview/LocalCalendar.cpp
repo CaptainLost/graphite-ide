@@ -13,7 +13,10 @@ namespace Graphite {
 		std::chrono::sys_time<std::chrono::milliseconds> instant) const
 	{
 		if (m_Zone == nullptr)
+		{
 			return std::chrono::local_time<std::chrono::milliseconds>{instant.time_since_epoch()};
+		}
+
 		return m_Zone->to_local(instant);
 	}
 
@@ -30,16 +33,24 @@ namespace Graphite {
 	std::optional<std::chrono::year_month_day> LocalCalendar::DayOf(std::string_view isoTimestamp) const
 	{
 		const auto instant = ParseTimestamp(isoTimestamp);
+
 		if (!instant)
+		{
 			return std::nullopt;
+		}
+
 		return std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(ToLocal(*instant))};
 	}
 
 	std::optional<std::chrono::local_time<std::chrono::minutes>> LocalCalendar::MinuteOf(std::string_view isoTimestamp) const
 	{
 		const auto instant = ParseTimestamp(isoTimestamp);
+
 		if (!instant)
+		{
 			return std::nullopt;
+		}
+
 		return std::chrono::floor<std::chrono::minutes>(ToLocal(*instant));
 	}
 

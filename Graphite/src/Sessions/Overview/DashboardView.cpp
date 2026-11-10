@@ -97,12 +97,6 @@ namespace Graphite {
 			ImGui::Dummy(tile.GetSize());
 		}
 
-		bool IsEmpty(const TipCard& card)
-		{
-			return card.Head.empty() && card.HeadValue.empty() && card.Banner.empty() && card.Body.empty() &&
-				   card.Notes.empty() && card.Sections.empty();
-		}
-
 		void ShowHovered(const DashboardRegion& hovered, const DashboardColours& colours, DashboardAction& action)
 		{
 			if (hovered.ShowDay || hovered.OpenSession)

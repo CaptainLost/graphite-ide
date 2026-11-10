@@ -23,7 +23,7 @@ namespace Graphite {
 		constexpr float kSwatchSize = 0.6f;
 		constexpr float kSwatchGap = 0.4f;
 		constexpr float kSwatchRounding = 0.15f;
-		constexpr float kHalf = 0.5f;
+		using DashboardDrawing::kHalf;
 		constexpr char kCodeMark = '`';
 		constexpr char kSpace = ' ';
 
@@ -191,10 +191,11 @@ namespace Graphite {
 													 ImGui::ColorConvertU32ToFloat4(colours.Tile), kFaintShareOfTile));
 	}
 
-	ImU32 Brighter(ImU32 colour)
+	ImU32 Brighter(ImU32 colour, const DashboardColours& colours)
 	{
 		const ImVec4 channels = ImGui::ColorConvertU32ToFloat4(colour);
-		return ImGui::ColorConvertFloat4ToU32(ImLerp(channels, ImVec4(1.0f, 1.0f, 1.0f, channels.w), kBrighterShare));
+		const float toward = IsLightSurface(colours.Tile) ? 0.0f : 1.0f;
+		return ImGui::ColorConvertFloat4ToU32(ImLerp(channels, ImVec4(toward, toward, toward, channels.w), kBrighterShare));
 	}
 
 	bool DashboardCanvas::IsHot(const ImRect& rect) const
@@ -276,11 +277,11 @@ namespace Graphite {
 		return upper;
 	}
 
-	void DrawSwatch(DashboardCanvas& canvas, float left, float top, float pitch, ImU32 colour)
+	void DrawSwatch(ImDrawList& drawing, float unit, float left, float top, float pitch, ImU32 colour)
 	{
-		const float size = canvas.Units(kSwatchSize);
+		const float size = kSwatchSize * unit;
 		const ImVec2 min(left, top + (pitch - size) * kHalf);
-		canvas.Drawing.AddRectFilled(min, ImVec2(min.x + size, min.y + size), colour, canvas.Units(kSwatchRounding));
+		drawing.AddRectFilled(min, ImVec2(min.x + size, min.y + size), colour, kSwatchRounding * unit);
 	}
 
 	float SwatchRoom(float unit)
