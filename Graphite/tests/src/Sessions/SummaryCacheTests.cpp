@@ -84,7 +84,7 @@ TEST_CASE("A version 2 cache reads as empty")
 	CHECK(LoadSummaryCache(temp.MakeFile("v2.json", "{\"version\":2,\"sessions\":[]}")).empty());
 }
 
-TEST_CASE("A cached hour more than five years back or past tomorrow is dropped, however large its number")
+TEST_CASE("A cached hour before 2025 or past tomorrow is dropped, however large its number")
 {
 	TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "sessions-cache.json";

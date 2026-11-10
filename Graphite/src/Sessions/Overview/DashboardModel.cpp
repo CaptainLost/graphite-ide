@@ -216,7 +216,7 @@ namespace Graphite {
 
 				const std::chrono::sys_days day{today};
 				const std::chrono::sys_days first =
-					std::clamp(std::chrono::sys_days{Days.begin()->first}, OldestUsageDay(day), day);
+					std::clamp(std::chrono::sys_days{Days.begin()->first}, std::min(kOldestUsageDay, day), day);
 				const std::chrono::sys_days last =
 					std::clamp(std::chrono::sys_days{Days.rbegin()->first}, day, NewestUsageDay(day));
 

@@ -138,7 +138,7 @@ TEST_CASE("Active time adds only gaps shorter than ten minutes")
 	CHECK(activity.ActiveTime == std::chrono::minutes{14});
 }
 
-TEST_CASE("A record dated more than five years back or past tomorrow counts in no hour")
+TEST_CASE("A record dated before 2025 or past tomorrow counts in no hour")
 {
 	const std::string lastYear = std::format("{:%Y}-01-01T09:00:00.000Z", UtcToday() - std::chrono::days{366});
 	const SessionActivity activity = Recorded(
@@ -155,17 +155,17 @@ TEST_CASE("A record dated more than five years back or past tomorrow counts in n
 	CHECK(activity.MainUsageByCwd.at("D:\\Repos\\IDE").at({"claude-opus-5", false}).Input == 4);
 }
 
-TEST_CASE("The usage range runs from five years before today to the end of tomorrow")
+TEST_CASE("The usage range runs from the first of 2025 to the end of tomorrow")
 {
 	const std::chrono::sys_days today{std::chrono::year{2026} / 11 / 10};
 
 	CHECK(IsWithinUsageRange(UtcHour{today}, today));
 	CHECK(IsWithinUsageRange(UtcHour{today + std::chrono::days{2}} - std::chrono::hours{1}, today));
 	CHECK_FALSE(IsWithinUsageRange(UtcHour{today + std::chrono::days{2}}, today));
-	CHECK(IsWithinUsageRange(UtcHour{OldestUsageDay(today)}, today));
-	CHECK_FALSE(IsWithinUsageRange(UtcHour{OldestUsageDay(today)} - std::chrono::hours{1}, today));
-	CHECK(OldestUsageDay(today) <= std::chrono::sys_days{std::chrono::year{2021} / 11 / 10});
-	CHECK(OldestUsageDay(today) >= std::chrono::sys_days{std::chrono::year{2021} / 11 / 9});
+	CHECK(IsWithinUsageRange(UtcHour{std::chrono::sys_days{std::chrono::year{2025} / 1 / 1}}, today));
+	CHECK_FALSE(IsWithinUsageRange(UtcHour{std::chrono::sys_days{std::chrono::year{2025} / 1 / 1}} - std::chrono::hours{1}, today));
+	CHECK(IsWithinUsageRange(UtcHour{std::chrono::sys_days{std::chrono::year{2025} / 1 / 1}},
+							 std::chrono::sys_days{std::chrono::year{2040} / 6 / 1}));
 	CHECK_FALSE(IsWithinUsageRange(UtcHour{std::chrono::hours{std::numeric_limits<std::int64_t>::max()}}, today));
 	CHECK_FALSE(IsWithinUsageRange(UtcHour{std::chrono::hours{std::numeric_limits<std::int64_t>::min()}}, today));
 }

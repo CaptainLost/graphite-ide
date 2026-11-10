@@ -90,11 +90,6 @@ namespace Graphite {
 		return std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 	}
 
-	std::chrono::sys_days OldestUsageDay(std::chrono::sys_days today)
-	{
-		return std::chrono::floor<std::chrono::days>(today - kOldestUsage);
-	}
-
 	std::chrono::sys_days NewestUsageDay(std::chrono::sys_days today)
 	{
 		return today + std::chrono::days{1};
@@ -102,7 +97,7 @@ namespace Graphite {
 
 	bool IsWithinUsageRange(UtcHour hour, std::chrono::sys_days today)
 	{
-		const UtcHour oldest{OldestUsageDay(today)};
+		const UtcHour oldest{kOldestUsageDay};
 		const UtcHour pastNewest{NewestUsageDay(today) + std::chrono::days{1}};
 		return hour >= oldest && hour < pastNewest;
 	}

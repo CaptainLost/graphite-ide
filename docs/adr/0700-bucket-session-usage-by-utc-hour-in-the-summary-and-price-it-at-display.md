@@ -31,8 +31,10 @@ already prices its tokens when it draws them.
   convert hours to local days and hours with the current time zone at the same moment.
 - Raise `kSummaryCacheVersion` to 3; an older cache is discarded and rebuilt by one scan,
   with no migration.
-- Keep only hours from five years before today to the end of tomorrow, when a transcript is
-  read and when the cache is loaded, and clamp the dashboard's days to the same range. A
+- Keep only hours from 1 January 2025, before Claude Code's first release, to the end of
+  tomorrow, when a transcript is read and when the cache is loaded, and clamp the dashboard's
+  days to the same range. The floor is a fixed day, not a span back from today, so an old
+  transcript never ages out of the dashboard. A
   record dated by a wrong clock counts in no hour, as one without a timestamp does, rather
   than stretch the run of days without end.
 

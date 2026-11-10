@@ -18,16 +18,16 @@ namespace Graphite {
 
 	using UtcHour = std::chrono::sys_time<std::chrono::hours>;
 
-	inline constexpr std::chrono::years kOldestUsage{5};
+	// WARNING: A fixed day before Claude Code's first release, never a span back from today, so an old transcript (or a
+	// test's dated fixture) stays in range however long ago it was written.
+	inline constexpr std::chrono::sys_days kOldestUsageDay{std::chrono::year{2025} / 1 / 1};
 
 	std::chrono::sys_days UtcToday();
-
-	std::chrono::sys_days OldestUsageDay(std::chrono::sys_days today);
 
 	std::chrono::sys_days NewestUsageDay(std::chrono::sys_days today); // tomorrow
 
 	// WARNING: A record's clock can say anything, and one far year would stretch the dashboard's days without end, so
-	// an hour more than five years before today or past tomorrow counts in no hour, as an hour without a timestamp.
+	// an hour before kOldestUsageDay or past tomorrow counts in no hour, as an hour without a timestamp.
 	bool IsWithinUsageRange(UtcHour hour, std::chrono::sys_days today);
 
 	struct HourActivity
