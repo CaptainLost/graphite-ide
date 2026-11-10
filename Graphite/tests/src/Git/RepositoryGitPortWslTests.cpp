@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <process.h>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -273,7 +274,8 @@ TEST_CASE("A WSL repository's history, branches, stashes and checkout work throu
 		return;
 	}
 
-	const std::filesystem::path folder{L"\\\\wsl.localhost\\Ubuntu\\tmp\\graphite-port-3b-test"};
+	// Per process: another test run at the same time would share the folder.
+	const std::filesystem::path folder = std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\tmp\\"} / Core::FromUtf8("graphite-port-test-" + std::to_string(_getpid()));
 	std::filesystem::remove_all(folder, error);
 	std::filesystem::create_directories(folder, error);
 	Graphite::WslAgents agents{Graphite::WslAgents::ConnectThroughWsl(agentBinary)};

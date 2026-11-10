@@ -11,6 +11,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -88,7 +89,16 @@ namespace Agent {
 
 			Core::Blame blame;
 
-			if (bytes.GetValue().empty())
+			// What the host cannot show as text it does not blame (DecodeBaseText): too large, binary
+			// (a NUL where git looks for one), or nothing but a byte order mark. Not blamed here either,
+			// so it never holds up the other requests for nothing.
+			const std::string_view headBytes = bytes.GetValue();
+			constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
+			constexpr std::size_t kBinaryProbe = 8000;
+			const bool shownAsText =
+				headBytes.size() <= Core::MaximumDiffTextSize && headBytes.substr(0, kBinaryProbe).find('\0') == std::string_view::npos;
+
+			if (headBytes.empty() || headBytes == kByteOrderMark || !shownAsText)
 			{
 				blame.At = head.GetValue();
 				blame.File = *relative;

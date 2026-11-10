@@ -244,4 +244,25 @@ TEST_CASE("Since viewed of a file the worktree no longer has is a failed read, n
 		At(history.Fixture.GetPath(), {{"viewed", history.FirstBlobOfA()}, {"worktree", Linux(history.Fixture.GetPath())}, {"path", "a.txt"}}));
 
 	REQUIRE_FALSE(answer.HasValue());
+	CHECK(answer.GetError().Code == Core::ErrorCode::IoFailure);
+}
+
+TEST_CASE("Blame at HEAD of a file too large or too binary to show sends its bytes and blames nothing")
+{
+	ReviewHistory history;
+	history.Fixture.Write("big.txt", std::string(Core::MaximumDiffTextSize + 1, 'x'));
+	history.Fixture.Write("image.bin", std::string{"PNG\0\0\x01", 6});
+	history.Fixture.Commit("large and binary");
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+
+	for (const char* name : {"big.txt", "image.bin"})
+	{
+		const Core::Result<Agent::GitAnswer> answer = Call(handlers, "git.blameAtHead", At(history.Fixture.GetPath(), {{"path", Linux(history.Fixture.GetPath() / name)}}));
+		REQUIRE(answer.HasValue());
+		CHECK(answer.GetValue().Result.at("trackable") == true);
+		const std::size_t headSize = answer.GetValue().Result.at("headSize");
+		const Core::Result<Core::Blame> blame = Core::BlameFromJson(json::parse(answer.GetValue().Payload.substr(headSize)));
+		REQUIRE(blame.HasValue());
+		CHECK(blame.GetValue().Hunks.empty());
+	}
 }

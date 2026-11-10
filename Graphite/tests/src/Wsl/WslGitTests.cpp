@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <process.h>
 #include <mutex>
 #include <string>
 #include <unordered_set>
@@ -329,12 +330,14 @@ TEST_CASE("A repository inside WSL is created, changed, staged and committed thr
 		return;
 	}
 
-	const std::filesystem::path folder{L"\\\\wsl.localhost\\Ubuntu\\tmp\\graphite-wslgit-test"};
+	// Per process: another test run at the same time would share the folder.
+	const std::string name = "graphite-wslgit-test-" + std::to_string(_getpid());
+	const std::filesystem::path folder = std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\tmp\\"} / Core::FromUtf8(name);
 	std::filesystem::remove_all(folder, error);
 	std::filesystem::create_directories(folder, error);
 
 	Graphite::WslAgents agents{Graphite::WslAgents::ConnectThroughWsl(agentBinary)};
-	Graphite::WslGit git{agents, Core::WslSharePath{"Ubuntu", "/tmp/graphite-wslgit-test"}, Graphite::WslGit::Reach::SearchUpward};
+	Graphite::WslGit git{agents, Core::WslSharePath{"Ubuntu", "/tmp/" + name}, Graphite::WslGit::Reach::SearchUpward};
 
 	REQUIRE(git.Init().HasValue());
 

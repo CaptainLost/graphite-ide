@@ -13,17 +13,23 @@ namespace Agent {
 
 	namespace {
 
-		// libgit2 keeps answering from a handle whose .git was deleted.
+		// libgit2 keeps answering from a handle whose .git was deleted, or whose git directory went
+		// with a worktree removed and added again at the same folder.
 		bool HasVanished(const Core::Repository& repository)
 		{
 			const std::filesystem::path workingDirectory = repository.GetWorkingDirectory();
+			std::error_code error;
+
+			if (!std::filesystem::exists(repository.GitDirectory(), error) && !error)
+			{
+				return true;
+			}
 
 			if (workingDirectory.empty())
 			{
 				return false;
 			}
 
-			std::error_code error;
 			return !std::filesystem::exists(workingDirectory / ".git", error) && !error;
 		}
 	}

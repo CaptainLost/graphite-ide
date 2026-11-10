@@ -683,7 +683,12 @@ namespace Graphite {
 		}
 
 		const nlohmann::json& result = answer.GetValue().Result;
-		RangeRead range{.Problem = result.value("problem", std::string{"none"}), .Complete = result.value("complete", true)};
+		RangeRead range{.Problem = result.value("problem", std::string{}), .Complete = result.value("complete", true)};
+
+		if (range.Problem != "none" && range.Problem != "branchMissing" && range.Problem != "baseMissing" && range.Problem != "noCommonAncestor")
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, std::format("the WSL agent's range names an unknown problem \"{}\"", range.Problem)};
+		}
 		const Core::Result<std::optional<Core::Oid>> mergeBase = OidOf(result, "mergeBase");
 		const Core::Result<std::optional<Core::Oid>> tip = OidOf(result, "tip");
 
