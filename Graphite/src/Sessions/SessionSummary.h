@@ -2,6 +2,7 @@
 
 #include "Sessions/Pricing.h"
 #include "Sessions/Requests/RequestUsageAccumulator.h"
+#include "Sessions/SessionActivity.h"
 #include "Sessions/Transcript/TranscriptRecord.h"
 
 #include <chrono>
@@ -65,6 +66,7 @@ namespace Graphite {
 		std::size_t SubagentCount = 0;
 		std::size_t SkippedLines = 0;
 		Fingerprint Print;
+		SessionActivity Activity;
 
 		std::string DisplayTitle() const;
 

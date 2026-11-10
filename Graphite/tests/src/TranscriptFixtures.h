@@ -86,7 +86,7 @@ namespace Fixtures {
 								 const nlohmann::json& usage,
 								 const std::string& model = "claude-opus-5",
 								 const std::string& timestamp = "2026-09-17T09:00:01.000Z",
-								 const char* stopReason = nullptr)
+								 const char* stopReason = nullptr, const std::string& cwd = "D:\\Repos\\IDE")
 	{
 		nlohmann::json message = {{"model", model},
 								  {"role", "assistant"},
@@ -102,7 +102,7 @@ namespace Fixtures {
 					 {"uuid", "assistant-" + requestId + "-" + timestamp},
 					 {"requestId", requestId},
 					 {"timestamp", timestamp},
-					 {"cwd", "D:\\Repos\\IDE"},
+					 {"cwd", cwd},
 					 {"message", message}});
 	}
 
@@ -178,6 +178,15 @@ namespace Fixtures {
 										   const std::string& timestamp = "2026-09-17T09:00:00.500Z")
 	{
 		return Line({{"type", "attachment"}, {"version", version}, {"timestamp", timestamp}, {"attachment", attachment}});
+	}
+
+	inline std::string CompactBoundary(const std::string& timestamp = "2026-09-17T09:00:04.000Z")
+	{
+		return Line({{"type", "system"},
+					 {"subtype", "compact_boundary"},
+					 {"uuid", "boundary-" + timestamp},
+					 {"timestamp", timestamp},
+					 {"compactMetadata", {{"trigger", "auto"}}}});
 	}
 
 	inline std::string AiTitle(const std::string& title)

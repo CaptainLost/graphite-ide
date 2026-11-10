@@ -4,7 +4,6 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Encoding.h"
 
-#include "Sessions/Transcript/InjectedText.h"
 #include "Sessions/Transcript/SubagentLinks.h"
 #include "Sessions/Transcript/TranscriptReader.h"
 
@@ -38,24 +37,6 @@ namespace Graphite {
 		constexpr std::size_t kHourMinuteSeparatorIndex = 13;
 		constexpr std::size_t kMinuteSecondSeparatorIndex = 16;
 		constexpr std::size_t kMillisecondSeparatorIndex = 19;
-
-		std::optional<std::string> TypedPrompt(const TranscriptRecord& record)
-		{
-			if (record.Kind != RecordKind::User || record.IsMeta)
-			{
-				return std::nullopt;
-			}
-
-			for (const ContentBlock& block : record.Blocks)
-			{
-				if (block.Kind == BlockKind::Text && !block.Text.empty() && !IsInjectedText(block.Text))
-				{
-					return block.Text;
-				}
-			}
-
-			return std::nullopt;
-		}
 
 		void AddFile(Fingerprint& fingerprint, const std::filesystem::path& file)
 		{
@@ -115,14 +96,18 @@ namespace Graphite {
 		{
 			++summary.SubagentCount;
 			UsageTally subagentTally;
+			ActivityRecorder subagentActivity{TranscriptThread::Subagent};
 
 			if (Core::Result<TranscriptRead> subagentRead = ReadTranscript(subagentFile, kReadFromStart))
 			{
 				for (const TranscriptRecord& record : subagentRead.GetValue().Chunk.Records)
 				{
 					subagentTally.Add(record);
+					subagentActivity.Add(record);
 				}
 			}
+
+			subagentActivity.AddTo(summary.Activity);
 
 			for (const auto& [usageKey, counts] : subagentTally.Get())
 			{
@@ -221,10 +206,12 @@ namespace Graphite {
 		summary.SkippedLines = transcriptRead.GetValue().Chunk.Skipped;
 
 		UsageTally mainTally;
+		ActivityRecorder mainActivity{TranscriptThread::Main};
 
 		for (const TranscriptRecord& record : transcriptRead.GetValue().Chunk.Records)
 		{
 			mainTally.Add(record);
+			mainActivity.Add(record);
 
 			if (record.Kind == RecordKind::AiTitle && !record.Title.empty())
 			{
@@ -259,6 +246,7 @@ namespace Graphite {
 		}
 
 		summary.Main = mainTally.Get();
+		mainActivity.AddTo(summary.Activity);
 
 		ForEachSubagentTranscript(sessionFile, [&summary](const std::filesystem::path& subagentFile, const std::string&) { AddSubagentUsage(summary, subagentFile); });
 
