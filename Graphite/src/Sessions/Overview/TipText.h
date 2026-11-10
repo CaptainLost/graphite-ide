@@ -17,6 +17,8 @@ namespace Graphite {
 
 	std::string TipMoney(double dollars);
 
+	std::string CompactMoney(double dollars); // "$372.91", "$4.5k", "$1.0M"
+
 	std::string TipCount(std::size_t count);
 
 	std::string TipCounted(std::size_t count, std::string_view one, std::string_view many); // "1 call", "12 calls"

@@ -502,6 +502,22 @@ TEST_CASE("A loss and a tiny share read as a person writes them")
 	CHECK(TipShare(0.0, 1.0) == "0%");
 }
 
+TEST_CASE("Compact money writes a thousand and more in k and M, rounded before the unit is chosen")
+{
+	CHECK(CompactMoney(372.91) == "$372.91");
+	CHECK(CompactMoney(999.99) == "$999.99");
+	CHECK(CompactMoney(999.996) == "$1.0k");
+	CHECK(CompactMoney(1000.0) == "$1.0k");
+	CHECK(CompactMoney(4476.59) == "$4.5k");
+	CHECK(CompactMoney(9999.0) == "$10.0k");
+	CHECK(CompactMoney(50'612.0) == "$50.6k");
+	CHECK(CompactMoney(999'949.0) == "$999.9k");
+	CHECK(CompactMoney(999'950.0) == "$1.0M");
+	CHECK(CompactMoney(1e6) == "$1.0M");
+	CHECK(CompactMoney(0.0) == "$0.00");
+	CHECK(CompactMoney(-4476.59) == Minus("$4.5k"));
+}
+
 TEST_CASE("A day without cost is not set against an average active day")
 {
 	const Fixture fixture;

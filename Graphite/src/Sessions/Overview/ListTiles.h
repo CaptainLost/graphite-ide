@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -36,10 +37,12 @@ namespace Graphite {
 		std::string Whole() const { return Before + Without + After; }
 	};
 
+	CacheSentence CacheSentenceOf(std::string_view without, std::string_view actual, bool lost);
+
 	// WARNING: Worded the other way round when the cache cost more than it saved, so the sentence never claims a saving.
 	CacheSentence CacheSentenceOf(const DashboardModel& model);
 
-	float CacheHeight(const DashboardModel& model, float width);
+	float CacheHeight(float width);
 
 	void DrawCache(DashboardCanvas& canvas, const ImRect& tile);
 }

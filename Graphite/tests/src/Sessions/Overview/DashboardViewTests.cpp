@@ -135,7 +135,7 @@ namespace {
 			ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			Origin = ImGui::GetCursorScreenPos();
 			LastAction = DrawDashboard(Data.Model, Data.Calendar, Colours);
-			Grid = LayOutDashboard(Data.Model, Width);
+			Grid = LayOutDashboard(Width);
 
 			if (LastAction.ShowDay || LastAction.OpenSession)
 			{
@@ -242,9 +242,12 @@ TEST_CASE("Draws 13 weeks from Monday 17 Aug, hatching the days before the oldes
 TEST_CASE("A click on a heat cell asks to show that day")
 {
 	DashboardScreen screen(kWideDashboardInFontSizes);
-	screen.DrawFrame();
+	MapGrid grid;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		grid = MapGridOf(screen.OnScreen(AreaOf(screen.Grid, DashboardArea::Map)));
+	});
 
-	const MapGrid grid = MapGridOf(screen.OnScreen(AreaOf(screen.Grid, DashboardArea::Map)));
 	constexpr int kLastWeek = kHeatWeeks - 1;
 	constexpr int kTuesday = 1;
 	const ImVec2 cell(grid.FirstCell.x + static_cast<float>(kLastWeek) * grid.Pitch + grid.Cell * kHalf,
@@ -393,6 +396,68 @@ TEST_CASE("When the cache cost more than it saved, the sentence still reads true
 
 	DashboardScreen screen(kWideDashboardInFontSizes);
 	CHECK(CacheSentenceOf(screen.Data.Model).Whole() == "Without the cache this would have cost $3.50, not $3.50.");
+}
+
+TEST_CASE("Tile heights follow the width alone, so a total crossing $1000 or a loss on the cache moves no tile")
+{
+	const auto modelCosting = [](SessionSummary& summary, double dollars, std::uint64_t cacheWrites) {
+		summary.Id = "a";
+		summary.Cwd = Core::FromUtf8("D:/Repos/IDE");
+		summary.Activity.MainHours.clear();
+		HourActivity hour = OpusDollars(dollars);
+		hour.Usage[UsageKey{"claude-opus-5", false}].CacheWrite1h = cacheWrites;
+		summary.Activity.MainHours[Hour(2026, 11, 9, 9)] = hour;
+		const std::vector<const SessionSummary*> sessions{&summary};
+		return BuildDashboard(sessions, Pricing::Defaults(), LocalCalendar{nullptr}, Day(2026, 11, 10));
+	};
+
+	SessionSummary cheap;
+	SessionSummary dear;
+	SessionSummary lossy;
+	const DashboardModel under = modelCosting(cheap, 999.99, 0);
+	const DashboardModel over = modelCosting(dear, 123'456.78, 0);
+	const DashboardModel loss = modelCosting(lossy, 1000.0, 900'000'000);
+	REQUIRE(loss.Saved < -1000.0);
+
+	for (const float widthInFontSizes : {30.0f, 41.0f, 55.0f, 64.0f, 82.5f, 100.0f})
+	{
+		CAPTURE(widthInFontSizes);
+		std::vector<float> heights;
+
+		for (const DashboardModel* model : {&under, &over, &loss})
+		{
+			DashboardScreen screen(widthInFontSizes);
+			screen.Data.Model = *model;
+			screen.DrawFrame();
+			screen.DrawFrame();
+			const ImGuiWindow* panel = ImGui::FindWindowByName("Panel");
+			REQUIRE(panel != nullptr);
+			REQUIRE(!panel->DC.ChildWindows.empty());
+			heights.push_back(panel->DC.ChildWindows.back()->ContentSize.y);
+		}
+
+		CHECK(heights[0] > 0.0f);
+		CHECK(heights[1] == heights[0]);
+		CHECK(heights[2] == heights[0]);
+	}
+}
+
+TEST_CASE("At full width the map's total, streak and legend stand beside the grid, below it when narrow")
+{
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	frames.Next([] {
+		const float unit = ImGui::GetFontSize();
+		const auto fullWidthMap = [unit](float panelInFontSizes) {
+			return LayOutDashboard(panelInFontSizes * unit).Areas[static_cast<std::size_t>(DashboardArea::Map)];
+		};
+
+		CHECK(MapSideStandsBeside(fullWidthMap(82.5f).GetWidth()));
+		CHECK(MapSideStandsBeside(fullWidthMap(57.5f).GetWidth()));
+		CHECK_FALSE(MapSideStandsBeside(fullWidthMap(41.0f).GetWidth()));
+		CHECK_FALSE(MapSideStandsBeside(fullWidthMap(20.0f).GetWidth()));
+		CHECK_FALSE(MapSideStandsBeside(fullWidthMap(70.0f).GetWidth()));
+	});
 }
 
 TEST_CASE("Reflows to two and one columns below the breakpoints")

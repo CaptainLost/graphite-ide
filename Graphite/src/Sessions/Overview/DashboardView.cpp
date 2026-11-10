@@ -16,12 +16,12 @@ namespace Graphite {
 			NumberTile::Spent,		NumberTile::ThisWeek,	NumberTile::PerActiveDay, NumberTile::Sessions,
 			NumberTile::Subagents, NumberTile::CacheSaved, NumberTile::Output,		  NumberTile::BusiestDay};
 
-		float AreaHeight(const DashboardModel& model, DashboardArea area, float width)
+		float AreaHeight(DashboardArea area, float width)
 		{
 			switch (area)
 			{
 			case DashboardArea::Map:
-				return MapHeight(model, width);
+				return MapHeight(width);
 			case DashboardArea::Daily:
 				return DailyHeight(width);
 			case DashboardArea::Models:
@@ -36,7 +36,7 @@ namespace Graphite {
 			case DashboardArea::Punch:
 				return PunchHeight(width);
 			case DashboardArea::Cache:
-				return CacheHeight(model, width);
+				return CacheHeight(width);
 			case DashboardArea::Count:
 				break;
 			}
@@ -130,11 +130,10 @@ namespace Graphite {
 		}
 	}
 
-	DashboardGrid LayOutDashboard(const DashboardModel& model, float width)
+	DashboardGrid LayOutDashboard(float width)
 	{
 		const float unit = ImGui::GetFontSize();
-		return PlaceTiles(width, unit, NumberTileHeight(unit),
-						  [&model](DashboardArea area, float areaWidth) { return AreaHeight(model, area, areaWidth); });
+		return PlaceTiles(width, unit, NumberTileHeight(unit), AreaHeight);
 	}
 
 	DashboardAction DrawDashboard(const DashboardModel& model, const LocalCalendar& calendar, const DashboardColours& colours)
@@ -144,7 +143,7 @@ namespace Graphite {
 		if (ImGui::BeginChild("##dashboard"))
 		{
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
-			const DashboardGrid grid = LayOutDashboard(model, ImGui::GetContentRegionAvail().x);
+			const DashboardGrid grid = LayOutDashboard(ImGui::GetContentRegionAvail().x);
 			DashboardCanvas canvas{.Model = model,
 								   .Calendar = calendar,
 								   .Colours = colours,

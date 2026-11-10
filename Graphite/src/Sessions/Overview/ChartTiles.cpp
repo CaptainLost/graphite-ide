@@ -46,7 +46,11 @@ namespace Graphite {
 		constexpr float kCell = 1.0f;
 		constexpr float kCellRounding = 0.12f;
 		constexpr float kDayLabelGap = 0.33f;
-		constexpr float kSideGap = 1.0f;
+		constexpr float kSideGap = 0.92f;
+		constexpr float kSmallestBesidePitch = 1.0f;
+		constexpr std::string_view kWidestTotal = "$000.00";
+		constexpr std::string_view kWidestActive = "000 active days";
+		constexpr std::string_view kWidestStreak = "000-day streak";
 		constexpr float kTotalSize = 1.15f;
 		constexpr float kSideLine = 1.15f;
 		constexpr float kLegendGap = 0.3f;
@@ -126,7 +130,7 @@ namespace Graphite {
 				now += day.Cost;
 			}
 
-			face.Value = TipMoney(now);
+			face.Value = CompactMoney(now);
 			face.Change = ThisWeekChange(model);
 			face.Line = face.Change ? " vs last week" : "nothing the same days last week";
 
@@ -142,7 +146,7 @@ namespace Graphite {
 			if (const std::optional<std::size_t> busiest = BusiestDay(model))
 			{
 				const DayTotals& day = model.Days[*busiest];
-				face.Value = TipMoney(day.Cost);
+				face.Value = CompactMoney(day.Cost);
 				face.Line = WeekdayDate(day.Day);
 				face.Series[*busiest] = day.Cost;
 				return;
@@ -161,7 +165,7 @@ namespace Graphite {
 			{
 			case NumberTile::Spent:
 				face = {.Caption = "Spent",
-						.Value = TipMoney(model.Cost),
+						.Value = CompactMoney(model.Cost),
 						.Mark = model.UnpricedRequests > 0 ? std::string{kUnknownAmount} : std::string{},
 						.Line = TipCounted(model.Days.size(), "day on disk", "days on disk"),
 						.Series = CostPerDay(model),
@@ -175,7 +179,7 @@ namespace Graphite {
 			{
 				const ActiveDayStats stats = ActiveDays(model);
 				face = {.Caption = "Per active day",
-						.Value = TipMoney(stats.Average),
+						.Value = CompactMoney(stats.Average),
 						.Line = std::format("{} of {} days", stats.Active, model.Days.size()),
 						.Series = CostPerDay(model),
 						.Colour = colours.Accent};
@@ -191,7 +195,7 @@ namespace Graphite {
 			case NumberTile::Subagents:
 				face = {.Caption = "Subagents",
 						.Value = TipShare(model.SubagentCost, model.Cost),
-						.Line = TipMoney(model.SubagentCost) + " of the cost",
+						.Line = CompactMoney(model.SubagentCost) + " of the cost",
 						.Series = PerDay(model,
 										 [](const DayTotals& day) { return day.Cost > 0.0 ? day.SubagentCost / day.Cost : 0.0; }),
 						.Colour = FamilyColour(colours, ModelFamily::Sonnet)};
@@ -201,7 +205,7 @@ namespace Graphite {
 				const TokenTotals& tokens = model.Tokens;
 				const auto input = static_cast<double>(tokens.CacheRead + tokens.CacheWrite + tokens.Input);
 				face = {.Caption = "Cache saved",
-						.Value = TipMoney(model.Saved),
+						.Value = CompactMoney(model.Saved),
 						.Line = TipShare(static_cast<double>(tokens.CacheRead), input) + " of input from cache",
 						.Series = PerDay(model, [](const DayTotals& day) { return std::max(0.0, day.Saved); }),
 						.Colour = activity};
@@ -264,27 +268,6 @@ namespace Graphite {
 			return box.Min.x + box.GetWidth() * static_cast<float>(index) / static_cast<float>(count - 1);
 		}
 
-		struct MapMetrics
-		{
-			float LabelWidth = 0.0f;
-			float Pitch = 0.0f;
-			float Cell = 0.0f;
-
-			float GridWidth() const { return LabelWidth + static_cast<float>(kHeatWeeks) * Pitch - (Pitch - Cell); }
-
-			float GridHeight() const { return static_cast<float>(kDaysPerWeek + 1) * Pitch - (Pitch - Cell); }
-		};
-
-		MapMetrics MapMetricsFor(float contentWidth, float unit)
-		{
-			MapMetrics metrics;
-			metrics.LabelWidth = TextWidthAt(WeekdayAbbreviation(0), kSmallSize * unit) + kDayLabelGap * unit;
-			metrics.Pitch = std::min(kCellPitch * unit,
-									 std::max(0.0f, contentWidth - metrics.LabelWidth) / static_cast<float>(kHeatWeeks));
-			metrics.Cell = metrics.Pitch * kCell / kCellPitch;
-			return metrics;
-		}
-
 		struct MapSide
 		{
 			std::string Total;
@@ -294,7 +277,7 @@ namespace Graphite {
 
 		MapSide MapSideOf(const DashboardModel& model)
 		{
-			return {.Total = TipMoney(model.Cost),
+			return {.Total = CompactMoney(model.Cost),
 					.Active = TipCounted(ActiveDays(model).Active, "active day", "active days"),
 					.Streak = std::format("{}-day streak", Streak(model))};
 		}
@@ -307,16 +290,41 @@ namespace Graphite {
 				   static_cast<float>(kHeatLevels) * (kLegendSwatch * unit + gap) + gap;
 		}
 
-		float SideWidth(const MapSide& side, float unit)
+		// WARNING: Measured on the widest text each line takes, never on the figures shown, so a figure that grows
+		// cannot move the side under the grid and reflow the row.
+		float SideWidth(float unit)
 		{
 			const float small = kSmallSize * unit;
-			return std::max({TextWidthAt(side.Total, kTotalSize * unit, TextWeight::Strong), TextWidthAt(side.Active, small),
-							 TextWidthAt(side.Streak, small), LegendWidth(unit)});
+			return std::max({TextWidthAt(kWidestTotal, kTotalSize * unit, TextWeight::Strong), TextWidthAt(kWidestActive, small),
+							 TextWidthAt(kWidestStreak, small), LegendWidth(unit)});
 		}
 
-		bool SideFitsBeside(const MapSide& side, const MapMetrics& metrics, float contentWidth, float unit)
+		struct MapMetrics
 		{
-			return contentWidth >= metrics.GridWidth() + kSideGap * unit + SideWidth(side, unit);
+			float LabelWidth = 0.0f;
+			float Pitch = 0.0f;
+			float Cell = 0.0f;
+			bool SideBeside = false;
+
+			float GridWidth() const { return LabelWidth + static_cast<float>(kHeatWeeks) * Pitch - (Pitch - Cell); }
+
+			float GridHeight() const { return static_cast<float>(kDaysPerWeek + 1) * Pitch - (Pitch - Cell); }
+		};
+
+		// WARNING: The cells shrink, down to a smallest pitch, to keep the side beside the grid; past that the side goes
+		// under the grid and the cells take their full size again.
+		MapMetrics MapMetricsFor(float contentWidth, float unit)
+		{
+			MapMetrics metrics;
+			metrics.LabelWidth = TextWidthAt(WeekdayAbbreviation(0), kSmallSize * unit) + kDayLabelGap * unit;
+
+			const float pitchesAcross = static_cast<float>(kHeatWeeks - 1) + kCell / kCellPitch;
+			const float gridRoom = std::max(0.0f, contentWidth - metrics.LabelWidth);
+			const float besidePitch = (gridRoom - kSideGap * unit - SideWidth(unit)) / pitchesAcross;
+			metrics.SideBeside = besidePitch >= kSmallestBesidePitch * unit;
+			metrics.Pitch = std::min(kCellPitch * unit, metrics.SideBeside ? besidePitch : gridRoom / pitchesAcross);
+			metrics.Cell = metrics.Pitch * kCell / kCellPitch;
+			return metrics;
 		}
 
 		float BelowHeight(float unit)
@@ -349,15 +357,16 @@ namespace Graphite {
 			DrawTextAt(canvas.Drawing, ImVec2(x, at.y), size, faint, "More");
 		}
 
-		void DrawSideBeside(DashboardCanvas& canvas, const MapSide& side, ImVec2 at)
+		void DrawSideBeside(DashboardCanvas& canvas, const MapSide& side, ImVec2 at, float room)
 		{
 			const float small = canvas.Units(kSmallSize);
 			const float total = canvas.Units(kTotalSize);
-			DrawTextAt(canvas.Drawing, at, total, canvas.Colours.Ink, side.Total, TextWeight::Strong);
+			DrawTextAt(canvas.Drawing, at, total, canvas.Colours.Ink, FitAt(side.Total, room, total, TextWeight::Strong),
+					   TextWeight::Strong);
 			float y = at.y + total * kLinePitch;
-			DrawTextAt(canvas.Drawing, ImVec2(at.x, y), small, canvas.Colours.Dim, side.Active);
+			DrawTextAt(canvas.Drawing, ImVec2(at.x, y), small, canvas.Colours.Dim, FitAt(side.Active, room, small));
 			y += canvas.Units(kSideLine);
-			DrawTextAt(canvas.Drawing, ImVec2(at.x, y), small, canvas.Colours.Dim, side.Streak);
+			DrawTextAt(canvas.Drawing, ImVec2(at.x, y), small, canvas.Colours.Dim, FitAt(side.Streak, room, small));
 			y += canvas.Units(kSideLine + kLegendGap);
 			DrawLegend(canvas, ImVec2(at.x, y));
 		}
@@ -500,7 +509,7 @@ namespace Graphite {
 						   canvas.Colours.Dim);
 
 			const float small = canvas.Units(kSmallSize);
-			const std::string label = "avg " + TipMoney(average);
+			const std::string label = "avg " + CompactMoney(average);
 			const float width = TextWidthAt(label, small);
 			const float padding = canvas.Units(kAverageLabelPadding);
 			const ImVec2 at(area.Max.x - width, std::max(area.Min.y, y - small * kAverageLabelLift));
@@ -752,7 +761,13 @@ namespace Graphite {
 		return {.FirstCell = ImVec2(left + metrics.LabelWidth, top + metrics.Pitch), .Pitch = metrics.Pitch, .Cell = metrics.Cell};
 	}
 
-	float MapHeight(const DashboardModel& model, float width)
+	bool MapSideStandsBeside(float width)
+	{
+		const float unit = ImGui::GetFontSize();
+		return MapMetricsFor(ContentWidthOf(width, unit), unit).SideBeside;
+	}
+
+	float MapHeight(float width)
 	{
 		const float unit = ImGui::GetFontSize();
 		const float content = ContentWidthOf(width, unit);
@@ -760,7 +775,7 @@ namespace Graphite {
 
 		float height = TileHeaderHeight(unit) + metrics.GridHeight();
 
-		if (!SideFitsBeside(MapSideOf(model), metrics, content, unit))
+		if (!metrics.SideBeside)
 		{
 			height += BelowHeight(unit);
 		}
@@ -795,9 +810,10 @@ namespace Graphite {
 		const MapSide side = MapSideOf(canvas.Model);
 		float below = content.Min.y + metrics.GridHeight();
 
-		if (SideFitsBeside(side, metrics, content.GetWidth(), canvas.Unit))
+		if (metrics.SideBeside)
 		{
-			DrawSideBeside(canvas, side, ImVec2(content.Min.x + metrics.GridWidth() + canvas.Units(kSideGap), grid.FirstCell.y));
+			const float sideLeft = content.Min.x + metrics.GridWidth() + canvas.Units(kSideGap);
+			DrawSideBeside(canvas, side, ImVec2(sideLeft, content.Min.y), content.Max.x - sideLeft);
 		}
 		else
 		{
@@ -821,7 +837,7 @@ namespace Graphite {
 	{
 		const double highest = HighestDay(canvas.Model);
 		const ImRect content =
-			DrawTileFrame(canvas, tile, "Cost per day", canvas.Model.Days.empty() ? std::string{} : "max " + TipMoney(highest));
+			DrawTileFrame(canvas, tile, "Cost per day", canvas.Model.Days.empty() ? std::string{} : "max " + CompactMoney(highest));
 		const float under = canvas.Units(kAxisGap + kSmallSize * kLinePitch + kKeysGap + kSmallSize * kLinePitch);
 		const float columns = std::max(canvas.Units(kColumnsHeight), content.GetHeight() - under);
 		const ImRect area(content.Min, ImVec2(content.Max.x, content.Min.y + columns));

@@ -21,6 +21,7 @@ namespace Graphite {
 	// WARNING: Fills the rest of the current window with a scrolling child of its own; do not wrap it in another.
 	DashboardAction DrawDashboard(const DashboardModel& model, const LocalCalendar& calendar, const DashboardColours& colours);
 
-	// WARNING: Measured at the current font size, relative to the dashboard's top left corner.
-	DashboardGrid LayOutDashboard(const DashboardModel& model, float width);
+	// WARNING: Measured at the current font size, relative to the dashboard's top left corner. It reads no figure, so a
+	// figure that changes never moves a tile.
+	DashboardGrid LayOutDashboard(float width);
 }

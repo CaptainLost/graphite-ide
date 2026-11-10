@@ -101,7 +101,7 @@ namespace {
 			ImGui::Begin("ReplacedSession", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			DrawDashboard(model, calendar, colours);
-			const ImRect area = LayOutDashboard(model, width).Areas[static_cast<std::size_t>(DashboardArea::Sessions)];
+			const ImRect area = LayOutDashboard(width).Areas[static_cast<std::size_t>(DashboardArea::Sessions)];
 			list.Area = ImRect(ImVec2(area.Min.x + origin.x, area.Min.y + origin.y),
 							   ImVec2(area.Max.x + origin.x, area.Max.y + origin.y));
 

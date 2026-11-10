@@ -40,6 +40,9 @@ namespace Graphite {
 		constexpr std::size_t kCacheParts = 3;
 		constexpr double kThinnestPart = 0.004;
 		constexpr double kNothing = 1e-9;
+		constexpr std::string_view kWidestMoney = "$000.00";
+		constexpr bool kSaved = false;
+		constexpr bool kLost = true;
 
 		float BodyTop(float rowTop, float pitch, float size)
 		{
@@ -177,11 +180,21 @@ namespace Graphite {
 				   room;
 		}
 
-		float CacheSentenceHeight(const DashboardModel& model, float room, float unit)
+		// WARNING: Measured on the widest sentence either wording can make, never on the one shown, so a figure that
+		// grows cannot wrap it onto another line and reflow the row.
+		float CacheSentenceHeight(float room, float unit)
 		{
 			const float size = kSmallSize * unit;
-			const CacheSentence sentence = CacheSentenceOf(model);
-			return CacheSentenceFits(sentence, room, size) ? size * kLinePitch : WrappedHeightAt(sentence.Whole(), size, room);
+			float height = 0.0f;
+
+			for (const CacheSentence& sentence : {CacheSentenceOf(kWidestMoney, kWidestMoney, kSaved),
+												  CacheSentenceOf(kWidestMoney, kWidestMoney, kLost)})
+			{
+				height = std::max(height, CacheSentenceFits(sentence, room, size) ? size * kLinePitch
+																				  : WrappedHeightAt(sentence.Whole(), size, room));
+			}
+
+			return height;
 		}
 
 		template <typename TipOf>
@@ -231,19 +244,23 @@ namespace Graphite {
 		}
 	}
 
-	CacheSentence CacheSentenceOf(const DashboardModel& model)
+	CacheSentence CacheSentenceOf(std::string_view without, std::string_view actual, bool lost)
 	{
-		const std::string without = TipMoney(model.Cost + model.Saved);
-		const std::string actual = TipMoney(model.Cost);
-
-		if (model.Saved < 0.0)
+		if (lost)
 		{
 			return {.Before = "These requests would have cost ",
-					.Without = without,
-					.After = " without the cache, not " + actual + "."};
+					.Without = std::string{without},
+					.After = " without the cache, not " + std::string{actual} + "."};
 		}
 
-		return {.Before = "Without the cache this would have cost ", .Without = without, .After = ", not " + actual + "."};
+		return {.Before = "Without the cache this would have cost ",
+				.Without = std::string{without},
+				.After = ", not " + std::string{actual} + "."};
+	}
+
+	CacheSentence CacheSentenceOf(const DashboardModel& model)
+	{
+		return CacheSentenceOf(CompactMoney(model.Cost + model.Saved), CompactMoney(model.Cost), model.Saved < 0.0);
 	}
 
 	ImRect ListRowRect(const ImRect& tile, std::size_t row)
@@ -496,13 +513,13 @@ namespace Graphite {
 					 [&model, &calendar](std::size_t index) { return SkillTip(model, index, calendar); });
 	}
 
-	float CacheHeight(const DashboardModel& model, float width)
+	float CacheHeight(float width)
 	{
 		const float unit = ImGui::GetFontSize();
 		const float room = std::max(0.0f, width - 2.0f * TileSidePadding(unit));
 		return TileHeaderHeight(unit) +
 			   (kStackHeight + kStackGap + static_cast<float>(kCacheParts) * kLinePitch + kStatsGap) * unit +
-			   CacheSentenceHeight(model, room, unit) + TileBottomPadding(unit);
+			   CacheSentenceHeight(room, unit) + TileBottomPadding(unit);
 	}
 
 	void DrawCache(DashboardCanvas& canvas, const ImRect& tile)

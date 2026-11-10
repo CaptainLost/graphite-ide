@@ -17,6 +17,10 @@ namespace Graphite {
 
 	namespace {
 		constexpr double kSmallestTenth = 0.1;
+		constexpr double kCentsPerDollar = 100.0;
+		constexpr double kDollarsPerThousand = 1000.0;
+		constexpr double kDollarsPerMillion = 1'000'000.0;
+		constexpr double kTenths = 10.0;
 		constexpr std::array<std::string_view, 7> kWeekdays = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 		constexpr std::array<std::string_view, 12> kMonths = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 															  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -30,6 +34,29 @@ namespace Graphite {
 		}
 
 		return FormatCost(CostResult{.Dollars = dollars});
+	}
+
+	std::string CompactMoney(double dollars)
+	{
+		if (dollars < 0.0)
+		{
+			return std::string{kMinusSign} + CompactMoney(-dollars);
+		}
+
+		// WARNING: Rounded before the unit is chosen, so $999.996 reads "$1.0k" and never "$1000.00".
+		if (std::round(dollars * kCentsPerDollar) < kCentsPerDollar * kDollarsPerThousand)
+		{
+			return TipMoney(dollars);
+		}
+
+		const double thousandTenths = std::round(dollars / kDollarsPerThousand * kTenths);
+
+		if (thousandTenths < kTenths * kDollarsPerThousand)
+		{
+			return std::format("${:.1f}k", thousandTenths / kTenths);
+		}
+
+		return std::format("${:.1f}M", std::round(dollars / kDollarsPerMillion * kTenths) / kTenths);
 	}
 
 	std::string TipCount(std::size_t count)

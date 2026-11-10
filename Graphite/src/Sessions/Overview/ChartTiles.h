@@ -37,7 +37,9 @@ namespace Graphite {
 
 	MapGrid MapGridOf(const ImRect& tile);
 
-	float MapHeight(const DashboardModel& model, float width);
+	bool MapSideStandsBeside(float width); // the map tile's width
+
+	float MapHeight(float width);
 
 	void DrawMap(DashboardCanvas& canvas, const ImRect& tile);
 
