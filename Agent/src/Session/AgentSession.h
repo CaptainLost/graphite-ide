@@ -3,6 +3,8 @@
 #include "Core/Remote/AgentProtocol.h"
 #include "Core/Remote/Frame.h"
 
+#include "Git/GitRequests.h"
+#include "Git/GitWorker.h"
 #include "Watching/TreeWatch.h"
 
 #include <map>
@@ -19,7 +21,8 @@ namespace Agent {
 	class AgentSession
 	{
 	public:
-		explicit AgentSession(std::string version);
+		// gitHandlers answer the "git.*" operations on the git worker; by default the agent's own.
+		explicit AgentSession(std::string version, GitHandlers gitHandlers = DefaultGitHandlers());
 
 		void Receive(std::string_view bytes);
 
@@ -44,6 +47,8 @@ namespace Agent {
 		Core::Result<nlohmann::json> Unwatch(const nlohmann::json& arguments);
 
 		std::string m_Version;
+		GitHandlers m_GitHandlers;
+		GitWorker m_GitWorker;
 		Core::FrameReader m_Reader;
 		std::string m_Output;
 		std::map<int, std::unique_ptr<TreeWatch>> m_Watches;

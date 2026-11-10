@@ -39,7 +39,10 @@ namespace Agent {
 		}
 	}
 
-	AgentSession::AgentSession(std::string version) : m_Version(std::move(version)) {}
+	AgentSession::AgentSession(std::string version, GitHandlers gitHandlers)
+		: m_Version(std::move(version)), m_GitHandlers(std::move(gitHandlers))
+	{
+	}
 
 	void AgentSession::Receive(std::string_view bytes)
 	{
@@ -139,6 +142,20 @@ namespace Agent {
 		{
 			Reply(request, Unwatch(request.Arguments));
 		}
+		else if (operation.starts_with("git."))
+		{
+			// Answered on the git worker; Tick sends the reply when it is ready.
+			const auto handler = m_GitHandlers.find(operation);
+
+			if (handler == m_GitHandlers.end())
+			{
+				Reply(request, Core::Error{Core::ErrorCode::Unsupported, std::format("the agent has no \"{}\"", operation)});
+			}
+			else
+			{
+				m_GitWorker.Submit(request, handler->second);
+			}
+		}
 		else
 		{
 			Reply(request, Core::Error{Core::ErrorCode::Unsupported, std::format("the agent has no \"{}\"", operation)});
@@ -231,6 +248,11 @@ namespace Agent {
 
 	void AgentSession::Tick()
 	{
+		for (const Core::AgentReply& reply : m_GitWorker.TakeFinished())
+		{
+			m_Output += Core::EncodeReply(reply);
+		}
+
 		for (auto& [id, watch] : m_Watches)
 		{
 			// A watch that throws loses this tick's batch, not the agent.
@@ -295,7 +317,8 @@ namespace Agent {
 	std::vector<int> AgentSession::WatchDescriptors() const
 	{
 		std::vector<int> descriptors;
-		descriptors.reserve(m_Watches.size());
+		descriptors.reserve(m_Watches.size() + 1);
+		descriptors.push_back(m_GitWorker.GetDescriptor());
 
 		for (const auto& [id, watch] : m_Watches)
 		{

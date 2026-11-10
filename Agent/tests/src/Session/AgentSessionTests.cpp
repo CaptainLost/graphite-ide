@@ -130,6 +130,39 @@ TEST_CASE("A watched folder's change arrives as one changes event naming the fol
 	CHECK(event->Body.at("directories") == json::array({directory.GetPath().string()})); // not a path conversion
 }
 
+TEST_CASE("A slow git request does not hold up a save sent after it")
+{
+	TempDirectory directory;
+	Agent::GitHandlers handlers;
+	handlers["git.slow"] = [](const Core::AgentRequest&) -> Core::Result<Agent::GitAnswer> {
+		std::this_thread::sleep_for(std::chrono::milliseconds{500});
+		return Agent::GitAnswer{.Result = {{"slow", true}}};
+	};
+	Agent::AgentSession session{"v", std::move(handlers)};
+	const std::filesystem::path file = directory.GetPath() / "saved.txt";
+
+	session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = 1, .Operation = "git.slow"}));
+	session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = 2, .Operation = "writeFile", .Arguments = {{"path", file.string()}}, .Payload = "x"})); // not a path conversion
+
+	const std::vector<Core::AgentMessage> immediate = Decode(session.TakeOutput());
+	REQUIRE(immediate.size() == 1);
+	CHECK(std::get<Core::AgentReply>(immediate[0]).Id == 2);
+
+	std::vector<Core::AgentMessage> later;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+
+	while (later.empty() && std::chrono::steady_clock::now() < deadline)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+		session.Tick();
+		later = Decode(session.TakeOutput());
+	}
+
+	REQUIRE(later.size() == 1);
+	CHECK(std::get<Core::AgentReply>(later[0]).Id == 1);
+	CHECK(std::get<Core::AgentReply>(later[0]).Result.at("slow") == true);
+}
+
 TEST_CASE("bye ends the session")
 {
 	Agent::AgentSession session{"v"};
