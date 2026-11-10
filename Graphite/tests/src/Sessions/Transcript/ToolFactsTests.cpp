@@ -50,6 +50,8 @@ TEST_CASE("Sizes read as bytes and tokens a person scans")
 	CHECK(FormatTokens(310) == "310");
 	CHECK(FormatTokens(12400) == "12.4k");
 	CHECK(FormatTokens(1200000) == "1.2M");
+	CHECK(FormatTokens(999'900'000) == "999.9M");
+	CHECK(FormatTokens(14'527'700'000) == "14.5B");
 }
 
 TEST_CASE("FormatTokensExact writes every digit, in groups of three")

@@ -25,6 +25,7 @@ namespace Graphite {
 		constexpr std::uint64_t kPercentScale = 100;
 		constexpr std::uint64_t kTokensPerThousand = 1000;
 		constexpr std::uint64_t kTokensPerMillion = 1'000'000;
+		constexpr std::uint64_t kTokensPerBillion = 1'000'000'000;
 
 		std::string ShortModel(std::string_view model)
 		{
@@ -168,7 +169,12 @@ namespace Graphite {
 			return std::format("{:.1f}k", static_cast<double>(tokens) / static_cast<double>(kTokensPerThousand));
 		}
 
-		return std::format("{:.1f}M", static_cast<double>(tokens) / static_cast<double>(kTokensPerMillion));
+		if (tokens < kTokensPerBillion)
+		{
+			return std::format("{:.1f}M", static_cast<double>(tokens) / static_cast<double>(kTokensPerMillion));
+		}
+
+		return std::format("{:.1f}B", static_cast<double>(tokens) / static_cast<double>(kTokensPerBillion));
 	}
 
 	std::string FormatTokensExact(std::uint64_t tokens)
