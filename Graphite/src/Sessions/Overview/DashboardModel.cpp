@@ -200,11 +200,22 @@ namespace Graphite {
 			return std::any_of(usage.begin(), usage.end(), [](const auto& entry) { return entry.second.Total() > 0; });
 		}
 
-		void AddWorktrees(const SessionFacts& session, const RepositoryKey& repositoryKey, ProjectTotals& project)
+		// WARNING: Names are told apart by the worktree's folder key, so on Windows "Fox" and "fox" are one
+		// worktree, listed under the first spelling seen.
+		void AddWorktree(const SessionPlace& place, std::set<RepositoryKey>& seen, ProjectTotals& project)
+		{
+			if (seen.insert(DirectoryKey(place.Repository / Core::FromUtf8(place.Worktree))).second)
+			{
+				project.Worktrees.insert(place.Worktree);
+			}
+		}
+
+		void AddWorktrees(const SessionFacts& session, const RepositoryKey& repositoryKey, std::set<RepositoryKey>& seen,
+						  ProjectTotals& project)
 		{
 			if (!session.Place.Worktree.empty())
 			{
-				project.Worktrees.insert(session.Place.Worktree);
+				AddWorktree(session.Place, seen, project);
 			}
 
 			for (const auto& [cwd, usage] : session.Summary->Activity.MainUsageByCwd)
@@ -218,7 +229,7 @@ namespace Graphite {
 
 				if (!place.Worktree.empty() && DirectoryKey(place.Repository) == repositoryKey)
 				{
-					project.Worktrees.insert(place.Worktree);
+					AddWorktree(place, seen, project);
 				}
 			}
 		}
@@ -228,6 +239,7 @@ namespace Graphite {
 		std::vector<ProjectTotals> GroupProjects(const DashboardModel& model)
 		{
 			std::vector<ProjectTotals> projects;
+			std::vector<std::set<RepositoryKey>> worktreeKeys;
 			std::unordered_map<RepositoryKey, std::size_t> indexByKey;
 
 			for (std::size_t sessionIndex = 0; sessionIndex < model.Sessions.size(); ++sessionIndex)
@@ -243,6 +255,7 @@ namespace Graphite {
 					project.DailyCost.assign(model.Days.size(), 0.0);
 					project.MostExpensiveSession = sessionIndex;
 					projects.push_back(std::move(project));
+					worktreeKeys.emplace_back();
 				}
 
 				ProjectTotals& project = projects[entry->second];
@@ -261,7 +274,7 @@ namespace Graphite {
 					project.LastActive = project.LastActive ? std::max(*project.LastActive, date) : date;
 				}
 
-				AddWorktrees(session, key, project);
+				AddWorktrees(session, key, worktreeKeys[entry->second], project);
 			}
 
 			std::stable_sort(projects.begin(), projects.end(),

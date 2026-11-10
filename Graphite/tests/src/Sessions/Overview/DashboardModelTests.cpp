@@ -223,6 +223,25 @@ TEST_CASE("Projects fold worktrees into their repository and list the worktrees"
 	CHECK(model.Projects[1].Worktrees.empty());
 }
 
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("Worktree names differing only in case are one worktree")
+{
+	// Windows folders differ only in case without naming another folder.
+	SessionSummary upper = Session("upper");
+	upper.Activity.MainUsageByCwd["D:\\Repos\\IDE\\.claude\\worktrees\\Fox"] = {{{"claude-opus-5", false}, {1000, 0, 0, 0, 0}}};
+	upper.Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(2);
+
+	SessionSummary lower = Session("lower");
+	lower.Activity.MainUsageByCwd["D:\\Repos\\IDE\\.claude\\worktrees\\fox"] = {{{"claude-opus-5", false}, {1000, 0, 0, 0, 0}}};
+	lower.Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(1);
+
+	const DashboardModel model = Build({&lower, &upper}, Day(2026, 11, 3));
+
+	REQUIRE(model.Projects.size() == 1);
+	CHECK(model.Projects[0].Worktrees == std::set<std::string>{"Fox"});
+}
+#endif
+
 TEST_CASE("Tools leave out SubagentHandback and sort by calls; Sessions counts sessions using each")
 {
 	SessionSummary first = Session("a");
