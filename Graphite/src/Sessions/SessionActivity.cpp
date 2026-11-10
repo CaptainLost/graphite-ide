@@ -85,6 +85,28 @@ namespace Graphite {
 		return std::string{kMcpGroupPrefix} + std::string{server};
 	}
 
+	std::chrono::sys_days UtcToday()
+	{
+		return std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+	}
+
+	std::chrono::sys_days OldestUsageDay(std::chrono::sys_days today)
+	{
+		return std::chrono::floor<std::chrono::days>(today - kOldestUsage);
+	}
+
+	std::chrono::sys_days NewestUsageDay(std::chrono::sys_days today)
+	{
+		return today + std::chrono::days{1};
+	}
+
+	bool IsWithinUsageRange(UtcHour hour, std::chrono::sys_days today)
+	{
+		const UtcHour oldest{OldestUsageDay(today)};
+		const UtcHour pastNewest{NewestUsageDay(today) + std::chrono::days{1}};
+		return hour >= oldest && hour < pastNewest;
+	}
+
 	ActivityRecorder::ActivityRecorder(TranscriptThread thread) : m_Thread(thread) {}
 
 	void ActivityRecorder::Add(const TranscriptRecord& record)
@@ -92,7 +114,7 @@ namespace Graphite {
 		const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> time = ParseTimestamp(record.Timestamp);
 		std::optional<UtcHour> hour;
 
-		if (time.has_value())
+		if (time.has_value() && IsWithinUsageRange(std::chrono::floor<std::chrono::hours>(*time), UtcToday()))
 		{
 			hour = std::chrono::floor<std::chrono::hours>(*time);
 		}

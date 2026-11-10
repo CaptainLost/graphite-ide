@@ -154,7 +154,7 @@ namespace Graphite {
 			}
 
 			// WARNING: Runs to the newest day with usage when that is after today, so a clock set back never
-			// drops a day the totals still count.
+			// drops a day the totals still count. Both ends stay within the usage range, whatever an hour slipped in.
 			std::vector<DayTotals> ContiguousDays(Date today)
 			{
 				std::vector<DayTotals> result;
@@ -164,8 +164,11 @@ namespace Graphite {
 					return result;
 				}
 
-				const std::chrono::sys_days first{Days.begin()->first};
-				const std::chrono::sys_days last = std::max(std::chrono::sys_days{Days.rbegin()->first}, std::chrono::sys_days{today});
+				const std::chrono::sys_days day{today};
+				const std::chrono::sys_days first =
+					std::clamp(std::chrono::sys_days{Days.begin()->first}, OldestUsageDay(day), day);
+				const std::chrono::sys_days last =
+					std::clamp(std::chrono::sys_days{Days.rbegin()->first}, day, NewestUsageDay(day));
 
 				for (std::chrono::sys_days date = first; date <= last; date += std::chrono::days{1})
 				{

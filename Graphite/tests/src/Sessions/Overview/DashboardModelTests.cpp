@@ -102,6 +102,22 @@ TEST_CASE("Days run from the oldest usage to today without gaps")
 	CHECK(model.Today == Day(2026, 11, 5));
 }
 
+TEST_CASE("Days stay within five years before today and tomorrow, whatever hours a summary holds")
+{
+	SessionSummary summary = Session("a");
+	summary.Activity.MainHours[Hour(1970, 1, 1, 0)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(1, 1, 1, 0)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(9999, 12, 31, 23)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(2026, 11, 9, 10)] = OpusDollars(1);
+
+	const DashboardModel model = Build({&summary}, Day(2026, 11, 10));
+
+	REQUIRE(!model.Days.empty());
+	CHECK(model.Days.front().Day >= Day(2021, 11, 9));
+	CHECK(model.Days.back().Day == Day(2026, 11, 11));
+	CHECK(model.Days.size() <= 5 * 366 + 2);
+}
+
 TEST_CASE("A session's hours go to the local day")
 {
 	const LocalCalendar warsaw{std::chrono::locate_zone("Europe/Warsaw")};

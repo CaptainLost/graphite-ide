@@ -4,6 +4,9 @@
 
 #include "TempDirectory.h"
 
+#include <cstdint>
+#include <limits>
+
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -79,6 +82,27 @@ TEST_CASE("A version 2 cache reads as empty")
 	TempDirectory temp;
 
 	CHECK(LoadSummaryCache(temp.MakeFile("v2.json", "{\"version\":2,\"sessions\":[]}")).empty());
+}
+
+TEST_CASE("A cached hour more than five years back or past tomorrow is dropped, however large its number")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "sessions-cache.json";
+	SessionSummary summary = Sample();
+	const HourActivity kept = summary.Activity.MainHours.begin()->second;
+	summary.Activity.MainHours.clear();
+	summary.Activity.MainHours[UtcHour{std::chrono::hours{std::numeric_limits<std::int64_t>::max()}}] = kept;
+	summary.Activity.MainHours[UtcHour{std::chrono::hours{std::numeric_limits<std::int64_t>::min()}}] = kept;
+	summary.Activity.MainHours[UtcHour{std::chrono::hours{0}}] = kept;
+	const UtcHour yesterday{UtcToday() - std::chrono::days{1}};
+	summary.Activity.MainHours[yesterday] = kept;
+
+	REQUIRE(SaveSummaryCache(file, {summary}));
+	const std::vector<SessionSummary> loaded = LoadSummaryCache(file);
+
+	REQUIRE(loaded.size() == 1);
+	REQUIRE(loaded[0].Activity.MainHours.size() == 1);
+	CHECK(loaded[0].Activity.MainHours.begin()->first == yesterday);
 }
 
 #ifdef _WIN32

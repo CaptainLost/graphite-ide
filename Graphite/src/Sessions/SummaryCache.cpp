@@ -82,9 +82,17 @@ namespace Graphite {
 		std::map<UtcHour, HourActivity> HoursFrom(const nlohmann::json& rows)
 		{
 			std::map<UtcHour, HourActivity> hours;
+			const std::chrono::sys_days today = UtcToday();
 
 			for (const nlohmann::json& row : rows)
 			{
+				const UtcHour hour{std::chrono::hours{row.at(0).get<std::int64_t>()}};
+
+				if (!IsWithinUsageRange(hour, today))
+				{
+					continue;
+				}
+
 				HourActivity activity;
 				activity.Requests = row.at(1).get<std::size_t>();
 				activity.Prompts = row.at(2).get<std::size_t>();
@@ -96,7 +104,7 @@ namespace Graphite {
 						request.at(2).get<std::size_t>();
 				}
 
-				hours[UtcHour{std::chrono::hours{row.at(0).get<std::int64_t>()}}] = std::move(activity);
+				hours[hour] = std::move(activity);
 			}
 
 			return hours;
