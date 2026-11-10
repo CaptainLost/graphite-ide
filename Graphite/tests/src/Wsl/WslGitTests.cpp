@@ -9,6 +9,7 @@
 #include "Core/Platform/Process.h"
 #include "Core/Remote/AgentDeployment.h"
 #include "Core/Remote/GitCodec.h"
+#include "Core/Remote/GraphCodec.h"
 
 #include <atomic>
 #include <chrono>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 
 using namespace std::chrono_literals;
 using AgentFixtures::FakeAgent;
@@ -371,4 +373,51 @@ TEST_CASE("The common directory is asked of the agent once, as it never changes 
 	REQUIRE(git.GetCommonDirectory().HasValue());
 
 	CHECK(asked == 1);
+}
+
+TEST_CASE("Graph commits arrive decoded, the tips and known commits sent as hex")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		const std::vector<Core::GraphCommit> commits{Core::GraphCommit{.Id = kSomeCommit, .Time = 7, .AuthorKey = "anna@example.com"}};
+		self.Reply(request.Id, {{"count", 1}}, Core::EncodeGraphCommits(commits));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const Core::Result<std::vector<Core::GraphCommit>> commits = git.ReadGraphCommits(Core::GraphReadRequest{.Tips = {kSomeCommit}, .Known = {}});
+
+	REQUIRE(commits.HasValue());
+	REQUIRE(commits.GetValue().size() == 1);
+	CHECK(commits.GetValue()[0].AuthorKey == "anna@example.com");
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.LastArguments.at("tips") == nlohmann::json::array({kSomeCommit.ToHex()}));
+	CHECK(distro.LastArguments.at("known") == nlohmann::json::array());
+}
+
+TEST_CASE("Held commits and the shallow boundary come from the agent")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		if (request.Operation == "git.holdsCommits")
+		{
+			self.Reply(request.Id, {{"held", {true, false}}});
+		}
+		else
+		{
+			self.Reply(request.Id, {{"ids", {kSomeCommit.ToHex()}}});
+		}
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+	Core::Oid other;
+	other.Bytes.fill(0x11);
+
+	const Core::Result<std::vector<bool>> held = git.HoldsCommits({kSomeCommit, other});
+	const Core::Result<std::unordered_set<Core::Oid>> boundary = git.ShallowBoundary();
+
+	REQUIRE(held.HasValue());
+	CHECK(held.GetValue() == std::vector<bool>{true, false});
+	REQUIRE(boundary.HasValue());
+	CHECK(boundary.GetValue() == std::unordered_set<Core::Oid>{kSomeCommit});
 }

@@ -3,6 +3,7 @@
 #include "Core/FileSystem/WslSharePath.h"
 
 #include "Git/Worktrees/WorktreeOfFile.h"
+#include "Wsl/WslLineSource.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Command/GitExecutable.h"
@@ -1932,8 +1933,43 @@ namespace Graphite {
 		return m_Generation;
 	}
 
+	std::shared_ptr<WslGit> RepositoryGitPort::WslForGeneration(std::uint64_t generation, Core::Error& refusal)
+	{
+		const std::lock_guard<std::mutex> lock{m_RootMutex};
+
+		if (m_Wsl && m_Generation != generation)
+		{
+			refusal = Core::Error{Core::ErrorCode::Cancelled, "The folder changed since this was asked, so nothing was read."};
+			return nullptr;
+		}
+
+		return m_Wsl;
+	}
+
 	Core::Result<LineRead> RepositoryGitPort::ReadLines(std::uint64_t repository, const LineReadInput& input)
 	{
+		// A repository inside WSL: the graph, answers and store stay here; its reads go to the
+		// distro's agent, and the store is named by the agent's common directory (stage 3b-lines).
+		Core::Error refusal;
+
+		if (const std::shared_ptr<WslGit> wsl = WslForGeneration(repository, refusal))
+		{
+			const Core::Result<std::filesystem::path> common = wsl->GetCommonDirectory();
+
+			if (!common)
+			{
+				return common.GetError();
+			}
+
+			WslLineSource source{*wsl};
+			return Graphite::ReadLines(source, LineStoreFor(common.GetValue(), m_LineStoreRoot), input);
+		}
+
+		if (refusal.Code != Core::ErrorCode::None)
+		{
+			return refusal;
+		}
+
 		// The handle is of the root that generation named, so the store resolved from it is the snapshot's repository's
 		// even when the folder changes while the read runs.
 		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository);
@@ -1950,6 +1986,13 @@ namespace Graphite {
 
 	Core::Result<LineRead> RepositoryGitPort::RecomputeLines(const LineRead& last, const LineAnswerChange& change, std::int64_t now)
 	{
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			const Core::Result<std::filesystem::path> common = wsl->GetCommonDirectory();
+			return common ? Graphite::RecomputeLines(last, LineStoreFor(common.GetValue(), m_LineStoreRoot), change, now)
+						  : Core::Result<LineRead>{common.GetError()};
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())

@@ -7,6 +7,7 @@
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/Lines/AncestryGraph.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Ref.h"
@@ -23,6 +24,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -113,6 +115,11 @@ namespace Graphite {
 
 		// The directory the repository's worktrees share, in the share spelling.
 		Core::Result<std::filesystem::path> GetCommonDirectory();
+
+		// The lines graph's reads (stage 3b-lines).
+		Core::Result<std::vector<Core::GraphCommit>> ReadGraphCommits(const Core::GraphReadRequest& request);
+		Core::Result<std::vector<bool>> HoldsCommits(const std::vector<Core::Oid>& commits);
+		Core::Result<std::unordered_set<Core::Oid>> ShallowBoundary();
 
 		// What the Explorer needs once per folder, in the share spelling. The Explorer's questions
 		// go to the agent's quick lane and wait at most startWait for an agent being started.

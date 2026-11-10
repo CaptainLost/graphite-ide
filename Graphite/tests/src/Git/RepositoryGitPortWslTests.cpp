@@ -6,11 +6,13 @@
 
 #include "FakeAgent.h"
 #include "GitFixture.h"
+#include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/Process.h"
 #include "Core/Remote/AgentDeployment.h"
 #include "Core/Remote/GitCodec.h"
+#include "Core/Remote/GraphCodec.h"
 
 #include <atomic>
 #include <chrono>
@@ -275,7 +277,8 @@ TEST_CASE("A WSL repository's history, branches, stashes and checkout work throu
 	std::filesystem::remove_all(folder, error);
 	std::filesystem::create_directories(folder, error);
 	Graphite::WslAgents agents{Graphite::WslAgents::ConnectThroughWsl(agentBinary)};
-	Graphite::RepositoryGitPort port{folder};
+	TempDirectory store;
+	Graphite::RepositoryGitPort port{folder, store.GetPath()};
 	UseAgents(port, agents);
 
 	REQUIRE(port.Init().HasValue());
@@ -289,6 +292,13 @@ TEST_CASE("A WSL repository's history, branches, stashes and checkout work throu
 	const Core::Result<std::vector<Core::Branch>> branches = port.QueryBranches();
 	REQUIRE(branches.HasValue());
 	CHECK(branches.GetValue().size() == 2);
+
+	const Graphite::LineReadInput linesInput{.Branches = Core::CreateRef<const std::vector<Core::Branch>>(branches.GetValue()), .Now = 1800000000};
+	const Core::Result<Graphite::LineRead> lines = port.ReadLines(port.RepositoryNow(), linesInput);
+	REQUIRE_MESSAGE(lines.HasValue(), (lines ? "" : lines.GetError().Message));
+	CHECK(lines.GetValue().Refs.size() == 2);
+	REQUIRE(lines.GetValue().Graph != nullptr);
+	CHECK(lines.GetValue().Graph->Find(first.GetValue()) != Core::AncestryGraph::kNoCommit);
 
 	const Core::Result<Core::LogPage> log = port.QueryLog(Core::LogRequest{});
 	REQUIRE(log.HasValue());
@@ -314,4 +324,81 @@ TEST_CASE("A WSL repository's history, branches, stashes and checkout work throu
 	CHECK(head.GetValue().BranchName == "feature");
 
 	std::filesystem::remove_all(folder, error);
+}
+
+namespace {
+
+	// Answers a lines read of one branch, main, whose tip is kTip with no parents.
+	void AnswerLinesRead(const Core::AgentRequest& request, FakeAgent& self)
+	{
+		if (request.Operation == "git.remotes")
+		{
+			self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = "[]"}));
+		}
+		else if (request.Operation == "git.shallowBoundary")
+		{
+			self.Reply(request.Id, {{"ids", nlohmann::json::array()}});
+		}
+		else if (request.Operation == "git.commonDirectory")
+		{
+			self.Reply(request.Id, {{"path", "/home/me/p/.git"}});
+		}
+		else if (request.Operation == "git.graphCommits")
+		{
+			const std::vector<Core::GraphCommit> commits{Core::GraphCommit{.Id = kTip, .Time = 1700000000, .AuthorKey = "anna@example.com"}};
+			self.Reply(request.Id, {{"count", 1}}, Core::EncodeGraphCommits(commits));
+		}
+		else
+		{
+			self.Reply(request.Id, {{"held", nlohmann::json::array()}});
+		}
+	}
+
+	Graphite::LineReadInput OneBranchInput()
+	{
+		Core::Branch main{.Name = "main", .FullName = "refs/heads/main", .Tip = kTip, .IsHead = true};
+		main.TipCommit = Core::CommitSummary{.Id = kTip};
+		return Graphite::LineReadInput{.Branches = Core::CreateRef<const std::vector<Core::Branch>>(std::vector<Core::Branch>{main}), .Now = 1700000100};
+	}
+}
+
+TEST_CASE("On a WSL root the lines are read through the agent, into a store named by its common directory")
+{
+	AnsweringDistro distro;
+	distro.Answer = AnswerLinesRead;
+	Graphite::WslAgents agents{distro.Connector()};
+	TempDirectory store;
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p", store.GetPath()};
+	UseAgents(port, agents);
+
+	const Core::Result<Graphite::LineRead> read = port.ReadLines(port.RepositoryNow(), OneBranchInput());
+	const Core::Result<Graphite::LineRead> again = port.ReadLines(port.RepositoryNow(), OneBranchInput());
+
+	REQUIRE_MESSAGE(read.HasValue(), (read ? "" : read.GetError().Message));
+	REQUIRE(read.GetValue().Graph != nullptr);
+	CHECK(read.GetValue().Graph->Find(kTip) != Core::AncestryGraph::kNoCommit);
+	CHECK(read.GetValue().Refs.size() == 1);
+	CHECK(read.GetValue().Store.Graph.parent_path().parent_path() == store.GetPath());
+	REQUIRE(again.HasValue());
+	CHECK(again.GetValue().Store.Graph == read.GetValue().Store.Graph);
+	CHECK(again.GetValue().CommitsRead == 0);
+}
+
+TEST_CASE("A WSL lines read for a folder no longer open is dropped without asking the agent")
+{
+	AnsweringDistro distro;
+	distro.Answer = AnswerLinesRead;
+	Graphite::WslAgents agents{distro.Connector()};
+	TempDirectory store;
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p", store.GetPath()};
+	UseAgents(port, agents);
+	const std::uint64_t asked = port.RepositoryNow();
+
+	port.SetRoot(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\other");
+	const Core::Result<Graphite::LineRead> read = port.ReadLines(asked, OneBranchInput());
+
+	REQUIRE_FALSE(read.HasValue());
+	CHECK(read.GetError().Code == Core::ErrorCode::Cancelled);
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.Operations.empty());
 }

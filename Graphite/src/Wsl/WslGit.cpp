@@ -5,6 +5,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Remote/GitCodec.h"
+#include "Core/Remote/GraphCodec.h"
 
 #include <format>
 #include <functional>
@@ -31,7 +32,7 @@ namespace Graphite {
 			"git.status",	  "git.untrackedIn",  "git.workingDirectory", "git.head",		 "git.diff",		 "git.readSides",
 			"git.bases",	  "git.branches",	  "git.tags",			  "git.ownAuthors",	 "git.userEmail",	 "git.remotes",
 			"git.log",		  "git.countCommits", "git.commitSides",	  "git.countUnmerged", "git.stashes",		 "git.planCheckout",
-			"git.commonDirectory", "git.ignoreSetup", "git.ignored",
+			"git.commonDirectory", "git.ignoreSetup", "git.ignored", "git.graphCommits", "git.holdsCommits", "git.shallowBoundary",
 		};
 
 		Core::Result<std::optional<Core::Oid>> OidOf(const nlohmann::json& result, const char* name)
@@ -608,6 +609,99 @@ namespace Graphite {
 		std::scoped_lock lock{m_CommonMutex};
 		m_CommonDirectory = common;
 		return common;
+	}
+
+	namespace {
+
+		nlohmann::json HexList(const std::vector<Core::Oid>& ids)
+		{
+			nlohmann::json listed = nlohmann::json::array();
+
+			for (const Core::Oid& id : ids)
+			{
+				listed.push_back(id.ToHex());
+			}
+
+			return listed;
+		}
+	}
+
+	Core::Result<std::vector<Core::GraphCommit>> WslGit::ReadGraphCommits(const Core::GraphReadRequest& request)
+	{
+		const Core::Result<Answer> answer = Ask("git.graphCommits", {{"tips", HexList(request.Tips)}, {"known", HexList(request.Known)}});
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		Core::Result<std::vector<Core::GraphCommit>> commits = Core::DecodeGraphCommits(answer.GetValue().Payload);
+
+		if (!commits)
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, std::format("the WSL agent's graph cannot be read: {}", commits.GetError().Message)};
+		}
+
+		return commits;
+	}
+
+	Core::Result<std::vector<bool>> WslGit::HoldsCommits(const std::vector<Core::Oid>& commits)
+	{
+		const Core::Result<Answer> answer = Ask("git.holdsCommits", {{"ids", HexList(commits)}});
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		const auto held = answer.GetValue().Result.find("held");
+
+		if (held == answer.GetValue().Result.end() || !held->is_array() || held->size() != commits.size())
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent answered for other commits than were asked"};
+		}
+
+		std::vector<bool> answers;
+		answers.reserve(commits.size());
+
+		for (const nlohmann::json& one : *held)
+		{
+			answers.push_back(one.is_boolean() && one.get<bool>());
+		}
+
+		return answers;
+	}
+
+	Core::Result<std::unordered_set<Core::Oid>> WslGit::ShallowBoundary()
+	{
+		const Core::Result<Answer> answer = Ask("git.shallowBoundary", nlohmann::json::object());
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		std::unordered_set<Core::Oid> boundary;
+		const auto ids = answer.GetValue().Result.find("ids");
+
+		if (ids == answer.GetValue().Result.end() || !ids->is_array())
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent named no shallow boundary"};
+		}
+
+		for (const nlohmann::json& text : *ids)
+		{
+			const std::optional<Core::Oid> id = text.is_string() ? Core::Oid::FromHex(text.get<std::string>()) : std::nullopt;
+
+			if (!id)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's shallow boundary holds something that is not a commit id"};
+			}
+
+			boundary.insert(*id);
+		}
+
+		return boundary;
 	}
 
 	Core::Result<WslGit::IgnoreSetup> WslGit::QueryIgnoreSetup(std::chrono::milliseconds startWait)

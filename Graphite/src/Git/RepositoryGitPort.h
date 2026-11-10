@@ -195,6 +195,10 @@ namespace Graphite {
 
 		// The current root's agent client, or null when the root is not inside WSL.
 		std::shared_ptr<WslGit> WslForRoot();
+
+		// The WSL client when the root is inside WSL and still the one generation named; refusal
+		// is set when it is inside WSL but the folder has changed since.
+		std::shared_ptr<WslGit> WslForGeneration(std::uint64_t generation, Core::Error& refusal);
 		void RefreshWslLocked();
 
 		std::atomic<std::uint64_t> m_OpenCount{0};
