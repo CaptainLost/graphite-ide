@@ -1,10 +1,12 @@
-#include "Search/Matcher.h"
+#include "corepch.h"
+
+#include "Core/Search/Matcher.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Glob.h"
 #include "Core/Text/WordBounds.h"
 
-namespace Graphite {
+namespace Core {
 
 	namespace {
 

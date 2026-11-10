@@ -18,6 +18,7 @@ const core_source_folders = [_][]const u8{
     "Core/src/Core/Base",
     "Core/src/Core/Git",
     "Core/src/Core/Remote",
+    "Core/src/Core/Search",
 };
 // Only FileSystem's paths, listing, reading and atomic writes: the watcher, locks, holds and
 // file operations are Windows-only until the WSL helper needs them.
@@ -32,6 +33,7 @@ const core_source_files = [_][]const u8{
     "Core/src/Core/FileSystem/WslSharePath.cpp",
     "Core/src/Core/Text/Encoding.cpp",
     "Core/src/Core/Text/Utf8.cpp",
+    "Core/src/Core/Text/WordBounds.cpp",
 };
 const core_excluded = [_][]const u8{
     // Starts git.exe through ChildProcess, which has no Linux version until the WSL helper
@@ -46,6 +48,7 @@ const core_test_folders = [_][]const u8{
     "Core/tests/src/Base",
     "Core/tests/src/Git",
     "Core/tests/src/Remote",
+    "Core/tests/src/Search",
 };
 const core_test_files = [_][]const u8{
     "Core/tests/src/Main.cpp",
