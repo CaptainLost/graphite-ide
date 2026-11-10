@@ -54,6 +54,14 @@ TEST_CASE("Sizes read as bytes and tokens a person scans")
 	CHECK(FormatTokens(14'527'700'000) == "14.5B");
 }
 
+TEST_CASE("Tokens are rounded before the unit is chosen, so the edge reads as the next unit")
+{
+	CHECK(FormatTokens(999'949) == "999.9k");
+	CHECK(FormatTokens(999'950) == "1.0M");
+	CHECK(FormatTokens(999'949'999) == "999.9M");
+	CHECK(FormatTokens(999'950'000) == "1.0B");
+}
+
 TEST_CASE("FormatTokensExact writes every digit, in groups of three")
 {
 	CHECK(FormatTokensExact(0) == "0");

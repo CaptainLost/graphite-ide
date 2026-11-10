@@ -15,7 +15,9 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <format>
+#include <utility>
 
 namespace Graphite {
 
@@ -26,6 +28,7 @@ namespace Graphite {
 		constexpr std::uint64_t kTokensPerThousand = 1000;
 		constexpr std::uint64_t kTokensPerMillion = 1'000'000;
 		constexpr std::uint64_t kTokensPerBillion = 1'000'000'000;
+		constexpr double kTenthsPerUnit = 10.0;
 
 		std::string ShortModel(std::string_view model)
 		{
@@ -164,14 +167,15 @@ namespace Graphite {
 			return std::format("{}", tokens);
 		}
 
-		if (tokens < kTokensPerMillion)
+		// WARNING: Rounded to tenths before the unit is chosen, so 999,950 reads as "1.0M" and never "1000.0k".
+		for (const auto& [perUnit, unit] : {std::pair{kTokensPerThousand, 'k'}, std::pair{kTokensPerMillion, 'M'}})
 		{
-			return std::format("{:.1f}k", static_cast<double>(tokens) / static_cast<double>(kTokensPerThousand));
-		}
+			const double tenths = std::round(static_cast<double>(tokens) * kTenthsPerUnit / static_cast<double>(perUnit));
 
-		if (tokens < kTokensPerBillion)
-		{
-			return std::format("{:.1f}M", static_cast<double>(tokens) / static_cast<double>(kTokensPerMillion));
+			if (tenths < kTenthsPerUnit * static_cast<double>(kTokensPerThousand))
+			{
+				return std::format("{:.1f}{}", tenths / kTenthsPerUnit, unit);
+			}
 		}
 
 		return std::format("{:.1f}B", static_cast<double>(tokens) / static_cast<double>(kTokensPerBillion));
