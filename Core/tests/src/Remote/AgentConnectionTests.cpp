@@ -198,6 +198,20 @@ TEST_CASE("A payload past the frame limit is refused as too large, and the conne
 	CHECK(connection->SendAndWait("rename", {}, {}, 2s).HasValue());
 }
 
+TEST_CASE("Arguments past the frame header limit are refused as too large, and the connection stays up")
+{
+	FakeAgent agent{[](const Core::AgentRequest& request, FakeAgent& self) { self.Reply(request.Id, {}); }};
+	const Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(agent.HostEnd(), "v1");
+	REQUIRE(connection->WaitUntilSettled(2s));
+
+	const Core::Result<Core::AgentReply> tooLarge =
+		connection->SendAndWait("git.holdsCommits", {{"ids", std::string(Core::kMaxFrameHeaderBytes, 'a')}}, {}, 5s);
+
+	REQUIRE_FALSE(tooLarge.HasValue());
+	CHECK(tooLarge.GetError().Code == Core::ErrorCode::TooLarge);
+	CHECK(connection->SendAndWait("rename", {}, {}, 2s).HasValue());
+}
+
 TEST_CASE("Requests sent just before the connection closes still reach the agent, then bye")
 {
 	std::mutex seen;

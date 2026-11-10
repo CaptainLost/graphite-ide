@@ -143,7 +143,7 @@ namespace Graphite {
 		};
 
 		Core::Result<Answer> Ask(const std::string& operation, nlohmann::json arguments, std::chrono::milliseconds timeout,
-								 std::chrono::milliseconds startWait);
+								 std::chrono::milliseconds startWait, std::string payload = {});
 		Core::Result<Answer> Ask(const std::string& operation, nlohmann::json arguments);
 		Core::Result<void> AskForDone(const std::string& operation, nlohmann::json arguments);
 		Core::Result<nlohmann::json> AskForPayload(const std::string& operation, nlohmann::json arguments);

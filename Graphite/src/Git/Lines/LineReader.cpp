@@ -442,7 +442,12 @@ namespace Graphite {
 			request.Known = HeadsOf(graph.Get());
 
 			Core::Result<std::vector<Core::GraphCommit>> commits = repository.ReadGraphCommits(request);
-			if (!commits.HasValue() && !request.Known.empty())
+			// A read that ran out of time or answered too much (through a WSL distro's agent) would only do so
+			// again, larger: it fails as it is.
+			const bool readAfresh = !commits.HasValue() && !request.Known.empty() && commits.GetError().Code != Core::ErrorCode::Cancelled &&
+									commits.GetError().Code != Core::ErrorCode::TooLarge;
+
+			if (readAfresh)
 			{
 				// Only a fallback, since a cached head git lacks is passed over: whatever else went wrong, the read
 				// starts once more from nothing.

@@ -3,6 +3,7 @@
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslSharePath.h"
 
 #include <nlohmann/json.hpp>
 
@@ -22,6 +23,27 @@ namespace Graphite {
 
 		std::string NormalisedKey(const std::filesystem::path& directory)
 		{
+			// A repository inside WSL keeps the case of its Linux path, as Linux does; only the distro's
+			// name and the share's spelling fold.
+			if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(directory))
+			{
+				std::string text = "wsl:";
+
+				for (const char character : place->Distro)
+				{
+					text.push_back(character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character);
+				}
+
+				text += place->LinuxPath;
+
+				while (text.size() > 1 && text.back() == '/')
+				{
+					text.pop_back();
+				}
+
+				return text;
+			}
+
 			std::error_code error;
 			std::filesystem::path absolute = std::filesystem::absolute(directory, error);
 

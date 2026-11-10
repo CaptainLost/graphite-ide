@@ -69,6 +69,11 @@ namespace Agent {
 	// Opens the request's repository through the cache, then answers with handler.
 	GitHandler OnRepository(std::shared_ptr<RepositoryCache> cache, RepositoryHandler handler);
 
+	// The same, for a handler that reads the request's payload too.
+	using RepositoryPayloadHandler =
+		std::function<Core::Result<GitAnswer>(Core::Repository& repository, const nlohmann::json& arguments, const std::string& payload)>;
+	GitHandler OnRepository(std::shared_ptr<RepositoryCache> cache, RepositoryPayloadHandler handler);
+
 	// The working directory in the spelling of the root Graphite asked with: libgit2 resolves
 	// symbolic links (~/code -> /data/code), and the host names files by the folder it opened, so
 	// a resolved spelling would open the same file under another path. Empty for a bare

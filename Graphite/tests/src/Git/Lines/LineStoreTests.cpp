@@ -117,3 +117,19 @@ TEST_CASE("Lines: only an existing readable file of another version is foreign")
 	REQUIRE(SaveLineAnswers(saved, Core::LineAnswers{}));
 	CHECK(HasForeignVersion(saved) == false);
 }
+
+TEST_CASE("Lines: two WSL repositories whose Linux paths differ only in case get two stores")
+{
+	const LineStorePaths lower = LineStoreFor(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\proj\\.git", "store");
+	const LineStorePaths upper = LineStoreFor(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\Proj\\.git", "store");
+
+	CHECK(lower.Graph != upper.Graph);
+}
+
+TEST_CASE("Lines: a WSL repository gives one store whatever the spelling of its share and distro")
+{
+	const LineStorePaths localhost = LineStoreFor(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\proj\\.git", "store");
+	const LineStorePaths dollar = LineStoreFor(L"\\\\wsl$\\UBUNTU\\home\\me\\proj\\.git\\\\", "store");
+
+	CHECK(localhost.Graph == dollar.Graph);
+}

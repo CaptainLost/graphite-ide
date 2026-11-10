@@ -7,6 +7,7 @@
 #include <cstring>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 namespace Core {
@@ -89,31 +90,56 @@ namespace Core {
 			std::string_view m_Bytes;
 		};
 
-		Error EndsEarly()
+		Error Malformed(const char* why)
 		{
-			return Error{ErrorCode::InvalidArgument, "the graph commits end early"};
+			return Error{ErrorCode::InvalidArgument, std::string{"the graph commits "} + why};
 		}
 	}
 
 	std::string EncodeGraphCommits(const std::vector<GraphCommit>& commits)
 	{
-		std::string bytes;
-		Put(bytes, static_cast<std::uint32_t>(commits.size()));
+		// Author keys repeat across a history: each is written once, and commits name it by index.
+		std::vector<const std::string*> keys;
+		std::unordered_map<std::string_view, std::uint32_t> indexOfKey;
+		std::vector<std::uint32_t> keyOfCommit;
+		keyOfCommit.reserve(commits.size());
 
 		for (const GraphCommit& commit : commits)
 		{
+			const auto [found, added] = indexOfKey.try_emplace(commit.AuthorKey, static_cast<std::uint32_t>(keys.size()));
+
+			if (added)
+			{
+				keys.push_back(&commit.AuthorKey);
+			}
+
+			keyOfCommit.push_back(found->second);
+		}
+
+		std::string bytes;
+		Put(bytes, static_cast<std::uint32_t>(keys.size()));
+
+		for (const std::string* key : keys)
+		{
+			Put(bytes, static_cast<std::uint32_t>(key->size()));
+			bytes += *key;
+		}
+
+		Put(bytes, static_cast<std::uint32_t>(commits.size()));
+
+		for (std::size_t index = 0; index < commits.size(); ++index)
+		{
+			const GraphCommit& commit = commits[index];
 			PutId(bytes, commit.Id);
 			Put(bytes, static_cast<std::uint8_t>((commit.ParentsCut ? kParentsCut : 0) | (commit.CommittedByAuthor ? kCommittedByAuthor : 0)));
 			Put(bytes, commit.Time);
+			Put(bytes, keyOfCommit[index]);
 			Put(bytes, static_cast<std::uint32_t>(commit.Parents.size()));
 
 			for (const Oid& parent : commit.Parents)
 			{
 				PutId(bytes, parent);
 			}
-
-			Put(bytes, static_cast<std::uint32_t>(commit.AuthorKey.size()));
-			bytes += commit.AuthorKey;
 		}
 
 		return bytes;
@@ -122,18 +148,40 @@ namespace Core {
 	Result<std::vector<GraphCommit>> DecodeGraphCommits(std::string_view bytes)
 	{
 		Reader reader{bytes};
+		const std::optional<std::uint32_t> keyCount = reader.Take<std::uint32_t>();
+
+		if (!keyCount)
+		{
+			return Malformed("end early");
+		}
+
+		std::vector<std::string> keys;
+		keys.reserve(std::min<std::size_t>(*keyCount, reader.Left() / 4));
+
+		for (std::uint32_t index = 0; index < *keyCount; ++index)
+		{
+			const std::optional<std::uint32_t> size = reader.Take<std::uint32_t>();
+			std::optional<std::string> key = size ? reader.TakeText(*size) : std::nullopt;
+
+			if (!key)
+			{
+				return Malformed("end early");
+			}
+
+			keys.push_back(std::move(*key));
+		}
+
 		const std::optional<std::uint32_t> count = reader.Take<std::uint32_t>();
 
 		if (!count)
 		{
-			return EndsEarly();
+			return Malformed("end early");
 		}
 
-		std::vector<GraphCommit> commits;
-
-		// Each commit takes at least its id, flags, time and two counts: a count no payload this size
-		// could hold is not reserved for.
+		// Each commit takes at least its id, flags, time, key index and parent count: a count no
+		// payload this size could hold is not reserved for.
 		constexpr std::size_t kSmallestCommit = Oid::kByteCount + 1 + 8 + 4 + 4;
+		std::vector<GraphCommit> commits;
 		commits.reserve(std::min<std::size_t>(*count, reader.Left() / kSmallestCommit));
 
 		for (std::uint32_t index = 0; index < *count; ++index)
@@ -142,17 +190,24 @@ namespace Core {
 			const std::optional<Oid> id = reader.TakeId();
 			const std::optional<std::uint8_t> flags = reader.Take<std::uint8_t>();
 			const std::optional<std::int64_t> time = reader.Take<std::int64_t>();
+			const std::optional<std::uint32_t> key = reader.Take<std::uint32_t>();
 			const std::optional<std::uint32_t> parents = reader.Take<std::uint32_t>();
 
-			if (!id || !flags || !time || !parents)
+			if (!id || !flags || !time || !key || !parents)
 			{
-				return EndsEarly();
+				return Malformed("end early");
+			}
+
+			if (*key >= keys.size())
+			{
+				return Malformed("name an author key they do not hold");
 			}
 
 			commit.Id = *id;
 			commit.ParentsCut = (*flags & kParentsCut) != 0;
 			commit.CommittedByAuthor = (*flags & kCommittedByAuthor) != 0;
 			commit.Time = *time;
+			commit.AuthorKey = keys[*key];
 
 			for (std::uint32_t parent = 0; parent < *parents; ++parent)
 			{
@@ -160,24 +215,52 @@ namespace Core {
 
 				if (!parentId)
 				{
-					return EndsEarly();
+					return Malformed("end early");
 				}
 
 				commit.Parents.push_back(*parentId);
 			}
 
-			const std::optional<std::uint32_t> keySize = reader.Take<std::uint32_t>();
-			std::optional<std::string> key = keySize ? reader.TakeText(*keySize) : std::nullopt;
-
-			if (!key)
-			{
-				return EndsEarly();
-			}
-
-			commit.AuthorKey = std::move(*key);
 			commits.push_back(std::move(commit));
 		}
 
+		if (reader.Left() != 0)
+		{
+			return Malformed("are followed by bytes that are none of them");
+		}
+
 		return commits;
+	}
+
+	std::string EncodeCommitIds(const std::vector<Oid>& ids)
+	{
+		std::string bytes;
+		bytes.reserve(ids.size() * Oid::kByteCount);
+
+		for (const Oid& id : ids)
+		{
+			PutId(bytes, id);
+		}
+
+		return bytes;
+	}
+
+	Result<std::vector<Oid>> DecodeCommitIds(std::string_view bytes)
+	{
+		if (bytes.size() % Oid::kByteCount != 0)
+		{
+			return Error{ErrorCode::InvalidArgument, "the commit ids are not a whole number of ids"};
+		}
+
+		Reader reader{bytes};
+		std::vector<Oid> ids;
+		ids.reserve(bytes.size() / Oid::kByteCount);
+
+		while (reader.Left() > 0)
+		{
+			ids.push_back(*reader.TakeId());
+		}
+
+		return ids;
 	}
 }

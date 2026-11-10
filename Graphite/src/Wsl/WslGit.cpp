@@ -137,7 +137,7 @@ namespace Graphite {
 	WslGit::WslGit(WslAgents& agents, Core::WslSharePath root, Reach reach) : m_Agents(agents), m_Root(std::move(root)), m_Reach(reach) {}
 
 	Core::Result<WslGit::Answer> WslGit::Ask(const std::string& operation, nlohmann::json arguments, std::chrono::milliseconds timeout,
-											 std::chrono::milliseconds startWait)
+											 std::chrono::milliseconds startWait, std::string payload)
 	{
 		const Core::Result<std::shared_ptr<Core::AgentConnection>> connection = m_Agents.Get(m_Root.Distro, startWait);
 
@@ -149,7 +149,7 @@ namespace Graphite {
 		arguments["root"] = m_Root.LinuxPath;
 		arguments["reach"] = m_Reach == Reach::Exactly ? "exactly" : "up";
 
-		Core::Result<Core::AgentReply> reply = connection.GetValue()->SendAndWait(operation, std::move(arguments), {}, timeout);
+		Core::Result<Core::AgentReply> reply = connection.GetValue()->SendAndWait(operation, std::move(arguments), std::move(payload), timeout);
 
 		if (!reply)
 		{
@@ -611,27 +611,21 @@ namespace Graphite {
 		return common;
 	}
 
-	namespace {
-
-		nlohmann::json HexList(const std::vector<Core::Oid>& ids)
-		{
-			nlohmann::json listed = nlohmann::json::array();
-
-			for (const Core::Oid& id : ids)
-			{
-				listed.push_back(id.ToHex());
-			}
-
-			return listed;
-		}
-	}
-
 	Core::Result<std::vector<Core::GraphCommit>> WslGit::ReadGraphCommits(const Core::GraphReadRequest& request)
 	{
-		const Core::Result<Answer> answer = Ask("git.graphCommits", {{"tips", HexList(request.Tips)}, {"known", HexList(request.Known)}});
+		std::vector<Core::Oid> ids = request.Tips;
+		ids.insert(ids.end(), request.Known.begin(), request.Known.end());
+		const Core::Result<Answer> answer =
+			Ask("git.graphCommits", {{"tipCount", request.Tips.size()}}, kLongRequest, kStartWait, Core::EncodeCommitIds(ids));
 
 		if (!answer)
 		{
+			// Some 4.5 million commits fill the agent's largest answer; a history past that is not read in parts yet.
+			if (answer.GetError().Code == Core::ErrorCode::TooLarge)
+			{
+				return Core::Error{Core::ErrorCode::TooLarge, "this repository's history is too large to read through WSL at once"};
+			}
+
 			return answer.GetError();
 		}
 
@@ -647,7 +641,7 @@ namespace Graphite {
 
 	Core::Result<std::vector<bool>> WslGit::HoldsCommits(const std::vector<Core::Oid>& commits)
 	{
-		const Core::Result<Answer> answer = Ask("git.holdsCommits", {{"ids", HexList(commits)}});
+		const Core::Result<Answer> answer = Ask("git.holdsCommits", nlohmann::json::object(), kLongRequest, kStartWait, Core::EncodeCommitIds(commits));
 
 		if (!answer)
 		{
@@ -666,7 +660,12 @@ namespace Graphite {
 
 		for (const nlohmann::json& one : *held)
 		{
-			answers.push_back(one.is_boolean() && one.get<bool>());
+			if (!one.is_boolean())
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's answer of held commits is not yes or no"};
+			}
+
+			answers.push_back(one.get<bool>());
 		}
 
 		return answers;

@@ -30,6 +30,25 @@ namespace {
 		return more;
 	}
 
+	Core::Result<Agent::GitAnswer> CallWith(const Agent::GitHandlers& handlers, const std::string& operation, json arguments, std::string payload)
+	{
+		const auto handler = handlers.find(operation);
+		REQUIRE(handler != handlers.end());
+		return handler->second(Core::AgentRequest{.Id = 1, .Operation = operation, .Arguments = std::move(arguments), .Payload = std::move(payload)});
+	}
+
+	std::string Ids(const std::vector<std::string>& hex)
+	{
+		std::vector<Core::Oid> ids;
+
+		for (const std::string& one : hex)
+		{
+			ids.push_back(*Core::Oid::FromHex(one));
+		}
+
+		return Core::EncodeCommitIds(ids);
+	}
+
 	json PayloadOf(const Core::Result<Agent::GitAnswer>& answer)
 	{
 		REQUIRE_MESSAGE(answer.HasValue(), (answer ? "" : answer.GetError().Message));
@@ -270,14 +289,14 @@ TEST_CASE("Graph commits of a history come from the agent, the known ones left o
 	const std::string second = fixture.Commit("second");
 	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
 
-	const Core::Result<Agent::GitAnswer> whole = Call(handlers, "git.graphCommits", At(fixture, {{"tips", json::array({second})}, {"known", json::array()}}));
+	const Core::Result<Agent::GitAnswer> whole = CallWith(handlers, "git.graphCommits", At(fixture, {{"tipCount", 1}}), Ids({second}));
 	REQUIRE(whole.HasValue());
 	const Core::Result<std::vector<Core::GraphCommit>> commits = Core::DecodeGraphCommits(whole.GetValue().Payload);
 	REQUIRE(commits.HasValue());
 	REQUIRE(commits.GetValue().size() == 2);
 	CHECK(whole.GetValue().Result.at("count") == 2);
 
-	const Core::Result<Agent::GitAnswer> newer = Call(handlers, "git.graphCommits", At(fixture, {{"tips", json::array({second})}, {"known", json::array({first})}}));
+	const Core::Result<Agent::GitAnswer> newer = CallWith(handlers, "git.graphCommits", At(fixture, {{"tipCount", 1}}), Ids({second, first}));
 	REQUIRE(newer.HasValue());
 	const Core::Result<std::vector<Core::GraphCommit>> onlyNew = Core::DecodeGraphCommits(newer.GetValue().Payload);
 	REQUIRE(onlyNew.HasValue());
@@ -295,7 +314,7 @@ TEST_CASE("Whether commits are held is answered in the order asked")
 	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
 
 	const Core::Result<Agent::GitAnswer> held =
-		Call(handlers, "git.holdsCommits", At(fixture, {{"ids", json::array({first, "0123456789abcdef0123456789abcdef01234567"})}}));
+		CallWith(handlers, "git.holdsCommits", At(fixture), Ids({first, "0123456789abcdef0123456789abcdef01234567"}));
 
 	REQUIRE(held.HasValue());
 	CHECK(held.GetValue().Result.at("held") == json::array({true, false}));

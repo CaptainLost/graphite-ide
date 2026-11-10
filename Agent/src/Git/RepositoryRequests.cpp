@@ -142,6 +142,27 @@ namespace Agent {
 		};
 	}
 
+	GitHandler OnRepository(std::shared_ptr<RepositoryCache> cache, RepositoryPayloadHandler handler)
+	{
+		return [cache = std::move(cache), handler = std::move(handler)](const Core::AgentRequest& request) -> Core::Result<GitAnswer> {
+			const Core::Result<Asked> asked = AskedOf(request.Arguments);
+
+			if (!asked)
+			{
+				return asked.GetError();
+			}
+
+			const Core::Result<Core::Repository*> repository = cache->Get(asked.GetValue().Root, asked.GetValue().Exactly);
+
+			if (!repository)
+			{
+				return repository.GetError();
+			}
+
+			return handler(*repository.GetValue(), request.Arguments, request.Payload);
+		};
+	}
+
 	std::string SpelledLikeRoot(const std::filesystem::path& workingDirectory, const std::string& root)
 	{
 		if (workingDirectory.empty())

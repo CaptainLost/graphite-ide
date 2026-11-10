@@ -32,33 +32,6 @@ namespace Agent {
 			return *id;
 		}
 
-		Core::Result<std::vector<Core::Oid>> OidsArgument(const json& arguments, const char* name)
-		{
-			const auto found = arguments.find(name);
-
-			if (found == arguments.end() || !found->is_array())
-			{
-				return Core::Error{Core::ErrorCode::InvalidArgument, std::format("the request has no commit ids \"{}\"", name)};
-			}
-
-			std::vector<Core::Oid> ids;
-			ids.reserve(found->size());
-
-			for (const json& text : *found)
-			{
-				const std::optional<Core::Oid> id = text.is_string() ? Core::Oid::FromHex(text.get<std::string>()) : std::nullopt;
-
-				if (!id)
-				{
-					return Core::Error{Core::ErrorCode::InvalidArgument, std::format("\"{}\" holds something that is not a commit id", name)};
-				}
-
-				ids.push_back(*id);
-			}
-
-			return ids;
-		}
-
 		Core::Result<std::string> TextArgument(const json& arguments, const char* name)
 		{
 			const auto found = arguments.find(name);
@@ -325,17 +298,22 @@ namespace Agent {
 		});
 
 		// The lines graph's reads (stage 3b-lines): the commits in a compact binary payload.
-		handlers["git.graphCommits"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
-			const Core::Result<std::vector<Core::Oid>> tips = OidsArgument(arguments, "tips");
-			const Core::Result<std::vector<Core::Oid>> known = OidsArgument(arguments, "known");
+		// The ids come in the payload, tips first: a graph's known heads can pass the header's limit.
+		handlers["git.graphCommits"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments, const std::string& payload) -> Core::Result<GitAnswer> {
+			Core::Result<std::vector<Core::Oid>> ids = Core::DecodeCommitIds(payload);
+			const std::size_t tipCount = arguments.value("tipCount", std::size_t{0});
 
-			if (!tips || !known)
+			if (!ids || tipCount > ids.GetValue().size())
 			{
-				return tips ? known.GetError() : tips.GetError();
+				return ids ? Core::Error{Core::ErrorCode::InvalidArgument, "the request names more tips than ids"} : ids.GetError();
 			}
 
-			const Core::Result<std::vector<Core::GraphCommit>> commits =
-				repository.ReadGraphCommits(Core::GraphReadRequest{.Tips = tips.GetValue(), .Known = known.GetValue()});
+			std::vector<Core::Oid>& listed = ids.GetValue();
+			Core::GraphReadRequest request;
+			request.Tips.assign(listed.begin(), listed.begin() + static_cast<std::ptrdiff_t>(tipCount));
+			request.Known.assign(listed.begin() + static_cast<std::ptrdiff_t>(tipCount), listed.end());
+
+			const Core::Result<std::vector<Core::GraphCommit>> commits = repository.ReadGraphCommits(request);
 
 			if (!commits)
 			{
@@ -345,8 +323,8 @@ namespace Agent {
 			return GitAnswer{.Result = {{"count", commits.GetValue().size()}}, .Payload = Core::EncodeGraphCommits(commits.GetValue())};
 		});
 
-		handlers["git.holdsCommits"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
-			const Core::Result<std::vector<Core::Oid>> ids = OidsArgument(arguments, "ids");
+		handlers["git.holdsCommits"] = OnRepository(cache, [](Core::Repository& repository, const json&, const std::string& payload) -> Core::Result<GitAnswer> {
+			const Core::Result<std::vector<Core::Oid>> ids = Core::DecodeCommitIds(payload);
 
 			if (!ids)
 			{

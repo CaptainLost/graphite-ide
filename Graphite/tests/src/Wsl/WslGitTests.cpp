@@ -391,8 +391,7 @@ TEST_CASE("Graph commits arrive decoded, the tips and known commits sent as hex"
 	REQUIRE(commits.GetValue().size() == 1);
 	CHECK(commits.GetValue()[0].AuthorKey == "anna@example.com");
 	std::scoped_lock lock{distro.Mutex};
-	CHECK(distro.LastArguments.at("tips") == nlohmann::json::array({kSomeCommit.ToHex()}));
-	CHECK(distro.LastArguments.at("known") == nlohmann::json::array());
+	CHECK(distro.LastArguments.at("tipCount") == 1);
 }
 
 TEST_CASE("Held commits and the shallow boundary come from the agent")

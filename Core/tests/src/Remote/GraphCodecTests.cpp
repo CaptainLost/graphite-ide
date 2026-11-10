@@ -45,10 +45,33 @@ TEST_CASE("A graph payload cut short is refused")
 	CHECK(back.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
-TEST_CASE("A commit with one parent and a short author key costs at most 80 bytes")
+TEST_CASE("Another commit with one parent by an author already named costs at most 60 bytes")
 {
-	const std::string empty = Core::EncodeGraphCommits({});
-	const std::string one = Core::EncodeGraphCommits({Core::GraphCommit{.Id = kSecond, .Parents = {kFirst}, .AuthorKey = "abcdefghij@example.c"}});
+	const Core::GraphCommit first{.Id = kSecond, .Parents = {kFirst}, .AuthorKey = "abcdefghij@example.c"};
+	const Core::GraphCommit second{.Id = kThird, .Parents = {kSecond}, .AuthorKey = "abcdefghij@example.c"};
 
-	CHECK(one.size() - empty.size() <= 80);
+	const std::string one = Core::EncodeGraphCommits({first});
+	const std::string two = Core::EncodeGraphCommits({first, second});
+
+	CHECK(two.size() - one.size() <= 60);
+}
+
+TEST_CASE("A graph payload with bytes past its commits is refused")
+{
+	std::string bytes = Core::EncodeGraphCommits({Core::GraphCommit{.Id = kSecond, .AuthorKey = "a"}});
+	bytes.push_back('x');
+
+	CHECK_FALSE(Core::DecodeGraphCommits(bytes).HasValue());
+}
+
+TEST_CASE("Commit ids round-trip as twenty bytes each, and a ragged list is refused")
+{
+	const std::string bytes = Core::EncodeCommitIds({kFirst, kThird});
+
+	const Core::Result<std::vector<Core::Oid>> back = Core::DecodeCommitIds(bytes);
+
+	CHECK(bytes.size() == 40);
+	REQUIRE(back.HasValue());
+	CHECK(back.GetValue() == std::vector<Core::Oid>{kFirst, kThird});
+	CHECK_FALSE(Core::DecodeCommitIds(bytes.substr(0, 39)).HasValue());
 }

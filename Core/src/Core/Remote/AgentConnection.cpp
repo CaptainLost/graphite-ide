@@ -167,6 +167,19 @@ namespace Core {
 			return;
 		}
 
+		// The arguments travel in the header, which the agent refuses past its limit by ending the
+		// session: refused here instead, leaving room for the id and the operation's name.
+		constexpr std::size_t kHeaderRoom = 512;
+		const std::size_t argumentsSize = arguments.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace).size();
+
+		if (argumentsSize + operation.size() + kHeaderRoom > kMaxFrameHeaderBytes)
+		{
+			onReply(AgentReply{.Id = 0, .Failure = Error{ErrorCode::TooLarge,
+														 std::format("{} bytes of arguments is more than the agent takes in one request ({})",
+																	 argumentsSize, kMaxFrameHeaderBytes)}});
+			return;
+		}
+
 		std::uint64_t id = 0;
 		std::optional<Error> refused;
 
