@@ -4,24 +4,25 @@
 
 #include "Sessions/SessionWindows.h"
 #include "Sessions/ClaudeSettings.h"
+#include "Sessions/Overview/DashboardView.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/SummaryCache.h"
 #include "Settings/UserDirectories.h"
+#include "Theme/ActiveScheme.h"
+#include "Theme/SessionPalette.h"
 #include "Workspace/Workspace.h"
-#include "UI/Lists/Chevron.h"
 #include "UI/Lists/FilterField.h"
-#include "UI/Lists/ListRow.h"
-#include "UI/FittedText.h"
+#include "UI/Segment.h"
 #include "UI/TickBox.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextButton.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/Platform/Process.h"
 #include "Core/UI/PanelMarginScope.h"
 
@@ -31,7 +32,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <format>
 #include <system_error>
 
 namespace Graphite {
@@ -42,31 +42,8 @@ namespace Graphite {
 		constexpr std::chrono::steady_clock::time_point kCheckImmediately{};
 		constexpr std::chrono::steady_clock::time_point kNeverSaved{};
 
-		constexpr std::size_t kTitleBytes = 200;
-
 		constexpr float kFilterWidthInFontSizes = 16.0f;
 		const ImVec4 kLaunchProblemColour(0.9f, 0.5f, 0.4f, 1.0f);
-
-		// WARNING: Liveness comes from the fingerprint, which the index refreshes whenever the transcript changes.
-		// Asking the filesystem instead would cost a stat per row per frame.
-		bool IsLive(const SessionSummary& summary)
-		{
-			if (summary.Print.WriteTicks == 0)
-			{
-				return false;
-			}
-
-			const std::filesystem::file_time_type written{
-				std::filesystem::file_time_type::duration{summary.Print.WriteTicks}};
-			return std::filesystem::file_time_type::clock::now() - written < kLiveWindow;
-		}
-
-		std::string DurationOf(const SessionSummary& summary)
-		{
-			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> start = ParseTimestamp(summary.StartedAt);
-			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> end = ParseTimestamp(summary.EndedAt);
-			return start && end ? FormatDuration(*end - *start) : std::string{};
-		}
 	}
 
 	std::filesystem::path SessionsPanel::WorkspaceRootOrCurrentDirectory() const
@@ -82,11 +59,22 @@ namespace Graphite {
 		return std::filesystem::current_path(status);
 	}
 
-	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
+	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, const ActiveScheme& scheme,
 								 SessionWindows& windows, LaunchClaude launch)
 		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_LC_BOT, StartsAs::Hidden, Sides::Flush),
-		  m_Workspace(workspace), m_Settings(settings), m_Windows(windows), m_Launch(std::move(launch))
+		  m_Workspace(workspace), m_Settings(settings), m_Scheme(scheme), m_Windows(windows), m_Launch(std::move(launch))
 	{
+	}
+
+	SessionsPanelChoice SessionsPanel::GetChoice() const
+	{
+		return {.Tab = m_Tab, .WorkspaceOnly = m_WorkspaceOnly};
+	}
+
+	void SessionsPanel::SetChoice(const SessionsPanelChoice& choice)
+	{
+		m_Tab = choice.Tab;
+		m_WorkspaceOnly = choice.WorkspaceOnly;
 	}
 
 	SessionsPanel::~SessionsPanel()
@@ -154,6 +142,8 @@ namespace Graphite {
 			m_Sessions[summary.File] = summary;
 		}
 
+		m_Overview.MarkChanged();
+
 		m_Index.Start(m_Projects, std::move(cached));
 		m_InitialScan = true;
 		m_CacheDirty = true;
@@ -172,6 +162,11 @@ namespace Graphite {
 	{
 		IndexDelivery delivery;
 		m_Index.Take(delivery);
+
+		if (!delivery.Updated.empty() || !delivery.Removed.empty())
+		{
+			m_Overview.MarkChanged();
+		}
 
 		for (SessionSummary& summary : delivery.Updated)
 		{
@@ -314,52 +309,6 @@ namespace Graphite {
 		return nullptr;
 	}
 
-	bool SessionsPanel::VisibleRowPrecedes(const VisibleRow& earlier, const VisibleRow& later)
-	{
-		if (earlier.Folder != later.Folder)
-		{
-			return earlier.Folder < later.Folder;
-		}
-
-		return earlier.Summary->EndedAt > later.Summary->EndedAt;
-	}
-
-	std::vector<SessionsPanel::VisibleRow> SessionsPanel::VisibleSessions() const
-	{
-		const bool limitToWorkspace = m_WorkspaceOnly && m_Workspace.IsOpen();
-		const std::string filter = Core::Lowered(m_Filter);
-
-		std::vector<VisibleRow> visible;
-
-		for (const auto& [file, summary] : m_Sessions)
-		{
-			const bool isLiveOrOpen = IsLive(summary) || m_Windows.IsOpen(summary.Id);
-
-			if (!ShowsInSessionList(summary, isLiveOrOpen))
-			{
-				continue;
-			}
-
-			if (limitToWorkspace && !IsWithinDirectory(summary.Cwd, m_Workspace.GetRoot()))
-			{
-				continue;
-			}
-
-			if (!filter.empty() && !Core::LoweredTextContains(summary.DisplayTitle(), filter))
-			{
-				continue;
-			}
-
-			const std::filesystem::path::string_type folderKey =
-				limitToWorkspace ? std::filesystem::path::string_type{} : DirectoryKey(summary.Cwd);
-			visible.push_back({&summary, folderKey});
-		}
-
-		std::sort(visible.begin(), visible.end(), VisibleRowPrecedes);
-
-		return visible;
-	}
-
 	void SessionsPanel::StartNewSession()
 	{
 		const std::filesystem::path program = m_Settings.ResolveProgram();
@@ -414,23 +363,61 @@ namespace Graphite {
 		m_Windows.Open(summary);
 	}
 
+	const LocalCalendar& SessionsPanel::Calendar()
+	{
+		if (!m_Calendar.has_value())
+		{
+			m_Calendar = LocalCalendar::Current();
+		}
+
+		return *m_Calendar;
+	}
+
+	std::filesystem::path SessionsPanel::ScopeFolder() const
+	{
+		return m_WorkspaceOnly && m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::path{};
+	}
+
+	void SessionsPanel::RefreshOverview()
+	{
+		const LocalCalendar& calendar = Calendar();
+		m_Overview.Refresh(m_Sessions, m_Settings.GetPricing(), ScopeFolder(), calendar, calendar.Today());
+	}
+
+	DashboardColours SessionsPanel::Colours() const
+	{
+		return DashboardColoursFrom(ReadSessionPalette(m_Scheme.Get()), ImGui::GetColorU32(Core::SurfaceColour()));
+	}
+
 	void SessionsPanel::RenderToolbar()
 	{
+		if (DrawSegment("Overview", m_Tab == SessionsTab::Overview))
+		{
+			m_Tab = SessionsTab::Overview;
+		}
+
+		ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+
+		if (DrawSegment("Sessions", m_Tab == SessionsTab::Sessions))
+		{
+			m_Tab = SessionsTab::Sessions;
+		}
+
+		ImGui::SameLine();
+
 		ImGui::BeginDisabled(!m_Workspace.IsOpen());
 		DrawTickBox("This workspace only", &m_WorkspaceOnly);
 		ImGui::EndDisabled();
 
-		ImGui::SameLine();
-
-		DrawFilterField("##sessionFilter", m_Filter,
-						{.Hint = "Filter by title", .Width = ImGui::GetFontSize() * kFilterWidthInFontSizes});
-
-		ImGui::SameLine();
-
-		if (Core::TextButton(ICON_LC_PLUS "  New Claude session"))
+		if (m_Tab == SessionsTab::Sessions)
 		{
-			StartNewSession();
+			ImGui::SameLine();
+			DrawFilterField("##sessionFilter", m_Filter,
+							{.Hint = "Filter by title", .Width = ImGui::GetFontSize() * kFilterWidthInFontSizes});
 		}
+
+		ImGui::SameLine();
+		RenderToolbarEnd();
 
 		if (m_LaunchProblem.has_value())
 		{
@@ -443,102 +430,100 @@ namespace Graphite {
 		}
 	}
 
-	// WARNING: The title is drawn over an id-only row, not as a Selectable's label, which a "##" in a session's title
-	// would cut short. It stands the row end's inset in from the list's edge, inside the row's inset highlight, and
-	// the dim line under it keeps to the title's indent.
-	SessionRowAction DrawSessionRow(const SessionRowText& text)
+	void SessionsPanel::RenderToolbarEnd()
 	{
-		constexpr bool kNeverSelected = false;
-		SessionRowAction action = SessionRowAction::None;
+		const char* const newSession = ICON_LC_PLUS "  New Claude session";
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float start = ImGui::GetCursorPosX();
+		const float right = start + ImGui::GetContentRegionAvail().x;
+		const float buttonWidth = ImGui::CalcTextSize(newSession).x + style.FramePadding.x * 2.0f;
+		const float buttonLeft = std::max(start, right - buttonWidth);
 
-		const ImVec2 rowStart = ImGui::GetCursorPos();
-
-		if (ListRowSelectable("##session", kNeverSelected))
+		if (!m_Overview.GetModel().Sessions.empty())
 		{
-			action = SessionRowAction::Open;
-		}
+			const std::string stamp = m_Overview.Stamp();
+			const float stampLeft = buttonLeft - style.ItemSpacing.x - ImGui::CalcTextSize(stamp.c_str()).x;
 
-		{
-			const ListPopupScope popup;
-
-			if (Core::BeginRightClickPopup("##sessionMenu"))
+			if (stampLeft >= start)
 			{
-				if (ImGui::MenuItem("Continue in terminal"))
-				{
-					action = SessionRowAction::Continue;
-				}
-
-				ImGui::EndPopup();
+				ImGui::SetCursorPosX(stampLeft);
+				ImGui::TextDisabled("%s", stamp.c_str());
+				ImGui::SameLine();
 			}
 		}
 
-		ImGui::Indent(ListRowEndInset());
-		ImGui::SetCursorPos(ImVec2(rowStart.x + ListRowEndInset(), ListRowTextTop(rowStart.y)));
-		ImGui::TextUnformatted(FitToWidth(text.Title, ListRowEndPosX() - ImGui::GetCursorPosX()).c_str());
+		ImGui::SetCursorPosX(buttonLeft);
 
-		ImGui::Indent();
-		ImGui::TextDisabled("%s", text.Detail.c_str());
-
-		if (!text.DetailHint.empty() && ImGui::IsItemHovered())
+		if (Core::TextButton(newSession))
 		{
-			ImGui::SetTooltip("%s", text.DetailHint.c_str());
+			StartNewSession();
 		}
-
-		ImGui::Unindent();
-		ImGui::Unindent(ListRowEndInset());
-
-		return action;
 	}
 
-	void SessionsPanel::RenderRow(const SessionSummary& summary)
+	void SessionsPanel::RenderOverview()
 	{
-		ImGui::PushID(Core::ToUtf8(summary.File).c_str());
+		const bool scanning = SessionScanIsUnderway(m_Indexing, m_InitialScan);
 
-		const Pricing& pricing = m_Settings.GetPricing();
-		const CostResult mainCost = pricing.CostOf(summary.Main);
-		CostResult totalCost = mainCost;
-		const CostResult subagentCost = pricing.CostOf(summary.Subagents);
-		totalCost += subagentCost;
-
-		SessionRowText text{.Title = (IsLive(summary) ? std::format("{} ", kLiveSessionMark) : std::string{}) +
-									 SingleLineLabel(summary.DisplayTitle(), kTitleBytes),
-							.Detail = FormatCost(totalCost),
-							.DetailHint = UnknownCostHint(totalCost)};
-
-		if (summary.SubagentCount > 0)
+		if (scanning && m_Sessions.empty())
 		{
-			text.Detail += " (subagents " + FormatCost(subagentCost) + ")";
-		}
-		if (const std::string duration = DurationOf(summary); !duration.empty())
-		{
-			text.Detail += "  " + duration;
-		}
-		if (const std::string ended = m_Clock.Format(summary.EndedAt, ClockStyle::Date); !ended.empty())
-		{
-			text.Detail += "  " + ended;
+			const Core::PanelMarginScope margin;
+			Core::LoadingState(ScanProgressText(m_ScanProgress.Scanned, m_ScanProgress.Total).c_str());
+			return;
 		}
 
-		switch (DrawSessionRow(text))
+		const DashboardModel& model = m_Overview.GetModel();
+		DashboardAction action;
+
 		{
-		case SessionRowAction::Open:
-			m_Windows.Open(summary);
-			break;
-		case SessionRowAction::Continue:
-			ContinueSession(summary);
-			break;
-		case SessionRowAction::None:
-			break;
+			const Core::PanelMarginScope margin;
+			action = DrawDashboard(model, Calendar(), Colours());
 		}
 
-		ImGui::PopID();
+		if (action.ShowDay.has_value())
+		{
+			m_Day = action.ShowDay;
+			m_Tab = SessionsTab::Sessions;
+		}
+
+		if (action.OpenSession.has_value() && *action.OpenSession < model.Sessions.size())
+		{
+			m_Windows.Open(*model.Sessions[*action.OpenSession].Summary);
+		}
+	}
+
+	void SessionsPanel::RenderDayFilter()
+	{
+		if (!m_Day.has_value())
+		{
+			return;
+		}
+
+		const Core::PanelMarginScope margin;
+		const std::size_t sessions = SessionsOnDay(m_Overview.GetSessions(), m_Overview.GetModel(), *m_Day, Calendar());
+		const std::string chip = DayChipText(*m_Day, sessions) + "  " ICON_LC_X;
+
+		if (DrawSegment(chip.c_str(), true))
+		{
+			m_Day.reset();
+		}
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Show every day");
+		}
 	}
 
 	void SessionsPanel::RenderList()
 	{
-		const std::vector<VisibleRow> visible = VisibleSessions();
-		const bool limitedToWorkspace = m_WorkspaceOnly && m_Workspace.IsOpen();
+		RenderDayFilter();
 
-		if (visible.empty())
+		const bool limitedToWorkspace = !ScopeFolder().empty();
+		const std::vector<SessionListRow> rows =
+			SessionListRows(m_Overview.GetSessions(), m_Overview.GetModel(),
+							{.Title = m_Filter, .Day = m_Day, .Grouped = !limitedToWorkspace},
+							[this](const SessionSummary& summary) { return m_Windows.IsOpen(summary.Id); }, Calendar());
+
+		if (rows.empty())
 		{
 			const Core::PanelMarginScope margin;
 			const bool scanning = SessionScanIsUnderway(m_Indexing, m_InitialScan);
@@ -557,68 +542,32 @@ namespace Graphite {
 			return;
 		}
 
-		const bool grouped = !limitedToWorkspace;
+		const DashboardColours colours = Colours();
+		const SessionListAction action = DrawSessionList(rows, !limitedToWorkspace,
+														 {.Prices = m_Settings.GetPricing(),
+														  .Model = m_Overview.GetModel(),
+														  .Calendar = Calendar(),
+														  .Colours = colours,
+														  .Clock = m_Clock});
 
-		if (ImGui::BeginChild("##sessionList"))
+		switch (action.Action)
 		{
-			const ListBodyScope listBody;
-			RenderRows(visible, grouped);
-		}
-
-		ImGui::EndChild();
-	}
-
-	void SessionsPanel::RenderRows(const std::vector<VisibleRow>& visible, bool grouped)
-	{
-		const Pricing& pricing = m_Settings.GetPricing();
-		const std::filesystem::path::string_type* group = nullptr;
-		bool groupOpen = true;
-
-		for (std::size_t rowIndex = 0; rowIndex < visible.size(); ++rowIndex)
-		{
-			const SessionSummary& summary = *visible[rowIndex].Summary;
-			const std::filesystem::path::string_type& folder = visible[rowIndex].Folder;
-
-			if (grouped && (group == nullptr || *group != folder))
-			{
-				group = &folder;
-
-				CostResult total;
-				for (std::size_t groupMemberIndex = rowIndex;
-					 groupMemberIndex < visible.size() && visible[groupMemberIndex].Folder == folder; ++groupMemberIndex)
-				{
-					for (const UsageByModel* usage :
-						 {&visible[groupMemberIndex].Summary->Main, &visible[groupMemberIndex].Summary->Subagents})
-					{
-						total += pricing.CostOf(*usage);
-					}
-				}
-
-				// WARNING: The id must never be empty. A transcript with no cwd leaves Cwd empty, and an empty id
-				// hashes to the child window's own id and asserts. The id is the group's key, not the text shown,
-				// which changes as the group's sessions do.
-				const std::string cwdText = Core::ToUtf8(summary.Cwd);
-				const std::string label = cwdText.empty() ? "(unknown folder)" : cwdText;
-				const std::string cost = FormatCost(total);
-				const std::string groupId = "group-" + Core::ToUtf8(std::filesystem::path{folder});
-				groupOpen = ChevronTreeNode(groupId.c_str(), ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen,
-											label.c_str(), cost.c_str());
-
-				if (const std::string hint = UnknownCostHint(total); !hint.empty() && ImGui::IsItemHovered())
-				{
-					ImGui::SetTooltip("%s", hint.c_str());
-				}
-			}
-
-			if (!grouped || groupOpen)
-			{
-				RenderRow(summary);
-			}
+		case SessionRowAction::Open:
+			m_Windows.Open(*action.Summary);
+			break;
+		case SessionRowAction::Continue:
+			ContinueSession(*action.Summary);
+			break;
+		case SessionRowAction::None:
+			break;
 		}
 	}
 
 	void SessionsPanel::OnImGuiRender()
 	{
+		// WARNING: First, before anything reads the model or the listed sessions, which point into m_Sessions.
+		RefreshOverview();
+
 		// WARNING: The toolbar is drawn even when there is a problem; "New Claude session" is how a machine
 		// with no transcripts gets its first one.
 		{
@@ -632,6 +581,13 @@ namespace Graphite {
 			}
 		}
 
-		RenderList();
+		if (m_Tab == SessionsTab::Overview)
+		{
+			RenderOverview();
+		}
+		else
+		{
+			RenderList();
+		}
 	}
 }

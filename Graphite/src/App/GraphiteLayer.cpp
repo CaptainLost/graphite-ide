@@ -272,7 +272,7 @@ namespace Graphite {
 		m_ClaudeSettings.Load();
 
 		m_SessionsPanel = m_Panels.Add(Core::CreateScope<SessionsPanel>(
-			m_Workspace, m_ClaudeSettings, m_SessionWindows,
+			m_Workspace, m_ClaudeSettings, m_ActiveScheme, m_SessionWindows,
 			[this](const std::string& label, const ClaudeCommand& command,
 				   const std::filesystem::path& workingDirectory) {
 				return m_Terminals.OpenCommand(label, command.Program, command.Arguments, workingDirectory);
@@ -347,6 +347,8 @@ namespace Graphite {
 		}
 
 		m_Terminals.SetHidden(stored.TerminalsHidden);
+		m_SessionsPanel->SetChoice({.Tab = stored.SessionsShowList ? SessionsTab::Sessions : SessionsTab::Overview,
+									.WorkspaceOnly = !stored.SessionsAllFolders});
 
 		m_StateKeeper.AdoptGlobal(stored);
 
@@ -794,6 +796,10 @@ namespace Graphite {
 		});
 
 		state.TerminalsHidden = m_Terminals.IsHidden();
+
+		const SessionsPanelChoice sessions = m_SessionsPanel->GetChoice();
+		state.SessionsShowList = sessions.Tab == SessionsTab::Sessions;
+		state.SessionsAllFolders = !sessions.WorkspaceOnly;
 
 		return state;
 	}

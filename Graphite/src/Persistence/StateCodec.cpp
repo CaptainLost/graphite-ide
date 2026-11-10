@@ -23,6 +23,8 @@ namespace Graphite {
 		constexpr std::string_view kWindowMaximized = "window.maximized";
 
 		constexpr std::string_view kTerminalsHidden = "terminals.hidden";
+		constexpr std::string_view kSessionsShowList = "sessions.showList";
+		constexpr std::string_view kSessionsAllFolders = "sessions.allFolders";
 
 		constexpr std::string_view kUtf16ColumnUnit = "utf16";
 
@@ -234,6 +236,19 @@ namespace Graphite {
 
 			return longEnoughForAnId && key.starts_with(kPanelPrefix) && key.ends_with(kPanelSuffix);
 		}
+
+		// WARNING: A flag at its default leaves no key, so an absent key and an older file read the same.
+		void WriteFlagWhenSet(Core::JsonFile& file, std::string_view key, bool value)
+		{
+			if (value)
+			{
+				file.Set(key, Flag(true));
+			}
+			else
+			{
+				file.Remove(key);
+			}
+		}
 	}
 
 	void RemoveKeysStartingWith(Core::JsonFile& file, std::string_view prefix)
@@ -274,14 +289,9 @@ namespace Graphite {
 			file.Set(panelKey, Flag(visible));
 		}
 
-		if (state.TerminalsHidden)
-		{
-			file.Set(kTerminalsHidden, Flag(true));
-		}
-		else
-		{
-			file.Remove(kTerminalsHidden);
-		}
+		WriteFlagWhenSet(file, kTerminalsHidden, state.TerminalsHidden);
+		WriteFlagWhenSet(file, kSessionsShowList, state.SessionsShowList);
+		WriteFlagWhenSet(file, kSessionsAllFolders, state.SessionsAllFolders);
 	}
 
 	GlobalState ReadGlobalState(const Core::JsonFile& file)
@@ -323,6 +333,10 @@ namespace Graphite {
 
 		const bool shownByDefault = false;
 		state.TerminalsHidden = ReadFlag(file.Get(kTerminalsHidden), shownByDefault);
+
+		const bool offByDefault = false;
+		state.SessionsShowList = ReadFlag(file.Get(kSessionsShowList), offByDefault);
+		state.SessionsAllFolders = ReadFlag(file.Get(kSessionsAllFolders), offByDefault);
 
 		return state;
 	}

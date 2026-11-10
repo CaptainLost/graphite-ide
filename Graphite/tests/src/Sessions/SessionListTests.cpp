@@ -1,11 +1,15 @@
 #include <doctest/doctest.h>
 
 #include "DrawnColours.h"
+#include "DrawnText.h"
 #include "ImGuiFrames.h"
 
-#include "Sessions/SessionsPanel.h"
+#include "Sessions/LocalClock.h"
+#include "Sessions/Overview/DashboardSource.h"
+#include "Sessions/SessionList.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/FontSet.h"
 
 #include <imgui.h>
@@ -15,6 +19,8 @@
 #include <cfloat>
 #include <cmath>
 #include <optional>
+#include <string>
+#include <vector>
 
 using namespace Graphite;
 
@@ -165,4 +171,146 @@ TEST_CASE("A session's detail line starts at its row's foot and the next session
 	CHECK(screen.DetailTops[kFirstRow] - screen.RowTops[kFirstRow] == doctest::Approx(screen.Pitch));
 	CHECK(screen.RowTops[kSecondRow] - screen.DetailTops[kFirstRow] ==
 		  doctest::Approx(screen.TextLine + kListBodyItemSpacing));
+}
+
+namespace {
+
+	std::chrono::year_month_day Day(int year, unsigned month, unsigned day)
+	{
+		return std::chrono::year{year} / month / day;
+	}
+
+	UtcHour Hour(int year, unsigned month, unsigned day, int hour)
+	{
+		return std::chrono::sys_days{Day(year, month, day)} + std::chrono::hours{hour};
+	}
+
+	HourActivity OneRequest()
+	{
+		HourActivity activity;
+		const UsageKey key{"claude-opus-5", false};
+		activity.Usage[key] = {1000, 0, 0, 0, 0};
+		activity.Requests = 1;
+		activity.RequestsByModel[key] = 1;
+		return activity;
+	}
+
+	SessionSummary& AddSession(SessionsByFile& sessions, const char* file, const char* title, const char* cwd)
+	{
+		SessionSummary& summary = sessions[Core::FromUtf8(file)];
+		summary.File = Core::FromUtf8(file);
+		summary.Id = file;
+		summary.Title = title;
+		summary.Cwd = Core::FromUtf8(cwd);
+		summary.StartedAt = "2026-11-10T09:00:00.000Z";
+		summary.EndedAt = "2026-11-10T10:00:00.000Z";
+		return summary;
+	}
+
+	bool NeverOpen(const SessionSummary&)
+	{
+		return false;
+	}
+}
+
+TEST_CASE("ActiveOnDay is true only for a local day with usage")
+{
+	const LocalCalendar warsaw{std::chrono::locate_zone("Europe/Warsaw")};
+
+	SessionSummary main;
+	main.Activity.MainHours[Hour(2026, 10, 24, 22)] = OneRequest();
+
+	CHECK(ActiveOnDay(main, Day(2026, 10, 25), warsaw));
+	CHECK_FALSE(ActiveOnDay(main, Day(2026, 10, 24), warsaw));
+
+	SessionSummary subagent;
+	subagent.Activity.SubagentHours[Hour(2026, 10, 24, 21)] = OneRequest();
+
+	CHECK(ActiveOnDay(subagent, Day(2026, 10, 24), warsaw));
+	CHECK_FALSE(ActiveOnDay(subagent, Day(2026, 10, 25), warsaw));
+}
+
+TEST_CASE("DayChipText names the day and how many sessions were active on it")
+{
+	CHECK(DayChipText(Day(2026, 10, 11), 4) == "Sun 11 Oct \xC2\xB7 4");
+}
+
+TEST_CASE("A worktree session sits under its repository with the worktree's name beside its title")
+{
+	SessionsByFile sessions;
+	AddSession(sessions, "C:\\t\\main.jsonl", "Draw the list", "D:\\Repos\\IDE");
+	AddSession(sessions, "C:\\t\\fox.jsonl", "Build the chips", "D:\\Repos\\IDE\\.claude\\worktrees\\fox");
+
+	const LocalCalendar calendar{nullptr};
+	const Pricing pricing = Pricing::Defaults();
+	DashboardSource source;
+	source.Refresh(sessions, pricing, {}, calendar, Day(2026, 11, 10));
+
+	const std::vector<SessionListRow> rows =
+		SessionListRows(source.GetSessions(), source.GetModel(), SessionListFilter{.Grouped = true}, NeverOpen, calendar);
+	REQUIRE(rows.size() == 2);
+
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	LocalClock clock;
+	const DashboardColours colours{};
+	std::vector<DrawnLine> lines;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(600.0f, 400.0f));
+		ImGui::Begin("WorktreeList", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		const SessionListContext context{
+			.Prices = pricing, .Model = source.GetModel(), .Calendar = calendar, .Colours = colours, .Clock = clock};
+		DrawSessionList(rows, true, context);
+		const ImGuiWindow* panel = ImGui::GetCurrentWindowRead();
+		REQUIRE(!panel->DC.ChildWindows.empty());
+		lines = DrawnTextLines(*panel->DC.ChildWindows.back()->DrawList,
+							   *ImGui::GetFont()->GetFontBaked(ImGui::GetFontSize()));
+		ImGui::End();
+	});
+
+	const auto holding = [&](std::string_view text) {
+		return std::count_if(lines.begin(), lines.end(),
+							 [&](const DrawnLine& line) { return line.Text.find(text) != std::string::npos; });
+	};
+
+	CHECK(holding("D:\\Repos\\IDE") == 1);
+	CHECK(holding("worktrees") == 0);
+
+	// The header's chevron is an icon the test's font has no glyph for, so its line does not start with the path.
+	const auto headerLine = std::ranges::find_if(
+		lines, [](const DrawnLine& line) { return line.Text.find("D:\\Repos\\IDE") != std::string::npos; });
+	REQUIRE(headerLine != lines.end());
+	const std::optional<std::size_t> header = static_cast<std::size_t>(headerLine - lines.begin());
+	const std::optional<std::size_t> worktree = LineStartingWith(lines, "Buildthechips");
+	const std::optional<std::size_t> main = LineStartingWith(lines, "Drawthelist");
+	REQUIRE(header.has_value());
+	REQUIRE(worktree.has_value());
+	REQUIRE(main.has_value());
+	CHECK(*header < *worktree);
+	CHECK(*header < *main);
+	CHECK(lines[*worktree].Text == "Buildthechipsfox");
+	CHECK(lines[*main].Text == "Drawthelist");
+}
+
+TEST_CASE("A day filter keeps only the sessions active on that day")
+{
+	SessionsByFile sessions;
+	AddSession(sessions, "C:\\t\\monday.jsonl", "Monday", "D:\\Repos\\IDE").Activity.MainHours[Hour(2026, 11, 9, 10)] =
+		OneRequest();
+	AddSession(sessions, "C:\\t\\tuesday.jsonl", "Tuesday", "D:\\Repos\\IDE").Activity.MainHours[Hour(2026, 11, 10, 10)] =
+		OneRequest();
+
+	const LocalCalendar calendar{nullptr};
+	DashboardSource source;
+	source.Refresh(sessions, Pricing::Defaults(), {}, calendar, Day(2026, 11, 10));
+
+	const std::vector<SessionListRow> rows = SessionListRows(
+		source.GetSessions(), source.GetModel(), SessionListFilter{.Day = Day(2026, 11, 9), .Grouped = true}, NeverOpen,
+		calendar);
+
+	REQUIRE(rows.size() == 1);
+	CHECK(rows.front().Session->Summary->Title == "Monday");
+	CHECK(SessionsOnDay(source.GetSessions(), source.GetModel(), Day(2026, 11, 10), calendar) == 1);
 }

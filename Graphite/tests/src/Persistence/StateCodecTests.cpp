@@ -65,6 +65,24 @@ TEST_CASE("Shown terminals leave no key behind")
 	CHECK_FALSE(ReadGlobalState(file).TerminalsHidden);
 }
 
+TEST_CASE("The sessions panel's tab and folder choice round-trip and are absent when default")
+{
+	const GlobalState state{.SessionsShowList = true, .SessionsAllFolders = true};
+
+	Core::JsonFile file;
+	WriteGlobalState(state, file);
+
+	CHECK(ReadGlobalState(file) == state);
+	CHECK(file.Get("sessions.showList") == "1");
+	CHECK(file.Get("sessions.allFolders") == "1");
+
+	WriteGlobalState(GlobalState{}, file);
+
+	CHECK(file.Get("sessions.showList").empty());
+	CHECK(file.Get("sessions.allFolders").empty());
+	CHECK(ReadGlobalState(file) == GlobalState{});
+}
+
 TEST_CASE("A hidden flag that is not 0 or 1 reads as shown")
 {
 	Core::JsonFile file;

@@ -22,6 +22,9 @@ namespace Graphite {
 
 		bool TerminalsHidden = false;
 
+		bool SessionsShowList = false;
+		bool SessionsAllFolders = false;
+
 		friend bool operator==(const GlobalState&, const GlobalState&) = default;
 	};
 

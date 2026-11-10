@@ -2,7 +2,10 @@
 
 #include "Sessions/LocalClock.h"
 #include "Sessions/ClaudeLaunch.h"
+#include "Sessions/Overview/DashboardSource.h"
+#include "Sessions/Overview/LocalCalendar.h"
 #include "Sessions/SessionIndex.h"
+#include "Sessions/SessionList.h"
 #include "Sessions/SessionSummary.h"
 #include "Terminal/CommandTerminal.h"
 
@@ -11,34 +14,33 @@
 #include "Core/UI/Panel.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace Graphite {
 
+	class ActiveScheme;
 	class ClaudeSettings;
 	class SessionWindows;
 	class Workspace;
 
-	struct SessionRowText
+	enum class SessionsTab : std::uint8_t
 	{
-		std::string Title;
-		std::string Detail;
-		std::string DetailHint;
+		Overview,
+		Sessions
 	};
 
-	enum class SessionRowAction
+	struct SessionsPanelChoice
 	{
-		None,
-		Open,
-		Continue
-	};
+		SessionsTab Tab = SessionsTab::Overview;
+		bool WorkspaceOnly = true;
 
-	SessionRowAction DrawSessionRow(const SessionRowText& text);
+		friend bool operator==(const SessionsPanelChoice&, const SessionsPanelChoice&) = default;
+	};
 
 	class SessionsPanel final : public Core::Panel
 	{
@@ -49,8 +51,8 @@ namespace Graphite {
 		using LaunchClaude = std::function<Core::Ref<CommandTerminal>(
 			const std::string& label, const ClaudeCommand& command, const std::filesystem::path& workingDirectory)>;
 
-		SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, SessionWindows& windows,
-					  LaunchClaude launch);
+		SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, const ActiveScheme& scheme,
+					  SessionWindows& windows, LaunchClaude launch);
 		~SessionsPanel() override;
 
 		SessionsPanel(const SessionsPanel&) = delete;
@@ -59,13 +61,11 @@ namespace Graphite {
 		void OnUpdate(Core::Timestep timestep) override;
 		void OnImGuiRender() override;
 
-	private:
-		struct VisibleRow
-		{
-			const SessionSummary* Summary = nullptr;
-			std::filesystem::path::string_type Folder;
-		};
+		SessionsPanelChoice GetChoice() const;
 
+		void SetChoice(const SessionsPanelChoice& choice);
+
+	private:
 		void FindProjectsDirectory();
 		void StartIndexingWhenPresent();
 		void StartIndexing();
@@ -74,24 +74,27 @@ namespace Graphite {
 		void SaveCacheWhenSettled();
 		void SaveCache();
 
-		void RenderToolbar();
-		void RenderList();
-		void RenderRows(const std::vector<VisibleRow>& visible, bool grouped);
-		void RenderRow(const SessionSummary& summary);
+		const LocalCalendar& Calendar();
+		std::filesystem::path ScopeFolder() const;
+		void RefreshOverview();
 
-		static bool VisibleRowPrecedes(const VisibleRow& earlier, const VisibleRow& later);
+		void RenderToolbar();
+		void RenderToolbarEnd();
+		void RenderOverview();
+		void RenderList();
+		void RenderDayFilter();
+		DashboardColours Colours() const;
 
 		const SessionSummary* FindSessionById(const std::string& id) const;
 
 		void StartNewSession();
 		void ContinueSession(const SessionSummary& summary);
 
-		std::vector<VisibleRow> VisibleSessions() const;
-
 		std::filesystem::path WorkspaceRootOrCurrentDirectory() const;
 
 		const Workspace& m_Workspace;
 		const ClaudeSettings& m_Settings;
+		const ActiveScheme& m_Scheme;
 		SessionWindows& m_Windows;
 		LaunchClaude m_Launch;
 
@@ -106,9 +109,15 @@ namespace Graphite {
 		std::map<std::filesystem::path, SessionSummary> m_Sessions;
 
 		LocalClock m_Clock;
+		std::optional<LocalCalendar> m_Calendar;
 
+		// WARNING: Points into m_Sessions, so every change to them is marked on it before the next draw reads it.
+		DashboardSource m_Overview;
+
+		SessionsTab m_Tab = SessionsTab::Overview;
 		bool m_WorkspaceOnly = true;
 		std::string m_Filter;
+		std::optional<std::chrono::year_month_day> m_Day;
 		bool m_Started = false;
 		bool m_Indexing = false;
 
