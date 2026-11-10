@@ -22,4 +22,11 @@ namespace Core {
 	// separator and with or without the \\?\UNC\ prefix. Anything else, including a share host
 	// with no distro after it, is not a place inside WSL.
 	std::optional<WslSharePath> ParseWslSharePath(const std::filesystem::path& path);
+
+	// \\wsl.localhost\<Distro><LinuxPath with '\'>: the one spelling the host uses for a place in
+	// WSL (ADR 0696), whatever spelling it arrived in.
+	std::filesystem::path ToWslSharePath(const WslSharePath& place);
+
+	// ToWslSharePath of any spelling ParseWslSharePath accepts; any other path unchanged.
+	std::filesystem::path CanonicalWslSharePath(const std::filesystem::path& path);
 }

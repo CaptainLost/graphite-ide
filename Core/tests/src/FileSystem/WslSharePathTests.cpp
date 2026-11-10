@@ -2,6 +2,9 @@
 
 #include "Core/FileSystem/WslSharePath.h"
 
+#include "Core/Base/PlatformDetection.h"
+#include "Core/FileSystem/FileSystem.h"
+
 using Core::ParseWslSharePath;
 using Core::WslSharePath;
 
@@ -43,3 +46,26 @@ TEST_CASE("Other shares, local paths and a bare host are not WSL")
 	CHECK_FALSE(ParseWslSharePath(L"\\\\wsl.localhost").has_value());
 	CHECK_FALSE(ParseWslSharePath(L"\\\\wsl.localhost\\").has_value());
 }
+
+// The host's spelling of a place in WSL: Windows only, as only the host meets these paths.
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("Every spelling of a place in WSL comes back as the one the host uses")
+{
+	CHECK(Core::CanonicalWslSharePath(L"\\\\wsl$\\Ubuntu\\home\\me\\").native() == L"\\\\wsl.localhost\\Ubuntu\\home\\me");
+	CHECK(Core::CanonicalWslSharePath(L"//WSL.LOCALHOST/Ubuntu-22.04/x").native() == L"\\\\wsl.localhost\\Ubuntu-22.04\\x");
+	CHECK(Core::CanonicalWslSharePath(L"\\\\?\\UNC\\wsl$\\Ubuntu").native() == L"\\\\wsl.localhost\\Ubuntu\\");
+}
+
+TEST_CASE("A path that is not in WSL is left as it is")
+{
+	CHECK(Core::CanonicalWslSharePath(L"D:\\x").native() == L"D:\\x");
+	CHECK(Core::CanonicalWslSharePath(L"\\\\nas\\share\\x").native() == L"\\\\nas\\share\\x");
+}
+
+TEST_CASE("Paths in WSL keep their case as keys, and every spelling of one place is one key")
+{
+	CHECK_FALSE(Core::SamePath(L"\\\\wsl.localhost\\Ubuntu\\a\\Makefile", L"\\\\wsl.localhost\\Ubuntu\\a\\makefile"));
+	CHECK(Core::SamePath(L"\\\\wsl$\\Ubuntu\\a\\Makefile", L"\\\\WSL.localhost\\Ubuntu\\a\\Makefile\\"));
+	CHECK(Core::SamePath("C:/a/Makefile", "C:/a/makefile"));
+}
+#endif

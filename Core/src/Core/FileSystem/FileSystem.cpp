@@ -7,6 +7,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/FileSystem/WslSharePath.h"
 
 #include <algorithm>
 #include <array>
@@ -486,13 +487,17 @@ namespace Core {
 
 	PathKeyText PathKey(const std::filesystem::path& path)
 	{
-		PathKeyText key = NormalizeDirectory(path).native();
+		PathKeyText key = NormalizeDirectory(CanonicalWslSharePath(path)).native();
 
 #ifdef CORE_PLATFORM_WINDOWS
+		// A place in WSL is on a Linux file system, which tells Makefile from makefile: its key
+		// keeps the case, and only its spelling is made one (ADR 0696).
+		const bool isInWsl = ParseWslSharePath(path).has_value();
+
 		// The invariant locale folds case as the file system does, where the user's locale would give
 		// "i" a different capital under Turkish. Upper-casing never changes the length of UTF-16 text,
 		// which RelativeToKey relies on to cut the path at the length of its base's key.
-		if (!key.empty())
+		if (!key.empty() && !isInWsl)
 		{
 			const int keyLength = Narrow<int>(key.size());
 			std::wstring folded(key.size(), L'\0');

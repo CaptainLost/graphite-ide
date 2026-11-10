@@ -83,4 +83,22 @@ namespace Core {
 
 		return WslSharePath{std::string{distro}, "/" + std::string{rest}};
 	}
+
+	std::filesystem::path ToWslSharePath(const WslSharePath& place)
+	{
+		std::string share = "\\\\wsl.localhost\\" + place.Distro;
+
+		for (const char character : place.LinuxPath)
+		{
+			share.push_back(character == '/' ? '\\' : character);
+		}
+
+		return FromUtf8(share);
+	}
+
+	std::filesystem::path CanonicalWslSharePath(const std::filesystem::path& path)
+	{
+		const std::optional<WslSharePath> place = ParseWslSharePath(path);
+		return place ? ToWslSharePath(*place) : path;
+	}
 }
