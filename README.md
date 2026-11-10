@@ -136,11 +136,13 @@
 </details>
 
 <details>
-<summary><b>Themes</b> - the editor in Gruvbox Dark, and the built-in themes</summary>
+<summary><b>Themes</b> - the editor in Gruvbox Dark, the built-in themes and the colour editor</summary>
 
 ![The editor in the Gruvbox Dark theme](docs/images/theme-gruvbox.png)
 
 ![The Appearance page of Settings with the list of built-in themes open](docs/images/settings.png)
+
+![A copy of a theme being edited: the colour picker open on a syntax colour, with the new colour beside the original and a reset button by the overridden entry](docs/images/colour-picker.png)
 
 </details>
 
