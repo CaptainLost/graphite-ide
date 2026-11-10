@@ -9,6 +9,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Command/GitExecutable.h"
 #include "Core/Git/Command/GitNetwork.h"
+#include "Core/Remote/AgentDeployment.h"
 #include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Content/ContentThresholds.h"
 
@@ -2326,6 +2327,23 @@ namespace Graphite {
 	NetworkSetup RepositoryGitPort::QueryNetworkSetup()
 	{
 		NetworkSetup setup;
+
+		// A repository inside WSL runs the distro's own git through wsl.exe (stage 3d).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			std::error_code error;
+
+			if (std::filesystem::exists(Core::WslExecutable(), error))
+			{
+				setup.Git = Core::WslExecutable();
+			}
+
+			const Core::Result<std::filesystem::path> workingDirectory = wsl->GetWorkingDirectory();
+			const Core::Result<std::filesystem::path> commonDirectory = wsl->GetCommonDirectory();
+			setup.WorkingDirectory = workingDirectory ? workingDirectory.GetValue() : std::filesystem::path{};
+			setup.CommonGitDir = commonDirectory ? commonDirectory.GetValue() : std::filesystem::path{};
+			return setup;
+		}
 		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -2380,6 +2398,38 @@ namespace Graphite {
 	Core::NetworkOutcome RepositoryGitPort::WithNetworkRun(const std::atomic<bool>& cancelled,
 														   const std::function<Core::NetworkOutcome(const Core::NetworkRun&)>& operation)
 	{
+		// A repository inside WSL: the distro's git, with its keys and config, runs in its working directory.
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			const Core::Result<std::filesystem::path> workingDirectory = wsl->GetWorkingDirectory();
+
+			if (!workingDirectory)
+			{
+				return NetworkFailure("The folder is not a git repository.");
+			}
+
+			const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(workingDirectory.GetValue());
+
+			if (!place)
+			{
+				return NetworkFailure("This repository has no work tree.");
+			}
+
+			std::error_code error;
+
+			if (!std::filesystem::exists(Core::WslExecutable(), error))
+			{
+				return NetworkFailure("wsl.exe was not found");
+			}
+
+			const Core::WslGitPlace inDistro{.Distro = place->Distro, .LinuxDirectory = place->LinuxPath};
+			const Core::NetworkRun run{.Git = Core::WslExecutable(),
+									   .WorkingDirectory = Core::WslExecutable().parent_path(),
+									   .SshCommandConfigured = Core::IsSshCommandConfigured(Core::WslExecutable(), inDistro, cancelled),
+									   .Wsl = inDistro};
+			return operation(run);
+		}
+
 		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())

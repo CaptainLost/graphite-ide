@@ -31,11 +31,6 @@ namespace Core {
 			return std::filesystem::path{std::wstring{buffer.data(), length}};
 		}
 
-		std::filesystem::path WslExecutable()
-		{
-			return SystemDirectory() / "wsl.exe";
-		}
-
 		std::vector<std::string> InDistro(const std::string& distro, std::vector<std::string> command)
 		{
 			std::vector<std::string> arguments;
@@ -138,6 +133,11 @@ namespace Core {
 			.LinuxPath = linuxPath,
 			.SharePath = SharePathOf(distro, linuxPath),
 		};
+	}
+
+	std::filesystem::path WslExecutable()
+	{
+		return SystemDirectory() / "wsl.exe";
 	}
 
 	bool IsWslAvailable()

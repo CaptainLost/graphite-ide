@@ -33,6 +33,9 @@ namespace Core {
 	// wsl.exe runs a command in the default distro.
 	bool IsWslAvailable();
 
+	// System32's wsl.exe, whether or not it is there.
+	std::filesystem::path WslExecutable();
+
 	// windowsPath as the distro (the default one when distro is empty) names it: wslpath -u.
 	Result<std::string> LinuxPathOf(const std::string& distro, const std::filesystem::path& windowsPath);
 

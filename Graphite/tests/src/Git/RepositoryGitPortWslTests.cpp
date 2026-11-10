@@ -15,6 +15,7 @@
 #include "Core/Remote/GraphCodec.h"
 
 #include <atomic>
+#include <cstdlib>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -77,7 +78,7 @@ TEST_CASE("On a WSL root the port asks the distro's agent for the status")
 	CHECK(distro.Operations == std::vector<std::string>{"git.status"});
 }
 
-TEST_CASE("On a WSL root what the agent does not answer yet says so, rather than failing on the share")
+TEST_CASE("On a WSL root nothing is read over the share")
 {
 	StatusDistro distro;
 	Graphite::WslAgents agents{distro.Connector()};
@@ -86,9 +87,8 @@ TEST_CASE("On a WSL root what the agent does not answer yet says so, rather than
 		return std::make_shared<Graphite::WslGit>(agents, root, reach);
 	});
 
-	const Graphite::NetworkSetup setup = port.QueryNetworkSetup();
-
-	CHECK_FALSE(setup.Git.has_value());
+	// Every port method answers on a WSL root since stage 3d; an uncached open is still refused rather than made over the share.
+	CHECK(port.QueryStatus().HasValue());
 }
 
 TEST_CASE("A local root never reaches a WSL agent")
@@ -335,6 +335,17 @@ TEST_CASE("A WSL repository's history, branches, stashes and checkout work throu
 	REQUIRE(stashes.GetValue().size() == 1);
 	REQUIRE(port.StashDrop(stashes.GetValue()[0].Id).HasValue());
 
+	// A bare repository in the distro as origin: push the branch there, then fetch it.
+	const std::string remote = "/tmp/graphite-port-remote-" + std::to_string(_getpid()) + ".git";
+	REQUIRE(std::system(("wsl.exe -d Ubuntu --exec git init -q --bare " + remote).c_str()) == 0);
+	std::ofstream{folder / ".git" / "config", std::ios::app} << "[remote \"origin\"]\n\turl = " << remote << "\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n";
+	const std::atomic<bool> notCancelled{false};
+	const Core::NetworkOutcome pushed = port.PushTo(notCancelled, {}, "origin", initialHead.GetValue().BranchName);
+	CHECK_MESSAGE(pushed.Result == Core::NetworkResult::Done, pushed.Failure.Errors);
+	const Core::NetworkOutcome fetched = port.FetchAll(notCancelled, {});
+	CHECK_MESSAGE(fetched.Result == Core::NetworkResult::Done, fetched.Failure.Errors);
+	static_cast<void>(std::system(("wsl.exe -d Ubuntu --exec rm -rf " + remote).c_str()));
+
 	const Core::CheckoutOutcome checkout = port.Checkout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
 	CHECK_FALSE(checkout.Failure.has_value());
 	const Core::Result<Core::HeadState> head = port.QueryHead();
@@ -568,4 +579,20 @@ TEST_CASE("On a WSL root the paths two commits differ in come from the agent")
 	CHECK(paths.GetValue() == std::vector<std::string>{"a.txt", "b.txt"});
 	REQUIRE(differ.HasValue());
 	CHECK(differ.GetValue());
+}
+
+TEST_CASE("On a WSL root git counts as found when wsl.exe is there, and the setup names the agent's folders")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		self.Reply(request.Id, {{"path", request.Operation == "git.commonDirectory" ? "/home/me/p/.git" : "/home/me/p"}});
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Graphite::NetworkSetup setup = port.QueryNetworkSetup();
+
+	CHECK(setup.Git.has_value() == std::filesystem::exists(Core::WslExecutable()));
+	CHECK(setup.WorkingDirectory.native() == std::wstring{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"});
 }
