@@ -1,5 +1,6 @@
 #include "Sessions/SessionText.h"
 
+#include "Sessions/Overview/TipText.h"
 #include "Sessions/Transcript/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/Transcript/ToolFacts.h"
@@ -111,11 +112,18 @@ namespace Graphite {
 	}
 
 	std::string EmptyListMessage(bool isScanning, std::size_t finishedCount, std::size_t totalCount,
-								 bool isWorkspaceOnly, std::string_view filter)
+								 bool isWorkspaceOnly, std::string_view filter,
+								 std::optional<std::chrono::year_month_day> day)
 	{
 		if (isScanning)
 		{
 			return ScanProgressText(finishedCount, totalCount);
+		}
+
+		if (day.has_value())
+		{
+			const std::string onDay = "No sessions on " + WeekdayDate(*day);
+			return filter.empty() ? onDay : std::format("{} match \"{}\"", onDay, filter);
 		}
 
 		if (!filter.empty())

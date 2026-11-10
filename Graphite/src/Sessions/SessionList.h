@@ -13,7 +13,10 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#include <imgui.h>
 
 namespace Graphite {
 
@@ -29,7 +32,11 @@ namespace Graphite {
 		std::string Title;
 		std::string Worktree;
 		std::string Detail;
+		ImU32 WorktreeColour = 0; // 0: the style's disabled text
 	};
+
+	// WARNING: Draws one item, a button the size of the pill, so it can end a row.
+	bool DrawDayChip(std::string_view text, const DashboardColours& colours);
 
 	enum class SessionRowAction
 	{
@@ -64,9 +71,6 @@ namespace Graphite {
 	std::vector<SessionListRow> SessionListRows(std::span<const ListedSession> sessions, const DashboardModel& model,
 												const SessionListFilter& filter, const IsSessionOpen& isOpen,
 												const LocalCalendar& calendar);
-
-	std::size_t SessionsOnDay(std::span<const ListedSession> sessions, const DashboardModel& model,
-							  std::chrono::year_month_day day, const LocalCalendar& calendar);
 
 	struct SessionListContext
 	{

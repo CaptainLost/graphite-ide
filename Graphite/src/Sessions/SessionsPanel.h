@@ -6,6 +6,7 @@
 #include "Sessions/Overview/DashboardSource.h"
 #include "Sessions/Overview/LocalCalendar.h"
 #include "Sessions/SessionIndex.h"
+#include "Sessions/SessionList.h"
 #include "Sessions/SessionSummary.h"
 #include "Terminal/CommandTerminal.h"
 
@@ -20,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -80,12 +82,13 @@ namespace Graphite {
 		std::filesystem::path ScopeFolder() const;
 		void RefreshOverview();
 
-		void RenderToolbar();
-		void RenderToolbarEnd();
+		void RenderToolbar(bool viewIsLoading);
+		void RenderToolbarEnd(bool viewIsLoading);
 		OverviewContent OverviewShows() const;
 		void RenderOverview();
-		void RenderList();
-		void RenderDayFilter();
+		std::vector<SessionListRow> ListedRows();
+		void RenderList(const std::vector<SessionListRow>& rows);
+		void RenderDayFilter(std::size_t listed);
 		DashboardColours Colours() const;
 
 		const SessionSummary* FindSessionById(const std::string& id) const;

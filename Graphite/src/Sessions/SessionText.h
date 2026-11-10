@@ -28,7 +28,8 @@ namespace Graphite {
 	std::string ScanProgressText(std::size_t finishedCount, std::size_t totalCount);
 
 	std::string EmptyListMessage(bool isScanning, std::size_t finishedCount, std::size_t totalCount,
-								 bool isWorkspaceOnly, std::string_view filter);
+								 bool isWorkspaceOnly, std::string_view filter,
+								 std::optional<std::chrono::year_month_day> day = std::nullopt);
 
 	bool SessionScanIsUnderway(bool indexing, bool initialScanRunning);
 

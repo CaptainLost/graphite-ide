@@ -290,8 +290,77 @@ TEST_CASE("A worktree session sits under its repository with the worktree's name
 	REQUIRE(main.has_value());
 	CHECK(*header < *worktree);
 	CHECK(*header < *main);
-	CHECK(lines[*worktree].Text == "Buildthechipsfox");
+	CHECK(lines[*worktree].Text.starts_with("Buildthechips"));
+	CHECK(lines[*worktree].Text.ends_with("fox"));
 	CHECK(lines[*main].Text == "Drawthelist");
+}
+
+TEST_CASE("A long worktree name takes at most two fifths of the row and the title keeps the rest")
+{
+	constexpr float kWidth = 400.0f;
+	constexpr ImU32 kWorktreeColour = IM_COL32(1, 2, 3, 255);
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	ImRect row;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(kWidth, 200.0f));
+		ImGui::Begin("LongWorktree", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		{
+			const ListBodyScope listBody;
+			DrawSessionRow({.Title = "A title long enough to need cutting when the worktree beside it is long too",
+							.Worktree = "a-worktree-name-much-too-long-to-be-shown-whole-in-the-row",
+							.Detail = "$1.00",
+							.WorktreeColour = kWorktreeColour});
+			row = ImRect(ImGui::GetCurrentWindowRead()->InnerRect.Min, ImVec2(kWidth, ImGui::GetItemRectMin().y));
+		}
+		ImGui::End();
+	});
+
+	const ImDrawList& drawing = *ImGui::FindWindowByName("LongWorktree")->DrawList;
+	const std::optional<Extent> worktree = ExtentInColour(drawing, kWorktreeColour, row.Min.y, row.Max.y);
+	const std::optional<Extent> title = ExtentInColour(drawing, ImGui::GetColorU32(ImGuiCol_Text), row.Min.y, row.Max.y);
+	REQUIRE(worktree.has_value());
+	REQUIRE(title.has_value());
+	CHECK(worktree->Right - worktree->Left <= row.GetWidth() * 0.4f + kFringe);
+	CHECK(title->Right < worktree->Left);
+	CHECK(title->Right - title->Left > row.GetWidth() * 0.4f);
+}
+
+TEST_CASE("The day chip is an accent pill, and a click on it answers true")
+{
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	DashboardColours colours{};
+	colours.Pill = IM_COL32(58, 50, 32, 255);
+	colours.Accent = IM_COL32(226, 176, 74, 255);
+	ImRect chip;
+	bool clicked = false;
+
+	const auto draw = [&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+		ImGui::Begin("Chip", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		clicked = DrawDayChip(DayChipText(Day(2026, 10, 11), 3), colours) || clicked;
+		chip = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		ImGui::End();
+	};
+	frames.Next(draw);
+
+	const ImDrawList& drawing = *ImGui::FindWindowByName("Chip")->DrawList;
+	const std::optional<Extent> pill = ExtentInColour(drawing, colours.Pill);
+	const std::optional<Extent> text = ExtentInColour(drawing, colours.Accent);
+	REQUIRE(pill.has_value());
+	REQUIRE(text.has_value());
+	CHECK(WithinFringe(pill->Left, chip.Min.x));
+	CHECK(WithinFringe(pill->Right, chip.Max.x));
+	CHECK(text->Left > pill->Left);
+	CHECK(text->Right < pill->Right);
+	CHECK_FALSE(clicked);
+
+	frames.Click(chip.GetCenter(), draw);
+	CHECK(clicked);
 }
 
 TEST_CASE("A day filter keeps only the sessions active on that day")
@@ -312,5 +381,9 @@ TEST_CASE("A day filter keeps only the sessions active on that day")
 
 	REQUIRE(rows.size() == 1);
 	CHECK(rows.front().Session->Summary->Title == "Monday");
-	CHECK(SessionsOnDay(source.GetSessions(), source.GetModel(), Day(2026, 11, 10), calendar) == 1);
+
+	const std::vector<SessionListRow> titled = SessionListRows(
+		source.GetSessions(), source.GetModel(),
+		SessionListFilter{.Title = "nothing like it", .Day = Day(2026, 11, 9), .Grouped = true}, NeverOpen, calendar);
+	CHECK(titled.empty());
 }

@@ -282,6 +282,11 @@ TEST_CASE("An empty session list says why it is empty")
 	CHECK(EmptyListMessage(false, 0, 0, false, "bug") == "No sessions match \"bug\"");
 	CHECK(EmptyListMessage(false, 0, 0, true, "") == "No sessions in this workspace");
 	CHECK(EmptyListMessage(false, 0, 0, false, "") == "No sessions.");
+
+	const std::chrono::year_month_day sunday = std::chrono::year{2026} / 10 / 11;
+	CHECK(EmptyListMessage(false, 0, 0, true, "", sunday) == "No sessions on Sun 11 Oct");
+	CHECK(EmptyListMessage(false, 0, 0, true, "bug", sunday) == "No sessions on Sun 11 Oct match \"bug\"");
+	CHECK(EmptyListMessage(true, 3, 10, true, "", sunday) == "Reading transcripts... 3 / 10");
 }
 
 TEST_CASE("A scan that has not started yet counts as scanning, so the list never says it is empty before it looked")

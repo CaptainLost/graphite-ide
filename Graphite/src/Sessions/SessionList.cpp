@@ -1,6 +1,7 @@
 #include "Sessions/SessionList.h"
 
 #include "Sessions/LocalClock.h"
+#include "Sessions/Overview/DashboardCanvas.h"
 #include "Sessions/Overview/DashboardTips.h"
 #include "Sessions/Overview/TipCardView.h"
 #include "Sessions/Overview/TipText.h"
@@ -14,6 +15,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 
 #include <imgui.h>
 
@@ -25,6 +27,12 @@ namespace Graphite {
 	namespace {
 		constexpr std::size_t kTitleBytes = 200;
 		constexpr float kWorktreeGapInFontSizes = 0.5f;
+		constexpr float kWorktreeShareOfRow = 0.4f;
+		constexpr float kWorktreeSize = 0.85f;
+		constexpr float kChipSize = 0.88f;
+		constexpr float kChipPaddingX = 0.62f;
+		constexpr float kChipPaddingY = 0.1f;
+		constexpr float kHalf = 0.5f;
 
 		// WARNING: Liveness comes from the fingerprint, which the index refreshes whenever the transcript changes.
 		// Asking the filesystem instead would cost a stat per row per frame.
@@ -113,7 +121,8 @@ namespace Graphite {
 			SessionRowText text{.Title = (IsLive(summary) ? std::format("{} ", kLiveSessionMark) : std::string{}) +
 										 SingleLineLabel(summary.DisplayTitle(), kTitleBytes),
 								.Worktree = place.Worktree,
-								.Detail = FormatCost(total)};
+								.Detail = FormatCost(total),
+								.WorktreeColour = Faint(context.Colours)};
 
 			if (summary.SubagentCount > 0)
 			{
@@ -146,7 +155,7 @@ namespace Graphite {
 				if (!IsEmpty(card) && BeginTipCard(context.Colours))
 				{
 					DrawTipCard(card, context.Colours);
-					ImGui::EndTooltip();
+					EndTipCard(context.Colours);
 				}
 			}
 
@@ -194,6 +203,21 @@ namespace Graphite {
 		return WeekdayDate(day) + std::string{kMiddleDotSeparator} + std::to_string(sessions);
 	}
 
+	bool DrawDayChip(std::string_view text, const DashboardColours& colours)
+	{
+		const float size = ImGui::GetFontSize() * kChipSize;
+		const ImVec2 padding(ImGui::GetFontSize() * kChipPaddingX, ImGui::GetFontSize() * kChipPaddingY);
+		const ImVec2 textSize(TextWidthAt(text, size), size);
+		const ImVec2 chip(textSize.x + 2.0f * padding.x, textSize.y + 2.0f * padding.y);
+		const ImVec2 at = ImGui::GetCursorScreenPos();
+
+		const bool clicked = ImGui::InvisibleButton("##dayChip", chip);
+		ImDrawList& drawing = *ImGui::GetWindowDrawList();
+		drawing.AddRectFilled(at, ImVec2(at.x + chip.x, at.y + chip.y), colours.Pill, chip.y * kHalf);
+		DrawTextAt(drawing, ImVec2(at.x + padding.x, at.y + padding.y), size, colours.Accent, text);
+		return clicked;
+	}
+
 	// WARNING: The title is drawn over an id-only row, not as a Selectable's label, which a "##" in a session's title
 	// would cut short. It stands the row end's inset in from the list's edge, inside the row's inset highlight, and
 	// the dim line under it keeps to the title's indent.
@@ -228,15 +252,31 @@ namespace Graphite {
 		ImGui::Indent(ListRowEndInset());
 		ImGui::SetCursorPos(ImVec2(rowStart.x + ListRowEndInset(), ListRowTextTop(rowStart.y)));
 
+		// WARNING: The worktree's name takes at most two fifths of the row, cut with an ellipsis; the title keeps the rest.
 		const float gap = ImGui::GetFontSize() * kWorktreeGapInFontSizes;
-		const float worktreeRoom = text.Worktree.empty() ? 0.0f : ImGui::CalcTextSize(text.Worktree.c_str()).x + gap;
-		const float titleRoom = std::max(0.0f, ListRowEndPosX() - ImGui::GetCursorPosX() - worktreeRoom);
-		ImGui::TextUnformatted(FitToWidth(text.Title, titleRoom).c_str());
+		const float rowRoom = std::max(0.0f, ListRowEndPosX() - ImGui::GetCursorPosX());
+		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), ImGui::GetStyle().FontSizeBase * kWorktreeSize);
+		const float worktreeWidth = text.Worktree.empty()
+										? 0.0f
+										: std::min(ImGui::CalcTextSize(text.Worktree.c_str()).x, rowRoom * kWorktreeShareOfRow);
+		const std::string worktree = FitToWidth(text.Worktree, worktreeWidth);
+		ImGui::PopFont();
+
+		const float worktreeRoom = text.Worktree.empty() ? 0.0f : worktreeWidth + gap;
+		ImGui::TextUnformatted(FitToWidth(text.Title, std::max(0.0f, rowRoom - worktreeRoom)).c_str());
 
 		if (!text.Worktree.empty())
 		{
+			const float titleBaseline = ImGui::GetItemRectMax().y;
 			ImGui::SameLine(0.0f, gap);
-			ImGui::TextDisabled("%s", FitToWidth(text.Worktree, ListRowEndPosX() - ImGui::GetCursorPosX()).c_str());
+			ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), ImGui::GetStyle().FontSizeBase * kWorktreeSize);
+			const ImVec2 at = ImGui::GetCursorScreenPos();
+			ImGui::SetCursorScreenPos(ImVec2(at.x, titleBaseline - ImGui::GetTextLineHeight()));
+			ImGui::PushStyleColor(ImGuiCol_Text, text.WorktreeColour != 0 ? text.WorktreeColour
+																		 : ImGui::GetColorU32(ImGuiCol_TextDisabled));
+			ImGui::TextUnformatted(worktree.c_str());
+			ImGui::PopStyleColor();
+			ImGui::PopFont();
 		}
 
 		ImGui::Indent();
@@ -280,13 +320,6 @@ namespace Graphite {
 
 		std::ranges::sort(rows, RowPrecedes);
 		return rows;
-	}
-
-	std::size_t SessionsOnDay(std::span<const ListedSession> sessions, const DashboardModel& model,
-							  std::chrono::year_month_day day, const LocalCalendar& calendar)
-	{
-		return static_cast<std::size_t>(std::ranges::count_if(
-			sessions, [&](const ListedSession& session) { return IsActiveOn(session, model, day, calendar); }));
 	}
 
 	SessionListAction DrawSessionList(std::span<const SessionListRow> rows, bool grouped, const SessionListContext& context)

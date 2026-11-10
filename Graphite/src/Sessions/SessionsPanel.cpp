@@ -397,7 +397,7 @@ namespace Graphite {
 		return DashboardColoursFrom(ReadSessionPalette(m_Scheme.Get()), ImGui::GetColorU32(Core::SurfaceColour()));
 	}
 
-	void SessionsPanel::RenderToolbar()
+	void SessionsPanel::RenderToolbar(bool viewIsLoading)
 	{
 		if (DrawSegment("Overview", m_Tab == SessionsTab::Overview))
 		{
@@ -425,20 +425,21 @@ namespace Graphite {
 		}
 
 		ImGui::SameLine();
-		RenderToolbarEnd();
+		RenderToolbarEnd(viewIsLoading);
 
 		if (m_LaunchProblem.has_value())
 		{
 			ImGui::TextColored(kLaunchProblemColour, "%s", m_LaunchProblem->c_str());
 		}
 
-		if (m_InitialScan)
+		// WARNING: Only when the view below shows no loading state of its own, which carries the same line.
+		if (m_InitialScan && !viewIsLoading)
 		{
 			ImGui::TextDisabled("%s", ScanProgressText(m_ScanProgress.Scanned, m_ScanProgress.Total).c_str());
 		}
 	}
 
-	void SessionsPanel::RenderToolbarEnd()
+	void SessionsPanel::RenderToolbarEnd(bool viewIsLoading)
 	{
 		const char* const newSession = ICON_LC_PLUS "  New Claude session";
 		const ImGuiStyle& style = ImGui::GetStyle();
@@ -447,7 +448,7 @@ namespace Graphite {
 		const float buttonWidth = ImGui::CalcTextSize(newSession).x + style.FramePadding.x * 2.0f;
 		const float buttonLeft = std::max(start, right - buttonWidth);
 
-		if (!m_Overview.GetModel().Sessions.empty())
+		if (!m_Overview.GetModel().Sessions.empty() && !viewIsLoading)
 		{
 			const std::string stamp = m_Overview.Stamp();
 			const float stampLeft = buttonLeft - style.ItemSpacing.x - ImGui::CalcTextSize(stamp.c_str()).x;
@@ -513,7 +514,7 @@ namespace Graphite {
 		}
 	}
 
-	void SessionsPanel::RenderDayFilter()
+	void SessionsPanel::RenderDayFilter(std::size_t listed)
 	{
 		if (!m_Day.has_value())
 		{
@@ -521,10 +522,9 @@ namespace Graphite {
 		}
 
 		const Core::PanelMarginScope margin;
-		const std::size_t sessions = SessionsOnDay(m_Overview.GetSessions(), m_Overview.GetModel(), *m_Day, Calendar());
-		const std::string chip = DayChipText(*m_Day, sessions) + "  " ICON_LC_X;
+		const std::string chip = DayChipText(*m_Day, listed) + "  " ICON_LC_X;
 
-		if (DrawSegment(chip.c_str(), true))
+		if (DrawDayChip(chip, Colours()))
 		{
 			m_Day.reset();
 		}
@@ -535,22 +535,25 @@ namespace Graphite {
 		}
 	}
 
-	void SessionsPanel::RenderList()
+	std::vector<SessionListRow> SessionsPanel::ListedRows()
 	{
-		RenderDayFilter();
+		return SessionListRows(m_Overview.GetSessions(), m_Overview.GetModel(),
+							   {.Title = m_Filter, .Day = m_Day, .Grouped = ScopeFolder().empty()},
+							   [this](const SessionSummary& summary) { return m_Windows.IsOpen(summary.Id); }, Calendar());
+	}
+
+	void SessionsPanel::RenderList(const std::vector<SessionListRow>& rows)
+	{
+		RenderDayFilter(rows.size());
 
 		const bool limitedToWorkspace = !ScopeFolder().empty();
-		const std::vector<SessionListRow> rows =
-			SessionListRows(m_Overview.GetSessions(), m_Overview.GetModel(),
-							{.Title = m_Filter, .Day = m_Day, .Grouped = !limitedToWorkspace},
-							[this](const SessionSummary& summary) { return m_Windows.IsOpen(summary.Id); }, Calendar());
 
 		if (rows.empty())
 		{
 			const Core::PanelMarginScope margin;
 			const bool scanning = SessionScanIsUnderway(m_Indexing, m_InitialScan);
 			const std::string message = EmptyListMessage(scanning, m_ScanProgress.Scanned, m_ScanProgress.Total,
-														 limitedToWorkspace, m_Filter);
+														 limitedToWorkspace, m_Filter, m_Day);
 
 			if (scanning)
 			{
@@ -590,11 +593,16 @@ namespace Graphite {
 		// WARNING: First, before anything reads the model or the listed sessions, which point into m_Sessions.
 		RefreshOverview();
 
+		const std::vector<SessionListRow> rows = m_Tab == SessionsTab::Sessions ? ListedRows() : std::vector<SessionListRow>{};
+		const bool viewIsLoading = m_Tab == SessionsTab::Overview
+									   ? OverviewShows() == OverviewContent::Loading
+									   : rows.empty() && SessionScanIsUnderway(m_Indexing, m_InitialScan);
+
 		// WARNING: The toolbar is drawn even when there is a problem; "New Claude session" is how a machine
 		// with no transcripts gets its first one.
 		{
 			const Core::PanelMarginScope margin;
-			RenderToolbar();
+			RenderToolbar(viewIsLoading);
 
 			if (m_Problem.has_value())
 			{
@@ -609,7 +617,7 @@ namespace Graphite {
 		}
 		else
 		{
-			RenderList();
+			RenderList(rows);
 		}
 	}
 }
