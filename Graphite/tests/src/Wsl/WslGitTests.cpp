@@ -149,6 +149,164 @@ TEST_CASE("An agent that stops during a commit fails the commit with the reason"
 	CHECK(committed.GetError().Message == "the WSL agent stopped");
 }
 
+namespace {
+
+	const Core::Oid kSomeCommit = *Core::Oid::FromHex("0123456789abcdef0123456789abcdef01234567");
+
+	Graphite::WslGit GitAt(Graphite::WslAgents& agents)
+	{
+		return Graphite::WslGit{agents, Core::WslSharePath{"Ubuntu", "/home/me/p"}, Graphite::WslGit::Reach::SearchUpward};
+	}
+}
+
+TEST_CASE("A WSL repository's branches come from its agent")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		CHECK(request.Operation == "git.branches");
+		const std::vector<Core::Branch> branches{Core::Branch{.Name = "main", .FullName = "refs/heads/main", .Tip = kSomeCommit, .IsHead = true}};
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = Dumped(Core::ToJsonList(branches))}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const Core::Result<std::vector<Core::Branch>> branches = git.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+	REQUIRE(branches.GetValue().size() == 1);
+	CHECK(branches.GetValue()[0].Name == "main");
+	CHECK(branches.GetValue()[0].IsHead);
+}
+
+TEST_CASE("A log request reaches the agent whole")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = Dumped(Core::ToJson(Core::LogPage{}))}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+	Core::LogRequest request;
+	request.File = std::filesystem::path{"dir/a.txt"};
+	request.Lines = Core::OneBasedLineRange{.First = 2, .Last = 4};
+	request.Exclude = kSomeCommit;
+
+	REQUIRE(git.QueryLog(request).HasValue());
+
+	std::scoped_lock lock{distro.Mutex};
+	const Core::Result<Core::LogRequest> sent = Core::LogRequestFromJson(distro.LastArguments.at("request"));
+	REQUIRE(sent.HasValue());
+	CHECK(sent.GetValue().File == request.File);
+	CHECK(sent.GetValue().Lines->Last == 4);
+	CHECK(sent.GetValue().Exclude == request.Exclude);
+}
+
+TEST_CASE("A commit's texts are the agent's new and old sides")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		self.Reply(request.Id, {{"sides", {{{"present", true}, {"size", 3}}, {{"present", false}, {"size", 0}}}}}, "new");
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const auto sides = git.ReadCommitSides(kSomeCommit, "a.txt", "b.txt");
+
+	REQUIRE(sides.HasValue());
+	CHECK(sides.GetValue().first == std::optional<std::string>{"new"});
+	CHECK_FALSE(sides.GetValue().second.has_value());
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.LastArguments.at("commit") == kSomeCommit.ToHex());
+	CHECK(distro.LastArguments.at("oldPath") == "a.txt");
+	CHECK(distro.LastArguments.at("newPath") == "b.txt");
+}
+
+TEST_CASE("A checkout the agent could not finish keeps the paths it changed")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		const Core::CheckoutOutcome outcome{.Changed = {"a.txt"}, .Failure = Core::Error{Core::ErrorCode::IoFailure, "disk full"}};
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = Dumped(Core::ToJson(outcome))}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const Core::CheckoutOutcome outcome = git.Checkout(Core::CheckoutTarget{.Name = "feature"});
+
+	REQUIRE(outcome.Changed.size() == 1);
+	CHECK(outcome.Changed[0] == std::filesystem::path{"a.txt"});
+	REQUIRE(outcome.Failure.has_value());
+	CHECK(outcome.Failure->Message == "disk full");
+}
+
+TEST_CASE("A checkout the agent never answered fails with the reason and names no changed path")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest&, FakeAgent& self) { self.Hang(); };
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const Core::CheckoutOutcome outcome = git.Checkout(Core::CheckoutTarget{.Name = "feature"});
+
+	CHECK(outcome.Changed.empty());
+	REQUIRE(outcome.Failure.has_value());
+	CHECK(outcome.Failure->Message == "the WSL agent stopped");
+}
+
+TEST_CASE("The common directory comes back in the share spelling")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) { self.Reply(request.Id, {{"path", "/home/me/p/.git"}}); };
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const Core::Result<std::filesystem::path> common = git.GetCommonDirectory();
+
+	REQUIRE(common.HasValue());
+	CHECK(common.GetValue().native() == L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\.git");
+}
+
+TEST_CASE("Ignore answers arrive in the entries' order, and the folder is asked by its Linux path")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		CHECK(request.Operation == "git.ignored");
+		self.Reply(request.Id, {{"ignored", {true, false}}});
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+	const std::vector<Core::DirectoryEntry> entries{
+		Core::DirectoryEntry{.Path = L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\build", .Name = "build", .IsDirectory = true},
+		Core::DirectoryEntry{.Path = L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\a.txt", .Name = "a.txt"},
+	};
+
+	const Core::Result<std::vector<bool>> ignored = git.QueryIgnored(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p", entries, 2s);
+
+	REQUIRE(ignored.HasValue());
+	CHECK(ignored.GetValue() == std::vector<bool>{true, false});
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.LastArguments.at("folder") == "/home/me/p");
+	CHECK(distro.LastArguments.at("entries")[0].at("name") == "build");
+	CHECK(distro.LastArguments.at("entries")[0].at("directory") == true);
+}
+
+TEST_CASE("The ignore setup's working directory and rule files come back in the share spelling")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		self.Reply(request.Id, {{"workingDirectory", "/home/me/p"}, {"ruleFiles", {"/home/me/.gitignore", "/home/me/p/.git/info/exclude"}}});
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	const Core::Result<Graphite::WslGit::IgnoreSetup> setup = git.QueryIgnoreSetup(2s);
+
+	REQUIRE(setup.HasValue());
+	CHECK(setup.GetValue().WorkingDirectory.native() == L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p");
+	REQUIRE(setup.GetValue().RuleFiles.size() == 2);
+	CHECK(setup.GetValue().RuleFiles[0].native() == L"\\\\wsl.localhost\\Ubuntu\\home\\me\\.gitignore");
+}
+
 // The real agent in Ubuntu: init, a file written through the share, status, stage, commit,
 // HEAD. Skipped, saying why, without WSL, an Ubuntu distro or the Linux build of the agent.
 TEST_CASE("A repository inside WSL is created, changed, staged and committed through the real agent")
