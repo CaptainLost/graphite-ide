@@ -5,6 +5,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Tag.h"
 #include "Core/Remote/GitCodec.h"
+#include "Core/Remote/GraphCodec.h"
 
 #include <format>
 #include <optional>
@@ -29,6 +30,33 @@ namespace Agent {
 			}
 
 			return *id;
+		}
+
+		Core::Result<std::vector<Core::Oid>> OidsArgument(const json& arguments, const char* name)
+		{
+			const auto found = arguments.find(name);
+
+			if (found == arguments.end() || !found->is_array())
+			{
+				return Core::Error{Core::ErrorCode::InvalidArgument, std::format("the request has no commit ids \"{}\"", name)};
+			}
+
+			std::vector<Core::Oid> ids;
+			ids.reserve(found->size());
+
+			for (const json& text : *found)
+			{
+				const std::optional<Core::Oid> id = text.is_string() ? Core::Oid::FromHex(text.get<std::string>()) : std::nullopt;
+
+				if (!id)
+				{
+					return Core::Error{Core::ErrorCode::InvalidArgument, std::format("\"{}\" holds something that is not a commit id", name)};
+				}
+
+				ids.push_back(*id);
+			}
+
+			return ids;
 		}
 
 		Core::Result<std::string> TextArgument(const json& arguments, const char* name)
@@ -294,6 +322,63 @@ namespace Agent {
 		handlers["git.checkout"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
 			const Core::Result<Core::CheckoutTarget> target = Core::CheckoutTargetFromJson(arguments.value("target", json::object()));
 			return target ? Core::Result<GitAnswer>{AsPayload(Core::ToJson(repository.Checkout(target.GetValue())))} : Core::Result<GitAnswer>{target.GetError()};
+		});
+
+		// The lines graph's reads (stage 3b-lines): the commits in a compact binary payload.
+		handlers["git.graphCommits"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
+			const Core::Result<std::vector<Core::Oid>> tips = OidsArgument(arguments, "tips");
+			const Core::Result<std::vector<Core::Oid>> known = OidsArgument(arguments, "known");
+
+			if (!tips || !known)
+			{
+				return tips ? known.GetError() : tips.GetError();
+			}
+
+			const Core::Result<std::vector<Core::GraphCommit>> commits =
+				repository.ReadGraphCommits(Core::GraphReadRequest{.Tips = tips.GetValue(), .Known = known.GetValue()});
+
+			if (!commits)
+			{
+				return commits.GetError();
+			}
+
+			return GitAnswer{.Result = {{"count", commits.GetValue().size()}}, .Payload = Core::EncodeGraphCommits(commits.GetValue())};
+		});
+
+		handlers["git.holdsCommits"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
+			const Core::Result<std::vector<Core::Oid>> ids = OidsArgument(arguments, "ids");
+
+			if (!ids)
+			{
+				return ids.GetError();
+			}
+
+			json held = json::array();
+
+			for (const Core::Oid& id : ids.GetValue())
+			{
+				const Core::Result<bool> holds = repository.HoldsCommit(id);
+
+				if (!holds)
+				{
+					return holds.GetError();
+				}
+
+				held.push_back(holds.GetValue());
+			}
+
+			return GitAnswer{.Result = {{"held", std::move(held)}}};
+		});
+
+		handlers["git.shallowBoundary"] = OnRepository(cache, [](Core::Repository& repository, const json&) -> Core::Result<GitAnswer> {
+			json ids = json::array();
+
+			for (const Core::Oid& id : repository.ShallowBoundary())
+			{
+				ids.push_back(id.ToHex());
+			}
+
+			return GitAnswer{.Result = {{"ids", std::move(ids)}}};
 		});
 
 		handlers["git.commonDirectory"] = OnRepository(cache, [](Core::Repository& repository, const json&) -> Core::Result<GitAnswer> {

@@ -3,6 +3,7 @@
 #include "Git/GitRequests.h"
 
 #include "Core/Remote/GitCodec.h"
+#include "Core/Remote/GraphCodec.h"
 
 #include "GitFixture.h"
 
@@ -258,4 +259,58 @@ TEST_CASE("The common directory is the repository's .git")
 	REQUIRE(common.HasValue());
 	CHECK(std::filesystem::path{common.GetValue().Result.at("path").get<std::string>()} ==
 		  std::filesystem::weakly_canonical(fixture.GetPath() / ".git"));
+}
+
+TEST_CASE("Graph commits of a history come from the agent, the known ones left out")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string first = fixture.Commit("first");
+	fixture.Write("a.txt", "two\n");
+	const std::string second = fixture.Commit("second");
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+
+	const Core::Result<Agent::GitAnswer> whole = Call(handlers, "git.graphCommits", At(fixture, {{"tips", json::array({second})}, {"known", json::array()}}));
+	REQUIRE(whole.HasValue());
+	const Core::Result<std::vector<Core::GraphCommit>> commits = Core::DecodeGraphCommits(whole.GetValue().Payload);
+	REQUIRE(commits.HasValue());
+	REQUIRE(commits.GetValue().size() == 2);
+	CHECK(whole.GetValue().Result.at("count") == 2);
+
+	const Core::Result<Agent::GitAnswer> newer = Call(handlers, "git.graphCommits", At(fixture, {{"tips", json::array({second})}, {"known", json::array({first})}}));
+	REQUIRE(newer.HasValue());
+	const Core::Result<std::vector<Core::GraphCommit>> onlyNew = Core::DecodeGraphCommits(newer.GetValue().Payload);
+	REQUIRE(onlyNew.HasValue());
+	REQUIRE(onlyNew.GetValue().size() == 1);
+	CHECK(onlyNew.GetValue()[0].Id.ToHex() == second);
+	REQUIRE(onlyNew.GetValue()[0].Parents.size() == 1);
+	CHECK(onlyNew.GetValue()[0].Parents[0].ToHex() == first);
+}
+
+TEST_CASE("Whether commits are held is answered in the order asked")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string first = fixture.Commit("first");
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+
+	const Core::Result<Agent::GitAnswer> held =
+		Call(handlers, "git.holdsCommits", At(fixture, {{"ids", json::array({first, "0123456789abcdef0123456789abcdef01234567"})}}));
+
+	REQUIRE(held.HasValue());
+	CHECK(held.GetValue().Result.at("held") == json::array({true, false}));
+}
+
+TEST_CASE("The shallow boundary names the commits a shallow clone cut")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string first = fixture.Commit("first");
+	fixture.MarkShallow(first);
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+
+	const Core::Result<Agent::GitAnswer> boundary = Call(handlers, "git.shallowBoundary", At(fixture));
+
+	REQUIRE(boundary.HasValue());
+	CHECK(boundary.GetValue().Result.at("ids") == json::array({first}));
 }
