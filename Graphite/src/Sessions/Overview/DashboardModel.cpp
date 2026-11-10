@@ -55,59 +55,6 @@ namespace Graphite {
 			return after.empty() || after.front() == '-' || after.front() == '[';
 		}
 
-		struct ModelShare
-		{
-			const UsageKey* Key = nullptr;
-			const TokenCounts* Counts = nullptr;
-			std::size_t Requests = 0;
-		};
-
-		// WARNING: Largest remainder, so the shares add up to the hour's count; an hour whose models used no
-		// tokens at all gives its requests to the first of them.
-		std::vector<ModelShare> ShareRequests(const HourActivity& hour)
-		{
-			std::vector<ModelShare> shares;
-			std::uint64_t totalTokens = 0;
-
-			for (const auto& [key, counts] : hour.Usage)
-			{
-				shares.push_back({&key, &counts, 0});
-				totalTokens += counts.Total();
-			}
-
-			if (shares.empty())
-			{
-				return shares;
-			}
-
-			if (totalTokens == 0)
-			{
-				shares.front().Requests = hour.Requests;
-				return shares;
-			}
-
-			std::vector<std::pair<std::uint64_t, std::size_t>> remainders;
-			std::size_t given = 0;
-
-			for (std::size_t index = 0; index < shares.size(); ++index)
-			{
-				const std::uint64_t scaled = static_cast<std::uint64_t>(hour.Requests) * shares[index].Counts->Total();
-				shares[index].Requests = static_cast<std::size_t>(scaled / totalTokens);
-				given += shares[index].Requests;
-				remainders.emplace_back(scaled % totalTokens, index);
-			}
-
-			std::stable_sort(remainders.begin(), remainders.end(),
-							 [](const auto& left, const auto& right) { return left.first > right.first; });
-
-			for (std::size_t index = 0; given < hour.Requests; ++index, ++given)
-			{
-				++shares[remainders[index].second].Requests;
-			}
-
-			return shares;
-		}
-
 		void AddTokens(TokenTotals& tokens, const TokenCounts& counts)
 		{
 			tokens.Input += counts.Input;
@@ -161,20 +108,23 @@ namespace Graphite {
 					Model.Prompts += activity.Prompts;
 				}
 
-				for (const ModelShare& share : ShareRequests(activity))
+				for (const auto& [key, requests] : activity.RequestsByModel)
 				{
-					const UsageKey& key = *share.Key;
-					const TokenCounts& counts = *share.Counts;
+					Model.Families[IndexOf(FamilyOf(key.Model))].Requests += requests;
+
+					if (!Prices.BucketsOf(key, {}))
+					{
+						Model.UnpricedRequests += requests;
+					}
+				}
+
+				for (const auto& [key, counts] : activity.Usage)
+				{
 					const std::optional<BucketCosts> buckets = Prices.BucketsOf(key, counts);
 					const double cost = buckets ? buckets->Total() : 0.0;
 					const double subagentCost = thread == Thread::Subagent ? cost : 0.0;
 					const double saved = CacheSaving(key, counts, Prices);
 					const std::size_t family = IndexOf(FamilyOf(key.Model));
-
-					if (!buckets)
-					{
-						Model.UnpricedRequests += share.Requests;
-					}
 
 					day.Cost += cost;
 					day.SubagentCost += subagentCost;
@@ -194,7 +144,6 @@ namespace Graphite {
 					familyTotals.Cost += cost;
 					familyTotals.SubagentCost += subagentCost;
 					familyTotals.Saved += saved;
-					familyTotals.Requests += share.Requests;
 					AddTokens(familyTotals.Tokens, counts);
 
 					Model.Cost += cost;

@@ -26,6 +26,11 @@ namespace Graphite {
 					target.Usage[usageKey] += counts;
 				}
 
+				for (const auto& [usageKey, requests] : activity.RequestsByModel)
+				{
+					target.RequestsByModel[usageKey] += requests;
+				}
+
 				target.Requests += activity.Requests;
 				target.Prompts += activity.Prompts;
 			}
@@ -198,6 +203,7 @@ namespace Graphite {
 			if (isNewRequest)
 			{
 				++hourActivity.Requests;
+				++hourActivity.RequestsByModel[usageKey];
 			}
 		}
 

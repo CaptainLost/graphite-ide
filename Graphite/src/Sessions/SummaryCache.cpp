@@ -66,8 +66,14 @@ namespace Graphite {
 
 			for (const auto& [hour, activity] : hours)
 			{
+				nlohmann::json requests = nlohmann::json::array();
+				for (const auto& [modelKey, count] : activity.RequestsByModel)
+				{
+					requests.push_back({modelKey.Model, modelKey.Fast, count});
+				}
+
 				rows.push_back({hour.time_since_epoch().count(), activity.Requests, activity.Prompts,
-								UsageJson(activity.Usage)});
+								UsageJson(activity.Usage), std::move(requests)});
 			}
 
 			return rows;
@@ -83,6 +89,13 @@ namespace Graphite {
 				activity.Requests = row.at(1).get<std::size_t>();
 				activity.Prompts = row.at(2).get<std::size_t>();
 				activity.Usage = UsageFrom(row.at(3));
+
+				for (const nlohmann::json& request : row.at(4))
+				{
+					activity.RequestsByModel[{request.at(0).get<std::string>(), request.at(1).get<bool>()}] =
+						request.at(2).get<std::size_t>();
+				}
+
 				hours[UtcHour{std::chrono::hours{row.at(0).get<std::int64_t>()}}] = std::move(activity);
 			}
 

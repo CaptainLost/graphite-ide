@@ -142,8 +142,6 @@ namespace Graphite {
 		std::chrono::year_month_day Today;
 	};
 
-	// WARNING: An hour keeps one request count for all its models, so a family's requests are the hour's
-	// divided by each model's share of the hour's tokens; the shares always add up to the hour's count.
 	DashboardModel BuildDashboard(std::span<const SessionSummary* const> sessions, const Pricing& pricing,
 								  const LocalCalendar& calendar, std::chrono::year_month_day today);
 }

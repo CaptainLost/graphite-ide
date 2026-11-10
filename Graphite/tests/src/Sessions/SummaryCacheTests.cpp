@@ -29,9 +29,9 @@ namespace {
 
 		const UtcHour first{std::chrono::hours{490000}};
 		const UsageByModel usage = {{{"claude-opus-5", false}, {1, 2, 3, 4, 5}}};
-		summary.Activity.MainHours[first] = {usage, 3, 2};
-		summary.Activity.MainHours[first + std::chrono::hours{1}] = {usage, 1, 0};
-		summary.Activity.SubagentHours[first] = {usage, 2, 0};
+		summary.Activity.MainHours[first] = {usage, 3, 2, {{{"claude-opus-5", false}, 2}, {{"claude-opus-5", true}, 1}}};
+		summary.Activity.MainHours[first + std::chrono::hours{1}] = {usage, 1, 0, {{{"claude-opus-5", false}, 1}}};
+		summary.Activity.SubagentHours[first] = {usage, 2, 0, {{{"claude-opus-5", false}, 2}}};
 		summary.Activity.MainUsageByCwd["D:\\Projekty\\Za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87"] = usage;
 		summary.Activity.MainUsageByCwd[""] = usage;
 		summary.Activity.Tools["Bash"] = {7, 1};

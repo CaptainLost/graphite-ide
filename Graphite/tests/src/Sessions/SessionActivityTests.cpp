@@ -62,6 +62,23 @@ TEST_CASE("A request written as three records counts once, in its first record's
 	CHECK(hour.Usage == UsageByModel{{{"claude-opus-5", false}, TokenCounts{10, 20, 30, 0, 40}}});
 }
 
+TEST_CASE("An hour counts each request under its own model")
+{
+	const SessionActivity activity = Recorded(
+		Fixtures::Assistant("req-1", Fixtures::TextBlock("a"), Fixtures::Usage(10, 20), "claude-opus-5",
+							"2026-09-17T09:10:00.000Z") +
+		Fixtures::Assistant("req-1", Fixtures::TextBlock("b"), Fixtures::Usage(10, 25), "claude-opus-5",
+							"2026-09-17T09:10:01.000Z") +
+		Fixtures::Assistant("req-2", Fixtures::TextBlock("c"), Fixtures::Usage(5, 5), "claude-haiku-4-5",
+							"2026-09-17T09:20:00.000Z"));
+
+	REQUIRE(activity.MainHours.contains(HourOn17September(9)));
+	const HourActivity& hour = activity.MainHours.at(HourOn17September(9));
+	CHECK(hour.Requests == 2);
+	CHECK(hour.RequestsByModel ==
+		  std::map<UsageKey, std::size_t>{{{"claude-opus-5", false}, 1}, {{"claude-haiku-4-5", false}, 1}});
+}
+
 TEST_CASE("A request split across an hour boundary lands once, in its first record's hour")
 {
 	const SessionActivity activity = Recorded(

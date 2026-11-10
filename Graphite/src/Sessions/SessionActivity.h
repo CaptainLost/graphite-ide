@@ -21,8 +21,9 @@ namespace Graphite {
 	struct HourActivity
 	{
 		UsageByModel Usage;
-		std::size_t Requests = 0;
+		std::size_t Requests = 0; // the sum of RequestsByModel
 		std::size_t Prompts = 0;
+		std::map<UsageKey, std::size_t> RequestsByModel;
 
 		friend bool operator==(const HourActivity&, const HourActivity&) = default;
 	};

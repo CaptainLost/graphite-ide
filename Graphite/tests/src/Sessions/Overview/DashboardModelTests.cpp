@@ -27,6 +27,7 @@ namespace {
 		HourActivity activity;
 		activity.Usage[UsageKey{model, false}] = counts;
 		activity.Requests = requests;
+		activity.RequestsByModel[UsageKey{model, false}] = requests;
 		activity.Prompts = prompts;
 		return activity;
 	}
@@ -159,20 +160,30 @@ TEST_CASE("Subagent hours count as subagent cost and in the family totals")
 	CHECK(model.Sessions[0].Requests == 5);
 }
 
-TEST_CASE("An hour with two models divides its requests by their share of the tokens")
+TEST_CASE("An hour with two models gives each family exactly its own requests")
 {
 	SessionSummary summary = Session("a");
 	HourActivity hour;
 	hour.Usage[{"claude-opus-5", false}] = {300, 0, 0, 0, 0};
 	hour.Usage[{"claude-haiku-4-5", false}] = {100, 0, 0, 0, 0};
+	hour.RequestsByModel = {{{"claude-opus-5", false}, 1}, {{"claude-haiku-4-5", false}, 3}};
 	hour.Requests = 4;
 	summary.Activity.SubagentHours[Hour(2026, 11, 3, 9)] = hour;
 
+	HourActivity silent;
+	silent.Usage[{"claude-opus-5", false}] = {};
+	silent.Usage[{"claude-unknown-9", false}] = {};
+	silent.RequestsByModel = {{{"claude-opus-5", false}, 1}, {{"claude-unknown-9", false}, 2}};
+	silent.Requests = 3;
+	summary.Activity.MainHours[Hour(2026, 11, 3, 10)] = silent;
+
 	const DashboardModel model = Build({&summary}, Day(2026, 11, 3));
 
-	CHECK(model.Families[Family(ModelFamily::Opus)].Requests == 3);
-	CHECK(model.Families[Family(ModelFamily::Haiku)].Requests == 1);
-	CHECK(model.Requests == 4);
+	CHECK(model.Families[Family(ModelFamily::Opus)].Requests == 2);
+	CHECK(model.Families[Family(ModelFamily::Haiku)].Requests == 3);
+	CHECK(model.Families[Family(ModelFamily::Other)].Requests == 2);
+	CHECK(model.UnpricedRequests == 2);
+	CHECK(model.Requests == 7);
 }
 
 TEST_CASE("Projects fold worktrees into their repository and list the worktrees")
