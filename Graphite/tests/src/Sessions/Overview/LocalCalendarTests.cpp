@@ -41,3 +41,15 @@ TEST_CASE("LocalCalendar without a zone is UTC")
 	CHECK(calendar.At(Hour(2026, 10, 24, 22)) == Local(2026, 10, 24, 22, 5));
 	CHECK(calendar.DayOf("2026-11-10T23:30:00.000Z") == std::chrono::year{2026} / 11 / 10);
 }
+
+TEST_CASE("LocalCalendar reads the local minute of an ISO timestamp, half-hour zones too")
+{
+	using namespace std::chrono;
+	LocalCalendar calcutta{locate_zone("Asia/Kolkata")};
+
+	const std::optional<local_time<minutes>> minute = calcutta.MinuteOf("2026-11-10T20:10:59.000Z");
+
+	REQUIRE(minute.has_value());
+	CHECK(*minute == local_days{year{2026} / 11 / 11} + hours{1} + minutes{40});
+	CHECK_FALSE(calcutta.MinuteOf("garbage").has_value());
+}

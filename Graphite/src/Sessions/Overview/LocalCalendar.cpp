@@ -35,6 +35,14 @@ namespace Graphite {
 		return std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(ToLocal(*instant))};
 	}
 
+	std::optional<std::chrono::local_time<std::chrono::minutes>> LocalCalendar::MinuteOf(std::string_view isoTimestamp) const
+	{
+		const auto instant = ParseTimestamp(isoTimestamp);
+		if (!instant)
+			return std::nullopt;
+		return std::chrono::floor<std::chrono::minutes>(ToLocal(*instant));
+	}
+
 	std::chrono::year_month_day LocalCalendar::Today() const
 	{
 		const auto now = std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now());

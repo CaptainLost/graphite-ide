@@ -27,6 +27,8 @@ namespace Graphite {
 
 		std::optional<std::chrono::year_month_day> DayOf(std::string_view isoTimestamp) const;
 
+		std::optional<std::chrono::local_time<std::chrono::minutes>> MinuteOf(std::string_view isoTimestamp) const;
+
 		std::chrono::year_month_day Today() const;
 
 		static LocalCalendar Current();

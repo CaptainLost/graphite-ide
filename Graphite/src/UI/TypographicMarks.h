@@ -14,6 +14,8 @@ namespace Graphite {
 
 	inline constexpr std::string_view kEmDashSeparator = " \xE2\x80\x94 ";
 
+	inline constexpr std::string_view kEnDash = "\xE2\x80\x93";
+
 	inline constexpr std::string_view kMinusSign = "\xE2\x88\x92";
 
 	inline constexpr std::string_view kMultiplicationSign = "\xC3\x97";
