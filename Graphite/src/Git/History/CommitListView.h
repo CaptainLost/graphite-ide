@@ -97,6 +97,10 @@ namespace Graphite {
 
 		// Why the commits an opened merge brought could not be read; none while they were read or are on their way.
 		std::function<std::optional<std::string>(const Core::Oid&)> BroughtFailure;
+
+		// The upstream the page's commits to push are measured against, "origin/main", named on the row parting them from
+		// the pushed ones. Empty while it is not known; the row then says only that the commits below it are pushed.
+		std::string Upstream;
 	};
 
 	// What a commit row draws of the merge it is, or of the merge it was brought by.
@@ -193,7 +197,7 @@ namespace Graphite {
 			const Core::LogPage& page, std::size_t commitIndex,
 			const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf) const;
 
-		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
+		void RenderCommitRow(bool unpushed, const Core::CommitSummary& commit,
 							 const GitPalette& palette, const CommitRefMap& refs,
 							 std::string_view highlight, std::chrono::sys_seconds now,
 							 const std::chrono::time_zone* zone, bool dimmed, const BroughtDrawing& brought);
@@ -208,6 +212,8 @@ namespace Graphite {
 							 const std::string& actionNote);
 
 		void RenderNoteRow(const std::optional<std::string>& waiting);
+
+		void RenderPushedEdgeRow(std::size_t toPush, const std::string& upstream, const GitPalette& palette);
 
 		void RenderFileRow(const Core::CommitSummary& commit, std::size_t fileIndex,
 						   const GitPalette& palette,

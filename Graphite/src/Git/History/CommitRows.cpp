@@ -45,6 +45,27 @@ namespace Graphite {
 		return Core::FormatCount(count) + (brought.Complete ? "" : "+") + (count == 1 && brought.Complete ? " commit" : " commits");
 	}
 
+	std::optional<std::size_t> FirstPushedCommit(const Core::LogPage& page)
+	{
+		if (!page.UpstreamKnown || page.Unpushed.empty())
+		{
+			return std::nullopt;
+		}
+
+		const auto isUnpushed = [&](const Core::CommitSummary& commit) { return page.Unpushed.contains(commit.Id); };
+		const auto firstPushed = std::find_if_not(page.Commits.begin(), page.Commits.end(), isUnpushed);
+
+		const bool nothingToPushAbove = firstPushed == page.Commits.begin();
+		const bool noPushedCommit = firstPushed == page.Commits.end();
+
+		if (nothingToPushAbove || noPushedCommit || std::any_of(firstPushed, page.Commits.end(), isUnpushed))
+		{
+			return std::nullopt;
+		}
+
+		return static_cast<std::size_t>(firstPushed - page.Commits.begin());
+	}
+
 	CommitRows BuildCommitRows(std::size_t commitCount,
 							   const std::function<std::size_t(std::size_t)>& fileRowsUnder,
 							   const ExtraRows& extra)
@@ -70,6 +91,11 @@ namespace Graphite {
 
 		for (std::size_t commit = 0; commit < commitCount; ++commit)
 		{
+			if (extra.PushedEdgeBeforeCommit == commit)
+			{
+				rows.Rows.push_back(RowOfKind(CommitRowKind::PushedEdge, commit));
+			}
+
 			if (extra.FoldBeforeCommit == commit)
 			{
 				rows.Rows.push_back(RowOfKind(CommitRowKind::Fold, commit));

@@ -27,7 +27,10 @@ namespace Graphite {
 		Note,
 
 		// The sentence about the shown reference, under the Local changes row, so that row never moves when it comes.
-		Banner
+		Banner,
+
+		// Parts the commits the shown branch's upstream lacks from the ones it has. Commit is the first it has.
+		PushedEdge
 	};
 
 	struct CommitRow
@@ -49,6 +52,7 @@ namespace Graphite {
 		bool LocalChanges = false;                   // first, above every commit
 		bool Banner = false;                         // under the Local changes row, above every commit
 		std::optional<std::size_t> FoldBeforeCommit; // just above that commit
+		std::optional<std::size_t> PushedEdgeBeforeCommit; // just above that commit, and above a fold row there
 		bool Waiting = false;                        // the commits are on their way
 
 		// How many rows stand under a commit for what it brought; empty or 0 for none.
@@ -65,6 +69,12 @@ namespace Graphite {
 
 	// "3 commits", "1 commit", "500+ commits" when the page stops short of what the merge brought.
 	std::string DescribeBrought(const Core::LogPage& brought);
+
+	// The commit the pushed edge stands above: the first the upstream has, when every commit above it is one the upstream
+	// lacks and none below it is. None while the upstream is unknown, with nothing to push, when the page does not reach a
+	// commit the upstream has, and when the two kinds are mixed: another line's newer commits shown first, or an old commit
+	// an unpushed merge brought listed by its date among the pushed ones.
+	std::optional<std::size_t> FirstPushedCommit(const Core::LogPage& page);
 
 	// A fold row's Commit is the commit it precedes, so it is never a commit's own row.
 	CommitRows BuildCommitRows(std::size_t commitCount,

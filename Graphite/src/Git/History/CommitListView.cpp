@@ -3,6 +3,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Core/Base/Base.h"
+#include "Core/Base/Count.h"
 
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
@@ -25,6 +26,7 @@
 #include "UI/FittedText.h"
 #include "UI/TypographicMarks.h"
 
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -80,6 +82,10 @@ namespace Graphite {
 		constexpr float kKeepFontSize = 0.0f;
 		constexpr float kUnderlineThickness = 1.0f;
 
+		// A commit the upstream lacks is tinted this much of the added-line green, with a stripe of it at the row's left end.
+		constexpr float kUnpushedTintAlpha = 0.08f;
+		constexpr float kPushedEdgeLineAlpha = 0.5f;
+
 		// The mockup's sizes, in its pixels at a 13 px font.
 		constexpr float kMockupFontPixels = 13.0f;
 		constexpr float kMessagePiecesGap = 6.0f;
@@ -95,6 +101,8 @@ namespace Graphite {
 		constexpr float kRingRadius = 3.5f;    // to the middle of its stroke
 		constexpr float kRingThickness = 2.0f;
 		constexpr int kRingDashes = 6;
+		constexpr float kUnpushedStripePixels = 3.0f;
+		constexpr float kPushedEdgeGapPixels = 10.0f;
 
 		float MockupPixels(float pixels)
 		{
@@ -134,6 +142,43 @@ namespace Graphite {
 
 			ImGui::SetCursorScreenPos(ImVec2(start.x + dot + MockupPixels(kLiveDotWordGapPixels), start.y));
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(green), "%.*s", static_cast<int>(kLiveWord.size()), kLiveWord.data());
+		}
+
+		// A row of a commit the upstream lacks, or one under it: tinted, with a stripe at its left end in the room the row
+		// highlight leaves, so a run of them reads as one block. Called while the row is open, before its cells are drawn.
+		void MarkUnpushedRow(ImU32 green, float rowHeight)
+		{
+			ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, Core::WithAlphaScaled(green, kUnpushedTintAlpha));
+
+			const ImGuiTable* const table = ImGui::GetCurrentTable();
+			const float left = ListLeft();
+			const float top = table->RowPosY1;
+
+			ImGui::TablePushBackgroundChannel();
+			ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(left, top), ImVec2(left + MockupPixels(kUnpushedStripePixels), top + rowHeight), green);
+			ImGui::TablePopBackgroundChannel();
+		}
+
+		// A commit row, a row it brought or a row of its files that stands for a commit the upstream lacks.
+		bool IsUnpushedRow(const CommitRow& row, const Core::LogPage& page, const HistoryMarks& marks)
+		{
+			switch (row.Kind)
+			{
+			case CommitRowKind::Commit:
+			case CommitRowKind::File:
+				return page.Unpushed.contains(page.Commits[row.Commit].Id);
+			case CommitRowKind::Brought:
+			{
+				// A merge not yet pushed can bring commits that are: the upstream's own, merged back in.
+				const Core::Oid& merge = page.Commits[row.Commit].Id;
+				const Core::Ref<const Core::LogPage> brought = marks.BroughtOf ? marks.BroughtOf(merge) : nullptr;
+				const bool listed = brought && row.File < brought->Commits.size();
+
+				return page.Unpushed.contains(listed ? brought->Commits[row.File].Id : merge);
+			}
+			default:
+				return false;
+			}
 		}
 
 		// The small elbow in front of a brought commit's text, tying it to its merge.
@@ -654,6 +699,7 @@ namespace Graphite {
 		const ExtraRows extra{.LocalChanges = marks.LocalChanges.has_value(),
 							  .Banner = marks.Banner.has_value(),
 							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt,
+							  .PushedEdgeBeforeCommit = FirstPushedCommit(page),
 							  .Waiting = marks.Waiting.has_value()};
 
 		// In the Merges history an opened merge lists what it brought where another commit lists its files.
@@ -767,6 +813,13 @@ namespace Graphite {
 					graphOrigin = ImVec2(graphCell.x, graphCell.y - cellPaddingY -
 														  static_cast<float>(displayRow) * metrics.RowHeight);
 
+					const bool unpushed = IsUnpushedRow(row, page, marks);
+
+					if (unpushed)
+					{
+						MarkUnpushedRow(palette.GutterAdded, metrics.RowHeight);
+					}
+
 					switch (row.Kind)
 					{
 					case CommitRowKind::LocalChanges:
@@ -787,6 +840,9 @@ namespace Graphite {
 					case CommitRowKind::Banner:
 						RenderBannerRow(*marks.Banner, marks.BannerAction, marks.BannerActionDisabled, marks.BannerActionNote);
 						break;
+					case CommitRowKind::PushedEdge:
+						RenderPushedEdgeRow(page.Unpushed.size(), marks.Upstream, palette);
+						break;
 					case CommitRowKind::Commit:
 					{
 						const Core::CommitSummary& commit = page.Commits[row.Commit];
@@ -794,7 +850,7 @@ namespace Graphite {
 
 						const Core::Ref<const Core::LogPage> brought = BroughtCountedFor(marks, commit);
 
-						RenderCommitRow(page, commit, palette, refs, highlight, now, zone, dimmed,
+						RenderCommitRow(unpushed, commit, palette, refs, highlight, now, zone, dimmed,
 										BroughtDrawing{.Page = brought.get(),
 													   .IsBrought = false,
 													   .OpensBrought = marks.BroughtOf && IsMerge(commit)});
@@ -817,7 +873,7 @@ namespace Graphite {
 
 						if (brought && row.File < brought->Commits.size())
 						{
-							RenderCommitRow(*brought, brought->Commits[row.File], palette, refs, highlight, now, zone,
+							RenderCommitRow(unpushed, brought->Commits[row.File], palette, refs, highlight, now, zone,
 											false, BroughtDrawing{.Page = nullptr, .IsBrought = true});
 						}
 						else
@@ -872,7 +928,7 @@ namespace Graphite {
 		ImGui::PopStyleVar();
 	}
 
-	void CommitListView::RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
+	void CommitListView::RenderCommitRow(bool unpushed, const Core::CommitSummary& commit,
 										 const GitPalette& palette, const CommitRefMap& refs,
 										 std::string_view highlight, std::chrono::sys_seconds now,
 										 const std::chrono::time_zone* zone, bool dimmed,
@@ -969,7 +1025,7 @@ namespace Graphite {
 		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x - ImGui::GetStyle().CellPadding.x;
 
 		const ImU32 dimmedInk = Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_TextDisabled), alpha);
-		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? Core::WithAlphaScaled(palette.GutterAdded, alpha) : dimmedInk;
+		const ImU32 hashInk = unpushed ? Core::WithAlphaScaled(palette.GutterAdded, alpha) : dimmedInk;
 		const ImU32 summaryInk = dimmed ? Core::WithAlphaScaled(ImGui::GetColorU32(ImGuiCol_Text), alpha) : kThemeTextColor;
 
 		if (brought.IsBrought)
@@ -1192,6 +1248,45 @@ namespace Graphite {
 		if (actionDisabled && !actionNote.empty())
 		{
 			ImGui::SetItemTooltip("%s", actionNote.c_str());
+		}
+	}
+
+	// The arrow up, the count to push, a rule, then "on origin/main" and the arrow down at the message's end; the name goes
+	// first, then the rule, when the cell is narrow.
+	void CommitListView::RenderPushedEdgeRow(std::size_t toPush, const std::string& upstream, const GitPalette& palette)
+	{
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+
+		const std::string above = std::format("{} {} to push", ICON_LC_ARROW_UP, Core::FormatCount(toPush));
+		const std::string below = upstream.empty() ? std::format("pushed {}", ICON_LC_ARROW_DOWN)
+												   : std::format("on {} {}", upstream, ICON_LC_ARROW_DOWN);
+
+		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		const float gap = MockupPixels(kPushedEdgeGapPixels);
+		const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+
+		if (!DrawFittedCell(above, palette.GutterAdded, kNoHighlight))
+		{
+			return;
+		}
+
+		const ImVec2 aboveMin = ImGui::GetItemRectMin();
+		const float ruleLeft = ImGui::GetItemRectMax().x + gap;
+		const float belowLeft = right - Core::TextWidth(below);
+		const bool belowFits = belowLeft - gap > ruleLeft;
+		const float ruleRight = belowFits ? belowLeft - gap : right;
+
+		if (ruleRight > ruleLeft)
+		{
+			const float ruleY = std::floor(aboveMin.y + ImGui::GetTextLineHeight() * kHalf);
+			ImGui::GetWindowDrawList()->AddLine(ImVec2(ruleLeft, ruleY), ImVec2(ruleRight, ruleY),
+												Core::WithAlphaScaled(dimmedInk, kPushedEdgeLineAlpha), kUnderlineThickness);
+		}
+
+		if (belowFits)
+		{
+			ImGui::SetCursorScreenPos(ImVec2(belowLeft, aboveMin.y));
+			DrawFittedCell(below, dimmedInk, kNoHighlight);
 		}
 	}
 

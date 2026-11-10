@@ -2,6 +2,7 @@
 
 #include "Git/Branches/BranchLookup.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -46,4 +47,22 @@ TEST_CASE("Git window: a remote branch is found by its short name and the checke
 	REQUIRE(Graphite::CheckedOutBranch(branches) != nullptr);
 	CHECK(Graphite::CheckedOutBranch(branches)->Name == "main");
 	CHECK(Graphite::CheckedOutBranch({BranchOf("main", Core::RefKind::Local)}) == nullptr);
+}
+
+TEST_CASE("Git window: a walk's upstream is its branch's, the checked-out branch's for HEAD, and none for a branch without one")
+{
+	Core::Branch main = BranchOf("main", Core::RefKind::Local, true);
+	main.Upstream = "origin/main";
+
+	Core::Branch feature = BranchOf("feature", Core::RefKind::Local);
+	feature.Upstream = "fork/feature";
+
+	const std::vector<Core::Branch> branches = {main, feature, BranchOf("solo", Core::RefKind::Local),
+												BranchOf("origin/main", Core::RefKind::Remote)};
+
+	CHECK(Graphite::UpstreamOfWalk(branches, std::nullopt) == "origin/main");
+	CHECK(Graphite::UpstreamOfWalk(branches, std::string{"refs/heads/feature"}) == "fork/feature");
+	CHECK(Graphite::UpstreamOfWalk(branches, std::string{"refs/heads/solo"}).empty());
+	CHECK(Graphite::UpstreamOfWalk(branches, std::string{"refs/heads/gone"}).empty());
+	CHECK(Graphite::UpstreamOfWalk({BranchOf("main", Core::RefKind::Local)}, std::nullopt).empty());
 }

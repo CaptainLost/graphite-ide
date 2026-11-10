@@ -7,7 +7,9 @@
 #include "Core/Git/Status.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <optional>
 #include <vector>
 
@@ -297,4 +299,74 @@ TEST_CASE("Git window: a merge row counts its commits once opened")
 	CHECK(Graphite::IsMerge(merge));
 	merge.Parents.resize(1);
 	CHECK_FALSE(Graphite::IsMerge(merge));
+}
+
+namespace {
+
+	// A page of commits named by their first byte, the ones in `unpushed` lacked by a known upstream.
+	Core::LogPage PageWithUnpushed(std::initializer_list<std::uint8_t> commits, std::initializer_list<std::uint8_t> unpushed)
+	{
+		Core::LogPage page;
+		page.UpstreamKnown = true;
+
+		for (const std::uint8_t firstByte : commits)
+		{
+			Core::CommitSummary commit;
+			commit.Id = OidWithFirstByte(firstByte);
+			page.Commits.push_back(commit);
+		}
+
+		for (const std::uint8_t firstByte : unpushed)
+		{
+			page.Unpushed.insert(OidWithFirstByte(firstByte));
+		}
+
+		return page;
+	}
+}
+
+TEST_CASE("Git window: the pushed edge stands above the first commit the upstream has, under the ones it lacks")
+{
+	CHECK(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2, 3, 4}, {1, 2})) == std::optional<std::size_t>{2});
+	CHECK(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2}, {1})) == std::optional<std::size_t>{1});
+}
+
+TEST_CASE("Git window: there is no pushed edge without a known upstream or anything to push")
+{
+	Core::LogPage unknown = PageWithUnpushed({1, 2, 3}, {1});
+	unknown.UpstreamKnown = false;
+	CHECK_FALSE(Graphite::FirstPushedCommit(unknown).has_value());
+
+	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2, 3}, {})).has_value());
+}
+
+TEST_CASE("Git window: there is no pushed edge when the page does not reach a pushed commit")
+{
+	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2, 3}, {1, 2, 3})).has_value());
+	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({}, {1})).has_value());
+}
+
+TEST_CASE("Git window: there is no pushed edge where the commits to push and the pushed ones are not parted by one line")
+{
+	// A pushed commit above the ones to push: the newer commits of another line shown first.
+	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2, 3}, {2, 3})).has_value());
+
+	// A commit to push below a pushed one: an old commit a merge not yet pushed brought, listed by its date.
+	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2, 3, 4}, {1, 3})).has_value());
+}
+
+TEST_CASE("Git window: the pushed edge is a row of its own before the commit it precedes, above a fold row there")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(
+		3, FileRowCountsFrom({2, 0, 0}), ExtraRows{.FoldBeforeCommit = 1, .PushedEdgeBeforeCommit = 1});
+
+	REQUIRE(rows.Rows.size() == 7);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::Commit);
+	CHECK(rows.Rows[2].Kind == CommitRowKind::File);
+	CHECK(rows.Rows[3].Kind == CommitRowKind::PushedEdge);
+	CHECK(rows.Rows[3].Commit == 1);
+	CHECK(rows.Rows[4].Kind == CommitRowKind::Fold);
+	CHECK(rows.Rows[5].Kind == CommitRowKind::Commit);
+	CHECK(rows.RowOfCommit[1] == 5);
+	CHECK(rows.RowOfCommit[2] == 6);
 }

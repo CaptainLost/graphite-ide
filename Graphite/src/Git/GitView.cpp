@@ -1475,6 +1475,11 @@ namespace Graphite {
 				MarkChangesRow(marks);
 			}
 
+			if (source.Branches)
+			{
+				marks.Upstream = UpstreamOfWalk(*source.Branches, shownRequest.has_value() ? shownRequest->Ref : std::nullopt);
+			}
+
 			marks.Banner = m_HistoryBanner;
 			marks.BannerAction = m_HistoryBanner.has_value() ? m_HistoryBannerAction : std::nullopt;
 

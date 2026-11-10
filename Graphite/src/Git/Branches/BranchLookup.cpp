@@ -28,6 +28,13 @@ namespace Graphite {
 		return nullptr;
 	}
 
+	std::string UpstreamOfWalk(const std::vector<Core::Branch>& branches, const std::optional<std::string>& ref)
+	{
+		const Core::Branch* const walked = ref.has_value() ? BranchWithFullName(branches, *ref) : CheckedOutBranch(branches);
+
+		return walked != nullptr ? walked->Upstream.value_or(std::string{}) : std::string{};
+	}
+
 	const Core::Branch* RemoteBranchNamed(const std::vector<Core::Branch>& branches, const std::string& name)
 	{
 		for (const Core::Branch& branch : branches)
