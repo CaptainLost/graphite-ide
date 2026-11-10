@@ -699,7 +699,7 @@ namespace Graphite {
 		const ExtraRows extra{.LocalChanges = marks.LocalChanges.has_value(),
 							  .Banner = marks.Banner.has_value(),
 							  .FoldBeforeCommit = hasFold ? std::optional<std::size_t>{marks.Fold->BeforeCommit} : std::nullopt,
-							  .PushedEdgeBeforeCommit = FirstPushedCommit(page),
+							  .PushedEdgeBeforeCommit = FirstPushedCommit(page, marks.Dimmed),
 							  .Waiting = marks.Waiting.has_value()};
 
 		// In the Merges history an opened merge lists what it brought where another commit lists its files.

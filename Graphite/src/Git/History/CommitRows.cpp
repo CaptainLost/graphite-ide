@@ -45,7 +45,7 @@ namespace Graphite {
 		return Core::FormatCount(count) + (brought.Complete ? "" : "+") + (count == 1 && brought.Complete ? " commit" : " commits");
 	}
 
-	std::optional<std::size_t> FirstPushedCommit(const Core::LogPage& page)
+	std::optional<std::size_t> FirstPushedCommit(const Core::LogPage& page, const std::unordered_set<Core::Oid>* beside)
 	{
 		if (!page.UpstreamKnown || page.Unpushed.empty())
 		{
@@ -53,12 +53,17 @@ namespace Graphite {
 		}
 
 		const auto isUnpushed = [&](const Core::CommitSummary& commit) { return page.Unpushed.contains(commit.Id); };
-		const auto firstPushed = std::find_if_not(page.Commits.begin(), page.Commits.end(), isUnpushed);
+		const auto isPushed = [&](const Core::CommitSummary& commit) {
+			const bool shownBeside = beside != nullptr && beside->contains(commit.Id);
+			return !shownBeside && !isUnpushed(commit);
+		};
 
-		const bool nothingToPushAbove = firstPushed == page.Commits.begin();
+		const auto firstPushed = std::find_if(page.Commits.begin(), page.Commits.end(), isPushed);
+
 		const bool noPushedCommit = firstPushed == page.Commits.end();
+		const bool nothingToPushAbove = std::none_of(page.Commits.begin(), firstPushed, isUnpushed);
 
-		if (nothingToPushAbove || noPushedCommit || std::any_of(firstPushed, page.Commits.end(), isUnpushed))
+		if (noPushedCommit || nothingToPushAbove || std::any_of(firstPushed, page.Commits.end(), isUnpushed))
 		{
 			return std::nullopt;
 		}

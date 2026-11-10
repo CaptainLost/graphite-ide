@@ -22,8 +22,9 @@ user chose between four row marks and three edges on a mockup of the list.
   its files, and a brought commit's row by that commit's own membership — with 8 percent of
   the added-line green, and draw a 3 px stripe of that green at the row's left end, in the
   room the row highlight leaves. The hash stays green as well.
-- Put one row, `PushedEdge`, above the first commit the upstream has, when every commit
-  above it is one the upstream lacks and none below it is (`FirstPushedCommit`). It says
+- Put one row, `PushedEdge`, above the first commit the upstream has, when a commit above
+  it is one the upstream lacks and none below it is (`FirstPushedCommit`). The line's newer
+  commits shown dimmed beside the branch count as neither, wherever they stand. It says
   "↑ N to push" in green, a rule, then "on <upstream> ↓" at the message's end; the name
   goes first, then the rule, when the cell is narrow. N is the size of `Unpushed`, the
   header's count. The upstream is that of the walked branch (`UpstreamOfWalk`); while it is
@@ -55,6 +56,8 @@ hunting for a pill among others. Both came out of the mockup as the clearest pai
 ### Neutral
 
 - A file's history and a filtered page keep the marks: the set is the branch's, not the page's.
+- A worktree with a branch shows that branch's marks against its own upstream, as the open
+  folder does; a detached worktree, like a detached HEAD, has no upstream and shows none.
 
 ## Alternatives Considered
 

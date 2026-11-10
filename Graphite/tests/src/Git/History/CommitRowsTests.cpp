@@ -11,6 +11,7 @@
 #include <functional>
 #include <initializer_list>
 #include <optional>
+#include <unordered_set>
 #include <vector>
 
 using Graphite::CommitRowKind;
@@ -353,6 +354,20 @@ TEST_CASE("Git window: there is no pushed edge where the commits to push and the
 
 	// A commit to push below a pushed one: an old commit a merge not yet pushed brought, listed by its date.
 	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({1, 2, 3, 4}, {1, 3})).has_value());
+}
+
+TEST_CASE("Git window: the line's newer commits shown beside the branch neither hold the pushed edge back nor take it")
+{
+	const std::unordered_set<Core::Oid> beside = {OidWithFirstByte(7), OidWithFirstByte(8)};
+
+	// Shown first, as they are newer than the branch's own commits.
+	CHECK(Graphite::FirstPushedCommit(PageWithUnpushed({7, 8, 1, 2, 3}, {1, 2}), &beside) == std::optional<std::size_t>{4});
+
+	// Between the commits to push and the pushed ones: the edge stands above the pushed one.
+	CHECK(Graphite::FirstPushedCommit(PageWithUnpushed({1, 7, 2, 3}, {1}), &beside) == std::optional<std::size_t>{2});
+
+	// With nothing of the branch's own pushed on the page, there is still no edge.
+	CHECK_FALSE(Graphite::FirstPushedCommit(PageWithUnpushed({7, 1, 2}, {1, 2}), &beside).has_value());
 }
 
 TEST_CASE("Git window: the pushed edge is a row of its own before the commit it precedes, above a fold row there")

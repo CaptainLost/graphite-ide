@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace Graphite {
@@ -70,11 +71,13 @@ namespace Graphite {
 	// "3 commits", "1 commit", "500+ commits" when the page stops short of what the merge brought.
 	std::string DescribeBrought(const Core::LogPage& brought);
 
-	// The commit the pushed edge stands above: the first the upstream has, when every commit above it is one the upstream
-	// lacks and none below it is. None while the upstream is unknown, with nothing to push, when the page does not reach a
-	// commit the upstream has, and when the two kinds are mixed: another line's newer commits shown first, or an old commit
-	// an unpushed merge brought listed by its date among the pushed ones.
-	std::optional<std::size_t> FirstPushedCommit(const Core::LogPage& page);
+	// The commit the pushed edge stands above: the first the upstream has, when a commit above it is one the upstream lacks
+	// and none below it is. The commits in `beside`, the line's newer ones shown beside the branch, are neither: they may
+	// stand anywhere. None while the upstream is unknown, with nothing to push, when the page does not reach a commit the
+	// upstream has, and when the two kinds are mixed, as an old commit an unpushed merge brought listed by its date among
+	// the pushed ones.
+	std::optional<std::size_t> FirstPushedCommit(const Core::LogPage& page,
+												 const std::unordered_set<Core::Oid>* beside = nullptr);
 
 	// A fold row's Commit is the commit it precedes, so it is never a commit's own row.
 	CommitRows BuildCommitRows(std::size_t commitCount,
