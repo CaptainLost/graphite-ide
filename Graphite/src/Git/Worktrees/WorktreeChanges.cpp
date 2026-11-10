@@ -4,6 +4,7 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Status.h"
 
+#include <cctype>
 #include <format>
 #include <fstream>
 #include <string>
@@ -268,9 +269,22 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// A worktree inside WSL names its git directory as Linux sees it.
-		if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(worktree); place && named.front() == '/')
+		// A worktree inside WSL names its git directory as Linux sees it: a Windows drive under /mnt/<letter>, else a
+		// path of the worktree's distro. A name starting "//" is a share path git for Windows wrote, taken as it is.
+		const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(worktree);
+
+		if (place && named.front() == '/' && !named.starts_with("//"))
 		{
+			const bool onWindowsDrive = named.starts_with("/mnt/") && named.size() >= 6 && std::isalpha(static_cast<unsigned char>(named[5])) &&
+										(named.size() == 6 || named[6] == '/');
+
+			if (onWindowsDrive)
+			{
+				std::string drive{static_cast<char>(std::toupper(static_cast<unsigned char>(named[5])))};
+				drive += ":/";
+				return Core::FromUtf8(drive + std::string{named.size() > 7 ? named.substr(7) : std::string_view{}}).lexically_normal();
+			}
+
 			return Core::ToWslSharePath(Core::WslSharePath{place->Distro, std::string{named}});
 		}
 

@@ -55,3 +55,29 @@ TEST_CASE("A worktree whose folder watch cannot start has no watch")
 
 	CHECK(factory("wt") == nullptr);
 }
+
+namespace {
+
+	class StoppedWatch final : public Core::FolderWatch
+	{
+	public:
+		Core::FolderChanges TakeSettled() override { return {}; }
+		bool IsRunning() const override { return false; }
+	};
+}
+
+TEST_CASE("A worktree watch whose folder watch stopped starts it again and reports a change, at most once in a while")
+{
+	int starts = 0;
+	const Graphite::WorktreeWatchFactory factory = Graphite::WatchWithFolderWatch([&](const std::filesystem::path&) -> Core::Result<Core::Scope<Core::FolderWatch>> {
+		++starts;
+		return Core::Scope<Core::FolderWatch>{std::make_unique<StoppedWatch>()};
+	});
+	const Core::Scope<Graphite::WorktreeWatch> watch = factory("wt");
+	REQUIRE(watch != nullptr);
+
+	CHECK(watch->TakeChanged());
+	CHECK(starts == 2);
+	CHECK_FALSE(watch->TakeChanged());
+	CHECK(starts == 2);
+}

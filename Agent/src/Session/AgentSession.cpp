@@ -155,7 +155,9 @@ namespace Agent {
 			}
 			else if (handler != m_GitHandlers.end())
 			{
-				m_GitWorker.Submit(request, handler->second);
+				const bool isContentCheck = operation == "git.checkContent" || operation == "git.findTwin" ||
+											operation == "git.pathsChangedBetween" || operation == "git.treesDifferAt";
+				(isContentCheck ? m_ContentWorker : m_GitWorker).Submit(request, handler->second);
 			}
 			else
 			{
@@ -271,7 +273,7 @@ namespace Agent {
 	{
 		std::vector<Core::AgentReply> replies;
 
-		for (GitWorker* worker : {&m_QuickWorker, &m_WatchStarter, &m_GitWorker})
+		for (GitWorker* worker : {&m_QuickWorker, &m_WatchStarter, &m_GitWorker, &m_ContentWorker})
 		{
 			for (Core::AgentReply& reply : worker->TakeFinished())
 			{
@@ -363,8 +365,9 @@ namespace Agent {
 	std::vector<int> AgentSession::WatchDescriptors() const
 	{
 		std::vector<int> descriptors;
-		descriptors.reserve(m_Watches.size() + 3);
+		descriptors.reserve(m_Watches.size() + 4);
 		descriptors.push_back(m_GitWorker.GetDescriptor());
+		descriptors.push_back(m_ContentWorker.GetDescriptor());
 		descriptors.push_back(m_QuickWorker.GetDescriptor());
 		descriptors.push_back(m_WatchStarter.GetDescriptor());
 

@@ -100,3 +100,52 @@ TEST_CASE("The paths changed between two commits, and whether trees differ at pa
 	REQUIRE(differs.HasValue());
 	CHECK(differs.GetValue().Result.at("differ") == true);
 }
+
+TEST_CASE("A content check whose merge builds a new file still writes nothing into the repository")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Tester", "tester@example.com");
+	fixture.Write("a.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n");
+	fixture.Commit("base");
+	fixture.Branch("topic");
+	fixture.Checkout("topic");
+	fixture.Write("a.txt", "1\ntwo\n3\n4\n5\n6\n7\n8\n9\n");
+	const std::string topicTip = fixture.Commit("topic edits line two");
+	fixture.Checkout("master");
+	fixture.Write("a.txt", "1\n2\n3\n4\n5\n6\n7\neight\n9\n");
+	const std::string masterTip = fixture.Commit("master edits line eight");
+	const std::size_t objectsBefore = fixture.ObjectFileCount();
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+
+	const Core::Result<Agent::GitAnswer> answer = Call(handlers, "git.checkContent", At(fixture, {{"branchTip", topicTip}, {"lineTip", masterTip}}));
+
+	REQUIRE(answer.HasValue());
+	CHECK(fixture.ObjectFileCount() == objectsBefore);
+}
+
+TEST_CASE("A branch of two commits folded into one on master is merged as a squash, landing on that commit")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Tester", "tester@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("base");
+	fixture.Branch("feature");
+	fixture.Checkout("feature");
+	fixture.Write("b.txt", "first\n");
+	fixture.Commit("first half");
+	fixture.Write("b.txt", "first\nsecond\n");
+	const std::string featureTip = fixture.Commit("second half");
+	fixture.Checkout("master");
+	fixture.Write("b.txt", "first\nsecond\n");
+	const std::string squash = fixture.Commit("feature, squashed");
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+
+	const Core::Result<Agent::GitAnswer> answer = Call(handlers, "git.checkContent", At(fixture, {{"branchTip", featureTip}, {"lineTip", squash}}));
+
+	REQUIRE(answer.HasValue());
+	const Core::Result<Core::ContentVerdict> verdict = Core::ContentVerdictFromJson(json::parse(answer.GetValue().Payload));
+	REQUIRE(verdict.HasValue());
+	CHECK(verdict.GetValue().Outcome == Core::ContentOutcome::Merged);
+	CHECK(verdict.GetValue().Kind == Core::ContentKind::Squash);
+	CHECK(verdict.GetValue().Landing == std::optional<Core::Oid>{*Core::Oid::FromHex(squash)});
+}

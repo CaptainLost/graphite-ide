@@ -218,11 +218,38 @@ TEST_CASE("A slow git request does not hold up an ignore question sent after it"
 	CHECK(std::get<Core::AgentReply>(first[0]).Id == 2);
 }
 
-TEST_CASE("Both git lanes and the watch starter wake the agent's loop")
+TEST_CASE("A slow content check does not hold up a status sent after it")
+{
+	Agent::GitHandlers handlers;
+	handlers["git.checkContent"] = [](const Core::AgentRequest&) -> Core::Result<Agent::GitAnswer> {
+		std::this_thread::sleep_for(std::chrono::milliseconds{1500});
+		return Agent::GitAnswer{};
+	};
+	handlers["git.status"] = [](const Core::AgentRequest&) -> Core::Result<Agent::GitAnswer> { return Agent::GitAnswer{}; };
+	Agent::AgentSession session{"v", std::move(handlers), Agent::GitHandlers{}};
+
+	session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = 1, .Operation = "git.checkContent"}));
+	session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = 2, .Operation = "git.status"}));
+
+	std::vector<Core::AgentMessage> first;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+
+	while (first.empty() && std::chrono::steady_clock::now() < deadline)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds{10});
+		session.Tick();
+		first = Decode(session.TakeOutput());
+	}
+
+	REQUIRE_FALSE(first.empty());
+	CHECK(std::get<Core::AgentReply>(first[0]).Id == 2);
+}
+
+TEST_CASE("Every git lane and the watch starter wake the agent's loop")
 {
 	Agent::AgentSession session{"v", Agent::GitHandlers{}, Agent::GitHandlers{}};
 
-	CHECK(session.WatchDescriptors().size() == 3);
+	CHECK(session.WatchDescriptors().size() == 4);
 }
 
 TEST_CASE("A watch is armed off the agent's loop, so nothing it sends waits for the walk")

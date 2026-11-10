@@ -532,3 +532,10 @@ TEST_CASE("A relative gitdir is taken from the worktree, a local absolute one as
 	CHECK(Graphite::GitDirectoryNamedIn(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt", "../p/.git/worktrees/wt")->native() == std::wstring{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\.git\\worktrees\\wt"});
 	CHECK(Graphite::GitDirectoryNamedIn(L"C:\\w", "C:/r/.git/worktrees/w") == std::optional<std::filesystem::path>{std::filesystem::path{"C:/r/.git/worktrees/w"}.lexically_normal()});
 }
+
+TEST_CASE("A WSL worktree's gitdir on a Windows drive or written as a share path is not taken for a Linux path")
+{
+	CHECK(Graphite::GitDirectoryNamedIn(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt", "/mnt/c/repos/p/.git/worktrees/wt") == std::optional<std::filesystem::path>{std::filesystem::path{"C:/repos/p/.git/worktrees/wt"}.lexically_normal()});
+	CHECK(Graphite::GitDirectoryNamedIn(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt", "//wsl.localhost/Ubuntu/home/me/p/.git/worktrees/wt")->native() ==
+		  std::filesystem::path{"//wsl.localhost/Ubuntu/home/me/p/.git/worktrees/wt"}.lexically_normal().native());
+}

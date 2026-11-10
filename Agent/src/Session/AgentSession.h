@@ -63,6 +63,10 @@ namespace Agent {
 		GitWorker m_GitWorker;
 		GitWorker m_QuickWorker;
 
+		// Content checks only read, name their commits and can walk thousands of them: on a lane of
+		// their own, so a status, a stage or a commit never waits behind one.
+		GitWorker m_ContentWorker;
+
 		// Arms watches: a walk of a large tree takes seconds, and the loop would answer nothing
 		// meanwhile, the quick lane's replies included.
 		GitWorker m_WatchStarter;
