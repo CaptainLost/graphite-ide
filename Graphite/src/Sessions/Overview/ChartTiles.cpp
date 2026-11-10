@@ -133,7 +133,7 @@ namespace Graphite {
 
 			face.Value = CompactMoney(now);
 			face.Change = ThisWeekChange(model);
-			face.Line = face.Change ? " vs last week" : "nothing the same days last week";
+			face.Line = face.Change ? " vs last week" : "nothing last week";
 
 			std::vector<double> costs = CostPerDay(model);
 			face.FirstDay = costs.size() - std::min(costs.size(), kThisWeekSpan);
