@@ -14,8 +14,10 @@
 #include "Core/Jobs/LatestAnswer.h"
 #include "Core/Platform/AsyncDialog.h"
 #include "Solution/SolutionReader.h"
+#include "Workspace/RepositoryIgnores.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -139,6 +141,9 @@ namespace Graphite {
 
 		void SetReplaceGate(ReplaceGate gate) { m_ReplaceGate = std::move(gate); }
 
+		// How the repository around a folder is asked what it ignores; by default libgit2 here.
+		void SetIgnoresOpener(IgnoresOpener opener) { m_OpenIgnores = std::move(opener); }
+
 		// Open Folder and Open Solution as the reader asks for them: through the gate, since the next folder closes
 		// every open file.
 		void RequestOpenFolder(const std::filesystem::path& folderPath);
@@ -212,7 +217,8 @@ namespace Graphite {
 		void RefreshWholeTree(Core::IgnoreAnswers ignoreAnswers);
 		std::vector<IgnoreSourceStamp> StampIgnoreSourcesTheWatcherCannotSee() const;
 		bool IsInsideRoot(const std::filesystem::path& path) const;
-		bool IsIgnoredByRepository(const std::filesystem::path& path) const;
+		bool IsIgnoredByRepository(const std::filesystem::path& path, bool isDirectory);
+		void RetryOpeningRepository();
 		Core::Result<void> RefuseToOpenSolution(Core::Error error);
 		void RememberSolutionCandidate(const std::filesystem::path& path);
 		bool HasRepositoryVanished() const;
@@ -252,7 +258,11 @@ namespace Graphite {
 
 		std::array<Core::Command*, AppSettings::kRecentFolderCount> m_RecentFolderCommands{};
 		bool m_ReadingAgainAfterAThrow = false;
-		std::optional<Core::Repository> m_Repository;
+		IgnoresOpener m_OpenIgnores = OpenLocalRepositoryIgnores;
+		Core::Scope<RepositoryIgnores> m_Ignores;
+
+		// Set while the repository could not answer yet (a WSL distro's agent still starting).
+		std::optional<std::chrono::steady_clock::time_point> m_RetryIgnoresAt;
 		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;
 		Core::FileTree m_Tree;
 		Core::Scope<Core::FolderWatch> m_Watcher;

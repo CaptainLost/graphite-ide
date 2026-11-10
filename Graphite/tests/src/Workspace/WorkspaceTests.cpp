@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "UI/ToastEvent.h"
+#include "Workspace/RepositoryIgnores.h"
 #include "Workspace/Workspace.h"
 
 #include "DeferredJobs.h"
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -286,6 +288,87 @@ TEST_CASE("A reload nobody asked for keeps the ignore answers it has, and an exp
 
 	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
 	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
+}
+
+namespace {
+
+	// Ignores one name, wherever it is asked about.
+	class NamedIgnores final : public Graphite::RepositoryIgnores
+	{
+	public:
+		NamedIgnores(std::filesystem::path workingDirectory, std::string ignoredName)
+			: m_WorkingDirectory(std::move(workingDirectory)), m_IgnoredName(std::move(ignoredName))
+		{
+		}
+
+		std::filesystem::path GetWorkingDirectory() const override { return m_WorkingDirectory; }
+
+		bool IsIgnored(const std::filesystem::path& path, bool) override { return Core::ToUtf8(path.filename()) == m_IgnoredName; }
+
+		std::vector<std::filesystem::path> RuleFilesOutside(const std::filesystem::path&) override { return {}; }
+
+	private:
+		std::filesystem::path m_WorkingDirectory;
+		std::string m_IgnoredName;
+	};
+}
+
+TEST_CASE("A folder whose ignores were not ready at open dims its ignored entries once they are")
+{
+	TempDirectory temp;
+	std::ofstream(temp.GetPath() / "build.log") << "x";
+	std::ofstream(temp.GetPath() / "notes.txt") << "x";
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+	int opens = 0;
+	workspace.SetIgnoresOpener([&](const std::filesystem::path& root) -> Core::Result<Core::Scope<Graphite::RepositoryIgnores>> {
+		if (++opens == 1)
+		{
+			return Core::Error{Core::ErrorCode::Cancelled, "still connecting to ubuntu"};
+		}
+
+		return Core::Scope<Graphite::RepositoryIgnores>{std::make_unique<NamedIgnores>(root, "build.log")};
+	});
+
+	REQUIRE(workspace.OpenFolder(temp.GetPath()));
+	REQUIRE_FALSE(IsRootChildIgnored(workspace, "build.log"));
+
+	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+
+	while (std::chrono::steady_clock::now() < deadline && !IsRootChildIgnored(workspace, "build.log"))
+	{
+		workspace.Update();
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+	}
+
+	CHECK(IsRootChildIgnored(workspace, "build.log"));
+	CHECK_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+	CHECK(opens == 2);
+}
+
+TEST_CASE("A folder whose repository cannot be opened is not asked again until it reloads")
+{
+	TempDirectory temp;
+	std::ofstream(temp.GetPath() / "notes.txt") << "x";
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+	int opens = 0;
+	workspace.SetIgnoresOpener([&](const std::filesystem::path&) -> Core::Result<Core::Scope<Graphite::RepositoryIgnores>> {
+		++opens;
+		return Core::Error{Core::ErrorCode::IoFailure, "cannot reach ubuntu"};
+	});
+
+	REQUIRE(workspace.OpenFolder(temp.GetPath()));
+
+	for (int frame = 0; frame < 20; ++frame)
+	{
+		workspace.Update();
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+	}
+
+	CHECK(opens == 1);
 }
 
 TEST_CASE("A rules file changed on disk makes the tree ask again about every entry once the watcher reports it")

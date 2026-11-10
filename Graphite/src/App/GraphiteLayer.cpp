@@ -4,6 +4,7 @@
 #include "Core/FileSystem/WslSharePath.h"
 #include "Core/Remote/AgentDeployment.h"
 #include "Wsl/WslFolderWatch.h"
+#include "Wsl/WslIgnores.h"
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
@@ -188,6 +189,16 @@ namespace Graphite {
 		};
 		m_GitPort.SetWslGitFactory(wslGit);
 		m_WorktreeGitPort.SetWslGitFactory(wslGit);
+
+		// So is the Explorer's question of what git ignores there (ADR 0698).
+		m_Workspace.SetIgnoresOpener([this](const std::filesystem::path& root) -> Core::Result<Core::Scope<RepositoryIgnores>> {
+			if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(root))
+			{
+				return WslIgnores::Open(m_WslAgents, *place);
+			}
+
+			return OpenLocalRepositoryIgnores(root);
+		});
 
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);

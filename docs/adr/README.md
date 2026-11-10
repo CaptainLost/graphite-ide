@@ -727,4 +727,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0695](0695-talk-to-the-wsl-agent-in-length-prefixed-frames-of-a-json-header-and-raw-bytes.md) | Talk to the WSL agent in length-prefixed frames of a JSON header and raw bytes | proposed | 2026-11-10 |
 | [0696](0696-name-a-folder-inside-wsl-by-its-wsl-localhost-path-and-reach-it-through-one-agent-per-distro.md) | Name a folder inside WSL by its wsl.localhost path and reach it through one agent per distro | proposed | 2026-11-10 |
 | [0697](0697-mark-the-commits-the-upstream-lacks-with-a-stripe-and-part-them-from-the-pushed-ones-by-a-row.md) | Mark the commits the upstream lacks with a stripe and part them from the pushed ones by a row | accepted | 2026-11-10 |
+| [0698](0698-answer-the-explorer-s-ignores-in-wsl-one-folder-at-a-time-on-the-agent-s-quick-lane.md) | Answer the Explorer's ignores in WSL one folder at a time on the agent's quick lane | proposed | 2026-11-10 |
 <!-- /adr-index -->

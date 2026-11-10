@@ -28,6 +28,9 @@ namespace Graphite {
 	namespace {
 
 		const Core::IgnoreQuery kNoIgnoreQuery;
+
+		// How soon a repository that could not answer yet is asked again.
+		constexpr std::chrono::milliseconds kIgnoresRetryInterval{250};
 		const std::filesystem::path kNoFolder;
 		constexpr std::string_view kNoFailureContext;
 		constexpr std::string_view kSelectedSolutionKey = "selectedSolution";
@@ -260,6 +263,12 @@ namespace Graphite {
 
 		// WARNING: Stamped before asking, so a rule edited while the tree is asked is not taken as seen.
 		std::vector<IgnoreSourceStamp> stampsBeforeAsking = StampIgnoreSourcesTheWatcherCannotSee();
+
+		if (m_Ignores)
+		{
+			m_Ignores->ForgetAnswers();
+		}
+
 		m_Tree.Refresh(m_Tree.GetRoot(), ignoreAnswers);
 		m_IgnoreSourceStamps = std::move(stampsBeforeAsking);
 	}
@@ -268,12 +277,12 @@ namespace Graphite {
 	{
 		std::vector<IgnoreSourceStamp> stamps;
 
-		if (!m_Repository)
+		if (!m_Ignores)
 		{
 			return stamps;
 		}
 
-		for (const std::filesystem::path& file : m_Repository->IgnoreRuleFilesOutside(m_Root))
+		for (const std::filesystem::path& file : m_Ignores->RuleFilesOutside(m_Root))
 		{
 			stamps.push_back(StampOf(file));
 		}
@@ -426,9 +435,10 @@ namespace Graphite {
 		m_Watcher.reset();
 
 		// WARNING: the ignore query reads the repository, so it goes first; between the two
-		// statements the tree would otherwise hold a query pointing at an empty optional.
+		// statements the tree would otherwise hold a query pointing at a closed repository.
 		m_Tree.SetIgnoreQuery(kNoIgnoreQuery);
-		m_Repository.reset();
+		m_Ignores.reset();
+		m_RetryIgnoresAt.reset();
 		m_Tree = Core::FileTree{};
 		++m_FolderGeneration;
 		m_Root.clear();
@@ -447,6 +457,7 @@ namespace Graphite {
 	{
 		m_Dialog.Poll();
 		TakeFinishedSolutionReads();
+		RetryOpeningRepository();
 
 		if (!m_Watcher)
 		{
@@ -570,7 +581,7 @@ namespace Graphite {
 
 	bool Workspace::HasRepositoryVanished() const
 	{
-		const std::filesystem::path workingDirectory = m_Repository->GetWorkingDirectory();
+		const std::filesystem::path workingDirectory = m_Ignores->GetWorkingDirectory();
 
 		if (workingDirectory.empty())
 		{
@@ -586,10 +597,10 @@ namespace Graphite {
 
 	bool Workspace::SyncRepository()
 	{
-		if (!m_Repository)
+		if (!m_Ignores)
 		{
 			TryOpenRepository();
-			return m_Repository.has_value();
+			return m_Ignores != nullptr;
 		}
 
 		if (!HasRepositoryVanished())
@@ -600,10 +611,10 @@ namespace Graphite {
 		// WARNING: libgit2 does not notice a deleted .git; it keeps answering from the handle it
 		// holds and reads .gitignore straight out of the working tree.
 		APP_INFO("The git repository at '{}' is gone",
-				 Core::ToUtf8(m_Repository->GetWorkingDirectory()));
+				 Core::ToUtf8(m_Ignores->GetWorkingDirectory()));
 
 		m_Tree.SetIgnoreQuery(kNoIgnoreQuery);
-		m_Repository.reset();
+		m_Ignores.reset();
 
 		return true;
 	}
@@ -715,23 +726,30 @@ namespace Graphite {
 		return nullptr;
 	}
 
-	bool Workspace::IsIgnoredByRepository(const std::filesystem::path& path) const
+	bool Workspace::IsIgnoredByRepository(const std::filesystem::path& path, bool isDirectory)
 	{
-		return m_Repository && m_Repository->IsIgnored(path);
+		return m_Ignores && m_Ignores->IsIgnored(path, isDirectory);
 	}
 
 	void Workspace::TryOpenRepository()
 	{
 		m_Tree.SetIgnoreQuery(kNoIgnoreQuery);
-		m_Repository.reset();
+		m_Ignores.reset();
+		m_RetryIgnoresAt.reset();
 
-		Core::Result<Core::Repository> repository = Core::Repository::Open(m_Root);
+		Core::Result<Core::Scope<RepositoryIgnores>> repository = m_OpenIgnores(m_Root);
 
 		if (!repository)
 		{
 			const Core::Error& failure = repository.GetError();
 
-			if (failure.Code == Core::ErrorCode::NotFound)
+			if (failure.Code == Core::ErrorCode::Cancelled)
+			{
+				// Not ready yet: asked again from Update shortly, and the tree asked again then.
+				APP_TRACE("The git repository around '{}' cannot answer yet: {}", Core::ToUtf8(m_Root), failure.Message);
+				m_RetryIgnoresAt = std::chrono::steady_clock::now() + kIgnoresRetryInterval;
+			}
+			else if (failure.Code == Core::ErrorCode::NotFound)
 			{
 				APP_TRACE("'{}' is not inside a git repository: {}", Core::ToUtf8(m_Root), failure.Message);
 			}
@@ -743,13 +761,26 @@ namespace Graphite {
 			return;
 		}
 
-		m_Repository.emplace(std::move(repository).GetValue());
+		m_Ignores = std::move(repository).GetValue();
 
-		m_Tree.SetIgnoreQuery([this](const std::filesystem::path& path, [[maybe_unused]] bool isDirectory) {
-			return IsIgnoredByRepository(path);
-		});
+		m_Tree.SetIgnoreQuery([this](const std::filesystem::path& path, bool isDirectory) { return IsIgnoredByRepository(path, isDirectory); });
 
-		APP_INFO("Git repository detected at '{}'", Core::ToUtf8(m_Repository->GetWorkingDirectory()));
+		APP_INFO("Git repository detected at '{}'", Core::ToUtf8(m_Ignores->GetWorkingDirectory()));
+	}
+
+	void Workspace::RetryOpeningRepository()
+	{
+		if (!m_RetryIgnoresAt || std::chrono::steady_clock::now() < *m_RetryIgnoresAt || !IsOpen())
+		{
+			return;
+		}
+
+		TryOpenRepository();
+
+		if (m_Ignores)
+		{
+			RefreshWholeTree(Core::IgnoreAnswers::AskAgain);
+		}
 	}
 
 	void Workspace::FindSolutions()
