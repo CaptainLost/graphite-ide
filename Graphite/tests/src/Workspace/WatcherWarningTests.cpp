@@ -64,3 +64,37 @@ TEST_CASE("A folder whose watcher cannot start gets one warning toast, however m
 	CHECK(log.Toasts.front().Kind == Core::ToastKind::Warning);
 	CHECK(log.Toasts.front().Scope == Graphite::ToastScope::Folder);
 }
+
+// One spelling for a place in WSL (ADR 0696), whatever the folder was opened as. Needs a WSL
+// distro named Ubuntu; skipped, saying so, without one.
+TEST_CASE("A folder opened through wsl$ is opened, watched and named as wsl.localhost")
+{
+	const std::filesystem::path typed{L"\\\\wsl$\\Ubuntu\\tmp\\graphite-canonical-test"};
+	std::error_code error;
+
+	if (!std::filesystem::exists(L"\\\\wsl$\\Ubuntu\\tmp", error))
+	{
+		MESSAGE("no WSL distro named Ubuntu here: skipped");
+		return;
+	}
+
+	std::filesystem::create_directories(typed, error);
+	REQUIRE_FALSE(error);
+
+	TempAppSettings settings;
+	Core::EventBus events;
+	std::filesystem::path askedToWatch;
+	Graphite::Workspace workspace(events, settings.Get(), [&](const std::filesystem::path& root) -> Core::Result<Core::Scope<Core::FolderWatch>> {
+		askedToWatch = root;
+		return Core::Error{Core::ErrorCode::IoFailure, "not watching in this test"};
+	});
+
+	REQUIRE(workspace.OpenFolder(typed));
+
+	const std::filesystem::path canonical{L"\\\\wsl.localhost\\Ubuntu\\tmp\\graphite-canonical-test"};
+	CHECK(workspace.GetRoot().native() == canonical.native());
+	CHECK(askedToWatch.native() == canonical.native());
+
+	workspace.Close();
+	std::filesystem::remove_all(typed, error);
+}

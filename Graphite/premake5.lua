@@ -98,6 +98,21 @@ project "Graphite"
         '{COPYFILE} "../THIRD_PARTY_NOTICES.txt" "%{cfg.targetdir}"'
     }
 
+    -- The WSL agent (ADR 0696) goes beside Graphite.exe, which installs it into each distro it
+    -- opens a folder in. It is built by CoreLinux (zig); without that build there is nothing to
+    -- copy, and a WSL folder then says the agent is missing. Dist ships Release's agent.
+    filter "configurations:Debug"
+        postbuildcommands
+        {
+            'if exist "..\\bin\\Debug-linux-x86_64\\GraphiteAgent\\graphite-agent" copy /B /Y "..\\bin\\Debug-linux-x86_64\\GraphiteAgent\\graphite-agent" "%{cfg.targetdir}" > nul'
+        }
+    filter "configurations:Release or Dist"
+        postbuildcommands
+        {
+            'if exist "..\\bin\\Release-linux-x86_64\\GraphiteAgent\\graphite-agent" copy /B /Y "..\\bin\\Release-linux-x86_64\\GraphiteAgent\\graphite-agent" "%{cfg.targetdir}" > nul'
+        }
+    filter {}
+
     files { "src/Main.cpp", "resources/Graphite.rc" }
 
     -- rc.exe resolves the icon the script names against these directories, not the script's own.

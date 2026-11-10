@@ -12,6 +12,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslSharePath.h"
 #include "Core/Platform/FileDialog.h"
 
 #include <algorithm>
@@ -169,7 +170,8 @@ namespace Graphite {
 
 	Core::Result<void> Workspace::OpenFolder(const std::filesystem::path& folderPath)
 	{
-		const std::filesystem::path root = Core::NormalizeDirectory(folderPath);
+		// A place in WSL has one spelling on the host, whatever it was opened as (ADR 0696).
+		const std::filesystem::path root = Core::NormalizeDirectory(Core::CanonicalWslSharePath(folderPath));
 
 		Core::FileTree candidate;
 

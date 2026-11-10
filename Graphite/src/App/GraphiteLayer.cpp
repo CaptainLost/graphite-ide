@@ -1,6 +1,9 @@
 #include "App/GraphiteLayer.h"
 
 #include "Core/Base/Base.h"
+#include "Core/FileSystem/WslSharePath.h"
+#include "Core/Remote/AgentDeployment.h"
+#include "Wsl/WslFolderWatch.h"
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
@@ -163,8 +166,21 @@ namespace Graphite {
 		m_CustomTitleBar = Core::Application::Get().GetWindow().HasCustomTitleBar();
 	}
 
+	Core::Result<Core::Scope<Core::FolderWatch>> GraphiteLayer::WatchFolder(const std::filesystem::path& root)
+	{
+		if (std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(root))
+		{
+			return Core::Scope<Core::FolderWatch>{WslFolderWatch::Start(m_WslAgents, std::move(*place))};
+		}
+
+		return Core::WatchDirectory(root);
+	}
+
 	void GraphiteLayer::OnAttach()
 	{
+		// Writes under a WSL share go to the distro's agent from here on (ADR 0696).
+		Core::SetWslFileOperations(&m_WslAgents);
+
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
@@ -791,6 +807,9 @@ namespace Graphite {
 
 		// WARNING: Flush after StateKeeper, whose flush hands the window state to the settings.
 		m_AppSettings.Flush();
+
+		// The layer's agents are about to go; nothing writes under a WSL share after this.
+		Core::SetWslFileOperations(nullptr);
 	}
 
 	Core::Ref<Core::HttpClient> GraphiteLayer::CreateInstallClient()

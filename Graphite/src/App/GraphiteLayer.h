@@ -61,6 +61,9 @@
 #include "Theme/ActiveScheme.h"
 #include "Settings/UserDirectories.h"
 #include "Workspace/DroppedPaths.h"
+#include "Wsl/WslAgents.h"
+
+#include "Core/Remote/AgentDeployment.h"
 #include "Workspace/FolderTransitions.h"
 #include "Workspace/Workspace.h"
 #include "Workspace/WorkspaceTrust.h"
@@ -121,6 +124,9 @@ namespace Graphite {
 		bool OnCloseRequested() override;
 
 	private:
+		// A WSL folder is watched by its distro's agent, any other by the Windows watcher (ADR 0696).
+		Core::Result<Core::Scope<Core::FolderWatch>> WatchFolder(const std::filesystem::path& root);
+
 		enum class ClosePurpose
 		{
 			ExitApplication,
@@ -278,8 +284,12 @@ namespace Graphite {
 
 		Core::FrameInput m_FrameInput;
 
+		// WARNING: Declared before m_Workspace, whose watch of a WSL folder asks it for the distro's agent, so it is
+		// destroyed after that watch. One agent per distro (ADR 0696); registered as Core's WslFileOperations in OnAttach.
+		WslAgents m_WslAgents{WslAgents::ConnectThroughWsl(Core::AgentBinaryBesideExecutable())};
+
 		// WARNING: m_Jobs is declared below; the workspace submits only once attached, and its jobs hold nothing of it.
-		Workspace m_Workspace{m_Events, m_AppSettings, Core::WatchDirectory,
+		Workspace m_Workspace{m_Events, m_AppSettings, [this](const std::filesystem::path& root) { return WatchFolder(root); },
 							  [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::DocumentSet m_Documents;
 
