@@ -1,6 +1,11 @@
 #pragma once
 
+#include "Git/Worktrees/WorktreePort.h"
+
 #include "Core/Base/Result.h"
+#include "Core/Git/Blame.h"
+#include "Core/Git/LineHistory.h"
+#include "Core/Git/Worktree.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/FileSystem/WslSharePath.h"
 #include "Core/Git/Checkout.h"
@@ -115,6 +120,44 @@ namespace Graphite {
 
 		// The directory the repository's worktrees share, in the share spelling.
 		Core::Result<std::filesystem::path> GetCommonDirectory();
+
+		// Blame, line history, branch review and worktrees (stage 3c-1).
+		struct HeadBlameRead
+		{
+			bool Trackable = false;
+			std::string Head;
+			Core::Blame Blame;
+		};
+
+		// absolutePath in the share spelling; a file of another distro is not trackable here.
+		Core::Result<HeadBlameRead> BlameAtHead(const std::filesystem::path& absolutePath);
+		Core::Result<Core::LineHistory> QueryLineHistory(const Core::LineHistoryRequest& request);
+
+		struct RangeRead
+		{
+			std::string Problem; // none, branchMissing, baseMissing, noCommonAncestor
+			std::optional<Core::Oid> MergeBase;
+			std::optional<Core::Oid> Tip;
+			std::optional<std::filesystem::path> Worktree; // in the share spelling
+			std::vector<Core::CommitSummary> Commits;
+			bool Complete = true;
+		};
+
+		Core::Result<RangeRead> ResolveRange(const std::string& branch, const std::string& base);
+
+		// Each read's blob at its revision, or empty where there is none (an empty path included).
+		Core::Result<std::vector<std::optional<std::string>>> ReadBlobs(const std::vector<std::pair<Core::Oid, std::filesystem::path>>& reads);
+
+		// Paths in the share spelling.
+		Core::Result<std::vector<Core::WorktreeEntry>> QueryWorktrees();
+
+		// Of the worktree this client was made for (reach exactly).
+		Core::Result<WorktreeActivity> QueryActivity();
+		Core::Result<WorktreeCount> CountUncommitted();
+
+		// The viewed blob and the current version, from tip or from worktree (a share path of this distro).
+		Core::Result<std::pair<std::string, std::string>> ReadSinceViewed(const Core::Oid& viewed, const std::optional<Core::Oid>& tip,
+																		  const std::optional<std::filesystem::path>& worktree, const std::filesystem::path& path);
 
 		// The lines graph's reads (stage 3b-lines).
 		Core::Result<std::vector<Core::GraphCommit>> ReadGraphCommits(const Core::GraphReadRequest& request);

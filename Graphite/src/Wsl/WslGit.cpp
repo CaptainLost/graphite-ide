@@ -33,6 +33,8 @@ namespace Graphite {
 			"git.bases",	  "git.branches",	  "git.tags",			  "git.ownAuthors",	 "git.userEmail",	 "git.remotes",
 			"git.log",		  "git.countCommits", "git.commitSides",	  "git.countUnmerged", "git.stashes",		 "git.planCheckout",
 			"git.commonDirectory", "git.ignoreSetup", "git.ignored", "git.graphCommits", "git.holdsCommits", "git.shallowBoundary",
+			"git.blameAtHead", "git.lineHistory", "git.resolveRange", "git.readBlobs", "git.worktrees", "git.activity", "git.countUncommitted",
+			"git.sinceViewed",
 		};
 
 		Core::Result<std::optional<Core::Oid>> OidOf(const nlohmann::json& result, const char* name)
@@ -609,6 +611,221 @@ namespace Graphite {
 		std::scoped_lock lock{m_CommonMutex};
 		m_CommonDirectory = common;
 		return common;
+	}
+
+	namespace {
+
+		std::optional<std::chrono::sys_seconds> SecondsFrom(const nlohmann::json& result, const char* name)
+		{
+			const auto found = result.find(name);
+
+			if (found == result.end() || !found->is_number_integer())
+			{
+				return std::nullopt;
+			}
+
+			return std::chrono::sys_seconds{std::chrono::seconds{found->get<std::int64_t>()}};
+		}
+	}
+
+	Core::Result<WslGit::HeadBlameRead> WslGit::BlameAtHead(const std::filesystem::path& absolutePath)
+	{
+		const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(absolutePath);
+
+		if (!place || !Core::EqualsIgnoringCase(place->Distro, m_Root.Distro))
+		{
+			return HeadBlameRead{};
+		}
+
+		const Core::Result<Answer> answer = Ask("git.blameAtHead", {{"path", place->LinuxPath}});
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		if (!answer.GetValue().Result.value("trackable", false))
+		{
+			return HeadBlameRead{};
+		}
+
+		const std::size_t headSize = answer.GetValue().Result.value("headSize", std::size_t{0});
+		const std::string& payload = answer.GetValue().Payload;
+
+		if (headSize > payload.size())
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's blame is shorter than it says"};
+		}
+
+		const Core::Result<nlohmann::json> parsed = ParsedPayload(payload.substr(headSize));
+		Core::Result<Core::Blame> blame = parsed ? Core::BlameFromJson(parsed.GetValue()) : Core::Result<Core::Blame>{parsed.GetError()};
+
+		if (!blame)
+		{
+			return blame.GetError();
+		}
+
+		return HeadBlameRead{.Trackable = true, .Head = payload.substr(0, headSize), .Blame = std::move(blame.GetValue())};
+	}
+
+	Core::Result<Core::LineHistory> WslGit::QueryLineHistory(const Core::LineHistoryRequest& request)
+	{
+		return Decoded(AskForPayload("git.lineHistory", {{"request", Core::ToJson(request)}}), &Core::LineHistoryFromJson);
+	}
+
+	Core::Result<WslGit::RangeRead> WslGit::ResolveRange(const std::string& branch, const std::string& base)
+	{
+		const Core::Result<Answer> answer = Ask("git.resolveRange", {{"branch", branch}, {"base", base}});
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		const nlohmann::json& result = answer.GetValue().Result;
+		RangeRead range{.Problem = result.value("problem", std::string{"none"}), .Complete = result.value("complete", true)};
+		const Core::Result<std::optional<Core::Oid>> mergeBase = OidOf(result, "mergeBase");
+		const Core::Result<std::optional<Core::Oid>> tip = OidOf(result, "tip");
+
+		if (!mergeBase || !tip)
+		{
+			return mergeBase ? tip.GetError() : mergeBase.GetError();
+		}
+
+		range.MergeBase = mergeBase.GetValue();
+		range.Tip = tip.GetValue();
+
+		if (const auto worktree = result.find("worktree"); worktree != result.end() && worktree->is_string())
+		{
+			range.Worktree = SharePathOf(worktree->get<std::string>());
+		}
+
+		if (range.Problem == "none")
+		{
+			if (!range.MergeBase || !range.Tip)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's range has no ends"};
+			}
+
+			const Core::Result<nlohmann::json> commits = ParsedPayload(answer.GetValue().Payload);
+			const Core::Result<Core::LogPage> page =
+				commits ? Core::LogPageFromJson({{"commits", commits.GetValue()}, {"complete", range.Complete}, {"walked", 0}, {"unpushed", nlohmann::json::array()}, {"upstreamKnown", false}})
+						: Core::Result<Core::LogPage>{commits.GetError()};
+
+			if (!page)
+			{
+				return page.GetError();
+			}
+
+			range.Commits = page.GetValue().Commits;
+		}
+
+		return range;
+	}
+
+	Core::Result<std::vector<std::optional<std::string>>> WslGit::ReadBlobs(const std::vector<std::pair<Core::Oid, std::filesystem::path>>& reads)
+	{
+		nlohmann::json listed = nlohmann::json::array();
+
+		for (const auto& [revision, path] : reads)
+		{
+			listed.push_back({{"revision", revision.ToHex()}, {"path", Core::ToGenericUtf8(path)}});
+		}
+
+		const Core::Result<Answer> answer = Ask("git.readBlobs", {{"reads", std::move(listed)}});
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		Core::Result<std::vector<std::optional<std::string>>> sides = SplitSides(answer.GetValue().Result, answer.GetValue().Payload);
+
+		if (sides && sides.GetValue().size() != reads.size())
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent answered for other blobs than were asked"};
+		}
+
+		return sides;
+	}
+
+	Core::Result<std::vector<Core::WorktreeEntry>> WslGit::QueryWorktrees()
+	{
+		Core::Result<std::vector<Core::WorktreeEntry>> worktrees = Decoded(AskForPayload("git.worktrees", nlohmann::json::object()), &Core::WorktreesFromJson);
+
+		if (worktrees)
+		{
+			for (Core::WorktreeEntry& worktree : worktrees.GetValue())
+			{
+				worktree.Path = SharePathOf(Core::ToGenericUtf8(worktree.Path));
+			}
+		}
+
+		return worktrees;
+	}
+
+	Core::Result<WorktreeActivity> WslGit::QueryActivity()
+	{
+		const Core::Result<Answer> answer = Ask("git.activity", nlohmann::json::object());
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		const nlohmann::json& result = answer.GetValue().Result;
+		return WorktreeActivity{.Reflog = SecondsFrom(result, "reflog"), .Index = SecondsFrom(result, "index"), .HeadCommit = SecondsFrom(result, "headCommit")};
+	}
+
+	Core::Result<WorktreeCount> WslGit::CountUncommitted()
+	{
+		const Core::Result<Answer> answer = Ask("git.countUncommitted", nlohmann::json::object());
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		const nlohmann::json& result = answer.GetValue().Result;
+		return WorktreeCount{.Changed = result.value("changed", std::size_t{0}), .NewestChange = SecondsFrom(result, "newest")};
+	}
+
+	Core::Result<std::pair<std::string, std::string>> WslGit::ReadSinceViewed(const Core::Oid& viewed, const std::optional<Core::Oid>& tip,
+																			  const std::optional<std::filesystem::path>& worktree, const std::filesystem::path& path)
+	{
+		nlohmann::json arguments{{"viewed", viewed.ToHex()}, {"path", Core::ToGenericUtf8(path)}};
+
+		if (tip)
+		{
+			arguments["tip"] = tip->ToHex();
+		}
+		else if (worktree)
+		{
+			const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(*worktree);
+
+			if (!place || !Core::EqualsIgnoringCase(place->Distro, m_Root.Distro))
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the worktree is not in this repository's distro"};
+			}
+
+			arguments["worktree"] = place->LinuxPath;
+		}
+
+		const Core::Result<Answer> answer = Ask("git.sinceViewed", std::move(arguments));
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		Core::Result<std::vector<std::optional<std::string>>> sides = SplitSides(answer.GetValue().Result, answer.GetValue().Payload);
+
+		if (!sides || sides.GetValue().size() != 2 || !sides.GetValue()[0] || !sides.GetValue()[1])
+		{
+			return sides ? Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's versions are not a viewed and a current one"} : sides.GetError();
+		}
+
+		return std::pair{std::move(*sides.GetValue()[0]), std::move(*sides.GetValue()[1])};
 	}
 
 	Core::Result<std::vector<Core::GraphCommit>> WslGit::ReadGraphCommits(const Core::GraphReadRequest& request)

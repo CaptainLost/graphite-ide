@@ -85,11 +85,11 @@ TEST_CASE("On a WSL root what the agent does not answer yet says so, rather than
 		return std::make_shared<Graphite::WslGit>(agents, root, reach);
 	});
 
-	const Core::Result<std::vector<Core::WorktreeEntry>> worktrees = port.QueryWorktrees();
+	const Core::Result<std::vector<std::string>> changed = port.PathsChangedBetween(port.RepositoryNow(), Core::Oid{}, Core::Oid{});
 
-	REQUIRE_FALSE(worktrees.HasValue());
-	CHECK(worktrees.GetError().Code == Core::ErrorCode::Unsupported);
-	CHECK(worktrees.GetError().Message == "not available for folders inside WSL yet");
+	REQUIRE_FALSE(changed.HasValue());
+	CHECK(changed.GetError().Code == Core::ErrorCode::Unsupported);
+	CHECK(changed.GetError().Message == "not available for folders inside WSL yet");
 }
 
 TEST_CASE("A local root never reaches a WSL agent")
@@ -300,6 +300,24 @@ TEST_CASE("A WSL repository's history, branches, stashes and checkout work throu
 	REQUIRE(lines.GetValue().Graph != nullptr);
 	CHECK(lines.GetValue().Graph->Find(first.GetValue()) != Core::AncestryGraph::kNoCommit);
 
+	const Core::Result<Graphite::HeadBlame> blame = port.BlameAtHead(folder / "a.txt");
+	REQUIRE_MESSAGE(blame.HasValue(), (blame ? "" : blame.GetError().Message));
+	CHECK(blame.GetValue().Tracked);
+	REQUIRE(blame.GetValue().Blame != nullptr);
+	CHECK(blame.GetValue().Blame->Commits.contains(first.GetValue()));
+
+	const Core::Result<std::vector<Core::WorktreeEntry>> worktrees = port.QueryWorktrees();
+	REQUIRE(worktrees.HasValue());
+	REQUIRE(worktrees.GetValue().size() == 1);
+	CHECK(Core::NormalizeDirectory(worktrees.GetValue()[0].Path) == Core::NormalizeDirectory(folder));
+
+	const Core::Result<Core::HeadState> initialHead = port.QueryHead();
+	REQUIRE(initialHead.HasValue());
+	const Core::Result<Graphite::ReviewRange> range =
+		port.ResolveRange(Graphite::ReviewKey{.Branch = "refs/heads/feature", .Base = "refs/heads/" + initialHead.GetValue().BranchName});
+	REQUIRE(range.HasValue());
+	CHECK(range.GetValue().Problem == Graphite::RangeProblem::None);
+
 	const Core::Result<Core::LogPage> log = port.QueryLog(Core::LogRequest{});
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 1);
@@ -401,4 +419,101 @@ TEST_CASE("A WSL lines read for a folder no longer open is dropped without askin
 	CHECK(read.GetError().Code == Core::ErrorCode::Cancelled);
 	std::scoped_lock lock{distro.Mutex};
 	CHECK(distro.Operations.empty());
+}
+
+TEST_CASE("On a WSL root a blame whose HEAD bytes are not text is unusable")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		const std::string head{"\x00\x01\x02\x03", 4};
+		Core::Blame blame;
+		blame.At = kTip;
+		self.Reply(request.Id, {{"trackable", true}, {"headSize", head.size()}}, head + Core::ToJson(blame).dump());
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Core::Result<Graphite::HeadBlame> blame = port.BlameAtHead(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\a.bin");
+
+	REQUIRE(blame.HasValue());
+	CHECK(blame.GetValue().Tracked);
+	CHECK(blame.GetValue().Unusable);
+}
+
+TEST_CASE("On a WSL root a blame of a file in another distro is untracked without asking the agent")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) { self.Reply(request.Id, {{"trackable", true}, {"headSize", 0}}, "{}"); };
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Core::Result<Graphite::HeadBlame> blame = port.BlameAtHead(L"\\\\wsl.localhost\\Debian\\home\\me\\p\\a.txt");
+
+	REQUIRE(blame.HasValue());
+	CHECK_FALSE(blame.GetValue().Tracked);
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.Operations.empty());
+}
+
+TEST_CASE("On a WSL root the worktrees come back as share paths")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		const std::vector<Core::WorktreeEntry> worktrees{Core::WorktreeEntry{.Path = "/home/me/p", .Name = "p", .IsMain = true},
+														 Core::WorktreeEntry{.Path = "/home/me/wt", .Name = "wt"}};
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = Core::ToJsonList(worktrees).dump()}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Core::Result<std::vector<Core::WorktreeEntry>> worktrees = port.QueryWorktrees();
+
+	REQUIRE(worktrees.HasValue());
+	REQUIRE(worktrees.GetValue().size() == 2);
+	CHECK(worktrees.GetValue()[0].Path.native() == L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p");
+	CHECK(worktrees.GetValue()[1].Path.native() == L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt");
+}
+
+TEST_CASE("On a WSL root a worktree's diff is asked of the worktree itself, exactly")
+{
+	AnsweringDistro distro;
+	nlohmann::json asked;
+	distro.Answer = [&](const Core::AgentRequest& request, FakeAgent& self) {
+		asked = request.Arguments;
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = Core::ToJson(Core::Diff{}).dump()}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Core::Result<Core::Diff> diff = port.QueryWorktreeDiff(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt", Core::WhitespaceInDiff::Shown);
+	const Core::Result<Core::Diff> elsewhere = port.QueryWorktreeDiff(L"\\\\wsl.localhost\\Debian\\home\\me\\wt", Core::WhitespaceInDiff::Shown);
+
+	REQUIRE(diff.HasValue());
+	CHECK(asked.at("root") == "/home/me/wt");
+	CHECK(asked.at("reach") == "exactly");
+	REQUIRE_FALSE(elsewhere.HasValue());
+	CHECK(elsewhere.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("On a WSL root since viewed diffs the agent's two versions here")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		self.Reply(request.Id, {{"sides", {{{"present", true}, {"size", 4}}, {{"present", true}, {"size", 8}}}}}, "one\none\ntwo\n");
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Core::Result<Graphite::SinceViewedAnswer> answer =
+		port.ReadSinceViewed(Graphite::SinceViewedRequest{.ViewedBlob = kTip, .CurrentBlob = kTip, .Path = "a.txt", .Tip = kTip});
+
+	REQUIRE(answer.HasValue());
+	CHECK(answer.GetValue().Texts.Old == "one\n");
+	CHECK(answer.GetValue().Texts.New == "one\ntwo\n");
+	REQUIRE(answer.GetValue().Diff.Hunks.size() == 1);
 }

@@ -1,6 +1,7 @@
 #include "Git/RepositoryGitPort.h"
 
 #include "Core/FileSystem/WslSharePath.h"
+#include "Core/Base/Ascii.h"
 
 #include "Git/Worktrees/WorktreeOfFile.h"
 #include "Wsl/WslLineSource.h"
@@ -272,6 +273,20 @@ namespace Graphite {
 	{
 		const std::lock_guard<std::mutex> lock{m_RootMutex};
 		return m_Wsl;
+	}
+
+	Core::Result<std::shared_ptr<WslGit>> RepositoryGitPort::WslForWorktree(const std::filesystem::path& worktree)
+	{
+		const std::lock_guard<std::mutex> lock{m_RootMutex};
+		const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(worktree);
+		const std::optional<Core::WslSharePath> root = Core::ParseWslSharePath(Core::FromUtf8(m_Root));
+
+		if (!place || !root || !m_WslFactory || !Core::EqualsIgnoringCase(place->Distro, root->Distro))
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "the worktree is not in this repository's distro"};
+		}
+
+		return m_WslFactory(*place, WslGit::Reach::Exactly);
 	}
 
 	Core::Result<Core::Repository*> RepositoryGitPort::RepositoryForThisThread()
@@ -1431,8 +1446,132 @@ namespace Graphite {
 			indexSide.Present ? std::optional<std::string>{std::move(indexSide.Text)} : std::nullopt);
 	}
 
+	namespace {
+
+		// Blame of a file inside WSL: the agent decides whether git tracks it and blames it at HEAD;
+		// decoding HEAD's bytes stays here, as on a local file.
+		Core::Result<HeadBlame> BlameWslAtHead(WslGit& wsl, const std::filesystem::path& absolutePath)
+		{
+			Core::Result<WslGit::HeadBlameRead> read = wsl.BlameAtHead(absolutePath);
+
+			if (!read)
+			{
+				return read.GetError();
+			}
+
+			if (!read.GetValue().Trackable)
+			{
+				return HeadBlame{};
+			}
+
+			HeadBlame result;
+			result.Tracked = true;
+			std::optional<std::string> text = DecodeBaseText(read.GetValue().Head);
+
+			if (!text)
+			{
+				result.Unusable = true;
+				return result;
+			}
+
+			result.HeadText = std::move(*text);
+			result.Blame = Core::CreateRef<Core::Blame>(std::move(read.GetValue().Blame));
+			return result;
+		}
+
+		Core::Result<ReviewRange> ResolveWslRange(WslGit& wsl, const ReviewKey& key)
+		{
+			Core::Result<WslGit::RangeRead> read = wsl.ResolveRange(key.Branch, key.Base);
+
+			if (!read)
+			{
+				return read.GetError();
+			}
+
+			WslGit::RangeRead& asked = read.GetValue();
+			ReviewRange range;
+			range.Worktree = asked.Worktree;
+
+			if (asked.Problem == "branchMissing")
+			{
+				range.Problem = RangeProblem::BranchMissing;
+				range.Worktree.reset();
+				return range;
+			}
+
+			if (asked.Problem == "baseMissing")
+			{
+				range.Problem = RangeProblem::BaseMissing;
+				return range;
+			}
+
+			if (asked.Problem == "noCommonAncestor")
+			{
+				range.Problem = RangeProblem::NoCommonAncestor;
+				return range;
+			}
+
+			range.Ends = RangeEnds{.MergeBase = *asked.MergeBase, .Tip = *asked.Tip};
+			range.Commits = std::move(asked.Commits);
+			range.CommitsComplete = asked.Complete;
+			return range;
+		}
+
+		Core::Result<FileTexts> ReadWslBlobTexts(WslGit& wsl, const std::vector<std::pair<Core::Oid, std::filesystem::path>>& reads)
+		{
+			Core::Result<std::vector<std::optional<std::string>>> sides = wsl.ReadBlobs(reads);
+
+			if (!sides)
+			{
+				return sides.GetError();
+			}
+
+			FileTexts texts;
+			texts.HasOld = sides.GetValue()[0].has_value();
+			texts.Old = std::move(sides.GetValue()[0]).value_or(std::string{});
+			texts.HasNew = sides.GetValue()[1].has_value();
+			texts.New = std::move(sides.GetValue()[1]).value_or(std::string{});
+			return texts;
+		}
+
+		// Since viewed inside WSL: the agent reads both versions, the diff of the two is made here.
+		Core::Result<SinceViewedAnswer> ReadWslSinceViewed(WslGit& wsl, const SinceViewedRequest& request)
+		{
+			Core::Result<std::pair<std::string, std::string>> read = wsl.ReadSinceViewed(request.ViewedBlob, request.Tip, request.Worktree, request.Path);
+
+			if (!read)
+			{
+				return read.GetError();
+			}
+
+			auto& [viewed, current] = read.GetValue();
+			Core::Result<Core::FileDiff> diff = Core::Repository::DiffTexts(viewed, current, request.Path, request.Whitespace);
+
+			if (!diff)
+			{
+				return diff.GetError();
+			}
+
+			SinceViewedAnswer answer;
+			answer.Diff = std::move(diff).GetValue();
+			answer.Diff.OldId = request.ViewedBlob;
+			answer.Diff.NewId = request.CurrentBlob;
+			answer.Texts.Old = std::move(viewed);
+			answer.Texts.HasOld = true;
+			answer.Texts.New = std::move(current);
+			answer.Texts.HasNew = true;
+			return answer;
+		}
+	}
+
 	Core::Result<HeadBlame> RepositoryGitPort::BlameAtHead(const std::filesystem::path& absolutePath)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return BlameWslAtHead(*wsl, absolutePath);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		// WARNING: No repository, or one that cannot be opened, leaves the file untracked rather than
@@ -1511,6 +1650,12 @@ namespace Graphite {
 
 	Core::Result<Core::LineHistory> RepositoryGitPort::QueryLineHistory(const Core::LineHistoryRequest& request)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryLineHistory(request);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1588,6 +1733,12 @@ namespace Graphite {
 
 	Core::Result<ReviewRange> RepositoryGitPort::ResolveRange(const ReviewKey& key)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return ResolveWslRange(*wsl, key);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1669,6 +1820,19 @@ namespace Graphite {
 
 	Core::Result<Core::Diff> RepositoryGitPort::QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			Core::DiffRequest request{.Target = Core::DiffTarget::RevisionToRevision, .To = ends.Tip, .Whitespace = whitespace};
+
+			if (!ends.MergeBase.IsZero())
+			{
+				request.From = ends.MergeBase;
+			}
+
+			return wsl->QueryDiff(request);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1695,6 +1859,12 @@ namespace Graphite {
 															  const std::filesystem::path& oldPath,
 															  const std::filesystem::path& newPath)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return ReadWslBlobTexts(*wsl, {{ends.MergeBase, oldPath}, {ends.Tip, newPath}});
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1724,6 +1894,14 @@ namespace Graphite {
 	Core::Result<Core::Diff> RepositoryGitPort::QueryWorktreeDiff(const std::filesystem::path& worktree,
 																  Core::WhitespaceInDiff whitespace)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			const Core::Result<std::shared_ptr<WslGit>> other = WslForWorktree(worktree);
+			return other ? other.GetValue()->QueryDiff(Core::DiffRequest{.Target = Core::DiffTarget::WorkTreeToHead, .Whitespace = whitespace})
+						 : Core::Result<Core::Diff>{other.GetError()};
+		}
+
 		// WARNING: Not cached per thread, because a cached handle would hold an index the worktree's
 		// own git has since rewritten. Opened exactly, because a folder that lost its .git file
 		// would otherwise be read as the repository around it.
@@ -1747,6 +1925,14 @@ namespace Graphite {
 																 const std::filesystem::path& oldPath,
 																 const std::filesystem::path& newPath)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			const Core::Result<std::shared_ptr<WslGit>> other = WslForWorktree(worktree);
+			return other ? ReadWslWorkingTreeTexts(*other.GetValue(), Core::DiffTarget::WorkTreeToHead, oldPath, newPath)
+						 : Core::Result<FileTexts>{other.GetError()};
+		}
+
 		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
 
 		if (!opened.HasValue())
@@ -1775,6 +1961,12 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::WorktreeEntry>> RepositoryGitPort::QueryWorktrees()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryWorktrees();
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1803,6 +1995,13 @@ namespace Graphite {
 
 	Core::Result<WorktreeActivity> RepositoryGitPort::QueryActivity(const std::filesystem::path& worktree)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			const Core::Result<std::shared_ptr<WslGit>> other = WslForWorktree(worktree);
+			return other ? other.GetValue()->QueryActivity() : Core::Result<WorktreeActivity>{other.GetError()};
+		}
+
 		// WARNING: Opened exactly and not cached, for the reason QueryWorktreeDiff gives. The git directory is asked of
 		// libgit2 because a linked worktree keeps its HEAD, index and reflog in <common>/worktrees/<name>.
 		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
@@ -1848,6 +2047,13 @@ namespace Graphite {
 
 	Core::Result<WorktreeCount> RepositoryGitPort::CountUncommitted(const std::filesystem::path& worktree)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			const Core::Result<std::shared_ptr<WslGit>> other = WslForWorktree(worktree);
+			return other ? other.GetValue()->CountUncommitted() : Core::Result<WorktreeCount>{other.GetError()};
+		}
+
 		// WARNING: Not cached per thread, for the reason QueryWorktreeDiff gives. A wholly untracked folder
 		// is one entry, as QueryStatus collapses it.
 		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
@@ -1883,6 +2089,12 @@ namespace Graphite {
 
 	Core::Result<SinceViewedAnswer> RepositoryGitPort::ReadSinceViewed(const SinceViewedRequest& request)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3c-1).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return ReadWslSinceViewed(*wsl, request);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
