@@ -23,6 +23,9 @@ namespace Agent {
 	class RepositoryCache
 	{
 	public:
+		// writes: InMemory for handles whose checks create objects that must never reach the repository.
+		explicit RepositoryCache(Core::ObjectWrites writes = Core::ObjectWrites::OnDisk) : m_Writes(writes) {}
+
 		Core::Result<Core::Repository*> Get(const std::string& root, bool exactly);
 		void Forget(const std::string& root);
 
@@ -45,6 +48,7 @@ namespace Agent {
 
 		static ShallowStamp StampOf(const Core::Repository& repository);
 
+		Core::ObjectWrites m_Writes;
 		std::map<std::string, Cached> m_Repositories;
 	};
 

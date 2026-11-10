@@ -3,6 +3,7 @@
 #include "Git/GitRequests.h"
 
 #include "Git/HistoryRequests.h"
+#include "Git/ContentRequests.h"
 #include "Git/ReviewRequests.h"
 #include "Git/RepositoryRequests.h"
 
@@ -284,6 +285,7 @@ namespace Agent {
 
 		AddHistoryHandlers(handlers, cache);
 		AddReviewHandlers(handlers, cache);
+		AddContentHandlers(handlers);
 		return handlers;
 	}
 

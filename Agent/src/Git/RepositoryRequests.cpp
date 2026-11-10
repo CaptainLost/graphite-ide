@@ -65,7 +65,7 @@ namespace Agent {
 			m_Repositories.erase(cached);
 		}
 
-		Core::Result<Core::Repository> opened = exactly ? Core::Repository::OpenExactly(root) : Core::Repository::Open(root);
+		Core::Result<Core::Repository> opened = exactly ? Core::Repository::OpenExactly(root, m_Writes) : Core::Repository::Open(root, m_Writes);
 
 		if (!opened)
 		{
