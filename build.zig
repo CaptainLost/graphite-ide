@@ -28,6 +28,7 @@ const core_source_files = [_][]const u8{
     "Core/src/Core/FileSystem/FileName.cpp",
     "Core/src/Core/FileSystem/FileSystem.cpp",
     "Core/src/Core/FileSystem/RelativePath.cpp",
+    "Core/src/Core/FileSystem/WslFileOperations.cpp",
     "Core/src/Core/FileSystem/WslSharePath.cpp",
     "Core/src/Core/Text/Encoding.cpp",
     "Core/src/Core/Text/Utf8.cpp",

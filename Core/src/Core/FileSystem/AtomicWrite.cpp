@@ -3,6 +3,7 @@
 #include "Core/FileSystem/AtomicWrite.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslFileOperations.h"
 #include "Core/Platform/Win32Error.h"
 
 #include <fstream>
@@ -178,6 +179,18 @@ namespace Core {
 
 	Result<void> WriteFileAtomically(const std::filesystem::path& requestedTarget, std::string_view bytes)
 	{
+		// Win32 cannot replace a file under a WSL share (ReplaceFileW fails there): the distro's
+		// agent writes it, keeping its Linux permissions (ADR 0696).
+		if (std::optional<Result<WslRoute>> route = RouteThroughWsl(requestedTarget))
+		{
+			if (!*route)
+			{
+				return route->GetError();
+			}
+
+			return route->GetValue().Operations->WriteFile(route->GetValue().Place, bytes);
+		}
+
 		std::filesystem::path target = requestedTarget;
 
 #ifndef CORE_PLATFORM_WINDOWS

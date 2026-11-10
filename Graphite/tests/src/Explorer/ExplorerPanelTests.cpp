@@ -93,7 +93,7 @@ namespace {
 	public:
 		explicit ExplorerPanelScreen(const std::filesystem::path& folder,
 									 Core::JobSubmitter workspaceJobs = Graphite::RunJobWhereSubmitted)
-			: Workspace{Events, Settings.Get(), Core::DirectoryWatcher::Start, std::move(workspaceJobs)}
+			: Workspace{Events, Settings.Get(), Core::WatchDirectory, std::move(workspaceJobs)}
 		{
 			REQUIRE(Workspace.OpenFolder(folder));
 

@@ -498,4 +498,16 @@ namespace Core {
 
 		return changes;
 	}
+
+	Result<Scope<FolderWatch>> WatchDirectory(const std::filesystem::path& root)
+	{
+		Result<Scope<DirectoryWatcher>> started = DirectoryWatcher::Start(root);
+
+		if (!started)
+		{
+			return started.GetError();
+		}
+
+		return Scope<FolderWatch>{std::move(started.GetValue())};
+	}
 }

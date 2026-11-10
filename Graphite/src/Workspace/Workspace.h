@@ -91,7 +91,7 @@ namespace Graphite {
 	};
 
 	using WatcherStart =
-		std::function<Core::Result<Core::Scope<Core::DirectoryWatcher>>(const std::filesystem::path& root)>;
+		std::function<Core::Result<Core::Scope<Core::FolderWatch>>(const std::filesystem::path& root)>;
 
 	inline void RunJobWhereSubmitted(std::function<void()> job)
 	{
@@ -119,7 +119,7 @@ namespace Graphite {
 	class Workspace final
 	{
 	public:
-		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::DirectoryWatcher::Start,
+		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::WatchDirectory,
 				  Core::JobSubmitter submitJob = RunJobWhereSubmitted, SolutionReading readSolution = ReadSolution)
 			: m_Events(events), m_AppSettings(settings), m_StartWatcher(std::move(startWatcher)),
 			  m_SolutionRead(std::move(submitJob)), m_ReadSolution(std::move(readSolution))
@@ -255,7 +255,7 @@ namespace Graphite {
 		std::optional<Core::Repository> m_Repository;
 		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;
 		Core::FileTree m_Tree;
-		Core::Scope<Core::DirectoryWatcher> m_Watcher;
+		Core::Scope<Core::FolderWatch> m_Watcher;
 
 		bool m_WatcherResumed = false;
 		std::filesystem::path m_Root;

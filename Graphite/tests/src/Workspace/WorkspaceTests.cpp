@@ -338,7 +338,7 @@ namespace {
 	struct SolutionWorkspace
 	{
 		explicit SolutionWorkspace(DeferredJobs& jobs, Graphite::SolutionReading readSolution = Graphite::ReadSolution)
-			: Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter(), std::move(readSolution))
+			: Workspace(Events, Settings.Get(), Core::WatchDirectory, jobs.Submitter(), std::move(readSolution))
 		{
 		}
 

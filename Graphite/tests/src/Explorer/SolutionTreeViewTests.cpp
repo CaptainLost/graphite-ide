@@ -115,7 +115,7 @@ namespace {
 	public:
 		explicit SolutionScreen(const std::filesystem::path& solution,
 								Core::JobSubmitter submitJob = Graphite::RunJobWhereSubmitted)
-			: Workspace{Events, Settings.Get(), Core::DirectoryWatcher::Start, std::move(submitJob)}
+			: Workspace{Events, Settings.Get(), Core::WatchDirectory, std::move(submitJob)}
 		{
 			REQUIRE(Workspace.OpenSolution(solution));
 

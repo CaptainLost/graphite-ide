@@ -94,7 +94,7 @@ namespace {
 	struct SearchScreen
 	{
 		explicit SearchScreen(DeferredJobs& jobs)
-			: Jobs(jobs), Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter())
+			: Jobs(jobs), Workspace(Events, Settings.Get(), Core::WatchDirectory, jobs.Submitter())
 		{
 			Search.SetProjectsOnly(true);
 		}

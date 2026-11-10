@@ -23,7 +23,7 @@ namespace {
 		std::vector<Graphite::ToastEvent> Toasts;
 	};
 
-	Core::Result<Core::Scope<Core::DirectoryWatcher>> FailToWatch(const std::filesystem::path&)
+	Core::Result<Core::Scope<Core::FolderWatch>> FailToWatch(const std::filesystem::path&)
 	{
 		return Core::Error{Core::ErrorCode::IoFailure, "no watching here"};
 	}

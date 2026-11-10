@@ -234,7 +234,7 @@ namespace Graphite {
 	{
 		m_Watcher.reset();
 
-		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = m_StartWatcher(root);
+		Core::Result<Core::Scope<Core::FolderWatch>> watcher = m_StartWatcher(root);
 
 		if (!watcher)
 		{
@@ -456,7 +456,7 @@ namespace Graphite {
 			return;
 		}
 
-		const Core::DirectoryWatcher::Changes changes = m_Watcher->TakeSettled();
+		const Core::FolderChanges changes = m_Watcher->TakeSettled();
 
 		if (changes.MovedTo)
 		{
@@ -619,7 +619,7 @@ namespace Graphite {
 
 		m_WatcherResumed = true;
 
-		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = m_StartWatcher(m_Root);
+		Core::Result<Core::Scope<Core::FolderWatch>> watcher = m_StartWatcher(m_Root);
 
 		if (!watcher)
 		{

@@ -5,6 +5,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/FileSystem/ChangeBatcher.h"
+#include "Core/FileSystem/FolderWatch.h"
 #include "Core/Platform/UniqueHandle.h"
 
 #include <atomic>
@@ -21,12 +22,12 @@
 
 namespace Core {
 
-	class DirectoryWatcher final : NonCopyable
+	class DirectoryWatcher final : public FolderWatch, NonCopyable
 	{
 	public:
 		static constexpr std::chrono::milliseconds kQuietPeriod{250};
 
-		~DirectoryWatcher();
+		~DirectoryWatcher() override;
 
 		// Returns only once the watch is armed. Windows records nothing for a directory handle
 		// until a read has been issued against it, and that read is issued on the worker thread,
@@ -34,22 +35,11 @@ namespace Core {
 		static Result<Scope<DirectoryWatcher>> Start(
 			const std::filesystem::path& root);
 
-		struct Changes
-		{
-			std::vector<std::filesystem::path> Directories;
+		using Changes = FolderChanges;
 
-			bool Overflowed = false;
+		Changes TakeSettled() override;
 
-			bool IgnoreRulesChanged = false;
-
-			bool RepositoryStateChanged = false;
-
-			std::optional<std::filesystem::path> MovedTo;
-		};
-
-		Changes TakeSettled();
-
-		bool IsRunning() const { return m_Running.load(); }
+		bool IsRunning() const override { return m_Running.load(); }
 
 	private:
 		DirectoryWatcher() = default;
@@ -87,4 +77,7 @@ namespace Core {
 		UniqueHandle m_Directory;
 		UniqueHandle m_StopEvent;
 	};
+
+	// DirectoryWatcher::Start as a FolderWatch, for whoever takes any kind of watch.
+	Result<Scope<FolderWatch>> WatchDirectory(const std::filesystem::path& root);
 }

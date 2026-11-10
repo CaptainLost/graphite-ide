@@ -3,10 +3,12 @@
 #include "Core/FileSystem/FileOperations.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslFileOperations.h"
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Error.h"
 
 #include <cstddef>
+#include <format>
 #include <fstream>
 #include <string>
 #include <system_error>
@@ -141,6 +143,11 @@ namespace Core {
 
 	Result<void> CreateEmptyFile(const std::filesystem::path& path)
 	{
+		if (std::optional<Result<WslRoute>> route = RouteThroughWsl(path))
+		{
+			return *route ? route->GetValue().Operations->CreateEmptyFile(route->GetValue().Place) : route->GetError();
+		}
+
 #ifdef CORE_PLATFORM_WINDOWS
 		// CREATE_NEW has the OS itself refuse an existing file, which a check before creating could
 		// not promise: a file can appear in between and would be truncated.
@@ -176,6 +183,11 @@ namespace Core {
 
 	Result<void> MakeDirectory(const std::filesystem::path& path)
 	{
+		if (std::optional<Result<WslRoute>> route = RouteThroughWsl(path))
+		{
+			return *route ? route->GetValue().Operations->MakeDirectory(route->GetValue().Place) : route->GetError();
+		}
+
 		std::error_code error;
 		if (std::filesystem::exists(path, error))
 		{
@@ -194,6 +206,24 @@ namespace Core {
 
 	Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to)
 	{
+		const std::optional<WslSharePath> fromPlace = ParseWslSharePath(from);
+		const std::optional<WslSharePath> toPlace = ParseWslSharePath(to);
+
+		if (fromPlace || toPlace)
+		{
+			// A move between a distro and Windows, or between two distros, crosses file systems.
+			const bool sameDistro = fromPlace && toPlace && fromPlace->Distro == toPlace->Distro;
+
+			if (!sameDistro)
+			{
+				return Error{ErrorCode::Unsupported, std::format("cannot move '{}' to '{}': they are on different file systems",
+																 ToUtf8(from), ToUtf8(to))};
+			}
+
+			const std::optional<Result<WslRoute>> route = RouteThroughWsl(from);
+			return *route ? route->GetValue().Operations->Rename(*fromPlace, *toPlace) : route->GetError();
+		}
+
 #ifdef CORE_PLATFORM_WINDOWS
 		const bool moved = ::MoveFileExW(from.c_str(), to.c_str(), kRefuseOccupiedDestination) != 0;
 
@@ -256,6 +286,12 @@ namespace Core {
 
 	Result<void> MoveToRecycleBin(const std::filesystem::path& path)
 	{
+		// Inside WSL the Linux trash takes it, where Linux file managers restore it from.
+		if (std::optional<Result<WslRoute>> route = RouteThroughWsl(path))
+		{
+			return *route ? route->GetValue().Operations->MoveToTrash(route->GetValue().Place) : route->GetError();
+		}
+
 		std::error_code ignoredError;
 		if (!std::filesystem::exists(path, ignoredError))
 		{
