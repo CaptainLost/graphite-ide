@@ -319,4 +319,44 @@ namespace Agent {
 		AddHistoryHandlers(handlers, cache);
 		return handlers;
 	}
+
+	GitHandlers DefaultQuickGitHandlers()
+	{
+		auto cache = std::make_shared<RepositoryCache>();
+		GitHandlers handlers;
+
+		// What the Explorer needs once per folder it opens: where the repository is, and the rule
+		// files above the folder that a watch on the folder cannot see change.
+		handlers["git.ignoreSetup"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
+			const std::string root = arguments.value("root", std::string{});
+			json ruleFiles = json::array();
+
+			for (const std::filesystem::path& file : repository.IgnoreRuleFilesOutside(root))
+			{
+				ruleFiles.push_back(file.string()); // not a path conversion: Linux paths are their bytes
+			}
+
+			return GitAnswer{.Result = {{"workingDirectory", SpelledLikeRoot(repository.GetWorkingDirectory(), root)}, {"ruleFiles", std::move(ruleFiles)}}};
+		});
+
+		// Every entry of one folder at once, in the order asked: the Explorer asks as it lists.
+		handlers["git.ignored"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
+			// libgit2 resolves symbolic links in the working directory, so the folder is resolved too.
+			const std::filesystem::path asked{arguments.value("folder", std::string{})};
+			std::error_code resolveError;
+			const std::filesystem::path resolved = std::filesystem::weakly_canonical(asked, resolveError);
+			const std::filesystem::path folder = resolveError ? asked : resolved;
+			json ignored = json::array();
+
+			for (const json& entry : arguments.value("entries", json::array()))
+			{
+				const std::string name = entry.is_object() ? entry.value("name", std::string{}) : std::string{};
+				ignored.push_back(!name.empty() && repository.IsIgnored(folder / name));
+			}
+
+			return GitAnswer{.Result = {{"ignored", std::move(ignored)}}};
+		});
+
+		return handlers;
+	}
 }

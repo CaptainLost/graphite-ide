@@ -6,6 +6,7 @@
 
 #include "GitFixture.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -228,6 +229,42 @@ TEST_CASE("git.bases in a folder with no repository is not trackable, rather tha
 
 	REQUIRE(bases.HasValue());
 	CHECK(bases.GetValue().Result.at("trackable") == false);
+}
+
+TEST_CASE("An ignore question answers each entry of a folder in order")
+{
+	GitFixture fixture;
+	fixture.Write(".gitignore", "build/\n*.log\n");
+	fixture.Write("a.txt", "x\n");
+	fixture.Commit("first");
+	// The Explorer asks about what it listed, so the folder is there for a folder-only rule.
+	fixture.Write("build/out.o", "x\n");
+	const Agent::GitHandlers quick = Agent::DefaultQuickGitHandlers();
+	const json entries = json::array({{{"name", "build"}, {"directory", true}}, {{"name", "a.log"}, {"directory", false}}, {{"name", "a.txt"}, {"directory", false}}});
+
+	const Core::Result<Agent::GitAnswer> answer =
+		Call(quick, "git.ignored", At(fixture, {{"folder", fixture.GetPath().string()}, {"entries", entries}})); // not a path conversion
+
+	REQUIRE(answer.HasValue());
+	CHECK(answer.GetValue().Result.at("ignored") == json::array({true, true, false}));
+}
+
+TEST_CASE("The ignore setup names the working directory and the rule files outside the root")
+{
+	GitFixture fixture;
+	fixture.Write(".gitignore", "*.log\n");
+	fixture.Write("sub/a.txt", "x\n");
+	fixture.Commit("first");
+	const Agent::GitHandlers quick = Agent::DefaultQuickGitHandlers();
+	json arguments = At(fixture);
+	arguments["root"] = (fixture.GetPath() / "sub").string(); // not a path conversion
+
+	const Core::Result<Agent::GitAnswer> answer = Call(quick, "git.ignoreSetup", arguments);
+
+	REQUIRE(answer.HasValue());
+	CHECK(answer.GetValue().Result.at("workingDirectory") == fixture.GetPath().string()); // not a path conversion
+	const json& ruleFiles = answer.GetValue().Result.at("ruleFiles");
+	CHECK(std::find(ruleFiles.begin(), ruleFiles.end(), json((fixture.GetPath() / ".gitignore").string())) != ruleFiles.end()); // not a path conversion
 }
 
 TEST_CASE("git.init makes a repository in an empty folder and refuses inside one")

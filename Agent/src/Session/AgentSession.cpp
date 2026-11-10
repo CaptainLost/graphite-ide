@@ -39,8 +39,8 @@ namespace Agent {
 		}
 	}
 
-	AgentSession::AgentSession(std::string version, GitHandlers gitHandlers)
-		: m_Version(std::move(version)), m_GitHandlers(std::move(gitHandlers))
+	AgentSession::AgentSession(std::string version, GitHandlers gitHandlers, GitHandlers quickHandlers)
+		: m_Version(std::move(version)), m_GitHandlers(std::move(gitHandlers)), m_QuickHandlers(std::move(quickHandlers))
 	{
 	}
 
@@ -144,16 +144,21 @@ namespace Agent {
 		}
 		else if (operation.starts_with("git."))
 		{
-			// Answered on the git worker; Tick sends the reply when it is ready.
+			// Answered on a git worker; Tick sends the reply when it is ready.
+			const auto quick = m_QuickHandlers.find(operation);
 			const auto handler = m_GitHandlers.find(operation);
 
-			if (handler == m_GitHandlers.end())
+			if (quick != m_QuickHandlers.end())
 			{
-				Reply(request, Core::Error{Core::ErrorCode::Unsupported, std::format("the agent has no \"{}\"", operation)});
+				m_QuickWorker.Submit(request, quick->second);
+			}
+			else if (handler != m_GitHandlers.end())
+			{
+				m_GitWorker.Submit(request, handler->second);
 			}
 			else
 			{
-				m_GitWorker.Submit(request, handler->second);
+				Reply(request, Core::Error{Core::ErrorCode::Unsupported, std::format("the agent has no \"{}\"", operation)});
 			}
 		}
 		else
@@ -248,9 +253,12 @@ namespace Agent {
 
 	void AgentSession::Tick()
 	{
-		for (const Core::AgentReply& reply : m_GitWorker.TakeFinished())
+		for (GitWorker* worker : {&m_QuickWorker, &m_GitWorker})
 		{
-			m_Output += Core::EncodeReply(reply);
+			for (const Core::AgentReply& reply : worker->TakeFinished())
+			{
+				m_Output += Core::EncodeReply(reply);
+			}
 		}
 
 		for (auto& [id, watch] : m_Watches)
@@ -317,8 +325,9 @@ namespace Agent {
 	std::vector<int> AgentSession::WatchDescriptors() const
 	{
 		std::vector<int> descriptors;
-		descriptors.reserve(m_Watches.size() + 1);
+		descriptors.reserve(m_Watches.size() + 2);
 		descriptors.push_back(m_GitWorker.GetDescriptor());
+		descriptors.push_back(m_QuickWorker.GetDescriptor());
 
 		for (const auto& [id, watch] : m_Watches)
 		{

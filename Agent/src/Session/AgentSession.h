@@ -21,8 +21,10 @@ namespace Agent {
 	class AgentSession
 	{
 	public:
-		// gitHandlers answer the "git.*" operations on the git worker; by default the agent's own.
-		explicit AgentSession(std::string version, GitHandlers gitHandlers = DefaultGitHandlers());
+		// gitHandlers answer the "git.*" operations on the git worker, quickHandlers theirs on the
+		// quick lane; by default the agent's own.
+		explicit AgentSession(std::string version, GitHandlers gitHandlers = DefaultGitHandlers(),
+							  GitHandlers quickHandlers = DefaultQuickGitHandlers());
 
 		void Receive(std::string_view bytes);
 
@@ -48,7 +50,9 @@ namespace Agent {
 
 		std::string m_Version;
 		GitHandlers m_GitHandlers;
+		GitHandlers m_QuickHandlers;
 		GitWorker m_GitWorker;
+		GitWorker m_QuickWorker;
 		Core::FrameReader m_Reader;
 		std::string m_Output;
 		std::map<int, std::unique_ptr<TreeWatch>> m_Watches;
