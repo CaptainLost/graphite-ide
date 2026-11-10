@@ -1,6 +1,7 @@
 #include "App/TitleBar.h"
 
 #include "App/Logo.h"
+#include "Wsl/WslLabels.h"
 #include "Core/Base/Color.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/UiScale.h"
@@ -191,6 +192,11 @@ namespace Graphite {
 
 	std::string FolderLabel(const std::filesystem::path& root)
 	{
+		if (std::optional<std::string> inWsl = WslFolderTitle(root))
+		{
+			return *inWsl;
+		}
+
 		const std::filesystem::path name = root.has_filename() ? root.filename() : root.parent_path().filename();
 
 		return Core::ToUtf8(name.empty() ? root : name);
