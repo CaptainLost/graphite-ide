@@ -485,14 +485,57 @@ namespace Core {
 		return normalized;
 	}
 
+	namespace {
+
+		// The place in WSL a host path names (ADR 0696), found cheaply: only a path that starts
+		// with two separators is parsed, so local paths on hot paths pay one comparison. Linux
+		// paths never name a WSL share.
+		std::optional<WslSharePath> WslPlaceOf([[maybe_unused]] const std::filesystem::path& path)
+		{
+#ifdef CORE_PLATFORM_WINDOWS
+			const std::filesystem::path::string_type& spelled = path.native();
+			const auto isSeparator = [](wchar_t character) { return character == L'\\' || character == L'/'; };
+
+			if (spelled.size() < 2 || !isSeparator(spelled[0]) || !isSeparator(spelled[1]))
+			{
+				return std::nullopt;
+			}
+
+			return ParseWslSharePath(path);
+#else
+			return std::nullopt;
+#endif
+		}
+
+		// The spelling a path is cut in when RelativeToKey takes it apart: for a place in WSL the
+		// host's one spelling, which has the length of its key.
+		std::filesystem::path SpellingOfKey(const std::filesystem::path& path)
+		{
+			const std::optional<WslSharePath> place = WslPlaceOf(path);
+			return place ? ToWslSharePath(*place) : path;
+		}
+	}
+
 	PathKeyText PathKey(const std::filesystem::path& path)
 	{
-		PathKeyText key = NormalizeDirectory(CanonicalWslSharePath(path)).native();
+		std::optional<WslSharePath> place = WslPlaceOf(path);
+
+		// WSL takes a distro's name in any case (\\wsl$\ubuntu is Ubuntu), so its key folds that
+		// name and nothing else.
+		if (place)
+		{
+			for (char& character : place->Distro)
+			{
+				character = LowerAscii(character);
+			}
+		}
+
+		PathKeyText key = NormalizeDirectory(place ? ToWslSharePath(*place) : path).native();
 
 #ifdef CORE_PLATFORM_WINDOWS
 		// A place in WSL is on a Linux file system, which tells Makefile from makefile: its key
 		// keeps the case, and only its spelling is made one (ADR 0696).
-		const bool isInWsl = ParseWslSharePath(path).has_value();
+		const bool isInWsl = place.has_value();
 
 		// The invariant locale folds case as the file system does, where the user's locale would give
 		// "i" a different capital under Turkish. Upper-casing never changes the length of UTF-16 text,
@@ -560,7 +603,9 @@ namespace Core {
 		}
 
 		const std::size_t baseEndInNormalizedPath = baseKey.size();
-		std::filesystem::path::string_type relativeSpelling = NormalizeDirectory(path).native().substr(baseEndInNormalizedPath);
+		// Cut in the spelling the key was made from: another spelling of a WSL place (\\wsl$ for
+		// \\wsl.localhost) has another length.
+		std::filesystem::path::string_type relativeSpelling = NormalizeDirectory(SpellingOfKey(path)).native().substr(baseEndInNormalizedPath);
 
 		while (!relativeSpelling.empty() && relativeSpelling.front() == std::filesystem::path::preferred_separator)
 		{

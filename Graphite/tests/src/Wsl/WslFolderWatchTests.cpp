@@ -87,6 +87,19 @@ TEST_CASE("A change the agent reports below the root comes back as the folder's 
 	CHECK(watch->IsRunning());
 }
 
+TEST_CASE("Once armed, a watch asks for the whole tree to be read again, since changes before it went unseen")
+{
+	WatchingDistro distro;
+	Graphite::WslAgents agents{distro.Connector()};
+	const Core::Scope<Graphite::WslFolderWatch> watch = Graphite::WslFolderWatch::Start(agents, Core::WslSharePath{"Ubuntu", "/home/me/p"});
+
+	bool sawOverflow = false;
+	REQUIRE(Eventually([&] {
+		sawOverflow |= watch->TakeSettled().Overflowed;
+		return sawOverflow;
+	}));
+}
+
 TEST_CASE("A watch stops running when its agent stops")
 {
 	WatchingDistro distro;

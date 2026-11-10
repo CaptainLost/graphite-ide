@@ -104,6 +104,15 @@ TEST_CASE("A local write never reaches the WSL operations")
 	CHECK(recorded.Calls.empty());
 }
 
+TEST_CASE("A rename within one distro spelled in two cases goes to the operations")
+{
+	RecordingOperations recorded;
+	Registered registered{&recorded};
+
+	CHECK(Core::Rename(L"\\\\wsl.localhost\\ubuntu\\a", L"\\\\wsl.localhost\\Ubuntu\\b").HasValue());
+	CHECK(recorded.Calls == std::vector<std::string>{"rename /a /b"});
+}
+
 TEST_CASE("A rename between WSL and a local folder, or between two distros, is refused")
 {
 	RecordingOperations recorded;

@@ -62,6 +62,21 @@ TEST_CASE("A path that is not in WSL is left as it is")
 	CHECK(Core::CanonicalWslSharePath(L"\\\\nas\\share\\x").native() == L"\\\\nas\\share\\x");
 }
 
+TEST_CASE("A path is found below its folder whatever spelling of WSL each was written in")
+{
+	CHECK(Core::RelativeTo(L"\\\\wsl$\\Ubuntu\\home\\me\\p\\a.cpp", L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p") ==
+		  std::filesystem::path{L"a.cpp"});
+	CHECK(Core::RelativeTo(L"\\\\?\\UNC\\wsl.localhost\\Ubuntu\\home\\me\\p\\src\\deep\\f.cpp", L"\\\\wsl$\\Ubuntu\\home\\me\\p") ==
+		  std::filesystem::path{L"src\\deep\\f.cpp"});
+}
+
+TEST_CASE("A distro's name is one place in any case, as WSL takes it, while the names inside keep theirs")
+{
+	CHECK(Core::SamePath(L"\\\\wsl.localhost\\ubuntu\\a", L"\\\\wsl.localhost\\Ubuntu\\a"));
+	CHECK_FALSE(Core::SamePath(L"\\\\wsl.localhost\\ubuntu\\a", L"\\\\wsl.localhost\\Ubuntu\\A"));
+	CHECK(Core::RelativeTo(L"\\\\wsl$\\UBUNTU\\home\\x.cpp", L"\\\\wsl.localhost\\Ubuntu\\home") == std::filesystem::path{L"x.cpp"});
+}
+
 TEST_CASE("Paths in WSL keep their case as keys, and every spelling of one place is one key")
 {
 	CHECK_FALSE(Core::SamePath(L"\\\\wsl.localhost\\Ubuntu\\a\\Makefile", L"\\\\wsl.localhost\\Ubuntu\\a\\makefile"));

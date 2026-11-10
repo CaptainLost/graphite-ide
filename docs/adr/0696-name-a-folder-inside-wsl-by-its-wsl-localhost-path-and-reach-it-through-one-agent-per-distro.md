@@ -65,8 +65,11 @@ small and the folder lists at once while it starts.
 
 ### Neutral
 
-- A save on the UI thread waits for the agent's reply (30 s at most); the agent is started
-  when the folder opens, so it is usually ready by the first save.
+- A save on the UI thread waits for the agent: up to 30 s for it to start, then up to 30 s
+  for its reply, with no indicator yet. The agent is started when the folder opens, so it is
+  usually ready (0.6 s on a warm VM) by the first save.
+- A distro's name is folded to lower case in path keys and in the agents' map, as WSL takes it
+  in any case; the names inside it keep theirs.
 
 ## Alternatives Considered
 

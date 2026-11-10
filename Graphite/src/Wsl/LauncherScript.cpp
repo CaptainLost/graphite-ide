@@ -11,6 +11,8 @@ namespace Graphite {
 
 	namespace {
 
+		constexpr std::string_view kWrittenByGraphite = "# Opens a folder in Graphite. Written by Graphite;";
+
 		// Single quotes keep every character as it is in sh; a quote inside ends the quoting,
 		// adds an escaped quote and starts it again.
 		std::string SingleQuoted(std::string_view text)
@@ -41,6 +43,11 @@ namespace Graphite {
 			   SingleQuoted(graphiteLinuxPath) + " \"$(wslpath -w \"$target\")\" >/dev/null 2>&1 &\n";
 	}
 
+	bool MayReplaceLauncher(const std::optional<std::string>& existing)
+	{
+		return !existing || existing->find(kWrittenByGraphite) != std::string::npos;
+	}
+
 	void InstallLauncher(const std::string& distro, Core::AgentConnection& connection, const std::filesystem::path& graphiteExecutable)
 	{
 		constexpr std::chrono::seconds kTimeout{30};
@@ -63,6 +70,12 @@ namespace Graphite {
 
 		if (existing && existing.GetValue() == script)
 		{
+			return;
+		}
+
+		if (!MayReplaceLauncher(existing ? std::optional<std::string>{existing.GetValue()} : std::nullopt))
+		{
+			APP_INFO("{} already has a graphite command of its own at {}; Graphite leaves it", distro, command);
 			return;
 		}
 

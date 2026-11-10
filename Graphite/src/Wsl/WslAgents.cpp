@@ -1,5 +1,6 @@
 #include "Wsl/WslAgents.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Remote/AgentDeployment.h"
 
@@ -20,6 +21,19 @@ namespace Graphite {
 		bool IsReady(const std::shared_ptr<Core::AgentConnection>& connection)
 		{
 			return connection != nullptr && connection->GetState() == Core::AgentConnection::State::Ready;
+		}
+
+		// WSL takes a distro's name in any case: \\wsl$\ubuntu and wsl -d ubuntu reach Ubuntu.
+		std::string DistroKey(std::string_view name)
+		{
+			std::string key{name};
+
+			for (char& character : key)
+			{
+				character = Core::LowerAscii(character);
+			}
+
+			return key;
 		}
 	}
 
@@ -47,6 +61,20 @@ namespace Graphite {
 		{
 			worker.join();
 		}
+
+		// Closed here, while the listeners are alive: a connection's reader keeps dispatching the
+		// events already in the pipe for as long as closing waits for the agent to end.
+		std::vector<std::shared_ptr<Core::AgentConnection>> connections;
+		{
+			std::scoped_lock lock{m_Mutex};
+
+			for (auto& [name, distro] : m_Distros)
+			{
+				connections.push_back(std::move(distro.Connection));
+			}
+		}
+
+		connections.clear();
 	}
 
 	WslAgents::Connector WslAgents::ConnectThroughWsl(std::filesystem::path agentBinary)
@@ -88,8 +116,9 @@ namespace Graphite {
 		return !distro.Connecting && !IsReady(distro.Connection);
 	}
 
-	void WslAgents::Prepare(const std::string& name)
+	void WslAgents::Prepare(const std::string& asked)
 	{
+		const std::string name = DistroKey(asked);
 		std::thread previous;
 		{
 			std::scoped_lock lock{m_Mutex};
@@ -151,8 +180,9 @@ namespace Graphite {
 		m_Changed.notify_all();
 	}
 
-	Core::Result<std::shared_ptr<Core::AgentConnection>> WslAgents::Get(const std::string& name, std::chrono::milliseconds wait)
+	Core::Result<std::shared_ptr<Core::AgentConnection>> WslAgents::Get(const std::string& asked, std::chrono::milliseconds wait)
 	{
+		const std::string name = DistroKey(asked);
 		Prepare(name);
 
 		std::unique_lock lock{m_Mutex};

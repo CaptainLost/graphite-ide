@@ -3,6 +3,7 @@
 #include "Wsl/WslAgents.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 
 #include <chrono>
@@ -14,8 +15,12 @@ namespace Graphite {
 
 	namespace {
 
+		// How long a watch waits for its distro's agent before it counts as failed.
 		constexpr std::chrono::seconds kStartWait{60};
-		constexpr std::chrono::seconds kWatchTimeout{120};
+
+		// The starter waits in slices this short, so a watch dropped while its agent is still
+		// starting lets go of the UI thread at once.
+		constexpr std::chrono::milliseconds kWaitSlice{200};
 	}
 
 	// What the starter thread and the agent's reader thread fill, and TakeSettled empties.
@@ -53,7 +58,7 @@ namespace Graphite {
 		m_Shared->Listener = m_Agents.AddListener([weak](const std::string& distro, const Core::AgentEvent& event) {
 			const std::shared_ptr<Shared> shared = weak.lock();
 
-			if (!shared || distro != shared->Root.Distro || event.Name != "changes" && event.Name != "watchLimit")
+			if (!shared || !Core::EqualsIgnoringCase(distro, shared->Root.Distro) || event.Name != "changes" && event.Name != "watchLimit")
 			{
 				return;
 			}
@@ -94,38 +99,84 @@ namespace Graphite {
 		});
 
 		m_Starter = std::thread{[this, shared = m_Shared] {
-			const Core::Result<std::shared_ptr<Core::AgentConnection>> connection = m_Agents.Get(shared->Root.Distro, kStartWait);
+			const auto deadline = std::chrono::steady_clock::now() + kStartWait;
+			std::shared_ptr<Core::AgentConnection> connection;
+			std::string lastFailure;
 
-			if (!connection)
+			// Waits for the agent in short slices, so the destructor can stop it at once.
+			while (connection == nullptr)
 			{
-				APP_WARN("Cannot watch {} in {}: {}", shared->Root.LinuxPath, shared->Root.Distro, connection.GetError().Message);
+				{
+					std::scoped_lock lock{shared->Mutex};
+
+					if (shared->Stopping)
+					{
+						return;
+					}
+				}
+
+				Core::Result<std::shared_ptr<Core::AgentConnection>> ready = m_Agents.Get(shared->Root.Distro, kWaitSlice);
+
+				if (ready)
+				{
+					connection = std::move(ready.GetValue());
+					break;
+				}
+
+				lastFailure = ready.GetError().Message;
+
+				if (std::chrono::steady_clock::now() >= deadline)
+				{
+					APP_WARN("Cannot watch {} in {}: {}", shared->Root.LinuxPath, shared->Root.Distro, lastFailure);
+					std::scoped_lock lock{shared->Mutex};
+					shared->Failed = true;
+					return;
+				}
+			}
+
+			{
 				std::scoped_lock lock{shared->Mutex};
-				shared->Failed = true;
-				return;
+				shared->Connection = connection;
 			}
 
-			const Core::Result<Core::AgentReply> watched =
-				connection.GetValue()->SendAndWait("watch", {{"root", shared->Root.LinuxPath}}, {}, kWatchTimeout);
+			// Not waited for: the reply arms the watch on the agent's reader thread.
+			const std::weak_ptr<Shared> weak = shared;
+			connection->Send("watch", {{"root", shared->Root.LinuxPath}}, {}, [weak](const Core::AgentReply& reply) {
+				const std::shared_ptr<Shared> armed = weak.lock();
 
-			std::scoped_lock lock{shared->Mutex};
-			shared->Connection = connection.GetValue();
+				if (!armed)
+				{
+					return;
+				}
 
-			const auto id = watched ? watched.GetValue().Result.find("watch") : nlohmann::json::const_iterator{};
+				std::scoped_lock lock{armed->Mutex};
+				const auto id = reply.Failure ? reply.Result.end() : reply.Result.find("watch");
 
-			if (!watched || id == watched.GetValue().Result.end() || !id->is_number_integer())
-			{
-				APP_WARN("The agent in {} cannot watch {}: {}", shared->Root.Distro, shared->Root.LinuxPath,
-						 watched ? std::string{"no watch in its answer"} : watched.GetError().Message);
-				shared->Failed = true;
-				return;
-			}
+				if (reply.Failure || id == reply.Result.end() || !id->is_number_integer())
+				{
+					APP_WARN("The agent in {} cannot watch {}: {}", armed->Root.Distro, armed->Root.LinuxPath,
+							 reply.Failure ? reply.Failure->Message : std::string{"no watch in its answer"});
+					armed->Failed = true;
+					return;
+				}
 
-			shared->WatchId = id->get<int>();
+				armed->WatchId = id->get<int>();
+
+				// The tree was listed before the watch existed; whatever changed in between is
+				// found by listing it again once (ADR 0696).
+				armed->Overflowed = true;
+				Core::Redraw::Request();
+			});
 		}};
 	}
 
 	WslFolderWatch::~WslFolderWatch()
 	{
+		{
+			std::scoped_lock lock{m_Shared->Mutex};
+			m_Shared->Stopping = true;
+		}
+
 		if (m_Starter.joinable())
 		{
 			m_Starter.join();

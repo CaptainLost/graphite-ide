@@ -84,6 +84,17 @@ TEST_CASE("Two uses of one distro share one agent")
 	CHECK(distro.Connections == 1);
 }
 
+TEST_CASE("A distro named in two cases is one distro with one agent")
+{
+	FakeDistro distro;
+	Graphite::WslAgents agents{distro.Connector()};
+
+	REQUIRE(agents.Get("Ubuntu", 2s).HasValue());
+	REQUIRE(agents.Get("ubuntu", 2s).HasValue());
+
+	CHECK(distro.Connections == 1);
+}
+
 TEST_CASE("After the agent stops, the next use starts another")
 {
 	FakeDistro distro;
@@ -106,7 +117,8 @@ TEST_CASE("Each new agent is handed to the connected hook once, ready")
 	std::atomic<int> handed{0};
 	std::atomic<bool> wasReady{false};
 	Graphite::WslAgents agents{distro.Connector(), [&](const std::string& name, Core::AgentConnection& connection) {
-								   wasReady = name == "Ubuntu" && connection.GetState() == Core::AgentConnection::State::Ready;
+								   // The distro's name as WSL takes it, folded to lower case.
+								   wasReady = name == "ubuntu" && connection.GetState() == Core::AgentConnection::State::Ready;
 								   ++handed;
 							   }};
 
@@ -142,8 +154,22 @@ TEST_CASE("A save under a WSL share lands in the distro through its agent, repla
 		return;
 	}
 
+	std::error_code missing;
+
+	if (!std::filesystem::exists(L"\\\\wsl.localhost\\Ubuntu\\tmp", missing))
+	{
+		MESSAGE("no WSL distro named Ubuntu here: skipped");
+		return;
+	}
+
 	Graphite::WslAgents agents{Graphite::WslAgents::ConnectThroughWsl(agentBinary)};
-	Core::SetWslFileOperations(&agents);
+
+	// Taken away again however the test ends, so no later case writes through a dead object.
+	struct Registered
+	{
+		explicit Registered(Core::WslFileOperations* operations) { Core::SetWslFileOperations(operations); }
+		~Registered() { Core::SetWslFileOperations(nullptr); }
+	} registered{&agents};
 
 	const Core::Result<std::shared_ptr<Core::AgentConnection>> ready = agents.Get("Ubuntu", 60s);
 	REQUIRE_MESSAGE(ready.HasValue(), (ready ? "" : ready.GetError().Message));
@@ -156,7 +182,6 @@ TEST_CASE("A save under a WSL share lands in the distro through its agent, repla
 	// Twice: the second replaces an existing file, which ReplaceFileW cannot do on the share.
 	const Core::Result<void> first = Core::WriteFileAtomically(file, "first");
 	const Core::Result<void> second = Core::WriteFileAtomically(file, "second");
-	Core::SetWslFileOperations(nullptr);
 
 	REQUIRE_MESSAGE(first.HasValue(), (first ? "" : first.GetError().Message));
 	REQUIRE_MESSAGE(second.HasValue(), (second ? "" : second.GetError().Message));

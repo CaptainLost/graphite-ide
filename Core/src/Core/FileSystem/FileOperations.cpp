@@ -2,6 +2,8 @@
 
 #include "Core/FileSystem/FileOperations.h"
 
+#include "Core/Base/Ascii.h"
+
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/FileSystem/WslFileOperations.h"
 #include "Core/Platform/UniqueHandle.h"
@@ -212,7 +214,7 @@ namespace Core {
 		if (fromPlace || toPlace)
 		{
 			// A move between a distro and Windows, or between two distros, crosses file systems.
-			const bool sameDistro = fromPlace && toPlace && fromPlace->Distro == toPlace->Distro;
+			const bool sameDistro = fromPlace && toPlace && EqualsIgnoringCase(fromPlace->Distro, toPlace->Distro);
 
 			if (!sameDistro)
 			{

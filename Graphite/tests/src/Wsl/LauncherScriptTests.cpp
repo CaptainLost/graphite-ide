@@ -2,6 +2,7 @@
 
 #include "Wsl/LauncherScript.h"
 
+#include <optional>
 #include <string>
 
 TEST_CASE("The graphite command runs Graphite on the folder it is given, as Windows names it")
@@ -13,6 +14,13 @@ TEST_CASE("The graphite command runs Graphite on the folder it is given, as Wind
 		  "# Opens a folder in Graphite. Written by Graphite; it rewrites this file when it moves.\n"
 		  "target=$(realpath -- \"${1:-.}\") || exit 1\n"
 		  "'/mnt/d/Tools/Graphite/Graphite.exe' \"$(wslpath -w \"$target\")\" >/dev/null 2>&1 &\n");
+}
+
+TEST_CASE("Only a missing command or one Graphite wrote is replaced, never someone else's graphite")
+{
+	CHECK(Graphite::MayReplaceLauncher(std::nullopt));
+	CHECK(Graphite::MayReplaceLauncher(Graphite::LauncherScript("/mnt/c/old/Graphite.exe")));
+	CHECK_FALSE(Graphite::MayReplaceLauncher(std::string{"#!/usr/bin/env python3\n# a metrics tool called graphite\n"}));
 }
 
 TEST_CASE("A quote in Graphite's path is escaped for the shell")

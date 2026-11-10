@@ -76,12 +76,15 @@ namespace Graphite {
 		Connector m_Connect;
 		ConnectedHook m_OnConnected;
 
-		std::mutex m_Mutex;
-		std::condition_variable m_Changed;
-		std::map<std::string, Distro> m_Distros;
-
+		// WARNING: Declared before m_Distros, so the listeners outlive every connection's reader,
+		// which may still dispatch while a connection closes.
 		std::mutex m_ListenersMutex;
 		std::map<ListenerId, std::shared_ptr<EventListener>> m_Listeners;
 		ListenerId m_NextListener = 1;
+
+		// Keyed by the distro's name folded to lower case: WSL takes it in any case.
+		std::mutex m_Mutex;
+		std::condition_variable m_Changed;
+		std::map<std::string, Distro> m_Distros;
 	};
 }
