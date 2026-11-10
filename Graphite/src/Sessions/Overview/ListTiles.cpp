@@ -170,23 +170,6 @@ namespace Graphite {
 					 {CachePart::Uncached, "Uncached", model.Tokens.Input, colours.Bad}}};
 		}
 
-		struct CacheSentence
-		{
-			std::string Before = "Without the cache this would have cost ";
-			std::string Without;
-			std::string After;
-
-			std::string Whole() const { return Before + Without + After; }
-		};
-
-		CacheSentence CacheSentenceOf(const DashboardModel& model)
-		{
-			CacheSentence sentence;
-			sentence.Without = TipMoney(model.Cost + model.Saved);
-			sentence.After = ", not " + TipMoney(model.Cost) + ".";
-			return sentence;
-		}
-
 		bool CacheSentenceFits(const CacheSentence& sentence, float room, float size)
 		{
 			return TextWidthAt(sentence.Before, size) + TextWidthAt(sentence.Without, size, TextWeight::Strong) +
@@ -246,6 +229,21 @@ namespace Graphite {
 		{
 			return content.Min.y + (kStackHeight + kStackGap) * unit;
 		}
+	}
+
+	CacheSentence CacheSentenceOf(const DashboardModel& model)
+	{
+		const std::string without = TipMoney(model.Cost + model.Saved);
+		const std::string actual = TipMoney(model.Cost);
+
+		if (model.Saved < 0.0)
+		{
+			return {.Before = "These requests would have cost ",
+					.Without = without,
+					.After = " without the cache, not " + actual + "."};
+		}
+
+		return {.Before = "Without the cache this would have cost ", .Without = without, .After = ", not " + actual + "."};
 	}
 
 	ImRect ListRowRect(const ImRect& tile, std::size_t row)

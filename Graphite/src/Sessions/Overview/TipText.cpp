@@ -16,6 +16,7 @@
 namespace Graphite {
 
 	namespace {
+		constexpr double kSmallestTenth = 0.1;
 		constexpr std::array<std::string_view, 7> kWeekdays = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 		constexpr std::array<std::string_view, 12> kMonths = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 															  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -23,6 +24,11 @@ namespace Graphite {
 
 	std::string TipMoney(double dollars)
 	{
+		if (dollars < 0.0)
+		{
+			return std::string{kMinusSign} + TipMoney(-dollars);
+		}
+
 		return FormatCost(CostResult{.Dollars = dollars});
 	}
 
@@ -54,6 +60,16 @@ namespace Graphite {
 		}
 
 		const double percent = 100.0 * part / whole;
+
+		if (percent < 0.0)
+		{
+			return std::string{kMinusSign} + TipShare(-part, whole);
+		}
+
+		if (percent > 0.0 && percent < kSmallestTenth)
+		{
+			return "<0.1%";
+		}
 
 		if (percent > 0.0 && percent < 1.0)
 		{

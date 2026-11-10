@@ -87,8 +87,7 @@ namespace Graphite {
 			std::string Value;
 			std::string Mark; // drawn dim after the value
 			std::string Line;
-			std::optional<bool> Rising;
-			std::string Change;
+			std::optional<WeekChange> Change;
 			std::vector<double> Series;
 			std::size_t FirstDay = 0;
 			ImU32 Colour = 0;
@@ -121,26 +120,15 @@ namespace Graphite {
 		void ThisWeekFace(const DashboardModel& model, NumberFace& face)
 		{
 			double now = 0.0;
-			double before = 0.0;
 
 			for (const WeekDay& day : ThisWeek(model))
 			{
 				now += day.Cost;
-				before += day.WeekBefore;
 			}
 
 			face.Value = TipMoney(now);
-
-			if (before > 0.0)
-			{
-				face.Rising = now >= before;
-				face.Change = std::format("{}%", std::abs(std::lround(100.0 * (now - before) / before)));
-				face.Line = " vs same days last week";
-			}
-			else
-			{
-				face.Line = "nothing the same days last week";
-			}
+			face.Change = ThisWeekChange(model);
+			face.Line = face.Change ? " vs last week" : "nothing the same days last week";
 
 			std::vector<double> costs = CostPerDay(model);
 			face.FirstDay = costs.size() - std::min(costs.size(), kThisWeekSpan);
@@ -214,7 +202,7 @@ namespace Graphite {
 				const auto input = static_cast<double>(tokens.CacheRead + tokens.CacheWrite + tokens.Input);
 				face = {.Caption = "Cache saved",
 						.Value = TipMoney(model.Saved),
-						.Line = TipShare(static_cast<double>(tokens.CacheRead), input) + " of input read from cache",
+						.Line = TipShare(static_cast<double>(tokens.CacheRead), input) + " of input from cache",
 						.Series = PerDay(model, [](const DayTotals& day) { return std::max(0.0, day.Saved); }),
 						.Colour = activity};
 				break;
@@ -612,6 +600,33 @@ namespace Graphite {
 		}
 	}
 
+	std::optional<WeekChange> ThisWeekChange(const DashboardModel& model)
+	{
+		double now = 0.0;
+		double before = 0.0;
+
+		for (const WeekDay& day : ThisWeek(model))
+		{
+			now += day.Cost;
+			before += day.WeekBefore;
+		}
+
+		if (before <= 0.0)
+		{
+			return std::nullopt;
+		}
+
+		const long percent = std::lround(100.0 * (now - before) / before);
+		WeekChange change{.Percent = std::format("{}%", std::abs(percent))};
+
+		if (percent != 0)
+		{
+			change.Rising = percent > 0;
+		}
+
+		return change;
+	}
+
 	float NumberTileHeight(float unit)
 	{
 		return (kNumberTopPadding + kCaptionSize + kCaptionToValue + kValueLine + kDimLine + kLineToSpark + kSparkHeight +
@@ -647,14 +662,20 @@ namespace Graphite {
 		y += canvas.Units(kValueLine);
 
 		float x = left;
-		if (face.Rising)
+		if (face.Change && face.Change->Rising)
 		{
-			const ImU32 tone = *face.Rising ? canvas.Colours.Bad : canvas.Colours.Good;
+			const bool rising = *face.Change->Rising;
+			const ImU32 tone = rising ? canvas.Colours.Bad : canvas.Colours.Good;
 			const float triangle = canvas.Units(kTrendTriangle);
-			DrawTrend(canvas.Drawing, x, y + (small - triangle) * kHalf, triangle, *face.Rising, tone);
+			DrawTrend(canvas.Drawing, x, y + (small - triangle) * kHalf, triangle, rising, tone);
 			x += triangle + canvas.Units(kTrendGap);
-			DrawTextAt(canvas.Drawing, ImVec2(x, y), small, tone, face.Change);
-			x += TextWidthAt(face.Change, small);
+			DrawTextAt(canvas.Drawing, ImVec2(x, y), small, tone, face.Change->Percent);
+			x += TextWidthAt(face.Change->Percent, small);
+		}
+		else if (face.Change)
+		{
+			DrawTextAt(canvas.Drawing, ImVec2(x, y), small, Faint(canvas.Colours), face.Change->Percent);
+			x += TextWidthAt(face.Change->Percent, small);
 		}
 
 		DrawTextAt(canvas.Drawing, ImVec2(x, y), small, Faint(canvas.Colours),

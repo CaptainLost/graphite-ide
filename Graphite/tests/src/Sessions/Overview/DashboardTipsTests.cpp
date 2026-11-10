@@ -3,6 +3,7 @@
 #include "Sessions/Overview/DashboardTips.h"
 #include "Sessions/Overview/TipText.h"
 #include "Sessions/SessionText.h"
+#include "UI/TypographicMarks.h"
 
 #include "Core/FileSystem/FileSystem.h"
 
@@ -39,6 +40,11 @@ namespace {
 	{
 		return Activity("claude-opus-5", static_cast<std::uint64_t>(dollars * static_cast<double>(kOneDollarOfOpusInput)), 1,
 						prompts);
+	}
+
+	std::string Minus(std::string_view amount)
+	{
+		return std::string{kMinusSign} + std::string{amount};
 	}
 
 	std::string Money(double dollars)
@@ -484,6 +490,63 @@ TEST_CASE("Model, project, skill, punch and cache tips")
 	REQUIRE(written.Notes.size() == 1);
 	CHECK(written.Notes[0].starts_with("Tokens put into the cache for the next request; charged at 1.25\xC3\x97 (5 minutes) or "
 									   "2\xC3\x97 (1 hour)"));
+}
+
+TEST_CASE("A loss and a tiny share read as a person writes them")
+{
+	CHECK(TipMoney(-0.5) == Minus("$0.50"));
+	CHECK(TipMoney(0.5) == "$0.50");
+	CHECK(TipShare(-12.0, 100.0) == Minus("12%"));
+	CHECK(TipShare(0.0005, 1.0) == "<0.1%");
+	CHECK(TipShare(0.004, 1.0) == "0.4%");
+	CHECK(TipShare(0.0, 1.0) == "0%");
+}
+
+TEST_CASE("A day without cost is not set against an average active day")
+{
+	const Fixture fixture;
+
+	CHECK(DayTip(fixture.Model, fixture.DayAt(5)).Notes.empty());
+	CHECK(DayTip(fixture.Model, fixture.DayAt(8)).Notes.size() == 1);
+}
+
+TEST_CASE("Saved by model keeps a family that lost on the cache, so its rows add up to the head")
+{
+	SessionSummary summary;
+	summary.Id = "a";
+	summary.Cwd = Core::FromUtf8("D:/Repos/IDE");
+	HourActivity read = Activity("claude-opus-5", 0, 1);
+	read.Usage[UsageKey{"claude-opus-5", false}] = {0, 0, 0, 0, 1'000'000};
+	HourActivity written = Activity("claude-haiku-4-5", 0, 1);
+	written.Usage[UsageKey{"claude-haiku-4-5", false}] = {0, 0, 0, 1'000'000, 0};
+	summary.Activity.MainHours[Hour(2026, 11, 9, 9)] = read;
+	summary.Activity.MainHours[Hour(2026, 11, 9, 10)] = written;
+
+	const std::vector<const SessionSummary*> sessions{&summary};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), LocalCalendar{nullptr}, Day(2026, 11, 9));
+	const TipCard card = NumberTip(model, NumberTile::CacheSaved, std::nullopt);
+
+	CHECK(card.HeadValue == "$3.50");
+	const TipSection* byModel = SectionTitled(card, "Saved by model");
+	REQUIRE(byModel != nullptr);
+	REQUIRE(byModel->Rows.size() == 2);
+	CHECK(byModel->Rows[0].Value == "$4.50");
+	CHECK(byModel->Rows[1].Label == "Haiku");
+	CHECK(byModel->Rows[1].Value == Minus("$1.00"));
+}
+
+TEST_CASE("The Subagents banner rounds its share as the tips do")
+{
+	SessionSummary summary;
+	summary.Id = "a";
+	summary.Cwd = Core::FromUtf8("D:/Repos/IDE");
+	summary.Activity.MainHours[Hour(2026, 11, 9, 10)] = OpusDollars(4000);
+	summary.Activity.SubagentHours[Hour(2026, 11, 9, 10)] = Activity("claude-haiku-4-5", kOneDollarOfHaikuInput, 1);
+
+	const std::vector<const SessionSummary*> sessions{&summary};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), LocalCalendar{nullptr}, Day(2026, 11, 9));
+
+	CHECK(NumberTip(model, NumberTile::Subagents, std::size_t{0}).Banner == "Mon 9 Nov: <0.1% of the day");
 }
 
 TEST_CASE("A share under one percent keeps a decimal")

@@ -6,6 +6,7 @@
 #include <imgui_internal.h>
 
 #include <cstddef>
+#include <string>
 
 namespace Graphite {
 
@@ -25,6 +26,18 @@ namespace Graphite {
 	void DrawTools(DashboardCanvas& canvas, const ImRect& tile);
 
 	void DrawSkills(DashboardCanvas& canvas, const ImRect& tile);
+
+	struct CacheSentence
+	{
+		std::string Before;
+		std::string Without; // drawn strong
+		std::string After;
+
+		std::string Whole() const { return Before + Without + After; }
+	};
+
+	// WARNING: Worded the other way round when the cache cost more than it saved, so the sentence never claims a saving.
+	CacheSentence CacheSentenceOf(const DashboardModel& model);
 
 	float CacheHeight(const DashboardModel& model, float width);
 

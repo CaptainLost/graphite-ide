@@ -8,8 +8,17 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string>
 
 namespace Graphite {
+
+	struct WeekChange
+	{
+		std::optional<bool> Rising; // none when the rounded change is nought
+		std::string Percent;		// "12%"
+	};
+
+	std::optional<WeekChange> ThisWeekChange(const DashboardModel& model); // none when nothing was spent the same days last week
 
 	float NumberTileHeight(float unit);
 

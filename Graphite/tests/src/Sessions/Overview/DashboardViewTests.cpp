@@ -347,6 +347,54 @@ TEST_CASE("The Spent tile carries no mark when every request has a price")
 	CHECK(dimInValueLine == 0);
 }
 
+TEST_CASE("A flat week has no triangle and a neutral nought, a rise one pointing up")
+{
+	SessionSummary summary;
+	summary.Id = "a";
+	summary.Cwd = Core::FromUtf8("D:/Repos/IDE");
+	summary.Activity.MainHours[Hour(2026, 11, 2, 9)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(2026, 11, 9, 9)] = OpusDollars(1);
+	const std::vector<const SessionSummary*> sessions{&summary};
+	const LocalCalendar utc{nullptr};
+
+	const std::optional<WeekChange> flat =
+		ThisWeekChange(BuildDashboard(sessions, Pricing::Defaults(), utc, Day(2026, 11, 10)));
+	REQUIRE(flat.has_value());
+	CHECK_FALSE(flat->Rising.has_value());
+	CHECK(flat->Percent == "0%");
+
+	summary.Activity.MainHours[Hour(2026, 11, 10, 9)] = OpusDollars(1);
+	const std::optional<WeekChange> rising =
+		ThisWeekChange(BuildDashboard(sessions, Pricing::Defaults(), utc, Day(2026, 11, 10)));
+	REQUIRE(rising.has_value());
+	CHECK(rising->Rising == std::optional<bool>{true});
+	CHECK(rising->Percent == "100%");
+
+	CHECK_FALSE(ThisWeekChange(BuildDashboard(sessions, Pricing::Defaults(), utc, Day(2026, 11, 30))).has_value());
+}
+
+TEST_CASE("When the cache cost more than it saved, the sentence still reads true")
+{
+	SessionSummary summary;
+	summary.Id = "a";
+	summary.Cwd = Core::FromUtf8("D:/Repos/IDE");
+	HourActivity written;
+	const UsageKey key{"claude-haiku-4-5", false};
+	written.Usage[key] = {0, 0, 0, 1'000'000, 0};
+	written.Requests = 1;
+	written.RequestsByModel[key] = 1;
+	summary.Activity.MainHours[Hour(2026, 11, 9, 9)] = written;
+	const std::vector<const SessionSummary*> sessions{&summary};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), LocalCalendar{nullptr}, Day(2026, 11, 10));
+
+	REQUIRE(model.Saved < 0.0);
+	CHECK(CacheSentenceOf(model).Whole() == "These requests would have cost $1.00 without the cache, not $2.00.");
+	CHECK(CacheSentenceOf(model).Without == "$1.00");
+
+	DashboardScreen screen(kWideDashboardInFontSizes);
+	CHECK(CacheSentenceOf(screen.Data.Model).Whole() == "Without the cache this would have cost $3.50, not $3.50.");
+}
+
 TEST_CASE("Reflows to two and one columns below the breakpoints")
 {
 	for (const float widthInFontSizes : {50.0f, 30.0f})

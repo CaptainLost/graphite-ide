@@ -360,7 +360,7 @@ namespace Graphite {
 			case NumberTile::Sessions:
 				return TipCount(day.SessionsStarted) + " started";
 			case NumberTile::Subagents:
-				return std::format("{}% of the day", day.Cost > 0.0 ? std::lround(100.0 * day.SubagentCost / day.Cost) : 0L);
+				return (day.Cost > 0.0 ? TipShare(day.SubagentCost, day.Cost) : std::string{"0%"}) + " of the day";
 			case NumberTile::CacheSaved:
 				return TipMoney(day.Saved);
 			case NumberTile::Output:
@@ -419,7 +419,7 @@ namespace Graphite {
 		TipCard card{.Head = FullDate(day.Day), .HeadValue = TipMoney(day.Cost)};
 
 		const ActiveDayStats stats = ActiveDays(model);
-		if (stats.Average > 0.0)
+		if (stats.Average > 0.0 && day.Cost > 0.0)
 		{
 			card.Notes.push_back(Ratio(day.Cost, stats.Average));
 		}
