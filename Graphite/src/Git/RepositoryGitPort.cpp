@@ -158,6 +158,64 @@ namespace Graphite {
 		}
 	}
 
+	namespace {
+
+		// The count of a WSL tip: the agent counts only a tip it was not told of.
+		Core::Result<CommitCount> CountWslCommits(WslGit& wsl, const std::optional<std::string>& ref, Core::FollowedParents parents,
+												  const std::optional<CommitCount>& known)
+		{
+			const Core::Result<std::pair<Core::Oid, std::optional<std::size_t>>> counted =
+				wsl.CountCommits(ref, parents, known ? std::optional{known->Tip} : std::nullopt);
+
+			if (!counted)
+			{
+				return counted.GetError();
+			}
+
+			const auto& [tip, count] = counted.GetValue();
+
+			if (!count)
+			{
+				return *known;
+			}
+
+			return CommitCount{.Tip = tip, .Count = *count};
+		}
+
+		// A commit's texts inside WSL: the agent picks the blobs as the local path does.
+		Core::Result<FileTexts> ReadWslFileTexts(WslGit& wsl, const Core::Oid& commit, const std::filesystem::path& oldPath,
+												 const std::filesystem::path& newPath)
+		{
+			Core::Result<std::pair<std::optional<std::string>, std::optional<std::string>>> sides = wsl.ReadCommitSides(commit, oldPath, newPath);
+
+			if (!sides)
+			{
+				return sides.GetError();
+			}
+
+			auto& [newSide, oldSide] = sides.GetValue();
+			FileTexts texts;
+			texts.HasNew = newSide.has_value();
+			texts.New = std::move(newSide).value_or(std::string{});
+			texts.HasOld = oldSide.has_value();
+			texts.Old = std::move(oldSide).value_or(std::string{});
+			return texts;
+		}
+
+		// FETCH_HEAD and the shallow file are read over the share, beside the agent's common directory.
+		std::optional<std::chrono::sys_seconds> LastWslFetch(WslGit& wsl)
+		{
+			const Core::Result<std::filesystem::path> common = wsl.GetCommonDirectory();
+			return common ? Core::LastFetchTime(common.GetValue()) : std::nullopt;
+		}
+
+		ShallowStamp WslShallowStamp(WslGit& wsl)
+		{
+			const Core::Result<std::filesystem::path> common = wsl.GetCommonDirectory();
+			return common ? ShallowStampOf(common.GetValue() / "shallow") : ShallowStamp{};
+		}
+	}
+
 	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root, std::filesystem::path lineStoreRoot)
 		: RepositoryGitPort(std::move(root), RootReach::SearchUpward, std::move(lineStoreRoot))
 	{
@@ -421,6 +479,12 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::Branch>> RepositoryGitPort::QueryBranches()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryBranches();
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -435,6 +499,13 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::Tag>> RepositoryGitPort::QueryTags(Core::TagCache& cache)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			// The agent keeps its own cache of what tag objects peel to.
+			return wsl->QueryTags();
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -449,6 +520,12 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::TipAuthors>> RepositoryGitPort::QueryOwnAuthors(const Core::OwnAuthorsRequest& request)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryOwnAuthors(request);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -463,6 +540,12 @@ namespace Graphite {
 
 	Core::Result<std::optional<std::string>> RepositoryGitPort::ReadUserEmail()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->ReadUserEmail();
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -477,6 +560,12 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::Remote>> RepositoryGitPort::QueryRemotes()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryRemotes();
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -489,6 +578,12 @@ namespace Graphite {
 
 	Core::Result<Core::LogPage> RepositoryGitPort::QueryLog(const Core::LogRequest& request)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryLog(request);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -505,6 +600,12 @@ namespace Graphite {
 															  Core::FollowedParents parents,
 															  const std::optional<CommitCount>& known)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return CountWslCommits(*wsl, ref, parents, known);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -561,6 +662,12 @@ namespace Graphite {
 		const std::filesystem::path& oldPath,
 		const std::filesystem::path& newPath)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return ReadWslFileTexts(*wsl, commit, oldPath, newPath);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -735,6 +842,12 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::CreateBranch(const std::string& name, const Core::Oid& from)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->CreateBranch(name, from);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -749,6 +862,12 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::RenameBranch(const std::string& from, const std::string& to)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->RenameBranch(from, to);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -763,6 +882,12 @@ namespace Graphite {
 
 	Core::Result<std::size_t> RepositoryGitPort::CountUnmergedCommits(const std::string& name)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->CountUnmergedCommits(name);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -777,6 +902,12 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::DeleteBranch(const std::string& name)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->DeleteBranch(name);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -791,6 +922,12 @@ namespace Graphite {
 
 	Core::Result<bool> RepositoryGitPort::StashSave(const std::string& message, Core::UntrackedFiles untrackedFiles)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->StashSave(message, untrackedFiles);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -805,6 +942,12 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::StashEntry>> RepositoryGitPort::QueryStashes()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->QueryStashes();
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -819,6 +962,12 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::StashApply(const Core::Oid& id)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->StashApply(id);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -833,6 +982,12 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::StashPop(const Core::Oid& id)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->StashPop(id);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -847,6 +1002,12 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::StashDrop(const Core::Oid& id)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->StashDrop(id);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -861,6 +1022,12 @@ namespace Graphite {
 
 	Core::Result<Core::CheckoutPlan> RepositoryGitPort::PlanCheckout(const Core::CheckoutTarget& target)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->PlanCheckout(target);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -875,6 +1042,12 @@ namespace Graphite {
 
 	Core::CheckoutOutcome RepositoryGitPort::Checkout(const Core::CheckoutTarget& target)
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return wsl->Checkout(target);
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1863,6 +2036,12 @@ namespace Graphite {
 
 	std::optional<std::chrono::sys_seconds> RepositoryGitPort::QueryLastFetch()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return LastWslFetch(*wsl);
+		}
+
 		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
@@ -1875,6 +2054,12 @@ namespace Graphite {
 
 	ShallowStamp RepositoryGitPort::QueryShallowStamp()
 	{
+		// A repository inside WSL is asked through its distro's agent (stage 3b).
+		if (const std::shared_ptr<WslGit> wsl = WslForRoot())
+		{
+			return WslShallowStamp(*wsl);
+		}
+
 		const Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
