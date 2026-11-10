@@ -4,6 +4,14 @@
 
 #include "FakeAgent.h"
 
+#include "Core/FileSystem/AtomicWrite.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslFileOperations.h"
+#include "Core/Platform/Process.h"
+#include "Core/Remote/AgentDeployment.h"
+
+#include <filesystem>
+
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -107,6 +115,56 @@ TEST_CASE("Each new agent is handed to the connected hook once, ready")
 
 	CHECK(handed == 1);
 	CHECK(wasReady);
+}
+
+// A save into a WSL folder the way the editor makes it: Core's WriteFileAtomically on the share
+// path, through the registered agents, into the real distro. Skipped, saying why, on a machine
+// without WSL or without the Linux build of the agent.
+TEST_CASE("A save under a WSL share lands in the distro through its agent, replacing the file there")
+{
+	if (!Core::IsWslAvailable())
+	{
+		MESSAGE("WSL is not available here: skipped");
+		return;
+	}
+
+	const Core::Result<std::filesystem::path> here = Core::ExecutableDirectory();
+	REQUIRE(here.HasValue());
+#ifdef CORE_DEBUG
+	const std::filesystem::path agentBinary = here.GetValue().parent_path().parent_path() / "Debug-linux-x86_64" / "GraphiteAgent" / "graphite-agent";
+#else
+	const std::filesystem::path agentBinary = here.GetValue().parent_path().parent_path() / "Release-linux-x86_64" / "GraphiteAgent" / "graphite-agent";
+#endif
+
+	if (!std::filesystem::exists(agentBinary))
+	{
+		MESSAGE("no Linux build of graphite-agent: build CoreLinux first; skipped");
+		return;
+	}
+
+	Graphite::WslAgents agents{Graphite::WslAgents::ConnectThroughWsl(agentBinary)};
+	Core::SetWslFileOperations(&agents);
+
+	const Core::Result<std::shared_ptr<Core::AgentConnection>> ready = agents.Get("Ubuntu", 60s);
+	REQUIRE_MESSAGE(ready.HasValue(), (ready ? "" : ready.GetError().Message));
+
+	const std::filesystem::path folder{L"\\\\wsl.localhost\\Ubuntu\\tmp\\graphite-save-test"};
+	std::error_code error;
+	std::filesystem::create_directories(folder, error);
+	const std::filesystem::path file = folder / "saved.txt";
+
+	// Twice: the second replaces an existing file, which ReplaceFileW cannot do on the share.
+	const Core::Result<void> first = Core::WriteFileAtomically(file, "first");
+	const Core::Result<void> second = Core::WriteFileAtomically(file, "second");
+	Core::SetWslFileOperations(nullptr);
+
+	REQUIRE_MESSAGE(first.HasValue(), (first ? "" : first.GetError().Message));
+	REQUIRE_MESSAGE(second.HasValue(), (second ? "" : second.GetError().Message));
+	const Core::Result<std::string> contents = Core::ReadFileBytes(file);
+	REQUIRE(contents.HasValue());
+	CHECK(contents.GetValue() == "second");
+
+	std::filesystem::remove_all(folder, error);
 }
 
 TEST_CASE("A distro that cannot be reached gives its reason")
