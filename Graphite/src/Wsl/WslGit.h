@@ -10,6 +10,7 @@
 #include "Core/FileSystem/WslSharePath.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
+#include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Lines/AncestryGraph.h"
@@ -158,6 +159,12 @@ namespace Graphite {
 		// The viewed blob and the current version, from tip or from worktree (a share path of this distro).
 		Core::Result<std::pair<std::string, std::string>> ReadSinceViewed(const Core::Oid& viewed, const std::optional<Core::Oid>& tip,
 																		  const std::optional<std::filesystem::path>& worktree, const std::filesystem::path& path);
+
+		// Content checks (stage 3c-2); the agent keeps the repository's patch ids.
+		Core::Result<Core::ContentVerdict> CheckContent(const Core::Oid& branchTip, const Core::Oid& lineTip);
+		Core::Result<Core::PatchTwinSearch> FindTwin(const Core::Oid& commit, const Core::Oid& lineTip, std::size_t budget);
+		Core::Result<std::vector<std::string>> PathsChangedBetween(const Core::Oid& older, const Core::Oid& newer);
+		Core::Result<bool> TreesDifferAt(const Core::Oid& from, const Core::Oid& to, const std::vector<std::string>& paths);
 
 		// The lines graph's reads (stage 3b-lines).
 		Core::Result<std::vector<Core::GraphCommit>> ReadGraphCommits(const Core::GraphReadRequest& request);

@@ -2220,6 +2220,19 @@ namespace Graphite {
 	Core::Result<Core::ContentVerdict> RepositoryGitPort::CheckContent(std::uint64_t repository, const Core::Oid& branchTip,
 																	   const Core::Oid& lineTip, Core::PatchIdCache& patchIds)
 	{
+		// A repository inside WSL is asked through its distro's agent, which keeps its patch ids (stage 3c-2).
+		Core::Error refusal;
+
+		if (const std::shared_ptr<WslGit> wsl = WslForGeneration(repository, refusal))
+		{
+			return wsl->CheckContent(branchTip, lineTip);
+		}
+
+		if (refusal.Code != Core::ErrorCode::None)
+		{
+			return refusal;
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
 
 		if (!opened.HasValue())
@@ -2234,6 +2247,19 @@ namespace Graphite {
 																	const Core::Oid& lineTip, std::size_t budget,
 																	Core::PatchIdCache& patchIds)
 	{
+		// A repository inside WSL is asked through its distro's agent, which keeps its patch ids (stage 3c-2).
+		Core::Error refusal;
+
+		if (const std::shared_ptr<WslGit> wsl = WslForGeneration(repository, refusal))
+		{
+			return wsl->FindTwin(commit, lineTip, budget);
+		}
+
+		if (refusal.Code != Core::ErrorCode::None)
+		{
+			return refusal;
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
 
 		if (!opened.HasValue())
@@ -2248,6 +2274,19 @@ namespace Graphite {
 	Core::Result<std::vector<std::string>> RepositoryGitPort::PathsChangedBetween(std::uint64_t repository, const Core::Oid& older,
 																				  const Core::Oid& newer)
 	{
+		// A repository inside WSL is asked through its distro's agent, which keeps its patch ids (stage 3c-2).
+		Core::Error refusal;
+
+		if (const std::shared_ptr<WslGit> wsl = WslForGeneration(repository, refusal))
+		{
+			return wsl->PathsChangedBetween(older, newer);
+		}
+
+		if (refusal.Code != Core::ErrorCode::None)
+		{
+			return refusal;
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
 
 		if (!opened.HasValue())
@@ -2261,6 +2300,19 @@ namespace Graphite {
 	Core::Result<bool> RepositoryGitPort::TreesDifferAt(std::uint64_t repository, const Core::Oid& from, const Core::Oid& to,
 														const std::vector<std::string>& paths)
 	{
+		// A repository inside WSL is asked through its distro's agent, which keeps its patch ids (stage 3c-2).
+		Core::Error refusal;
+
+		if (const std::shared_ptr<WslGit> wsl = WslForGeneration(repository, refusal))
+		{
+			return wsl->TreesDifferAt(from, to, paths);
+		}
+
+		if (refusal.Code != Core::ErrorCode::None)
+		{
+			return refusal;
+		}
+
 		Core::Result<Core::Repository*> opened = RepositoryForThisThreadOf(repository, Core::ObjectWrites::InMemory);
 
 		if (!opened.HasValue())

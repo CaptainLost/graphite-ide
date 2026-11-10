@@ -86,11 +86,9 @@ TEST_CASE("On a WSL root what the agent does not answer yet says so, rather than
 		return std::make_shared<Graphite::WslGit>(agents, root, reach);
 	});
 
-	const Core::Result<std::vector<std::string>> changed = port.PathsChangedBetween(port.RepositoryNow(), Core::Oid{}, Core::Oid{});
+	const Graphite::NetworkSetup setup = port.QueryNetworkSetup();
 
-	REQUIRE_FALSE(changed.HasValue());
-	CHECK(changed.GetError().Code == Core::ErrorCode::Unsupported);
-	CHECK(changed.GetError().Message == "not available for folders inside WSL yet");
+	CHECK_FALSE(setup.Git.has_value());
 }
 
 TEST_CASE("A local root never reaches a WSL agent")
@@ -518,4 +516,56 @@ TEST_CASE("On a WSL root since viewed diffs the agent's two versions here")
 	CHECK(answer.GetValue().Texts.Old == "one\n");
 	CHECK(answer.GetValue().Texts.New == "one\ntwo\n");
 	REQUIRE(answer.GetValue().Diff.Hunks.size() == 1);
+}
+
+TEST_CASE("On a WSL root a content check comes from the agent, and one for a folder no longer open asks nothing")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		const Core::ContentVerdict verdict{.Outcome = Core::ContentOutcome::Merged, .Kind = Core::ContentKind::Squash, .Landing = kTip};
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = Core::ToJson(verdict).dump()}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+	Core::PatchIdCache unused;
+
+	const Core::Result<Core::ContentVerdict> verdict = port.CheckContent(port.RepositoryNow(), kTip, kTip, unused);
+	const std::uint64_t before = port.RepositoryNow();
+	port.SetRoot(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\other");
+	const Core::Result<Core::ContentVerdict> stale = port.CheckContent(before, kTip, kTip, unused);
+
+	REQUIRE(verdict.HasValue());
+	CHECK(verdict.GetValue().Outcome == Core::ContentOutcome::Merged);
+	CHECK(verdict.GetValue().Landing == std::optional<Core::Oid>{kTip});
+	REQUIRE_FALSE(stale.HasValue());
+	CHECK(stale.GetError().Code == Core::ErrorCode::Cancelled);
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.Operations == std::vector<std::string>{"git.checkContent"});
+}
+
+TEST_CASE("On a WSL root the paths two commits differ in come from the agent")
+{
+	AnsweringDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		if (request.Operation == "git.treesDifferAt")
+		{
+			CHECK(nlohmann::json::parse(request.Payload) == nlohmann::json::array({"b.txt"}));
+			self.Reply(request.Id, {{"differ", true}});
+			return;
+		}
+
+		self.Send(Core::EncodeReply(Core::AgentReply{.Id = request.Id, .Payload = nlohmann::json::array({"a.txt", "b.txt"}).dump()}));
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::RepositoryGitPort port{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	UseAgents(port, agents);
+
+	const Core::Result<std::vector<std::string>> paths = port.PathsChangedBetween(port.RepositoryNow(), kTip, kTip);
+	const Core::Result<bool> differ = port.TreesDifferAt(port.RepositoryNow(), kTip, kTip, {"b.txt"});
+
+	REQUIRE(paths.HasValue());
+	CHECK(paths.GetValue() == std::vector<std::string>{"a.txt", "b.txt"});
+	REQUIRE(differ.HasValue());
+	CHECK(differ.GetValue());
 }

@@ -34,7 +34,7 @@ namespace Graphite {
 			"git.log",		  "git.countCommits", "git.commitSides",	  "git.countUnmerged", "git.stashes",		 "git.planCheckout",
 			"git.commonDirectory", "git.ignoreSetup", "git.ignored", "git.graphCommits", "git.holdsCommits", "git.shallowBoundary",
 			"git.blameAtHead", "git.lineHistory", "git.resolveRange", "git.readBlobs", "git.worktrees", "git.activity", "git.countUncommitted",
-			"git.sinceViewed",
+			"git.sinceViewed", "git.checkContent", "git.findTwin", "git.pathsChangedBetween", "git.treesDifferAt",
 		};
 
 		Core::Result<std::optional<Core::Oid>> OidOf(const nlohmann::json& result, const char* name)
@@ -831,6 +831,66 @@ namespace Graphite {
 		}
 
 		return std::pair{std::move(*sides.GetValue()[0]), std::move(*sides.GetValue()[1])};
+	}
+
+	Core::Result<Core::ContentVerdict> WslGit::CheckContent(const Core::Oid& branchTip, const Core::Oid& lineTip)
+	{
+		return Decoded(AskForPayload("git.checkContent", {{"branchTip", branchTip.ToHex()}, {"lineTip", lineTip.ToHex()}}), &Core::ContentVerdictFromJson);
+	}
+
+	Core::Result<Core::PatchTwinSearch> WslGit::FindTwin(const Core::Oid& commit, const Core::Oid& lineTip, std::size_t budget)
+	{
+		return Decoded(AskForPayload("git.findTwin", {{"commit", commit.ToHex()}, {"lineTip", lineTip.ToHex()}, {"budget", budget}}),
+					   &Core::PatchTwinSearchFromJson);
+	}
+
+	Core::Result<std::vector<std::string>> WslGit::PathsChangedBetween(const Core::Oid& older, const Core::Oid& newer)
+	{
+		const Core::Result<nlohmann::json> paths = AskForPayload("git.pathsChangedBetween", {{"older", older.ToHex()}, {"newer", newer.ToHex()}});
+
+		if (!paths)
+		{
+			return paths.GetError();
+		}
+
+		if (!paths.GetValue().is_array())
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's changed paths are not a list"};
+		}
+
+		std::vector<std::string> listed;
+
+		for (const nlohmann::json& path : paths.GetValue())
+		{
+			if (!path.is_string())
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent's changed paths hold something that is not a path"};
+			}
+
+			listed.push_back(path.get<std::string>());
+		}
+
+		return listed;
+	}
+
+	Core::Result<bool> WslGit::TreesDifferAt(const Core::Oid& from, const Core::Oid& to, const std::vector<std::string>& paths)
+	{
+		const Core::Result<Answer> answer = Ask("git.treesDifferAt", {{"from", from.ToHex()}, {"to", to.ToHex()}}, kLongRequest, kStartWait,
+												nlohmann::json(paths).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		const auto differ = answer.GetValue().Result.find("differ");
+
+		if (differ == answer.GetValue().Result.end() || !differ->is_boolean())
+		{
+			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent did not say whether the trees differ"};
+		}
+
+		return differ->get<bool>();
 	}
 
 	Core::Result<std::vector<Core::GraphCommit>> WslGit::ReadGraphCommits(const Core::GraphReadRequest& request)
