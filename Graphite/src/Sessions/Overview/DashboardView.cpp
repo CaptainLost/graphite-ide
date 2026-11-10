@@ -114,7 +114,7 @@ namespace Graphite {
 			{
 				const TipCard card = hovered.Tip();
 
-				if (!IsEmpty(card) && ImGui::BeginTooltip())
+				if (!IsEmpty(card) && BeginTipCard(colours))
 				{
 					DrawTipCard(card, colours);
 					ImGui::EndTooltip();

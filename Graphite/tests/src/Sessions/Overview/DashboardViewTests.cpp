@@ -429,7 +429,33 @@ TEST_CASE("A tip card keeps the widest label of a section whole wherever the car
 	}
 }
 
-TEST_CASE("DashboardColoursFrom maps the palette as decided")
+TEST_CASE("A tip card's tooltip is edged in the frame colour")
+{
+	ImGuiFrames frames;
+	ImGui::GetStyle().PopupBorderSize = 1.0f;
+	const DashboardColours colours = DistinctColours();
+	TipCard card;
+	card.Head = "Bash";
+	card.HeadValue = "28,661 calls";
+
+	int edgeVertices = 0;
+	frames.Next([&] {
+		if (BeginTipCard(colours))
+		{
+			DrawTipCard(card, colours);
+			ImGui::EndTooltip();
+		}
+
+		const ImGuiWindow* tooltip = ShownTooltip();
+		REQUIRE(tooltip != nullptr);
+		edgeVertices = VerticesInColourWithin(*tooltip->DrawList, colours.Frame, tooltip->Rect());
+		CHECK(ImGui::GetColorU32(ImGuiCol_Border) != colours.Frame);
+	});
+
+	CHECK(edgeVertices > 0);
+}
+
+TEST_CASE("DashboardColoursFrom maps the palette as decided, with rules and edges lifted off the surface")
 {
 	ImGuiFrames frames;
 	frames.Next([] {
@@ -457,5 +483,6 @@ TEST_CASE("DashboardColoursFrom maps the palette as decided")
 		CHECK((colours.Hatch & ~IM_COL32_A_MASK) == (palette.TextDisabled & ~IM_COL32_A_MASK));
 		CHECK(ChannelOf(colours.Hatch, IM_COL32_A_SHIFT) == 89);
 		CHECK(colours.Tile == surface);
+		CHECK(ChannelOf(colours.Frame, IM_COL32_R_SHIFT) > ChannelOf(colours.Heat[0], IM_COL32_R_SHIFT));
 	});
 }

@@ -134,7 +134,7 @@ namespace Graphite {
 			void Banner(const std::string& text)
 			{
 				const float height = (kTipLinePitch + 2.0f * kBannerPaddingY) * m_Unit;
-				m_Drawing.AddRectFilled(ImVec2(m_Origin.x, m_Y), ImVec2(m_Origin.x + m_Width, m_Y + height), m_Colours.Tile,
+				m_Drawing.AddRectFilled(ImVec2(m_Origin.x, m_Y), ImVec2(m_Origin.x + m_Width, m_Y + height), m_Colours.Frame,
 										kBannerRounding * m_Unit);
 				const float room = m_Width - 2.0f * kBannerPaddingX * m_Unit;
 				DrawTextAt(m_Drawing, ImVec2(m_Origin.x + kBannerPaddingX * m_Unit, m_Y + (height - m_Unit) * kHalf), m_Unit,
@@ -240,6 +240,14 @@ namespace Graphite {
 			ImVec2 m_Origin;
 			float m_Y = 0.0f;
 		};
+	}
+
+	bool BeginTipCard(const DashboardColours& colours)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Border, colours.Frame);
+		const bool open = ImGui::BeginTooltip();
+		ImGui::PopStyleColor();
+		return open;
 	}
 
 	void DrawTipCard(const TipCard& card, const DashboardColours& colours)

@@ -27,6 +27,6 @@ namespace Graphite {
 		ImU32 Good;
 	};
 
-	// WARNING: Reads the style's text and border colours, so it runs inside a frame.
+	// WARNING: Reads the style's text colour, so it runs inside a frame.
 	DashboardColours DashboardColoursFrom(const SessionPalette& palette, ImU32 surface);
 }

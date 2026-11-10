@@ -142,7 +142,7 @@ namespace Graphite {
 			{
 				const TipCard card = RowTip(session, total, context);
 
-				if (!IsEmpty(card) && ImGui::BeginTooltip())
+				if (!IsEmpty(card) && BeginTipCard(context.Colours))
 				{
 					DrawTipCard(card, context.Colours);
 					ImGui::EndTooltip();

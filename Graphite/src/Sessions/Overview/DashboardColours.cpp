@@ -9,6 +9,7 @@ namespace Graphite {
 
 	namespace {
 		constexpr float kEmptyHeatLift = 0.06f;
+		constexpr float kFrameLift = 0.1f;
 		constexpr std::array<float, kHeatLevels - 1> kHeatShares = {0.3f, 0.5f, 0.75f, 1.0f};
 		constexpr float kBarShare = 0.18f;
 		constexpr float kHatchAlpha = 0.35f;
@@ -26,11 +27,11 @@ namespace Graphite {
 
 		// WARNING: "Lightened" on a dark surface; on a light one the same step goes toward black, or an empty day
 		// would vanish into the tile.
-		ImU32 EmptyHeat(ImU32 surface)
+		ImU32 Lifted(ImU32 surface, float share)
 		{
 			const ImVec4 channels = ImGui::ColorConvertU32ToFloat4(surface);
 			const bool light = Core::IsLightBackground(Core::Color{channels.x, channels.y, channels.z, channels.w});
-			return Mix(surface, light ? IM_COL32(0, 0, 0, 255) : IM_COL32(255, 255, 255, 255), kEmptyHeatLift);
+			return Mix(surface, light ? IM_COL32(0, 0, 0, 255) : IM_COL32(255, 255, 255, 255), share);
 		}
 	}
 
@@ -43,7 +44,7 @@ namespace Graphite {
 		colours.Families[static_cast<std::size_t>(ModelFamily::Fable)] = palette.Agent;
 		colours.Families[static_cast<std::size_t>(ModelFamily::Other)] = palette.Other;
 
-		colours.Heat[0] = EmptyHeat(surface);
+		colours.Heat[0] = Lifted(surface, kEmptyHeatLift);
 		for (std::size_t level = 1; level < kHeatLevels; ++level)
 		{
 			colours.Heat[level] = Mix(surface, palette.Edit, kHeatShares[level - 1]);
@@ -54,7 +55,9 @@ namespace Graphite {
 		colours.Ink = ImGui::GetColorU32(ImGuiCol_Text);
 		colours.Dim = palette.TextDisabled;
 		colours.Tile = surface;
-		colours.Frame = ImGui::GetColorU32(ImGuiCol_Border);
+		// WARNING: Not the style's border, which on the default theme is the surface's own colour: tiles, rules and tip
+		// cards stand on the surface, where that border would not show.
+		colours.Frame = Lifted(surface, kFrameLift);
 		colours.Accent = palette.Accent;
 		colours.Bad = palette.Failed;
 		colours.Good = palette.Edit;
