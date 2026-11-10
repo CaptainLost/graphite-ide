@@ -17,6 +17,7 @@ namespace Graphite {
 
 	namespace {
 		constexpr double kSmallestTenth = 0.1;
+		constexpr double kHalfCent = 0.005;
 		constexpr double kCentsPerDollar = 100.0;
 		constexpr double kDollarsPerThousand = 1000.0;
 		constexpr double kDollarsPerMillion = 1'000'000.0;
@@ -28,6 +29,12 @@ namespace Graphite {
 
 	std::string TipMoney(double dollars)
 	{
+		// WARNING: A loss that rounds to no cent is written as nothing, never as "−< $0.01".
+		if (dollars < 0.0 && -dollars < kHalfCent)
+		{
+			return TipMoney(0.0);
+		}
+
 		if (dollars < 0.0)
 		{
 			return std::string{kMinusSign} + TipMoney(-dollars);
@@ -38,6 +45,12 @@ namespace Graphite {
 
 	std::string CompactMoney(double dollars)
 	{
+		// WARNING: A loss that rounds to no cent is written as nothing, never as "−< $0.01".
+		if (dollars < 0.0 && -dollars < kHalfCent)
+		{
+			return TipMoney(0.0);
+		}
+
 		if (dollars < 0.0)
 		{
 			return std::string{kMinusSign} + CompactMoney(-dollars);
@@ -104,6 +117,23 @@ namespace Graphite {
 		}
 
 		return std::format("{}%", std::lround(percent));
+	}
+
+	std::string TipShareInTenths(double part, double whole)
+	{
+		if (whole <= 0.0)
+		{
+			return std::string{kEnDash};
+		}
+
+		const double percent = 100.0 * part / whole;
+
+		if (percent > 0.0 && percent < kSmallestTenth)
+		{
+			return "<0.1%";
+		}
+
+		return std::format("{:.1f}%", percent);
 	}
 
 	std::string_view WeekdayAbbreviation(int mondayBased)

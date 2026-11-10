@@ -551,8 +551,7 @@ namespace Graphite {
 		for (const CachePiece& piece : pieces)
 		{
 			tokens.push_back(FormatTokens(piece.Tokens));
-			shares.push_back(all == 0 ? std::string{kEnDash}
-									  : std::format("{:.1f}%", 100.0 * static_cast<double>(piece.Tokens) / static_cast<double>(all)));
+			shares.push_back(TipShareInTenths(static_cast<double>(piece.Tokens), static_cast<double>(all)));
 		}
 
 		const float shareWidth = WidestOf(shares, small);

@@ -304,6 +304,15 @@ namespace Graphite {
 	void EndTipCard(const DashboardColours& colours)
 	{
 		const ImGuiWindow* const card = ImGui::GetCurrentWindowRead();
+
+		// WARNING: ImGui hides a tooltip for its first frame while it measures it, at size zero, and a shadow drawn
+		// then would be a dark blot at the cursor with no card on it.
+		if (card->Hidden)
+		{
+			ImGui::EndTooltip();
+			return;
+		}
+
 		const ImRect edge = card->Rect();
 		ImDrawList& drawing = *ImGui::GetForegroundDrawList(card->Viewport);
 		const ImVec2 viewMin = card->Viewport->Pos;

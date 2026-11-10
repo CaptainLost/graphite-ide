@@ -501,6 +501,17 @@ TEST_CASE("A loss and a tiny share read as a person writes them")
 	CHECK(TipShare(0.0005, 1.0) == "<0.1%");
 	CHECK(TipShare(0.004, 1.0) == "0.4%");
 	CHECK(TipShare(0.0, 1.0) == "0%");
+	CHECK(TipMoney(-0.001) == "$0.00");
+	CHECK(CompactMoney(-0.001) == "$0.00");
+	CHECK(TipMoney(-0.006) == Minus("$0.01"));
+}
+
+TEST_CASE("A share in tenths reads <0.1% below a tenth, never 0.0%")
+{
+	CHECK(TipShareInTenths(985.0, 1000.0) == "98.5%");
+	CHECK(TipShareInTenths(785.0, 14'600'000.0) == "<0.1%");
+	CHECK(TipShareInTenths(0.0, 1000.0) == "0.0%");
+	CHECK(TipShareInTenths(1.0, 0.0) == std::string{kEnDash});
 }
 
 TEST_CASE("Compact money writes a thousand and more in k and M, rounded before the unit is chosen")

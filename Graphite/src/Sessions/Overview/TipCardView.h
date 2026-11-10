@@ -12,6 +12,6 @@ namespace Graphite {
 	// WARNING: Draws the card's shadow on the foreground around the card, never over it, then ends the tooltip.
 	void EndTipCard(const DashboardColours& colours);
 
-	// WARNING: Draws inside BeginTipCard/EndTooltip, ending with one Dummy the size of the card.
+	// WARNING: Draws inside BeginTipCard/EndTipCard, ending with one Dummy the size of the card.
 	void DrawTipCard(const TipCard& card, const DashboardColours& colours);
 }

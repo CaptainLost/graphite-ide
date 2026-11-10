@@ -593,6 +593,7 @@ namespace Graphite {
 		// WARNING: First, before anything reads the model or the listed sessions, which point into m_Sessions.
 		RefreshOverview();
 
+		const SessionsTab listedFor = m_Tab;
 		const std::vector<SessionListRow> rows = m_Tab == SessionsTab::Sessions ? ListedRows() : std::vector<SessionListRow>{};
 		const bool viewIsLoading = m_Tab == SessionsTab::Overview
 									   ? OverviewShows() == OverviewContent::Loading
@@ -617,7 +618,9 @@ namespace Graphite {
 		}
 		else
 		{
-			RenderList(rows);
+			// WARNING: The toolbar may have just switched to this tab, after the rows were listed for the other one,
+			// and an empty list would flash "no sessions" for a frame.
+			RenderList(listedFor == m_Tab ? rows : ListedRows());
 		}
 	}
 }

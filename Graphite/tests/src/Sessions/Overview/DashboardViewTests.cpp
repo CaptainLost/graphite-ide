@@ -688,6 +688,37 @@ TEST_CASE("A tip card has the tip surface, and a shadow around it that never cov
 	CHECK(inside == 0);
 }
 
+TEST_CASE("A tip card casts no shadow on the frame ImGui hides it to measure it")
+{
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	DashboardColours colours = DistinctColours();
+	colours.Shadow = IM_COL32(0, 0, 0, 128);
+	TipCard card;
+	card.Head = "Read";
+
+	bool hidden = false;
+	frames.Next([&] {
+		if (BeginTipCard(colours))
+		{
+			DrawTipCard(card, colours);
+			hidden = ImGui::GetCurrentWindowRead()->Hidden;
+			EndTipCard(colours);
+		}
+	});
+
+	REQUIRE(hidden);
+	const ImDrawList& foreground = *ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
+	int black = 0;
+
+	for (const ImDrawVert& vertex : foreground.VtxBuffer)
+	{
+		black += (vertex.col & IM_COL32_A_MASK) != 0 && (vertex.col & ~IM_COL32_A_MASK) == 0 ? 1 : 0;
+	}
+
+	CHECK(black == 0);
+}
+
 TEST_CASE("A long body stops at four lines")
 {
 	ImGuiFrames frames;

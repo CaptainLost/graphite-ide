@@ -28,6 +28,7 @@ namespace Graphite {
 	std::string TipTokens(double tokens);
 
 	std::string TipShare(double part, double whole); // "12%", "0.4%", a dash when whole is nothing
+	std::string TipShareInTenths(double part, double whole); // "98.5%", "<0.1%", a dash when whole is nothing
 
 	std::string_view WeekdayAbbreviation(int mondayBased); // "Mon"
 
