@@ -7,8 +7,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -57,6 +59,92 @@ namespace Graphite {
 
 			return usage;
 		}
+
+		nlohmann::json HoursJson(const std::map<UtcHour, HourActivity>& hours)
+		{
+			nlohmann::json rows = nlohmann::json::array();
+
+			for (const auto& [hour, activity] : hours)
+			{
+				rows.push_back({hour.time_since_epoch().count(), activity.Requests, activity.Prompts,
+								UsageJson(activity.Usage)});
+			}
+
+			return rows;
+		}
+
+		std::map<UtcHour, HourActivity> HoursFrom(const nlohmann::json& rows)
+		{
+			std::map<UtcHour, HourActivity> hours;
+
+			for (const nlohmann::json& row : rows)
+			{
+				HourActivity activity;
+				activity.Requests = row.at(1).get<std::size_t>();
+				activity.Prompts = row.at(2).get<std::size_t>();
+				activity.Usage = UsageFrom(row.at(3));
+				hours[UtcHour{std::chrono::hours{row.at(0).get<std::int64_t>()}}] = std::move(activity);
+			}
+
+			return hours;
+		}
+
+		nlohmann::json ActivityJson(const SessionActivity& activity)
+		{
+			nlohmann::json cwds = nlohmann::json::array();
+			for (const auto& [cwd, usage] : activity.MainUsageByCwd)
+			{
+				cwds.push_back(nlohmann::json::array({cwd, UsageJson(usage)}));
+			}
+
+			nlohmann::json tools = nlohmann::json::array();
+			for (const auto& [name, tally] : activity.Tools)
+			{
+				tools.push_back({name, tally.Calls, tally.Failed});
+			}
+
+			nlohmann::json skills = nlohmann::json::array();
+			for (const auto& [name, tally] : activity.Skills)
+			{
+				skills.push_back({name, tally.Calls, tally.LastCalledAt});
+			}
+
+			return {{"mainHours", HoursJson(activity.MainHours)},
+					{"subagentHours", HoursJson(activity.SubagentHours)},
+					{"cwds", std::move(cwds)},
+					{"tools", std::move(tools)},
+					{"skills", std::move(skills)},
+					{"compactions", activity.Compactions},
+					{"activeMinutes", activity.ActiveTime.count()}};
+		}
+
+		SessionActivity ActivityFrom(const nlohmann::json& json)
+		{
+			SessionActivity activity;
+			activity.MainHours = HoursFrom(json.at("mainHours"));
+			activity.SubagentHours = HoursFrom(json.at("subagentHours"));
+
+			for (const nlohmann::json& row : json.at("cwds"))
+			{
+				activity.MainUsageByCwd[row.at(0).get<std::string>()] = UsageFrom(row.at(1));
+			}
+
+			for (const nlohmann::json& row : json.at("tools"))
+			{
+				activity.Tools[row.at(0).get<std::string>()] =
+					ToolTally{row.at(1).get<std::size_t>(), row.at(2).get<std::size_t>()};
+			}
+
+			for (const nlohmann::json& row : json.at("skills"))
+			{
+				activity.Skills[row.at(0).get<std::string>()] =
+					SkillTally{row.at(1).get<std::size_t>(), row.at(2).get<std::string>()};
+			}
+
+			activity.Compactions = json.at("compactions").get<std::size_t>();
+			activity.ActiveTime = std::chrono::minutes{json.at("activeMinutes").get<std::int64_t>()};
+			return activity;
+		}
 	}
 
 	std::vector<SessionSummary> LoadSummaryCache(const std::filesystem::path& file)
@@ -104,6 +192,7 @@ namespace Graphite {
 				summary.Print.WriteTicks = sessionJson.at("writeTicks").get<std::int64_t>();
 				summary.Print.Bytes = sessionJson.at("bytes").get<std::uint64_t>();
 				summary.Print.Files = sessionJson.at("files").get<std::size_t>();
+				summary.Activity = ActivityFrom(sessionJson.at("activity"));
 				summaries.push_back(std::move(summary));
 			}
 		}
@@ -134,7 +223,8 @@ namespace Graphite {
 								{"skippedLines", summary.SkippedLines},
 								{"writeTicks", summary.Print.WriteTicks},
 								{"bytes", summary.Print.Bytes},
-								{"files", summary.Print.Files}});
+								{"files", summary.Print.Files},
+								{"activity", ActivityJson(summary.Activity)}});
 		}
 
 		const nlohmann::json root = {{"version", kSummaryCacheVersion}, {"sessions", std::move(sessions)}};

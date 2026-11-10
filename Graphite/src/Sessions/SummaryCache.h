@@ -11,7 +11,7 @@ namespace Graphite {
 
 	// WARNING: Raise this whenever SessionSummary gains or changes a field, or a field is worked
 	// out differently, so a cache written by an older build is dropped.
-	constexpr int kSummaryCacheVersion = 2;
+	constexpr int kSummaryCacheVersion = 3;
 
 	std::vector<SessionSummary> LoadSummaryCache(const std::filesystem::path& file);
 

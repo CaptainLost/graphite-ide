@@ -26,6 +26,18 @@ namespace {
 		summary.SubagentCount = 3;
 		summary.SkippedLines = 1;
 		summary.Print = {123456789012345, 4096, 4};
+
+		const UtcHour first{std::chrono::hours{490000}};
+		const UsageByModel usage = {{{"claude-opus-5", false}, {1, 2, 3, 4, 5}}};
+		summary.Activity.MainHours[first] = {usage, 3, 2};
+		summary.Activity.MainHours[first + std::chrono::hours{1}] = {usage, 1, 0};
+		summary.Activity.SubagentHours[first] = {usage, 2, 0};
+		summary.Activity.MainUsageByCwd["D:\\Projekty\\Za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87"] = usage;
+		summary.Activity.MainUsageByCwd[""] = usage;
+		summary.Activity.Tools["Bash"] = {7, 1};
+		summary.Activity.Skills["brainstorming"] = {2, "2026-09-17T09:30:00.000Z"};
+		summary.Activity.Compactions = 2;
+		summary.Activity.ActiveTime = std::chrono::minutes{75};
 		return summary;
 	}
 }
@@ -60,6 +72,13 @@ TEST_CASE("A cache whose version is not a number reads as empty rather than thro
 	std::vector<SessionSummary> loaded;
 	REQUIRE_NOTHROW(loaded = LoadSummaryCache(file));
 	CHECK(loaded.empty());
+}
+
+TEST_CASE("A version 2 cache reads as empty")
+{
+	TempDirectory temp;
+
+	CHECK(LoadSummaryCache(temp.MakeFile("v2.json", "{\"version\":2,\"sessions\":[]}")).empty());
 }
 
 #ifdef _WIN32
@@ -99,3 +118,4 @@ TEST_CASE("A save that cannot replace the cache leaves the previous content inta
 	CHECK(SaveSummaryCache(file, {other}));
 }
 #endif
+
