@@ -37,71 +37,71 @@
 
 ### Editor
 
-- **Language support** — highlighting, diagnostics, hover, go to definition, find references and reference counts
+- **Language support** - highlighting, diagnostics, hover, go to definition, find references and reference counts
   above declarations, through the Language Server Protocol.
-- **Language servers** — clangd for C++; Roslyn, csharp-ls or OmniSharp for C#. Chosen per language in Settings,
+- **Language servers** - clangd for C++; Roslyn, csharp-ls or OmniSharp for C#. Chosen per language in Settings,
   downloaded on first use and verified by SHA-256 before they run.
-- **Editing** — find and replace, moving and duplicating lines, line comments, configurable indentation and line
+- **Editing** - find and replace, moving and duplicating lines, line comments, configurable indentation and line
   endings for new files.
-- **Line history** — inline blame for the current line and change markers in the gutter and scrollbar.
-- **Crash recovery** — unsaved buffers are copied aside as you type and restored after an abnormal exit; saves are
+- **Line history** - inline blame for the current line and change markers in the gutter and scrollbar.
+- **Crash recovery** - unsaved buffers are copied aside as you type and restored after an abnormal exit; saves are
   atomic.
 
 ### Navigation
 
-- **Command Palette** — every enabled command, found by a few letters of its label.
-- **Go to File, Go to Line, Go to Definition** — with Back and Forward across all of them.
-- **Explorer** — folder tree with Git status, cut, copy, paste and drag-and-drop; a solution view that reads
+- **Command Palette** - every enabled command, found by a few letters of its label.
+- **Go to File, Go to Line, Go to Definition** - with Back and Forward across all of them.
+- **Explorer** - folder tree with Git status, cut, copy, paste and drag-and-drop; a solution view that reads
   `.sln`, `.slnx`, `.vcxproj` and `.csproj`.
-- **Search** — find in files, a Problems list and a references panel.
+- **Search** - find in files, a Problems list and a references panel.
 
 ### Git
 
-- **History** — every commit with its graph, or first parents only, loaded 500 commits at a time so large
+- **History** - every commit with its graph, or first parents only, loaded 500 commits at a time so large
   repositories open at once.
-- **Branches, tags, stashes and worktrees** — in one sidebar, with the commits not yet pushed marked in the history.
-- **Changes** — staging, diffs side by side or inline, commits, amend, fetch, pull and push.
-- **Branch review** — a branch compared with its base the way a pull request would be, with files marked as viewed.
+- **Branches, tags, stashes and worktrees** - in one sidebar, with the commits not yet pushed marked in the history.
+- **Changes** - staging, diffs side by side or inline, commits, amend, fetch, pull and push.
+- **Branch review** - a branch compared with its base the way a pull request would be, with files marked as viewed.
 
 ### WSL
 
-- **Folders inside a distribution** — opened through `graphite-agent`, a small helper Graphite installs into the
+- **Folders inside a distribution** - opened through `graphite-agent`, a small helper Graphite installs into the
   distribution: files are read, watched and saved there, and Git status, staging, history and branches run there
   too.
 
 ### Workspace
 
-- **Terminals** — for every installed shell, with search in the scrollback.
-- **Viewers** — images and a hex view for files that are not text.
-- **Appearance** — built-in light and dark themes, themes loaded from JSON, interface scaling and rebindable
+- **Terminals** - for every installed shell, with search in the scrollback.
+- **Viewers** - images and a hex view for files that are not text.
+- **Appearance** - built-in light and dark themes, themes loaded from JSON, interface scaling and rebindable
   shortcuts.
-- **Claude Code sessions** — a panel for browsing session transcripts and what they cost.
+- **Claude Code sessions** - a panel for browsing session transcripts and what they cost.
 
 ## Screenshots
 
 <details open>
-<summary><b>Git window</b> — history graph, branches, tags, a stash, commits not yet pushed and a diff</summary>
+<summary><b>Git window</b> - history graph, branches, tags, a stash, commits not yet pushed and a diff</summary>
 
 ![The Git window: branches, tags and a stash in the sidebar, the history with its graph and the commits not yet pushed, and the diff of a changed file](docs/images/git-window.png)
 
 </details>
 
 <details>
-<summary><b>Branch review</b> — a branch against its base, with files marked as viewed</summary>
+<summary><b>Branch review</b> - a branch against its base, with files marked as viewed</summary>
 
 ![A review of a feature branch against origin/main: the changed files with two marked as viewed, and the diff of a new file](docs/images/branch-review.png)
 
 </details>
 
 <details>
-<summary><b>Diff</b> — uncommitted changes side by side</summary>
+<summary><b>Diff</b> - uncommitted changes side by side</summary>
 
 ![The Changes panel and a side-by-side diff of a modified file](docs/images/diff.png)
 
 </details>
 
 <details>
-<summary><b>Command Palette</b> — every command by a few letters of its name</summary>
+<summary><b>Command Palette</b> - every command by a few letters of its name</summary>
 
 ![The Command Palette over the editor, filtered to the Go to commands, with the Changes panel on the left](docs/images/command-palette.png)
 
@@ -115,7 +115,7 @@
 </details>
 
 <details>
-<summary><b>Solution view</b> — a Visual Studio solution's projects and folders</summary>
+<summary><b>Solution view</b> - a Visual Studio solution's projects and folders</summary>
 
 ![The Explorer showing a Visual Studio solution with its projects grouped into folders](docs/images/solution-view.png)
 
@@ -129,14 +129,14 @@
 </details>
 
 <details>
-<summary><b>Hex viewer</b> — for files that are not text</summary>
+<summary><b>Hex viewer</b> - for files that are not text</summary>
 
 ![A font file open in the hex viewer, with a selected byte and its values in the status bar](docs/images/hex-viewer.png)
 
 </details>
 
 <details>
-<summary><b>Themes</b> — the editor in Gruvbox Dark, and the built-in themes</summary>
+<summary><b>Themes</b> - the editor in Gruvbox Dark, and the built-in themes</summary>
 
 ![The editor in the Gruvbox Dark theme](docs/images/theme-gruvbox.png)
 
@@ -145,7 +145,7 @@
 </details>
 
 <details>
-<summary><b>Key bindings</b> — every shortcut rebindable, with where it applies</summary>
+<summary><b>Key bindings</b> - every shortcut rebindable, with where it applies</summary>
 
 ![The Key Bindings page of Settings filtered to line commands, with their shortcuts and where each one fires](docs/images/key-bindings.png)
 
@@ -156,7 +156,7 @@
 | Platform | Status |
 |---|---|
 | Windows 10 and 11 (x64) | Supported |
-| Linux | In progress — the core libraries build and pass their tests; the interface is not ported yet |
+| Linux | In progress - the core libraries build and pass their tests; the interface is not ported yet |
 | macOS | Planned |
 
 Folders inside WSL are supported from the Windows build.
@@ -239,12 +239,12 @@ flowchart LR
 
 Design principles:
 
-- **Frames on demand** — a frame is drawn only for input, a finished background task or a running animation, so an
+- **Frames on demand** - a frame is drawn only for input, a finished background task or a running animation, so an
   idle window uses no CPU.
-- **Nothing slow on the UI thread** — Git queries, solution parsing, language servers and the system file dialog run
+- **Nothing slow on the UI thread** - Git queries, solution parsing, language servers and the system file dialog run
   on workers; each Git worker keeps its own repository handle.
-- **Errors as values** — functions that can fail return `Result<T>` rather than throw across module boundaries.
-- **Atomic saves** — a file on disk is always either its old or its new version.
+- **Errors as values** - functions that can fail return `Result<T>` rather than throw across module boundaries.
+- **Atomic saves** - a file on disk is always either its old or its new version.
 
 The reasoning behind these and about 700 other decisions is recorded in [`docs/adr`](docs/adr/README.md).
 
