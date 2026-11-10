@@ -13,6 +13,7 @@ namespace Graphite {
 	namespace {
 		constexpr std::string_view kClaudeFolder = ".claude";
 		constexpr std::string_view kWorktreesFolder = "worktrees";
+		constexpr std::chrono::milliseconds kScanRebuildInterval{500};
 
 		bool HasUsage(const DayTotals& day)
 		{
@@ -32,21 +33,44 @@ namespace Graphite {
 		return IsWithinDirectory(worktree, folder);
 	}
 
-	void DashboardSource::MarkChanged()
+	void DashboardSource::MarkChanged(SummaryChange change)
 	{
 		m_Changed = true;
+		m_Removed = m_Removed || change == SummaryChange::Removed;
+	}
+
+	// WARNING: During a scan an update may wait for the interval, since the summaries live in a std::map: an updated
+	// summary keeps its node, and the model's facts, which hold only a const SessionSummary*, keep pointing at it with
+	// numbers a moment old. An erase frees the node such a pointer names, so a removal rebuilds at once.
+	bool DashboardSource::IsDue(const RefreshMoment& moment) const
+	{
+		if (m_Removed || !m_LastBuild.has_value())
+		{
+			return true;
+		}
+
+		if (!m_Changed)
+		{
+			return false;
+		}
+
+		return !moment.Scanning || moment.Now - *m_LastBuild >= kScanRebuildInterval;
 	}
 
 	bool DashboardSource::Refresh(const SessionsByFile& sessions, const Pricing& pricing,
 								  const std::filesystem::path& folder, const LocalCalendar& calendar,
-								  std::chrono::year_month_day today)
+								  std::chrono::year_month_day today, const RefreshMoment& moment)
 	{
-		if (!m_Changed && m_Prices == pricing.GetEntries() && m_Folder == folder && m_Today == today)
+		const bool sameSettings = m_Prices == pricing.GetEntries() && m_Folder == folder && m_Today == today;
+
+		if (sameSettings && !IsDue(moment))
 		{
 			return false;
 		}
 
 		m_Changed = false;
+		m_Removed = false;
+		m_LastBuild = moment.Now;
 		m_Prices = pricing.GetEntries();
 		m_Folder = folder;
 		m_Today = today;
@@ -56,16 +80,19 @@ namespace Graphite {
 
 		for (const auto& [file, summary] : sessions)
 		{
-			SessionPlace place = PlaceOfSession(summary, pricing);
+			const bool counts = !summary.IsEmpty();
+			const bool filtersByFolder = !folder.empty();
+			const bool modelGivesPlace = counts && !filtersByFolder;
+			SessionPlace place = modelGivesPlace ? SessionPlace{} : PlaceOfSession(summary, pricing);
 
-			if (!folder.empty() && !IsPlaceUnder(place, folder))
+			if (filtersByFolder && !IsPlaceUnder(place, folder))
 			{
 				continue;
 			}
 
 			m_Sessions.push_back({.Summary = &summary, .Place = std::move(place)});
 
-			if (!summary.IsEmpty())
+			if (counts)
 			{
 				counted.push_back(&summary);
 			}
@@ -84,6 +111,7 @@ namespace Graphite {
 			if (const auto found = indexOf.find(session.Summary); found != indexOf.end())
 			{
 				session.ModelIndex = found->second;
+				session.Place = m_Model.Sessions[found->second].Place;
 			}
 		}
 

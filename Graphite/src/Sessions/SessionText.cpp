@@ -132,6 +132,11 @@ namespace Graphite {
 		return scanNotStartedYet || initialScanRunning;
 	}
 
+	bool OverviewWaitsForScan(bool indexing, bool initialScanRunning, bool cacheGaveNothing)
+	{
+		return cacheGaveNothing && SessionScanIsUnderway(indexing, initialScanRunning);
+	}
+
 	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal)
 	{
 		if (terminal.Exited)

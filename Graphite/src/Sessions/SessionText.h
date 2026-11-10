@@ -32,6 +32,8 @@ namespace Graphite {
 
 	bool SessionScanIsUnderway(bool indexing, bool initialScanRunning);
 
+	bool OverviewWaitsForScan(bool indexing, bool initialScanRunning, bool cacheGaveNothing);
+
 	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal);
 
 	std::string UnfoundSessionText(std::string_view problem);

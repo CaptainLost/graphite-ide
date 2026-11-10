@@ -296,6 +296,21 @@ TEST_CASE("A scan that has not started yet counts as scanning, so the list never
 	CHECK_FALSE(SessionScanIsUnderway(kIndexing, kInitialScanDone));
 }
 
+TEST_CASE("The overview waits for the scan only when the cache gave nothing to draw")
+{
+	constexpr bool kIndexing = true;
+	constexpr bool kNotIndexing = false;
+	constexpr bool kInitialScanRunning = true;
+	constexpr bool kInitialScanDone = false;
+	constexpr bool kCacheGaveNothing = true;
+	constexpr bool kCacheGaveSummaries = false;
+
+	CHECK(OverviewWaitsForScan(kNotIndexing, kInitialScanDone, kCacheGaveNothing));
+	CHECK(OverviewWaitsForScan(kIndexing, kInitialScanRunning, kCacheGaveNothing));
+	CHECK_FALSE(OverviewWaitsForScan(kIndexing, kInitialScanRunning, kCacheGaveSummaries));
+	CHECK_FALSE(OverviewWaitsForScan(kIndexing, kInitialScanDone, kCacheGaveNothing));
+}
+
 TEST_CASE("A pending session keeps waiting while Claude's terminal runs")
 {
 	const CommandTerminal running;

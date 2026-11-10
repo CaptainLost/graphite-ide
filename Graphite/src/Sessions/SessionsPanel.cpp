@@ -5,6 +5,7 @@
 #include "Sessions/SessionWindows.h"
 #include "Sessions/ClaudeSettings.h"
 #include "Sessions/Overview/DashboardView.h"
+#include "Sessions/SessionList.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/SummaryCache.h"
 #include "Settings/UserDirectories.h"
@@ -142,7 +143,9 @@ namespace Graphite {
 			m_Sessions[summary.File] = summary;
 		}
 
-		m_Overview.MarkChanged();
+		m_CacheGaveNothing = cached.empty();
+
+		m_Overview.MarkChanged(SummaryChange::Updated);
 
 		m_Index.Start(m_Projects, std::move(cached));
 		m_InitialScan = true;
@@ -163,9 +166,13 @@ namespace Graphite {
 		IndexDelivery delivery;
 		m_Index.Take(delivery);
 
-		if (!delivery.Updated.empty() || !delivery.Removed.empty())
+		if (!delivery.Removed.empty())
 		{
-			m_Overview.MarkChanged();
+			m_Overview.MarkChanged(SummaryChange::Removed);
+		}
+		else if (!delivery.Updated.empty())
+		{
+			m_Overview.MarkChanged(SummaryChange::Updated);
 		}
 
 		for (SessionSummary& summary : delivery.Updated)
@@ -381,7 +388,8 @@ namespace Graphite {
 	void SessionsPanel::RefreshOverview()
 	{
 		const LocalCalendar& calendar = Calendar();
-		m_Overview.Refresh(m_Sessions, m_Settings.GetPricing(), ScopeFolder(), calendar, calendar.Today());
+		m_Overview.Refresh(m_Sessions, m_Settings.GetPricing(), ScopeFolder(), calendar, calendar.Today(),
+						   {.Scanning = m_InitialScan, .Now = std::chrono::steady_clock::now()});
 	}
 
 	DashboardColours SessionsPanel::Colours() const
@@ -462,9 +470,7 @@ namespace Graphite {
 
 	void SessionsPanel::RenderOverview()
 	{
-		const bool scanning = SessionScanIsUnderway(m_Indexing, m_InitialScan);
-
-		if (scanning && m_Sessions.empty())
+		if (OverviewWaitsForScan(m_Indexing, m_InitialScan, m_CacheGaveNothing))
 		{
 			const Core::PanelMarginScope margin;
 			Core::LoadingState(ScanProgressText(m_ScanProgress.Scanned, m_ScanProgress.Total).c_str());

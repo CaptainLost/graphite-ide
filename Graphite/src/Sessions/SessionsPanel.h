@@ -2,10 +2,10 @@
 
 #include "Sessions/LocalClock.h"
 #include "Sessions/ClaudeLaunch.h"
+#include "Sessions/Overview/DashboardColours.h"
 #include "Sessions/Overview/DashboardSource.h"
 #include "Sessions/Overview/LocalCalendar.h"
 #include "Sessions/SessionIndex.h"
-#include "Sessions/SessionList.h"
 #include "Sessions/SessionSummary.h"
 #include "Terminal/CommandTerminal.h"
 
@@ -122,6 +122,7 @@ namespace Graphite {
 		bool m_Indexing = false;
 
 		bool m_InitialScan = false;
+		bool m_CacheGaveNothing = true;
 		ScanProgress m_ScanProgress;
 
 		bool m_CacheDirty = false;

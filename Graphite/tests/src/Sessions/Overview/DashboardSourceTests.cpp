@@ -144,7 +144,7 @@ TEST_CASE("Top lists keep their row count when a session is replaced")
 	CHECK(before.Rows.front().starts_with("Large"));
 
 	Put(sessions, Costing("C:\\t\\small.jsonl", "Grown", "D:\\Repos\\Notes", 5.0));
-	source.MarkChanged();
+	source.MarkChanged(SummaryChange::Updated);
 	REQUIRE(source.Refresh(sessions, pricing, {}, calendar, Day(2026, 11, 10)));
 
 	const ExpensiveList after = DrawExpensiveList(source.GetModel(), calendar);
@@ -167,7 +167,7 @@ TEST_CASE("The dashboard is rebuilt only when the summaries, the prices, the fol
 	CHECK(source.Refresh(sessions, pricing, {}, calendar, today));
 	CHECK_FALSE(source.Refresh(sessions, pricing, {}, calendar, today));
 
-	source.MarkChanged();
+	source.MarkChanged(SummaryChange::Updated);
 	CHECK(source.Refresh(sessions, pricing, {}, calendar, today));
 	CHECK_FALSE(source.Refresh(sessions, pricing, {}, calendar, today));
 
@@ -207,4 +207,114 @@ TEST_CASE("With a folder, only sessions whose place is under it are kept, worktr
 
 	source.Refresh(sessions, Pricing::Defaults(), {}, calendar, Day(2026, 11, 10));
 	CHECK(source.GetSessions().size() == 3);
+}
+
+namespace {
+	const std::chrono::steady_clock::time_point kScanStart = std::chrono::steady_clock::time_point{} + std::chrono::hours{1};
+
+	RefreshMoment Scanning(std::chrono::milliseconds sinceStart)
+	{
+		return {.Scanning = true, .Now = kScanStart + sinceStart};
+	}
+
+	RefreshMoment ScanDone(std::chrono::milliseconds sinceStart)
+	{
+		return {.Scanning = false, .Now = kScanStart + sinceStart};
+	}
+
+	std::vector<std::string> ModelTitles(const DashboardSource& source)
+	{
+		std::vector<std::string> titles;
+		for (const SessionFacts& session : source.GetModel().Sessions)
+		{
+			titles.push_back(session.Summary->Title);
+		}
+
+		std::ranges::sort(titles);
+		return titles;
+	}
+
+	// The dashboard over two sessions, built as a scan starts.
+	struct ScanFixture
+	{
+		SessionsByFile Sessions;
+		const LocalCalendar Calendar{nullptr};
+		const Pricing Prices = Pricing::Defaults();
+		const std::chrono::year_month_day Today = Day(2026, 11, 10);
+		DashboardSource Source;
+
+		ScanFixture()
+		{
+			Put(Sessions, Costing("C:\\t\\kept.jsonl", "Kept", "D:\\Repos\\IDE", 1.0));
+			Put(Sessions, Costing("C:\\t\\gone.jsonl", "Gone", "D:\\Repos\\IDE", 2.0));
+			REQUIRE(Refresh(Scanning(std::chrono::milliseconds{0})));
+		}
+
+		bool Refresh(const RefreshMoment& moment)
+		{
+			return Source.Refresh(Sessions, Prices, {}, Calendar, Today, moment);
+		}
+
+		void Update(const char* title, double dollars)
+		{
+			Put(Sessions, Costing("C:\\t\\kept.jsonl", title, "D:\\Repos\\IDE", dollars));
+			Source.MarkChanged(SummaryChange::Updated);
+		}
+	};
+}
+
+TEST_CASE("A removed summary leaves the dashboard and the listed sessions")
+{
+	ScanFixture fixture;
+
+	fixture.Sessions.erase(Core::FromUtf8("C:\\t\\gone.jsonl"));
+	fixture.Source.MarkChanged(SummaryChange::Removed);
+	REQUIRE(fixture.Refresh(ScanDone(std::chrono::milliseconds{1})));
+
+	CHECK(ModelTitles(fixture.Source) == std::vector<std::string>{"Kept"});
+	REQUIRE(fixture.Source.GetSessions().size() == 1);
+	CHECK(fixture.Source.GetSessions().front().Summary->Title == "Kept");
+}
+
+TEST_CASE("During a scan a removed summary rebuilds the dashboard at once")
+{
+	ScanFixture fixture;
+
+	fixture.Update("Renamed", 1.0);
+	CHECK_FALSE(fixture.Refresh(Scanning(std::chrono::milliseconds{100})));
+
+	fixture.Sessions.erase(Core::FromUtf8("C:\\t\\gone.jsonl"));
+	fixture.Source.MarkChanged(SummaryChange::Removed);
+	CHECK(fixture.Refresh(Scanning(std::chrono::milliseconds{200})));
+	CHECK(ModelTitles(fixture.Source) == std::vector<std::string>{"Renamed"});
+}
+
+TEST_CASE("During a scan the updates within half a second make one rebuild")
+{
+	ScanFixture fixture;
+
+	fixture.Update("First", 1.0);
+	CHECK_FALSE(fixture.Refresh(Scanning(std::chrono::milliseconds{100})));
+	fixture.Update("Second", 3.0);
+	CHECK_FALSE(fixture.Refresh(Scanning(std::chrono::milliseconds{400})));
+
+	CHECK(fixture.Refresh(Scanning(std::chrono::milliseconds{500})));
+	CHECK(ModelTitles(fixture.Source) == std::vector<std::string>{"Gone", "Second"});
+	CHECK(fixture.Source.GetModel().Sessions.front().Summary->Title == "Second");
+
+	fixture.Update("Third", 1.0);
+	CHECK_FALSE(fixture.Refresh(Scanning(std::chrono::milliseconds{600})));
+	CHECK_FALSE(fixture.Refresh(Scanning(std::chrono::milliseconds{900})));
+}
+
+TEST_CASE("The end of a scan rebuilds the updates it left waiting")
+{
+	ScanFixture fixture;
+
+	fixture.Update("Waiting", 1.0);
+	CHECK_FALSE(fixture.Refresh(Scanning(std::chrono::milliseconds{100})));
+
+	CHECK(fixture.Refresh(ScanDone(std::chrono::milliseconds{150})));
+	CHECK(ModelTitles(fixture.Source) == std::vector<std::string>{"Gone", "Waiting"});
+	CHECK_FALSE(fixture.Refresh(ScanDone(std::chrono::milliseconds{200})));
 }
