@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 #include <variant>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -113,6 +114,13 @@ namespace {
 			Send(Core::EncodeReply(Core::AgentReply{.Id = id, .Result = std::move(result), .Payload = std::move(payload)}));
 		}
 
+		// Answers hello with this result instead of a well-formed one.
+		void ReplyToHelloWith(nlohmann::json result)
+		{
+			std::scoped_lock lock{m_HelloMutex};
+			m_HelloOverride = std::move(result);
+		}
+
 		// The agent's process ends: both directions close.
 		void Hang()
 		{
@@ -149,7 +157,13 @@ namespace {
 
 					if (request->Operation == "hello")
 					{
-						Reply(request->Id, {{"version", m_Version}, {"protocol", 1}, {"home", "/home/me"}, {"pid", 1}});
+						std::optional<nlohmann::json> override;
+						{
+							std::scoped_lock lock{m_HelloMutex};
+							override = m_HelloOverride;
+						}
+
+						Reply(request->Id, override.value_or(nlohmann::json{{"version", m_Version}, {"protocol", 1}, {"home", "/home/me"}, {"pid", 1}}));
 					}
 					else if (request->Operation != "bye")
 					{
@@ -163,6 +177,8 @@ namespace {
 		std::shared_ptr<ByteChannel> m_FromAgent;
 		Handler m_Handler;
 		std::string m_Version;
+		std::mutex m_HelloMutex;
+		std::optional<nlohmann::json> m_HelloOverride;
 		std::thread m_Thread;
 	};
 
@@ -288,4 +304,77 @@ TEST_CASE("A reply that never comes ends the wait as cancelled")
 
 	REQUIRE_FALSE(reply.HasValue());
 	CHECK(reply.GetError().Code == Core::ErrorCode::Cancelled);
+}
+
+TEST_CASE("Waiting for a reply from inside a handler is refused at once, since only the reader could deliver it")
+{
+	FakeAgent agent{Ignore};
+	const Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(agent.HostEnd(), "v1");
+
+	std::promise<Core::Result<Core::AgentReply>> fromHandler;
+	connection->SetEventHandler([&](const Core::AgentEvent&) {
+		fromHandler.set_value(connection->SendAndWait("rename", {}, {}, 5s));
+	});
+	REQUIRE(connection->WaitUntilSettled(2s));
+
+	const auto started = std::chrono::steady_clock::now();
+	agent.Send(Core::EncodeEvent(Core::AgentEvent{.Name = "changes"}));
+
+	auto future = fromHandler.get_future();
+	REQUIRE(future.wait_for(4s) == std::future_status::ready);
+	const Core::Result<Core::AgentReply> result = future.get();
+	REQUIRE_FALSE(result.HasValue());
+	CHECK(result.GetError().Code == Core::ErrorCode::InvalidArgument);
+	CHECK(std::chrono::steady_clock::now() - started < 2s);
+}
+
+TEST_CASE("A hello answer of the wrong shape fails the connection instead of ending Graphite")
+{
+	FakeAgent agent{Ignore};
+	auto pipe = agent.HostEnd();
+	agent.ReplyToHelloWith(nlohmann::json::array({1, 2}));
+	const Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(std::move(pipe), "v1");
+
+	REQUIRE(connection->WaitUntilSettled(2s));
+	CHECK(connection->GetState() == Core::AgentConnection::State::Failed);
+}
+
+TEST_CASE("A payload past the frame limit is refused as too large, and the connection stays up")
+{
+	FakeAgent agent{[](const Core::AgentRequest& request, FakeAgent& self) { self.Reply(request.Id, {}); }};
+	const Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(agent.HostEnd(), "v1");
+	REQUIRE(connection->WaitUntilSettled(2s));
+
+	const Core::Result<Core::AgentReply> tooLarge =
+		connection->SendAndWait("writeFile", {{"path", "/tmp/big"}}, std::string(Core::kMaxFramePayloadBytes + 1, 'x'), 5s);
+
+	REQUIRE_FALSE(tooLarge.HasValue());
+	CHECK(tooLarge.GetError().Code == Core::ErrorCode::TooLarge);
+	CHECK(connection->SendAndWait("rename", {}, {}, 2s).HasValue());
+}
+
+TEST_CASE("Requests sent just before the connection closes still reach the agent, then bye")
+{
+	std::mutex seen;
+	std::vector<std::string> operations;
+
+	{
+		FakeAgent agent{[&](const Core::AgentRequest& request, FakeAgent&) {
+			std::scoped_lock lock{seen};
+			operations.push_back(request.Operation);
+		}};
+		{
+			const Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(agent.HostEnd(), "v1");
+			REQUIRE(connection->WaitUntilSettled(2s));
+
+			for (int index = 0; index < 50; ++index)
+			{
+				connection->Send("writeFile", {{"path", "/tmp/x"}}, "bytes", [](const Core::AgentReply&) {});
+			}
+		}
+		std::this_thread::sleep_for(100ms);
+	}
+
+	std::scoped_lock lock{seen};
+	CHECK(operations.size() == 50);
 }

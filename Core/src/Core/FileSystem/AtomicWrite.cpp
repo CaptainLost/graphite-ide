@@ -176,8 +176,26 @@ namespace Core {
 		}
 	}
 
-	Result<void> WriteFileAtomically(const std::filesystem::path& target, std::string_view bytes)
+	Result<void> WriteFileAtomically(const std::filesystem::path& requestedTarget, std::string_view bytes)
 	{
+		std::filesystem::path target = requestedTarget;
+
+#ifndef CORE_PLATFORM_WINDOWS
+		// A rename over a symbolic link replaces the link, leaving the file it pointed at as it
+		// was; the write goes to that file instead (compile_commands.json -> build/..., dotfiles).
+		std::error_code linkError;
+
+		if (std::filesystem::is_symlink(requestedTarget, linkError))
+		{
+			const std::filesystem::path resolved = std::filesystem::weakly_canonical(requestedTarget, linkError);
+
+			if (!linkError)
+			{
+				target = resolved;
+			}
+		}
+#endif
+
 		const Result<std::filesystem::path> temporary = PickTemporaryPath(target);
 
 		if (!temporary)

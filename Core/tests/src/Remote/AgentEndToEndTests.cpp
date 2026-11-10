@@ -76,7 +76,7 @@ TEST_CASE("The agent installs into WSL, writes a file and reports a change, end 
 	Core::Result<Core::Scope<Core::AgentPipe>> pipe = Core::StartAgent(install);
 	REQUIRE(pipe.HasValue());
 
-	const Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(std::move(pipe.GetValue()), install.Version);
+	Core::Scope<Core::AgentConnection> connection = Core::AgentConnection::Open(std::move(pipe.GetValue()), install.Version);
 	REQUIRE(connection->WaitUntilSettled(30s));
 	REQUIRE_MESSAGE(connection->GetState() == Core::AgentConnection::State::Ready,
 					(connection->GetFailure() ? connection->GetFailure()->Message : std::string{}));
@@ -108,6 +108,11 @@ TEST_CASE("The agent installs into WSL, writes a file and reports a change, end 
 	auto future = changed->get_future();
 	REQUIRE(future.wait_for(5s) == std::future_status::ready);
 	CHECK(future.get().at("directories") == nlohmann::json::array({folder}));
+
+	// A save sent without waiting, right before Graphite lets go of the agent, still lands.
+	connection->Send("writeFile", {{"path", folder + "/last.txt"}}, "sent last", [](const Core::AgentReply&) {});
+	connection.reset();
+	CHECK(Read(folderOnShare / "last.txt") == "sent last");
 
 	std::filesystem::remove_all(folderOnShare, ignored);
 }

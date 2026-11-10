@@ -26,6 +26,16 @@ namespace Core {
 			NamedCode{ErrorCode::Cancelled, "Cancelled"},
 		};
 
+		// A Linux name is any bytes, not always UTF-8, and nlohmann's dump throws on such a string.
+		// Replaced rather than thrown: one odd name must not end the conversation. Callers that
+		// send paths pick names that are UTF-8 (the agent reports such a folder by its nearest
+		// UTF-8 parent), so a replacement here is a last resort, never a path the host acts on.
+		std::string DumpHeader(const nlohmann::json& header)
+		{
+			constexpr int kCompact = -1;
+			return header.dump(kCompact, ' ', false, nlohmann::json::error_handler_t::replace);
+		}
+
 		Error NotAMessage(std::string_view why)
 		{
 			return Error{ErrorCode::InvalidArgument, std::string{"not an agent message: "} + std::string{why}};
@@ -61,7 +71,7 @@ namespace Core {
 	std::string EncodeRequest(const AgentRequest& request)
 	{
 		const nlohmann::json header{{"id", request.Id}, {"op", request.Operation}, {"args", request.Arguments}};
-		return EncodeFrame(header.dump(), request.Payload);
+		return EncodeFrame(DumpHeader(header), request.Payload);
 	}
 
 	std::string EncodeReply(const AgentReply& reply)
@@ -78,13 +88,13 @@ namespace Core {
 			header["result"] = reply.Result;
 		}
 
-		return EncodeFrame(header.dump(), reply.Payload);
+		return EncodeFrame(DumpHeader(header), reply.Payload);
 	}
 
 	std::string EncodeEvent(const AgentEvent& event)
 	{
 		const nlohmann::json header{{"event", event.Name}, {"body", event.Body}};
-		return EncodeFrame(header.dump(), "");
+		return EncodeFrame(DumpHeader(header), "");
 	}
 
 	Result<AgentMessage> DecodeMessage(const Frame& frame)

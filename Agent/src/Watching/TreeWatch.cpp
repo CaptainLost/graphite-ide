@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <format>
 #include <system_error>
+#include <vector>
 
 namespace Agent {
 
@@ -79,26 +80,38 @@ namespace Agent {
 
 	void TreeWatch::WatchTree(const std::filesystem::path& folder, bool announceEntries)
 	{
-		WatchOne(folder);
+		// Walked folder by folder, not with recursive_directory_iterator: that one ends the whole
+		// walk at the first error other than a denied permission, and a folder a build deletes
+		// between being listed and being entered would leave every folder after it unwatched.
+		// Here such a folder is skipped and the walk goes on.
+		std::vector<std::filesystem::path> pending{folder};
 
-		std::error_code error;
-		std::filesystem::recursive_directory_iterator entries{
-			folder, std::filesystem::directory_options::skip_permission_denied, error};
-
-		for (; !error && entries != std::filesystem::recursive_directory_iterator{}; entries.increment(error))
+		while (!pending.empty())
 		{
-			const std::filesystem::directory_entry& entry = *entries;
+			const std::filesystem::path current = std::move(pending.back());
+			pending.pop_back();
 
-			if (announceEntries)
+			WatchOne(current);
+
+			std::error_code error;
+			std::filesystem::directory_iterator entries{current, std::filesystem::directory_options::skip_permission_denied, error};
+
+			for (; !error && entries != std::filesystem::directory_iterator{}; entries.increment(error))
 			{
-				m_Batcher.Record(entry.path());
-			}
+				const std::filesystem::directory_entry& entry = *entries;
 
-			std::error_code typeError;
+				if (announceEntries)
+				{
+					m_Batcher.Record(entry.path());
+				}
 
-			if (entry.is_directory(typeError) && !entry.is_symlink(typeError))
-			{
-				WatchOne(entry.path());
+				std::error_code typeError;
+				const bool isFolder = entry.is_directory(typeError) && !entry.is_symlink(typeError);
+
+				if (isFolder)
+				{
+					pending.push_back(entry.path());
+				}
 			}
 		}
 	}

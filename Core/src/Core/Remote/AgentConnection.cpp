@@ -17,6 +17,11 @@ namespace Core {
 
 		constexpr std::size_t kReadBufferBytes = 64 * 1024;
 
+		// How long closing waits for the queue to drain and for the agent to end after bye before
+		// the process is killed: long enough for a save sent just before, short enough not to
+		// hold Graphite's exit.
+		constexpr std::chrono::seconds kGoodbyeWait{2};
+
 		class ProcessPipe final : public AgentPipe
 		{
 		public:
@@ -48,34 +53,13 @@ namespace Core {
 	{
 		// Not make_unique, which cannot reach the private constructor.
 		Scope<AgentConnection> connection{new AgentConnection{std::move(pipe), std::move(expectedVersion)}};
-
-		connection->m_Reader = std::thread{[raw = connection.get()] { raw->ReadUntilTheEnd(); }};
-
 		AgentConnection* const self = connection.get();
-		connection->Send("hello", {{"protocol", kAgentProtocolVersion}}, {}, [self](const AgentReply& reply) {
-			if (reply.Failure)
-			{
-				self->Settle(State::Failed, reply.Failure);
-				return;
-			}
 
-			const std::string version = reply.Result.value("version", std::string{});
+		connection->m_Reader = std::thread{[self] { self->ReadUntilTheEnd(); }};
+		connection->m_ReaderId = connection->m_Reader.get_id();
+		connection->m_Writer = std::thread{[self] { self->WriteUntilTheEnd(); }};
 
-			if (!self->m_ExpectedVersion.empty() && version != self->m_ExpectedVersion)
-			{
-				self->Settle(State::Failed,
-							 Error{ErrorCode::Unsupported, std::format("the agent in the distro is version {}, Graphite needs {}",
-																	   version, self->m_ExpectedVersion)});
-				return;
-			}
-
-			{
-				std::scoped_lock lock{self->m_Mutex};
-				self->m_Home = reply.Result.value("home", std::string{});
-			}
-
-			self->Settle(State::Ready, std::nullopt);
-		});
+		connection->Send("hello", {{"protocol", kAgentProtocolVersion}}, {}, [self](const AgentReply& reply) { self->TakeHello(reply); });
 
 		return connection;
 	}
@@ -87,10 +71,26 @@ namespace Core {
 
 	AgentConnection::~AgentConnection()
 	{
-		if (GetState() == State::Ready)
+		const bool wasReady = GetState() == State::Ready;
+
+		if (wasReady)
 		{
-			std::scoped_lock lock{m_WriteMutex};
-			m_Pipe->Write(EncodeRequest(AgentRequest{.Id = 0, .Operation = "bye"}));
+			Enqueue(EncodeRequest(AgentRequest{.Id = 0, .Operation = "bye"}));
+		}
+
+		// What was sent last goes out before the pipe is cut, then the agent gets a moment to end
+		// on its own after bye, so nothing written into the pipe is lost to a kill.
+		{
+			std::unique_lock lock{m_OutboxMutex};
+			m_OutboxChanged.wait_for(lock, kGoodbyeWait, [&] { return m_Outbox.empty() && m_WriterIdle; });
+			m_WriterStopping = true;
+		}
+		m_OutboxChanged.notify_all();
+
+		if (wasReady)
+		{
+			std::unique_lock lock{m_Mutex};
+			m_Settled.wait_for(lock, kGoodbyeWait, [&] { return m_ReaderEnded; });
 		}
 
 		{
@@ -100,14 +100,73 @@ namespace Core {
 
 		m_Pipe->Close();
 
+		if (m_Writer.joinable())
+		{
+			m_Writer.join();
+		}
+
 		if (m_Reader.joinable())
 		{
 			m_Reader.join();
 		}
 	}
 
+	void AgentConnection::TakeHello(const AgentReply& reply)
+	{
+		if (reply.Failure)
+		{
+			Settle(State::Failed, reply.Failure);
+			return;
+		}
+
+		// An agent of another protocol may answer anything: its shape is checked, never assumed.
+		const nlohmann::json& result = reply.Result;
+		const auto version = result.is_object() ? result.find("version") : result.end();
+
+		if (!result.is_object() || version == result.end() || !version->is_string())
+		{
+			Settle(State::Failed, Error{ErrorCode::Unsupported, "the agent in the distro answered hello in a form Graphite does not know"});
+			return;
+		}
+
+		const std::string agentVersion = version->get<std::string>();
+
+		if (!m_ExpectedVersion.empty() && agentVersion != m_ExpectedVersion)
+		{
+			Settle(State::Failed, Error{ErrorCode::Unsupported, std::format("the agent in the distro is version {}, Graphite needs {}",
+																			agentVersion, m_ExpectedVersion)});
+			return;
+		}
+
+		const auto home = result.find("home");
+
+		{
+			std::scoped_lock lock{m_Mutex};
+			m_Home = home != result.end() && home->is_string() ? home->get<std::string>() : std::string{};
+		}
+
+		Settle(State::Ready, std::nullopt);
+	}
+
+	void AgentConnection::Enqueue(std::string frame)
+	{
+		{
+			std::scoped_lock lock{m_OutboxMutex};
+			m_Outbox.push_back(std::move(frame));
+		}
+		m_OutboxChanged.notify_all();
+	}
+
 	void AgentConnection::Send(std::string operation, nlohmann::json arguments, std::string payload, ReplyHandler onReply)
 	{
+		if (payload.size() > kMaxFramePayloadBytes)
+		{
+			onReply(AgentReply{.Id = 0, .Failure = Error{ErrorCode::TooLarge,
+														 std::format("{} bytes is more than the agent takes in one request ({})",
+																	 payload.size(), kMaxFramePayloadBytes)}});
+			return;
+		}
+
 		std::uint64_t id = 0;
 		std::optional<Error> refused;
 
@@ -131,25 +190,18 @@ namespace Core {
 			return;
 		}
 
-		const std::string frame =
-			EncodeRequest(AgentRequest{.Id = id, .Operation = std::move(operation), .Arguments = std::move(arguments), .Payload = std::move(payload)});
-
-		bool written = false;
-		{
-			std::scoped_lock lock{m_WriteMutex};
-			written = m_Pipe->Write(frame);
-		}
-
-		if (!written)
-		{
-			// The reader will see the pipe end too; this request is answered either way.
-			FailEverything(Stopped());
-		}
+		Enqueue(EncodeRequest(
+			AgentRequest{.Id = id, .Operation = std::move(operation), .Arguments = std::move(arguments), .Payload = std::move(payload)}));
 	}
 
 	Result<AgentReply> AgentConnection::SendAndWait(std::string operation, nlohmann::json arguments, std::string payload,
 													std::chrono::milliseconds timeout)
 	{
+		if (std::this_thread::get_id() == m_ReaderId)
+		{
+			return Error{ErrorCode::InvalidArgument, "a reply or event handler cannot wait for a reply: send, and act in the handler"};
+		}
+
 		// Shared, so a reply landing after the wait gave up writes into something still alive.
 		auto answer = std::make_shared<std::promise<AgentReply>>();
 		std::future<AgentReply> answered = answer->get_future();
@@ -219,6 +271,40 @@ namespace Core {
 		m_Settled.notify_all();
 	}
 
+	void AgentConnection::WriteUntilTheEnd()
+	{
+		while (true)
+		{
+			std::string frame;
+			{
+				std::unique_lock lock{m_OutboxMutex};
+				m_WriterIdle = true;
+				m_OutboxChanged.notify_all();
+				m_OutboxChanged.wait(lock, [&] { return !m_Outbox.empty() || m_WriterStopping; });
+
+				if (m_Outbox.empty())
+				{
+					return;
+				}
+
+				frame = std::move(m_Outbox.front());
+				m_Outbox.pop_front();
+				m_WriterIdle = false;
+			}
+
+			if (!m_Pipe->Write(frame))
+			{
+				FailEverything(Stopped());
+
+				std::scoped_lock lock{m_OutboxMutex};
+				m_Outbox.clear();
+				m_WriterIdle = true;
+				m_OutboxChanged.notify_all();
+				return;
+			}
+		}
+	}
+
 	void AgentConnection::ReadUntilTheEnd()
 	{
 		FrameReader reader;
@@ -242,9 +328,10 @@ namespace Core {
 				if (!message)
 				{
 					CORE_ERROR("The WSL agent sent something that is not a message: {}", message.GetError().Message);
+					reader = FrameReader{};
 					FailEverything(Stopped());
 					m_Pipe->Close();
-					return;
+					break;
 				}
 
 				Dispatch(std::move(message.GetValue()));
@@ -255,47 +342,61 @@ namespace Core {
 				CORE_ERROR("The WSL agent sent a frame past the size limits");
 				FailEverything(Stopped());
 				m_Pipe->Close();
-				return;
+				break;
 			}
 		}
 
 		FailEverything(Stopped());
+
+		{
+			std::scoped_lock lock{m_Mutex};
+			m_ReaderEnded = true;
+		}
+		m_Settled.notify_all();
 	}
 
 	void AgentConnection::Dispatch(AgentMessage message)
 	{
-		if (auto* reply = std::get_if<AgentReply>(&message))
+		// A handler that throws loses its own message, not the reader and every request behind it.
+		try
 		{
-			ReplyHandler handler;
+			if (auto* reply = std::get_if<AgentReply>(&message))
 			{
-				std::scoped_lock lock{m_Mutex};
-				const auto waiting = m_Waiting.find(reply->Id);
-
-				if (waiting == m_Waiting.end())
+				ReplyHandler handler;
 				{
-					return; // a reply to a request already failed, or a wait that gave up
+					std::scoped_lock lock{m_Mutex};
+					const auto waiting = m_Waiting.find(reply->Id);
+
+					if (waiting == m_Waiting.end())
+					{
+						return; // a reply to a request already failed, or a wait that gave up
+					}
+
+					handler = std::move(waiting->second);
+					m_Waiting.erase(waiting);
 				}
 
-				handler = std::move(waiting->second);
-				m_Waiting.erase(waiting);
+				handler(*reply);
+				return;
 			}
 
-			handler(*reply);
-			return;
+			if (auto* event = std::get_if<AgentEvent>(&message))
+			{
+				EventHandler handler;
+				{
+					std::scoped_lock lock{m_Mutex};
+					handler = m_OnEvent;
+				}
+
+				if (handler)
+				{
+					handler(*event);
+				}
+			}
 		}
-
-		if (auto* event = std::get_if<AgentEvent>(&message))
+		catch (const std::exception& thrown)
 		{
-			EventHandler handler;
-			{
-				std::scoped_lock lock{m_Mutex};
-				handler = m_OnEvent;
-			}
-
-			if (handler)
-			{
-				handler(*event);
-			}
+			CORE_ERROR("Handling a message from the WSL agent failed: {}", thrown.what());
 		}
 	}
 

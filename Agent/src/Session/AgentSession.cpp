@@ -4,10 +4,15 @@
 
 #include "Files/FileRequests.h"
 
+#include "Core/Base/Log.h"
+#include "Core/Text/Encoding.h"
+
 #include <unistd.h>
 
 #include <cstdlib>
+#include <exception>
 #include <format>
+#include <set>
 #include <utility>
 #include <variant>
 
@@ -18,6 +23,19 @@ namespace Agent {
 		Core::Error MissingArgument(std::string_view key)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("the request has no \"{}\"", key)};
+		}
+
+		// A Linux name is any bytes; the protocol carries UTF-8 (ADR 0695). A folder whose path is
+		// not UTF-8 is reported as its nearest parent that is: listing that parent again shows
+		// what changed below it, where a mangled name would name nothing.
+		std::string NearestUtf8Folder(std::filesystem::path folder)
+		{
+			while (!Core::IsValidUtf8(folder.native()) && folder.has_parent_path() && folder.parent_path() != folder)
+			{
+				folder = folder.parent_path();
+			}
+
+			return folder.native();
 		}
 	}
 
@@ -66,6 +84,20 @@ namespace Agent {
 	}
 
 	void AgentSession::Handle(const Core::AgentRequest& request)
+	{
+		// One malformed request fails itself, not the agent and every watch it holds.
+		try
+		{
+			HandleOperation(request);
+		}
+		catch (const std::exception& thrown)
+		{
+			Reply(request, Core::Error{Core::ErrorCode::InvalidArgument,
+									   std::format("cannot handle \"{}\": {}", request.Operation, thrown.what())});
+		}
+	}
+
+	void AgentSession::HandleOperation(const Core::AgentRequest& request)
 	{
 		const std::string& operation = request.Operation;
 
@@ -131,7 +163,14 @@ namespace Agent {
 
 	Core::Result<nlohmann::json> AgentSession::Hello(const nlohmann::json& arguments) const
 	{
-		const std::uint32_t asked = arguments.value("protocol", 0u);
+		const auto protocol = arguments.find("protocol");
+
+		if (protocol == arguments.end() || !protocol->is_number_unsigned())
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument, "hello has no protocol number"};
+		}
+
+		const std::uint64_t asked = protocol->get<std::uint64_t>();
 
 		if (asked != Core::kAgentProtocolVersion)
 		{
@@ -172,7 +211,14 @@ namespace Agent {
 
 	Core::Result<nlohmann::json> AgentSession::Unwatch(const nlohmann::json& arguments)
 	{
-		const int id = arguments.value("watch", 0);
+		const auto watch = arguments.find("watch");
+
+		if (watch == arguments.end() || !watch->is_number_integer())
+		{
+			return MissingArgument("watch");
+		}
+
+		const int id = watch->get<int>();
 
 		if (m_Watches.erase(id) == 0)
 		{
@@ -187,29 +233,50 @@ namespace Agent {
 	{
 		for (auto& [id, watch] : m_Watches)
 		{
-			watch->Poll();
+			// A watch that throws loses this tick's batch, not the agent.
+			try
+			{
+				TickWatch(id, *watch);
+			}
+			catch (const std::exception& thrown)
+			{
+				CORE_ERROR("Watch {} failed to report: {}", id, thrown.what());
+			}
+		}
+	}
 
-			if (watch->HitWatchLimit() && !m_LimitReported[id])
+	void AgentSession::TickWatch(int id, TreeWatch& watch)
+	{
+		{
+			watch.Poll();
+
+			if (watch.HitWatchLimit() && !m_LimitReported[id])
 			{
 				m_LimitReported[id] = true;
 				m_Output += Core::EncodeEvent(Core::AgentEvent{.Name = "watchLimit", .Body = {{"watch", id}}});
 			}
 
-			Core::ChangeBatch batch = watch->TakeSettled();
+			Core::ChangeBatch batch = watch.TakeSettled();
 
 			const bool anything = !batch.Directories.empty() || batch.Overflowed || batch.IgnoreRulesChanged ||
 								  batch.RepositoryStateChanged;
 
 			if (!anything)
 			{
-				continue;
+				return;
 			}
 
 			nlohmann::json directories = nlohmann::json::array();
+			std::set<std::string> named;
 
 			for (const std::filesystem::path& directory : batch.Directories)
 			{
-				directories.push_back(directory.string()); // not a path conversion: Linux paths are their bytes
+				const std::string reported = NearestUtf8Folder(directory);
+
+				if (named.insert(reported).second)
+				{
+					directories.push_back(reported);
+				}
 			}
 
 			m_Output += Core::EncodeEvent(Core::AgentEvent{

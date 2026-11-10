@@ -29,6 +29,8 @@ const core_source_files = [_][]const u8{
     "Core/src/Core/FileSystem/FileSystem.cpp",
     "Core/src/Core/FileSystem/RelativePath.cpp",
     "Core/src/Core/FileSystem/WslSharePath.cpp",
+    "Core/src/Core/Text/Encoding.cpp",
+    "Core/src/Core/Text/Utf8.cpp",
 };
 const core_excluded = [_][]const u8{
     // Starts git.exe through ChildProcess, which has no Linux version until the WSL helper
@@ -53,6 +55,8 @@ const core_test_files = [_][]const u8{
     "Core/tests/src/FileSystem/FileSystemTests.cpp",
     "Core/tests/src/FileSystem/RelativePathTests.cpp",
     "Core/tests/src/FileSystem/WslSharePathTests.cpp",
+    "Core/tests/src/Text/EncodingTests.cpp",
+    "Core/tests/src/Text/Utf8Tests.cpp",
 };
 const core_test_excluded = [_][]const u8{
     "Core/tests/src/Git/Command/",

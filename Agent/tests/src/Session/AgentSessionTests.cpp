@@ -148,3 +148,50 @@ TEST_CASE("Bytes that are not frames end the session without a reply")
 	CHECK(session.HasEnded());
 	CHECK(session.TakeOutput().empty());
 }
+
+TEST_CASE("A change under a folder whose name is not UTF-8 is reported as its nearest UTF-8 folder, and the agent goes on")
+{
+	TempDirectory directory;
+	Agent::AgentSession session{"v"};
+
+	const Core::AgentReply watched = Ask(session, 3, "watch", json{{"root", directory.GetPath().string()}}); // not a path conversion
+	REQUIRE_FALSE(watched.Failure.has_value());
+
+	const std::filesystem::path oddFolder = directory.GetPath() / std::string{"caf\xE9"};
+	std::filesystem::create_directory(oddFolder);
+	std::this_thread::sleep_for(std::chrono::milliseconds{100});
+	session.Tick();
+	std::ofstream{oddFolder / "inside.txt"} << "x";
+
+	std::vector<Core::AgentMessage> events;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+
+	while (events.empty() && std::chrono::steady_clock::now() < deadline)
+	{
+		session.Tick();
+		events = Decode(session.TakeOutput());
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+	}
+
+	REQUIRE_FALSE(events.empty());
+	const auto* event = std::get_if<Core::AgentEvent>(&events.back());
+	REQUIRE(event != nullptr);
+	CHECK(event->Body.at("directories") == json::array({directory.GetPath().string()})); // not a path conversion
+
+	// Still answering.
+	const Core::AgentReply hello = Ask(session, 4, "hello", json{{"protocol", Core::kAgentProtocolVersion}});
+	CHECK_FALSE(hello.Failure.has_value());
+}
+
+TEST_CASE("Arguments of the wrong type are an invalid argument, not the end of the agent")
+{
+	Agent::AgentSession session{"v"};
+
+	const Core::AgentReply unwatched = Ask(session, 1, "unwatch", json{{"watch", "not a number"}});
+	REQUIRE(unwatched.Failure.has_value());
+	CHECK(unwatched.Failure->Code == Core::ErrorCode::InvalidArgument);
+
+	const Core::AgentReply hello = Ask(session, 2, "hello", json{{"protocol", "one"}});
+	REQUIRE(hello.Failure.has_value());
+	CHECK_FALSE(session.HasEnded());
+}

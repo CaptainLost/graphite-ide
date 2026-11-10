@@ -35,6 +35,8 @@ namespace Agent {
 
 	private:
 		void Handle(const Core::AgentRequest& request);
+		void HandleOperation(const Core::AgentRequest& request);
+		void TickWatch(int id, TreeWatch& watch);
 		void Reply(const Core::AgentRequest& request, Core::Result<nlohmann::json> result);
 
 		Core::Result<nlohmann::json> Hello(const nlohmann::json& arguments) const;

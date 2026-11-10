@@ -146,4 +146,20 @@ TEST_CASE("On Linux, rewriting a file keeps its permissions, so a script stays e
 
 	CHECK(std::filesystem::status(script).permissions() == executable);
 }
+
+TEST_CASE("On Linux, rewriting a file through a symbolic link writes the file it points at and keeps the link")
+{
+	TempDirectory directory;
+	const std::filesystem::path real = directory.MakeFile("build/compile_commands.json", "[]");
+	const std::filesystem::path link = directory.GetPath() / "compile_commands.json";
+	std::filesystem::create_symlink(std::filesystem::path{"build"} / "compile_commands.json", link);
+
+	REQUIRE(WriteFileAtomically(link, "[{}]").HasValue());
+
+	CHECK(std::filesystem::is_symlink(link));
+	std::ifstream stream{real};
+	std::string contents;
+	std::getline(stream, contents);
+	CHECK(contents == "[{}]");
+}
 #endif
