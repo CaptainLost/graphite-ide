@@ -82,7 +82,10 @@ namespace Graphite {
 
 		// WARNING: Older models are deliberately absent. An absent model shows as "?" and can be
 		// priced in settings, where a guessed price would show a wrong number with nothing to say it was guessed.
+		// WARNING: Haiku 5.5's cache read is assumed at a tenth of its input price, and its dearer tier past 100K
+		// input tokens ($0.50 / $2.50) is not modelled, so a request that long is priced low.
 		pricing.m_Defaults = {
+			{"claude-fable-5-2", StandardPrice(8.0, 40.0, 0.20)},
 			{"claude-fable-5-1", StandardPrice(10.0, 50.0, 0.25)},
 			{"claude-fable-5", StandardPrice(10.0, 50.0, 1.0)},
 			{"claude-mythos-5", StandardPrice(10.0, 50.0, 1.0)},
@@ -91,8 +94,10 @@ namespace Graphite {
 			{"claude-opus-4-8", StandardPrice(5.0, 25.0, 0.5)},
 			{"claude-opus-4-7", StandardPrice(5.0, 25.0, 0.5)},
 			{"claude-opus-4-6", StandardPrice(5.0, 25.0, 0.5)},
+			{"claude-sonnet-5-5", StandardPrice(2.0, 10.0, 0.10)},
 			{"claude-sonnet-5", StandardPrice(2.0, 10.0, 0.2)},
 			{"claude-sonnet-4-6", StandardPrice(3.0, 15.0, 0.3)},
+			{"claude-haiku-5-5", StandardPrice(0.10, 0.50, 0.01)},
 			{"claude-haiku-4-5", StandardPrice(1.0, 5.0, 0.1)},
 		};
 

@@ -38,6 +38,33 @@ TEST_CASE("Opus 5.5 is not priced as Opus 5, although one id begins with the oth
 	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(5.0));
 }
 
+TEST_CASE("Sonnet 5.5, Haiku 5.5 and Fable 5.2 have default prices")
+{
+	const Pricing pricing = Pricing::Defaults();
+
+	REQUIRE(pricing.Find("claude-sonnet-5-5") != nullptr);
+	CHECK(*pricing.Find("claude-sonnet-5-5") == StandardPrice(2.0, 10.0, 0.10));
+	REQUIRE(pricing.Find("claude-haiku-5-5") != nullptr);
+	CHECK(*pricing.Find("claude-haiku-5-5") == StandardPrice(0.10, 0.50, 0.01));
+	REQUIRE(pricing.Find("claude-fable-5-2") != nullptr);
+	CHECK(*pricing.Find("claude-fable-5-2") == StandardPrice(8.0, 40.0, 0.20));
+}
+
+TEST_CASE("Sonnet 5 and Sonnet 5.5 never take each other's price, dated or bracketed")
+{
+	const Pricing pricing = Pricing::Defaults();
+
+	CHECK(pricing.Find("claude-sonnet-5")->CacheRead == doctest::Approx(0.2));
+	CHECK(pricing.Find("claude-sonnet-5-20260101")->CacheRead == doctest::Approx(0.2));
+	CHECK(pricing.Find("claude-sonnet-5[1m]")->CacheRead == doctest::Approx(0.2));
+	CHECK(pricing.Find("claude-sonnet-5-5")->CacheRead == doctest::Approx(0.10));
+	CHECK(pricing.Find("claude-sonnet-5-5-20260101")->CacheRead == doctest::Approx(0.10));
+	CHECK(pricing.Find("claude-sonnet-5-5[1m]")->CacheRead == doctest::Approx(0.10));
+	CHECK(pricing.Find("claude-fable-5-2")->CacheRead == doctest::Approx(0.20));
+	CHECK(pricing.Find("claude-fable-5-1")->CacheRead == doctest::Approx(0.25));
+	CHECK(pricing.Find("claude-fable-5")->CacheRead == doctest::Approx(1.0));
+}
+
 TEST_CASE("A dated or bracketed id is priced as the model it names")
 {
 	const Pricing pricing = Pricing::Defaults();
