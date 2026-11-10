@@ -225,7 +225,12 @@ namespace Core {
 	std::string ToGenericUtf8(const std::filesystem::path& path)
 	{
 		std::string utf8Text = ToUtf8(path);
+
+#ifdef CORE_PLATFORM_WINDOWS
+		// Only Windows separates with '\'; on Linux it is a character a name may hold.
 		std::ranges::replace(utf8Text, '\\', '/');
+#endif
+
 		return utf8Text;
 	}
 

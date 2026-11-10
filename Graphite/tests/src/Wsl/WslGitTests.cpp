@@ -108,6 +108,34 @@ TEST_CASE("The bases of a share path are asked for by its Linux path, and arrive
 	CHECK(distro.LastArguments.at("path") == "/home/me/p/a.txt");
 }
 
+TEST_CASE("A file in another distro has no bases here, and its distro's path is not asked of this one")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) { self.Reply(request.Id, {{"trackable", true}, {"sides", nlohmann::json::array()}}); };
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git{agents, Core::WslSharePath{"Ubuntu", "/home/me/p"}, Graphite::WslGit::Reach::SearchUpward};
+
+	const Core::Result<Graphite::WslGit::Bases> bases = git.ReadBases(L"\\\\wsl.localhost\\Debian\\home\\me\\p\\a.txt");
+
+	REQUIRE(bases.HasValue());
+	CHECK_FALSE(bases.GetValue().Trackable);
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.LastArguments.is_null());
+}
+
+TEST_CASE("A bare repository's working directory is empty, not the distro's root")
+{
+	FakeGitDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) { self.Reply(request.Id, {{"path", ""}}); };
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git{agents, Core::WslSharePath{"Ubuntu", "/srv/repo.git"}, Graphite::WslGit::Reach::SearchUpward};
+
+	const Core::Result<std::filesystem::path> directory = git.GetWorkingDirectory();
+
+	REQUIRE(directory.HasValue());
+	CHECK(directory.GetValue().empty());
+}
+
 TEST_CASE("An agent that stops during a commit fails the commit with the reason")
 {
 	FakeGitDistro distro;

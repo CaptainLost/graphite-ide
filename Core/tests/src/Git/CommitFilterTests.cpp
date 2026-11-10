@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/Base/PlatformDetection.h"
 #include "Core/Git/CommitFilter.h"
 
 #include <filesystem>
@@ -184,6 +185,10 @@ TEST_CASE("Root anchor alone names nothing")
 TEST_CASE("Root anchor is added to the pattern naming only a root file")
 {
 	CHECK(Core::PatternNamingOnly("README.md") == "/README.md");
-	CHECK(Core::PatternNamingOnly(std::filesystem::path(L"src\\Core\\a.cpp")) == "src/Core/a.cpp");
 	CHECK_FALSE(Core::NamesPath(Core::PatternNamingOnly("README.md"), "docs/README.md"));
+
+	// Windows only: '\' separates there; on Linux it is part of a name.
+#ifdef CORE_PLATFORM_WINDOWS
+	CHECK(Core::PatternNamingOnly(std::filesystem::path(L"src\\Core\\a.cpp")) == "src/Core/a.cpp");
+#endif
 }

@@ -186,6 +186,48 @@ namespace Agent {
 			return false;
 		}
 
+		// The working directory in the spelling of the root Graphite asked with: libgit2 resolves
+		// symbolic links (~/code -> /data/code), and the host names files by the folder it opened,
+		// so a resolved spelling would open the same file under another path. Empty for a bare
+		// repository, which has no working directory.
+		std::string SpelledLikeRoot(const std::filesystem::path& workingDirectory, const std::string& root)
+		{
+			if (workingDirectory.empty())
+			{
+				return {};
+			}
+
+			const std::filesystem::path resolved = Core::NormalizeDirectory(workingDirectory);
+			std::error_code error;
+			const std::filesystem::path resolvedRoot = std::filesystem::weakly_canonical(root, error);
+
+			if (error)
+			{
+				return resolved.string(); // not a path conversion: Linux paths are their bytes
+			}
+
+			// The repository sits at or above the root: climb the asked spelling as far as the
+			// resolved one climbs.
+			const std::filesystem::path below = resolvedRoot.lexically_relative(resolved);
+
+			if (below.empty() || *below.begin() == "..")
+			{
+				return resolved.string(); // not a path conversion
+			}
+
+			std::filesystem::path spelled = Core::NormalizeDirectory(root);
+
+			for (const std::filesystem::path& part : below)
+			{
+				if (part != ".")
+				{
+					spelled = spelled.parent_path();
+				}
+			}
+
+			return spelled.string(); // not a path conversion
+		}
+
 		enum class Side
 		{
 			Head,
@@ -307,8 +349,8 @@ namespace Agent {
 			return status ? Core::Result<GitAnswer>{AsPayload(Core::ToJson(status.GetValue()))} : Core::Result<GitAnswer>{status.GetError()};
 		});
 
-		handlers["git.workingDirectory"] = OnRepository(cache, [](Core::Repository& repository, const json&) -> Core::Result<GitAnswer> {
-			return GitAnswer{.Result = {{"path", Core::NormalizeDirectory(repository.GetWorkingDirectory()).string()}}}; // not a path conversion
+		handlers["git.workingDirectory"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
+			return GitAnswer{.Result = {{"path", SpelledLikeRoot(repository.GetWorkingDirectory(), arguments.value("root", std::string{}))}}};
 		});
 
 		handlers["git.head"] = OnRepository(cache, [](Core::Repository& repository, const json&) -> Core::Result<GitAnswer> {
@@ -346,10 +388,33 @@ namespace Agent {
 			return ReadSides(repository, reads);
 		});
 
-		handlers["git.bases"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) -> Core::Result<GitAnswer> {
-			const std::filesystem::path absolute{arguments.value("path", std::string{})};
-			const std::filesystem::path workingDirectory = repository.GetWorkingDirectory();
-			const std::filesystem::path relative = absolute.lexically_relative(workingDirectory);
+		// Not through OnRepository: a folder with no repository, or one that cannot be opened, has
+		// nothing trackable rather than an error, as the host's port answers for a local file.
+		handlers["git.bases"] = [cache](const Core::AgentRequest& request) -> Core::Result<GitAnswer> {
+			const Core::Result<Asked> asked = AskedOf(request.Arguments);
+
+			if (!asked)
+			{
+				return asked.GetError();
+			}
+
+			const Core::Result<Core::Repository*> opened = cache->Get(asked.GetValue().Root, asked.GetValue().Exactly);
+
+			if (!opened)
+			{
+				return GitAnswer{.Result = {{"trackable", false}}};
+			}
+
+			Core::Repository& repository = *opened.GetValue();
+			const json& arguments = request.Arguments;
+
+			// libgit2 resolves symbolic links in the working directory, so the file is resolved too
+			// before the two are compared.
+			std::error_code resolveError;
+			const std::filesystem::path askedPath{arguments.value("path", std::string{})};
+			const std::filesystem::path absolute = std::filesystem::weakly_canonical(askedPath, resolveError);
+			const std::filesystem::path workingDirectory = Core::NormalizeDirectory(repository.GetWorkingDirectory());
+			const std::filesystem::path relative = (resolveError ? askedPath : absolute).lexically_relative(workingDirectory);
 
 			// Not trackable: outside the working directory, ignored, or another repository's.
 			const bool outside = relative.empty() || *relative.begin() == "..";
@@ -369,7 +434,7 @@ namespace Agent {
 
 			sides.GetValue().Result["trackable"] = true;
 			return sides;
-		});
+		};
 
 		handlers["git.stage"] = OnRepository(cache, [](Core::Repository& repository, const json& arguments) {
 			return Done(repository.Stage(PathsOf(arguments)));

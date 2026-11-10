@@ -62,8 +62,11 @@ namespace Agent {
 				std::unique_lock lock{m_Mutex};
 				m_Queued.wait(lock, [&] { return m_Stopping || !m_Jobs.empty(); });
 
-				if (m_Jobs.empty())
+				// Graphite has gone (bye or a closed pipe): what is still queued is not run, so a
+				// write it already reported as failed does not land behind its back.
+				if (m_Stopping || m_Jobs.empty())
 				{
+					m_Jobs.clear();
 					return;
 				}
 
@@ -91,6 +94,20 @@ namespace Agent {
 			catch (const std::exception& thrown)
 			{
 				reply.Failure = Core::Error{Core::ErrorCode::IoFailure, std::format("\"{}\" failed: {}", job.Request.Operation, thrown.what())};
+			}
+
+			// A frame past the limits breaks the stream for every request on it (ADR 0695), so an
+			// answer too large to send is refused here, as itself, never truncated.
+			const bool tooLarge = reply.Payload.size() > Core::kMaxFramePayloadBytes ||
+								  reply.Result.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace).size() > Core::kMaxFrameHeaderBytes / 2;
+
+			if (tooLarge)
+			{
+				reply.Failure = Core::Error{Core::ErrorCode::TooLarge,
+											std::format("the answer to \"{}\" is {} bytes, more than the agent can send in one go", job.Request.Operation,
+														reply.Payload.size())};
+				reply.Payload.clear();
+				reply.Result = nlohmann::json::object();
 			}
 
 			{

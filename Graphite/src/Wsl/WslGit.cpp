@@ -2,6 +2,7 @@
 
 #include "Wsl/WslAgents.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Remote/GitCodec.h"
 
@@ -11,10 +12,11 @@ namespace Graphite {
 
 	namespace {
 
-		// A status or diff of a huge repository takes its time inside the distro; anything else is
-		// one small read or write.
-		constexpr std::chrono::seconds kLongRequest{120};
-		constexpr std::chrono::seconds kShortRequest{30};
+		// The agent runs git requests one at a time, so even a small one may wait behind a status of a
+		// huge repository: every request gets the long wait, and a write that runs out of it may
+		// still land (see Ask).
+		constexpr std::chrono::seconds kLongRequest{180};
+		constexpr std::chrono::seconds kShortRequest = kLongRequest;
 
 		// How long a request waits for the distro's agent to start.
 		constexpr std::chrono::seconds kStartWait{30};
@@ -111,6 +113,16 @@ namespace Graphite {
 
 		if (!reply)
 		{
+			// The agent still has the request: a change may land after Graphite stopped waiting.
+			const bool isWrite = operation != "git.status" && operation != "git.untrackedIn" && operation != "git.workingDirectory" &&
+								 operation != "git.head" && operation != "git.diff" && operation != "git.readSides" && operation != "git.bases";
+
+			if (reply.GetError().Code == Core::ErrorCode::Cancelled && isWrite)
+			{
+				return Core::Error{Core::ErrorCode::Cancelled,
+								   std::format("the WSL agent did not answer in time; the change may still be made, so refresh before trying again")};
+			}
+
 			return reply.GetError();
 		}
 
@@ -165,6 +177,12 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent named no working directory"};
 		}
 
+		// A bare repository has none, as a local one answers.
+		if (path->get<std::string>().empty())
+		{
+			return std::filesystem::path{};
+		}
+
 		return Core::NormalizeDirectory(Core::ToWslSharePath(Core::WslSharePath{m_Root.Distro, path->get<std::string>()}));
 	}
 
@@ -217,7 +235,8 @@ namespace Graphite {
 	{
 		const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(absolutePath);
 
-		if (!place)
+		// A file in another distro is not this repository's, whatever its Linux path.
+		if (!place || !Core::EqualsIgnoringCase(place->Distro, m_Root.Distro))
 		{
 			return Bases{};
 		}

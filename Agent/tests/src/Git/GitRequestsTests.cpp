@@ -196,6 +196,40 @@ TEST_CASE("git.workingDirectory answers the repository's folder, and a folder ou
 	CHECK(outside.GetError().Code == Core::ErrorCode::NotFound);
 }
 
+TEST_CASE("A root reached through a symbolic link keeps its spelling, and its files stay trackable")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+	TempDirectory links;
+	const std::filesystem::path linked = links.GetPath() / "linked";
+	std::filesystem::create_directory_symlink(fixture.GetPath(), linked);
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+	const json at{{"root", linked.string()}, {"reach", "up"}}; // not a path conversion
+
+	const Core::Result<Agent::GitAnswer> directory = Call(handlers, "git.workingDirectory", at);
+	REQUIRE(directory.HasValue());
+	CHECK(directory.GetValue().Result.at("path") == linked.string()); // not a path conversion
+
+	json bases = at;
+	bases["path"] = (linked / "a.txt").string(); // not a path conversion
+	const Core::Result<Agent::GitAnswer> tracked = Call(handlers, "git.bases", bases);
+	REQUIRE(tracked.HasValue());
+	CHECK(tracked.GetValue().Result.at("trackable") == true);
+}
+
+TEST_CASE("git.bases in a folder with no repository is not trackable, rather than an error")
+{
+	TempDirectory directory;
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+	const json at{{"root", directory.GetPath().string()}, {"reach", "exactly"}, {"path", (directory.GetPath() / "a.txt").string()}}; // not a path conversion
+
+	const Core::Result<Agent::GitAnswer> bases = Call(handlers, "git.bases", at);
+
+	REQUIRE(bases.HasValue());
+	CHECK(bases.GetValue().Result.at("trackable") == false);
+}
+
 TEST_CASE("git.init makes a repository in an empty folder and refuses inside one")
 {
 	TempDirectory directory;

@@ -391,10 +391,13 @@ TEST_CASE("ToUtf8 and FromUtf8 round-trip a non-ASCII path exactly")
 	CHECK(Core::ToUtf8(Core::FromUtf8("")).empty());
 }
 
+// Windows only: '\' separates there; on Linux it is part of a name (the Linux case is at the end).
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("ToGenericUtf8 writes every separator as a forward slash the way git spells paths")
 {
 	CHECK(Core::ToGenericUtf8(std::filesystem::path{"D:\\work\\src/main.cpp"}) == "D:/work/src/main.cpp");
 }
+#endif
 
 // Windows only, down to the next #endif: drive letters, and '\' as a separator, which on Linux
 // is an ordinary character in a name. The Linux cases are at the end of this file.
@@ -707,6 +710,11 @@ TEST_CASE("On Linux, a directory holds what is below it, spelled any way, but no
 	CHECK_FALSE(Core::IsSameOrWithin("/home/me/Proj/a.cpp", "/home/me/proj"));
 	CHECK(Core::NormalizeDirectory("/home/me/./proj/../proj/") == std::filesystem::path{"/home/me/proj"});
 	CHECK(Core::NormalizeDirectory("/") == std::filesystem::path{"/"});
+}
+
+TEST_CASE("On Linux, a backslash in a name stays a backslash when written the way git spells paths")
+{
+	CHECK(Core::ToGenericUtf8(std::filesystem::path{"dir/back\\slash.txt"}) == "dir/back\\slash.txt");
 }
 
 TEST_CASE("On Linux, a path's UTF-8 is its own bytes")

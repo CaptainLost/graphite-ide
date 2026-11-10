@@ -1076,6 +1076,11 @@ namespace Graphite {
 				return read.GetError();
 			}
 
+			if (read.GetValue().size() != reads.size())
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent answered for other sides than were asked"};
+			}
+
 			FileTexts texts;
 			std::size_t next = 0;
 

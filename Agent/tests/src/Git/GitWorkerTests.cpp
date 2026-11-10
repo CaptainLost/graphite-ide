@@ -63,6 +63,22 @@ TEST_CASE("A failed git job replies with its error")
 	CHECK(replies[0].Failure->Message == "no repository");
 }
 
+TEST_CASE("An answer past the frame limit is refused as too large, not sent to break the stream")
+{
+	Agent::GitWorker worker;
+
+	worker.Submit(Core::AgentRequest{.Id = 5, .Operation = "git.diff"}, [](const Core::AgentRequest&) -> Core::Result<Agent::GitAnswer> {
+		return Agent::GitAnswer{.Payload = std::string(Core::kMaxFramePayloadBytes + 1, 'x')};
+	});
+
+	const std::vector<Core::AgentReply> replies = WaitForReplies(worker, 1);
+
+	REQUIRE(replies.size() == 1);
+	REQUIRE(replies[0].Failure.has_value());
+	CHECK(replies[0].Failure->Code == Core::ErrorCode::TooLarge);
+	CHECK(replies[0].Payload.empty());
+}
+
 TEST_CASE("Git jobs run in the order they came, one at a time")
 {
 	Agent::GitWorker worker;
