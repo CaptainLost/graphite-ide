@@ -517,3 +517,18 @@ TEST_CASE("Worktree changes: a commit or an amend that lands says once that a re
 		CHECK_FALSE(changes.Model.TakeRefMoved());
 	}
 }
+
+TEST_CASE("A linked worktree inside WSL whose .git names a Linux path has its git directory in the same distro")
+{
+	const std::optional<std::filesystem::path> named =
+		Graphite::GitDirectoryNamedIn(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt", "/home/me/p/.git/worktrees/wt");
+
+	REQUIRE(named.has_value());
+	CHECK(named->native() == std::wstring{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\.git\\worktrees\\wt"});
+}
+
+TEST_CASE("A relative gitdir is taken from the worktree, a local absolute one as it is")
+{
+	CHECK(Graphite::GitDirectoryNamedIn(L"\\\\wsl.localhost\\Ubuntu\\home\\me\\wt", "../p/.git/worktrees/wt")->native() == std::wstring{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\.git\\worktrees\\wt"});
+	CHECK(Graphite::GitDirectoryNamedIn(L"C:\\w", "C:/r/.git/worktrees/w") == std::optional<std::filesystem::path>{std::filesystem::path{"C:/r/.git/worktrees/w"}.lexically_normal()});
+}

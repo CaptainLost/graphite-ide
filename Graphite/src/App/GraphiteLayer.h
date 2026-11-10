@@ -443,7 +443,7 @@ namespace Graphite {
 			m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		BlameModel m_Blame{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
-							  WatchWithDirectoryWatcher()};
+							  WatchWithFolderWatch([this](const std::filesystem::path& folder) { return WatchFolder(folder); })};
 		LinesModel m_Lines{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 		WorktreesModel m_Worktrees{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }, &SystemClockSeconds};
 
@@ -460,7 +460,7 @@ namespace Graphite {
 										  [this](const std::filesystem::path& root) { PointWorktreePortAt(root); },
 										  [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 										  [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); },
-										  WatchWithDirectoryWatcher()};
+										  WatchWithFolderWatch([this](const std::filesystem::path& folder) { return WatchFolder(folder); })};
 		Core::JobQueue m_Jobs;
 
 		static constexpr std::size_t kGitWriteWorkers = 1;

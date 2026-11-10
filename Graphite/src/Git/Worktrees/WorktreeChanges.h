@@ -126,4 +126,8 @@ namespace Graphite {
 
 	// The git directory a linked worktree's `.git` file names; empty when `.git` is a directory or cannot be read.
 	std::optional<std::filesystem::path> LinkedGitDirectoryOf(const std::filesystem::path& worktree);
+
+	// The git directory a `gitdir:` line names for worktree: relative to the worktree, absolute as it is, and inside WSL a
+	// Linux path named in the worktree's distro. Empty for an empty name.
+	std::optional<std::filesystem::path> GitDirectoryNamedIn(const std::filesystem::path& worktree, std::string_view named);
 }

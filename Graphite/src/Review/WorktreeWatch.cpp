@@ -10,42 +10,40 @@ namespace Graphite {
 
 	namespace {
 
-		class DirectoryWorktreeWatch final : public WorktreeWatch
+		class FolderWorktreeWatch final : public WorktreeWatch
 		{
 		public:
-			explicit DirectoryWorktreeWatch(Core::Scope<Core::DirectoryWatcher> watcher)
-				: m_Watcher(std::move(watcher))
-			{
-			}
+			explicit FolderWorktreeWatch(Core::Scope<Core::FolderWatch> watch) : m_Watch(std::move(watch)) {}
 
 			bool TakeChanged() override
 			{
-				const Core::DirectoryWatcher::Changes changes = m_Watcher->TakeSettled();
+				const Core::FolderChanges changes = m_Watch->TakeSettled();
 
-				return !changes.Directories.empty() || changes.Overflowed || changes.RepositoryStateChanged ||
-					   changes.MovedTo.has_value();
+				return !changes.Directories.empty() || changes.Overflowed || changes.RepositoryStateChanged || changes.MovedTo.has_value();
 			}
 
 		private:
-			Core::Scope<Core::DirectoryWatcher> m_Watcher;
+			Core::Scope<Core::FolderWatch> m_Watch;
 		};
+	}
 
-		Core::Scope<WorktreeWatch> StartDirectoryWatch(const std::filesystem::path& worktree)
-		{
-			Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(worktree);
+	WorktreeWatchFactory WatchWithFolderWatch(std::function<Core::Result<Core::Scope<Core::FolderWatch>>(const std::filesystem::path& folder)> start)
+	{
+		return [start = std::move(start)](const std::filesystem::path& worktree) -> Core::Scope<WorktreeWatch> {
+			Core::Result<Core::Scope<Core::FolderWatch>> watch = start(worktree);
 
-			if (!watcher.HasValue())
+			if (!watch.HasValue())
 			{
-				APP_WARN("Cannot watch the worktree at {}: {}", Core::ToUtf8(worktree), watcher.GetError().Message);
+				APP_WARN("Cannot watch the worktree at {}: {}", Core::ToUtf8(worktree), watch.GetError().Message);
 				return nullptr;
 			}
 
-			return Core::CreateScope<DirectoryWorktreeWatch>(std::move(watcher).GetValue());
-		}
+			return Core::CreateScope<FolderWorktreeWatch>(std::move(watch).GetValue());
+		};
 	}
 
 	WorktreeWatchFactory WatchWithDirectoryWatcher()
 	{
-		return StartDirectoryWatch;
+		return WatchWithFolderWatch(Core::WatchDirectory);
 	}
 }

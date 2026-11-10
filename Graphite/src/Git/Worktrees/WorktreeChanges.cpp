@@ -1,5 +1,6 @@
 #include "Git/Worktrees/WorktreeChanges.h"
 
+#include "Core/FileSystem/WslSharePath.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Status.h"
 
@@ -257,9 +258,20 @@ namespace Graphite {
 			named.remove_suffix(1);
 		}
 
+		return GitDirectoryNamedIn(worktree, named);
+	}
+
+	std::optional<std::filesystem::path> GitDirectoryNamedIn(const std::filesystem::path& worktree, std::string_view named)
+	{
 		if (named.empty())
 		{
 			return std::nullopt;
+		}
+
+		// A worktree inside WSL names its git directory as Linux sees it.
+		if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(worktree); place && named.front() == '/')
+		{
+			return Core::ToWslSharePath(Core::WslSharePath{place->Distro, std::string{named}});
 		}
 
 		const std::filesystem::path gitDirectory = Core::FromUtf8(named);
