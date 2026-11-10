@@ -52,6 +52,31 @@ namespace {
 		CHECK(reply->Id == id);
 		return *reply;
 	}
+
+	// A request answered on a worker: its reply comes from a later tick.
+	Core::AgentReply AskThroughTicks(Agent::AgentSession& session, std::uint64_t id, std::string operation, json arguments)
+	{
+		session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = id, .Operation = std::move(operation), .Arguments = std::move(arguments)}));
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+
+		while (std::chrono::steady_clock::now() < deadline)
+		{
+			session.Tick();
+
+			for (const Core::AgentMessage& message : Decode(session.TakeOutput()))
+			{
+				if (const auto* reply = std::get_if<Core::AgentReply>(&message); reply != nullptr && reply->Id == id)
+				{
+					return *reply;
+				}
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds{10});
+		}
+
+		FAIL("no reply to request ", id);
+		return {};
+	}
 }
 
 TEST_CASE("hello answers with the agent's version, the protocol and the home folder")
@@ -106,7 +131,7 @@ TEST_CASE("A watched folder's change arrives as one changes event naming the fol
 	TempDirectory directory;
 	Agent::AgentSession session{"v"};
 
-	const Core::AgentReply watched = Ask(session, 3, "watch", json{{"root", directory.GetPath().string()}}); // not a path conversion
+	const Core::AgentReply watched = AskThroughTicks(session, 3, "watch", json{{"root", directory.GetPath().string()}}); // not a path conversion
 	REQUIRE_FALSE(watched.Failure.has_value());
 	const int watchId = watched.Result.at("watch").get<int>();
 
@@ -193,11 +218,48 @@ TEST_CASE("A slow git request does not hold up an ignore question sent after it"
 	CHECK(std::get<Core::AgentReply>(first[0]).Id == 2);
 }
 
-TEST_CASE("Both git lanes wake the agent's loop")
+TEST_CASE("Both git lanes and the watch starter wake the agent's loop")
 {
 	Agent::AgentSession session{"v", Agent::GitHandlers{}, Agent::GitHandlers{}};
 
-	CHECK(session.WatchDescriptors().size() == 2);
+	CHECK(session.WatchDescriptors().size() == 3);
+}
+
+TEST_CASE("A watch is armed off the agent's loop, so nothing it sends waits for the walk")
+{
+	TempDirectory directory;
+	Agent::AgentSession session{"v"};
+
+	session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = 4, .Operation = "watch", .Arguments = {{"root", directory.GetPath().string()}}})); // not a path conversion
+
+	CHECK(Decode(session.TakeOutput()).empty());
+}
+
+TEST_CASE("A watch dropped before it is armed never reports")
+{
+	TempDirectory directory;
+	Agent::AgentSession session{"v"};
+	session.Receive(Core::EncodeRequest(Core::AgentRequest{.Id = 5, .Operation = "watch", .Arguments = {{"root", directory.GetPath().string()}}})); // not a path conversion
+
+	const Core::AgentReply unwatched = Ask(session, 6, "unwatch", json{{"watch", 1}});
+	CHECK_FALSE(unwatched.Failure.has_value());
+	directory.MakeFile("new.txt", "x");
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{800};
+	bool reported = false;
+
+	while (std::chrono::steady_clock::now() < deadline)
+	{
+		session.Tick();
+
+		for (const Core::AgentMessage& message : Decode(session.TakeOutput()))
+		{
+			reported = reported || std::holds_alternative<Core::AgentEvent>(message);
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+	}
+
+	CHECK_FALSE(reported);
 }
 
 TEST_CASE("bye ends the session")
@@ -224,7 +286,7 @@ TEST_CASE("A change under a folder whose name is not UTF-8 is reported as its ne
 	TempDirectory directory;
 	Agent::AgentSession session{"v"};
 
-	const Core::AgentReply watched = Ask(session, 3, "watch", json{{"root", directory.GetPath().string()}}); // not a path conversion
+	const Core::AgentReply watched = AskThroughTicks(session, 3, "watch", json{{"root", directory.GetPath().string()}}); // not a path conversion
 	REQUIRE_FALSE(watched.Failure.has_value());
 
 	const std::filesystem::path oddFolder = directory.GetPath() / std::string{"caf\xE9"};

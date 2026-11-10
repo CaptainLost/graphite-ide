@@ -49,6 +49,12 @@ namespace Graphite {
 		// The distro's ready agent, waiting up to `wait` for one being made.
 		Core::Result<std::shared_ptr<Core::AgentConnection>> Get(const std::string& distro, std::chrono::milliseconds wait);
 
+		// The distro's ready agent without waiting and, unlike Get, without trying again soon after a
+		// failed start: Cancelled while one is being started (one is started when none was tried yet,
+		// or the last attempt failed long enough ago), the last attempt's failure otherwise. For a
+		// caller that asks again and again, such as the Explorer on the UI thread.
+		Core::Result<std::shared_ptr<Core::AgentConnection>> Peek(const std::string& distro);
+
 		// Every event of every distro's agent, on the agent's reader thread.
 		ListenerId AddListener(EventListener listener);
 		void RemoveListener(ListenerId id);
@@ -64,6 +70,7 @@ namespace Graphite {
 		{
 			std::shared_ptr<Core::AgentConnection> Connection;
 			std::optional<Core::Error> Failure;
+			std::chrono::steady_clock::time_point FailedAt;
 			bool Connecting = false;
 			std::thread Worker;
 		};

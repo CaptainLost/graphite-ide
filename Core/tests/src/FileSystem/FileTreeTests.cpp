@@ -737,3 +737,56 @@ TEST_CASE("Rejecting a file named with characters outside every ANSI code page d
 	CHECK_NOTHROW(result = tree.SetRoot(unicodeFile));
 	CHECK_FALSE(result.HasValue());
 }
+
+TEST_CASE("A folder's entries are offered to the folder query before any of them is asked about")
+{
+	TempDirectory temp;
+	std::filesystem::create_directories(temp.GetPath() / "skipped");
+	std::ofstream(temp.GetPath() / "a.txt") << "x";
+	std::ofstream(temp.GetPath() / "skipped" / "inner.txt") << "x";
+	FileTree tree;
+	REQUIRE(tree.SetRoot(temp.GetPath()));
+	std::vector<std::string> offered;
+	std::vector<std::string> asked;
+	tree.SetIgnoreFolderQuery([&](const std::filesystem::path& folder, const std::vector<Core::DirectoryEntry>& entries) {
+		offered.push_back(folder.filename().generic_string() + ":" + std::to_string(entries.size())); // not a path conversion
+	});
+	tree.SetIgnoreQuery([&](const std::filesystem::path& path, bool) {
+		asked.push_back(path.filename().generic_string()); // not a path conversion
+		CHECK_FALSE(offered.empty());
+		return path.filename() == "skipped";
+	});
+
+	REQUIRE(tree.Expand(tree.GetRoot()));
+	CHECK(offered.size() == 1);
+	CHECK(offered.back().ends_with(":2"));
+
+	SUBCASE("a refresh with nothing new asks nothing")
+	{
+		tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::Keep);
+		CHECK(offered.size() == 1);
+	}
+
+	SUBCASE("a refresh with a new entry offers the folder again")
+	{
+		std::ofstream(temp.GetPath() / "b.txt") << "x";
+		tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::Keep);
+		CHECK(offered.size() == 2);
+		CHECK(offered.back().ends_with(":3"));
+	}
+
+	SUBCASE("asking everything again offers the folder again")
+	{
+		tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
+		CHECK(offered.size() == 2);
+	}
+
+	SUBCASE("an ignored folder's entries are never offered")
+	{
+		FileNode* skipped = FindChildNamed(tree.GetRoot(), "skipped");
+		REQUIRE(skipped != nullptr);
+		REQUIRE(skipped->Ignored);
+		REQUIRE(tree.Expand(*skipped));
+		CHECK(offered.size() == 1);
+	}
+}

@@ -9,6 +9,8 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,14 +47,25 @@ namespace Agent {
 		void Reply(const Core::AgentRequest& request, Core::Result<nlohmann::json> result);
 
 		Core::Result<nlohmann::json> Hello(const nlohmann::json& arguments) const;
-		Core::Result<nlohmann::json> Watch(const nlohmann::json& arguments);
+		void Watch(const Core::AgentRequest& request);
 		Core::Result<nlohmann::json> Unwatch(const nlohmann::json& arguments);
 
 		std::string m_Version;
 		GitHandlers m_GitHandlers;
 		GitHandlers m_QuickHandlers;
+
+		// Watches armed off the loop wait here until a tick takes them; ids unwatched before that
+		// are dropped. Declared before the workers, which are joined first.
+		std::mutex m_ArmedMutex;
+		std::map<int, std::unique_ptr<TreeWatch>> m_Armed;
+		std::set<int> m_UnwatchedEarly;
+
 		GitWorker m_GitWorker;
 		GitWorker m_QuickWorker;
+
+		// Arms watches: a walk of a large tree takes seconds, and the loop would answer nothing
+		// meanwhile, the quick lane's replies included.
+		GitWorker m_WatchStarter;
 		Core::FrameReader m_Reader;
 		std::string m_Output;
 		std::map<int, std::unique_ptr<TreeWatch>> m_Watches;

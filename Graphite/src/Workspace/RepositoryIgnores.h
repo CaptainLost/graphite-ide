@@ -2,6 +2,7 @@
 
 #include "Core/Base/Pointers.h"
 #include "Core/Base/Result.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <filesystem>
 #include <functional>
@@ -26,6 +27,9 @@ namespace Graphite {
 
 		// Called before the tree asks about every entry again: an answer kept from before is stale.
 		virtual void ForgetAnswers() {}
+
+		// A folder's listing, handed over before its entries are asked about one by one.
+		virtual void PrepareFolder([[maybe_unused]] const std::filesystem::path& folder, [[maybe_unused]] const std::vector<Core::DirectoryEntry>& entries) {}
 	};
 
 	// NotFound when the folder is in no repository; Cancelled when the answer is not ready yet and

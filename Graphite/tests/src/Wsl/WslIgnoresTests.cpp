@@ -31,6 +31,8 @@ namespace {
 		std::vector<std::string> Operations;
 		std::unique_ptr<FakeAgent> Agent;
 		bool Answers = true;
+		bool Silent = false;
+		int Listings = 0;
 		std::vector<std::string> Listed{"build", "a.txt", "b.txt"};
 
 		Graphite::WslAgents::Connector Connector()
@@ -38,10 +40,18 @@ namespace {
 			return [this](const std::string&) -> Core::Result<std::shared_ptr<Core::AgentConnection>> {
 				auto agent = std::make_unique<FakeAgent>([this](const Core::AgentRequest& request, FakeAgent& self) {
 					bool answers = true;
+					bool silent = false;
 					{
 						std::scoped_lock lock{Mutex};
 						Operations.push_back(request.Operation);
 						answers = Answers;
+						silent = Silent && request.Operation == "git.ignored";
+					}
+
+					// Never answered: the host runs out of time.
+					if (silent)
+					{
+						return;
 					}
 
 					if (!answers)
@@ -77,6 +87,7 @@ namespace {
 		{
 			return [this](const std::filesystem::path& folder) -> Core::Result<std::vector<Core::DirectoryEntry>> {
 				std::scoped_lock lock{Mutex};
+				++Listings;
 				std::vector<Core::DirectoryEntry> entries;
 
 				for (const std::string& name : Listed)
@@ -173,15 +184,71 @@ TEST_CASE("An agent that cannot answer leaves a folder's entries not ignored, as
 	CHECK(distro.Count("git.ignored") == 1);
 }
 
-TEST_CASE("A WSL folder's ignores are not ready while the distro's agent is still starting")
+TEST_CASE("A WSL folder's ignores are not ready while the distro's agent is still starting, and fail once it could not start")
 {
 	Graphite::WslAgents agents{[](const std::string&) -> Core::Result<std::shared_ptr<Core::AgentConnection>> {
 		std::this_thread::sleep_for(300ms);
 		return Core::Error{Core::ErrorCode::IoFailure, "no WSL here"};
 	}};
 
-	const Core::Result<Core::Scope<Graphite::RepositoryIgnores>> opened = Graphite::WslIgnores::Open(agents, Core::WslSharePath{"Ubuntu", "/home/me/p"});
+	const Core::Result<Core::Scope<Graphite::RepositoryIgnores>> starting = Graphite::WslIgnores::Open(agents, Core::WslSharePath{"Ubuntu", "/home/me/p"});
+	REQUIRE_FALSE(agents.Get("Ubuntu", 2s).HasValue());
+	const Core::Result<Core::Scope<Graphite::RepositoryIgnores>> failed = Graphite::WslIgnores::Open(agents, Core::WslSharePath{"Ubuntu", "/home/me/p"});
 
-	REQUIRE_FALSE(opened.HasValue());
-	CHECK(opened.GetError().Code == Core::ErrorCode::Cancelled);
+	REQUIRE_FALSE(starting.HasValue());
+	CHECK(starting.GetError().Code == Core::ErrorCode::Cancelled);
+	REQUIRE_FALSE(failed.HasValue());
+	CHECK(failed.GetError().Code == Core::ErrorCode::IoFailure);
+}
+
+TEST_CASE("A folder offered with its entries is asked about without listing it again")
+{
+	IgnoringDistro distro;
+	Graphite::WslAgents agents{distro.Connector()};
+	const Core::Scope<Graphite::RepositoryIgnores> ignores = OpenReady(agents, distro);
+	const std::vector<Core::DirectoryEntry> entries{Core::DirectoryEntry{.Path = kFolder / "build", .Name = "build", .IsDirectory = true},
+													Core::DirectoryEntry{.Path = kFolder / "a.txt", .Name = "a.txt"}};
+
+	ignores->PrepareFolder(kFolder, entries);
+
+	CHECK(ignores->IsIgnored(kFolder / "build", true));
+	CHECK_FALSE(ignores->IsIgnored(kFolder / "a.txt", false));
+	CHECK(distro.Count("git.ignored") == 1);
+	std::scoped_lock lock{distro.Mutex};
+	CHECK(distro.Listings == 0);
+}
+
+TEST_CASE("An entry that became a folder of the same name is asked about again")
+{
+	IgnoringDistro distro;
+	Graphite::WslAgents agents{distro.Connector()};
+	const Core::Scope<Graphite::RepositoryIgnores> ignores = OpenReady(agents, distro);
+	REQUIRE_FALSE(ignores->IsIgnored(kFolder / "a.txt", false));
+
+	static_cast<void>(ignores->IsIgnored(kFolder / "a.txt", true));
+
+	CHECK(distro.Count("git.ignored") == 2);
+}
+
+TEST_CASE("After a question runs out of time no other folder is asked until the answers are forgotten")
+{
+	IgnoringDistro distro;
+	Graphite::WslAgents agents{distro.Connector()};
+	const Core::Scope<Graphite::RepositoryIgnores> ignores = OpenReady(agents, distro);
+	{
+		std::scoped_lock lock{distro.Mutex};
+		distro.Silent = true;
+	}
+
+	CHECK_FALSE(ignores->IsIgnored(kFolder / "build", true));
+	CHECK_FALSE(ignores->IsIgnored(kFolder / "sub" / "build", true));
+	CHECK(distro.Count("git.ignored") == 1);
+
+	{
+		std::scoped_lock lock{distro.Mutex};
+		distro.Silent = false;
+	}
+	ignores->ForgetAnswers();
+
+	CHECK(ignores->IsIgnored(kFolder / "build", true));
 }

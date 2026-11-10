@@ -21,14 +21,18 @@ the Workspace (libgit2 here for a local folder, `WslIgnores` for a WSL one):
 
 - The agent answers `git.ignoreSetup` (working directory, rule files outside the folder) and
   `git.ignored` (one folder's entries, in order) on a second worker, the quick lane, with handles
-  of its own; nothing slow ever queues there.
-- The first question about an entry of a folder lists the folder over the share and asks about
-  all its entries in one request. The answers are kept until the tree asks everything again; a
-  name they do not list (made since) asks the folder again; a folder that could not be answered
-  stays "not ignored" until then, logged once.
+  of its own; no git request queues there, and a watch's first walk of the tree runs on a worker
+  of its own too, so the agent's loop keeps reading requests and sending replies meanwhile.
+- `Core::FileTree` hands a folder's listing over before it asks about its entries one by one;
+  the folder is asked about whole, in one request. The answers are kept until the tree asks
+  everything again; a name they do not list (made since), or list as the other kind, asks the
+  folder again; a folder that could not be answered stays "not ignored" until then, logged once.
+- A question waits at most 2 s. Once one runs out of time, nothing more is asked until the tree
+  asks everything again, so a wedged agent costs one wait per refresh, not one per folder.
 - Nothing on the UI thread waits for an agent to start. Opening answers Cancelled while the
   distro's agent is still connecting, and the Workspace opens again every 250 ms until it
-  answers, then asks the whole tree again.
+  answers, then asks the whole tree again. A distro whose agent could not start answers that
+  failure for 30 s rather than being started anew on every retry.
 
 ## Rationale
 
@@ -48,8 +52,10 @@ the queue a long status holds. Not waiting at open keeps the window responsive w
 
 - A folder opened before its distro's agent is up shows its ignored entries undimmed until the
   agent answers (0.6–1.6 s measured), then dims them in place.
-- Each question still runs on the UI thread: a wedged agent can hold a frame for up to the quick
-  lane's 5 s limit before the folder is answered "not ignored".
+- Each question still runs on the UI thread: a wedged agent can hold one frame for up to 2 s per
+  refresh, after which the rest of the tree is answered "not ignored" until the next refresh.
+- The agent's loop still walks a folder made inside a watched tree (to report what it holds)
+  before it reads the next request: a burst such as an install can delay a question by as long.
 - The agent holds a second set of repository handles.
 
 ### Neutral

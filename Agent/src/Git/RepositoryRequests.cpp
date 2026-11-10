@@ -28,14 +28,30 @@ namespace Agent {
 		}
 	}
 
+	RepositoryCache::ShallowStamp RepositoryCache::StampOf(const Core::Repository& repository)
+	{
+		std::error_code error;
+		const std::filesystem::directory_entry entry{repository.CommonDirectory() / "shallow", error};
+
+		if (error || !entry.exists(error))
+		{
+			return ShallowStamp{};
+		}
+
+		return ShallowStamp{.Exists = true, .Size = entry.file_size(error), .Written = entry.last_write_time(error)};
+	}
+
 	Core::Result<Core::Repository*> RepositoryCache::Get(const std::string& root, bool exactly)
 	{
 		const std::string key = (exactly ? "=" : "^") + root;
 		const auto cached = m_Repositories.find(key);
 
-		if (cached != m_Repositories.end() && !HasVanished(cached->second))
+		// WARNING: libgit2 keeps every commit it has parsed, and one parsed while the clone was
+		// shallow keeps its cut parents after a fetch deepens it: a handle whose shallow file
+		// changed since it was opened is opened again, as the host's port does.
+		if (cached != m_Repositories.end() && !HasVanished(cached->second.Repository) && StampOf(cached->second.Repository) == cached->second.Shallow)
 		{
-			return &cached->second;
+			return &cached->second.Repository;
 		}
 
 		if (cached != m_Repositories.end())
@@ -50,7 +66,8 @@ namespace Agent {
 			return opened.GetError();
 		}
 
-		return &m_Repositories.insert_or_assign(key, std::move(opened.GetValue())).first->second;
+		ShallowStamp shallow = StampOf(opened.GetValue());
+		return &m_Repositories.insert_or_assign(key, Cached{std::move(opened.GetValue()), shallow}).first->second.Repository;
 	}
 
 	void RepositoryCache::Forget(const std::string& root)

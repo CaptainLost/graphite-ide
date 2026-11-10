@@ -203,3 +203,35 @@ TEST_CASE("A distro that cannot be reached gives its reason")
 	REQUIRE_FALSE(connection.HasValue());
 	CHECK(connection.GetError().Message.find("no such distro") != std::string::npos);
 }
+
+TEST_CASE("Peeking at a distro whose agent failed to start gives the failure without starting another")
+{
+	std::atomic<int> attempts{0};
+	Graphite::WslAgents agents{[&](const std::string&) -> Core::Result<std::shared_ptr<Core::AgentConnection>> {
+		++attempts;
+		return Core::Error{Core::ErrorCode::IoFailure, "no agent built"};
+	}};
+
+	const auto first = agents.Peek("Ubuntu");
+	REQUIRE_FALSE(agents.Get("Ubuntu", 2s).HasValue());
+	const int afterFirstAttempt = attempts;
+
+	const auto later = agents.Peek("Ubuntu");
+
+	REQUIRE_FALSE(first.HasValue());
+	CHECK(first.GetError().Code == Core::ErrorCode::Cancelled);
+	REQUIRE_FALSE(later.HasValue());
+	CHECK(later.GetError().Code == Core::ErrorCode::IoFailure);
+	CHECK(later.GetError().Message.find("no agent built") != std::string::npos);
+	CHECK(attempts == afterFirstAttempt);
+}
+
+TEST_CASE("Peeking at a distro whose agent is ready gives it")
+{
+	FakeDistro distro;
+	Graphite::WslAgents agents{distro.Connector()};
+	REQUIRE(agents.Get("Ubuntu", 2s).HasValue());
+
+	CHECK(agents.Peek("Ubuntu").HasValue());
+	CHECK(distro.Connections == 1);
+}

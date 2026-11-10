@@ -764,6 +764,12 @@ namespace Graphite {
 		m_Ignores = std::move(repository).GetValue();
 
 		m_Tree.SetIgnoreQuery([this](const std::filesystem::path& path, bool isDirectory) { return IsIgnoredByRepository(path, isDirectory); });
+		m_Tree.SetIgnoreFolderQuery([this](const std::filesystem::path& folder, const std::vector<Core::DirectoryEntry>& entries) {
+			if (m_Ignores)
+			{
+				m_Ignores->PrepareFolder(folder, entries);
+			}
+		});
 
 		APP_INFO("Git repository detected at '{}'", Core::ToUtf8(m_Ignores->GetWorkingDirectory()));
 	}

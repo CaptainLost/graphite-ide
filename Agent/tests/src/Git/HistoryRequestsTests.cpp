@@ -314,3 +314,25 @@ TEST_CASE("The shallow boundary names the commits a shallow clone cut")
 	REQUIRE(boundary.HasValue());
 	CHECK(boundary.GetValue().Result.at("ids") == json::array({first}));
 }
+
+TEST_CASE("A clone deepened since the last request is read anew, not from the handle that saw it cut")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("a.txt", "two\n");
+	const std::string second = fixture.Commit("second");
+	fixture.MarkShallow(second);
+	const Agent::GitHandlers handlers = Agent::DefaultGitHandlers();
+	const json request = Core::ToJson(Core::LogRequest{});
+
+	const Core::Result<Core::LogPage> cut = Core::LogPageFromJson(PayloadOf(Call(handlers, "git.log", At(fixture, {{"request", request}}))));
+	REQUIRE(cut.HasValue());
+	REQUIRE(cut.GetValue().Commits.size() == 1);
+
+	std::filesystem::remove(fixture.GetPath() / ".git" / "shallow");
+
+	const Core::Result<Core::LogPage> whole = Core::LogPageFromJson(PayloadOf(Call(handlers, "git.log", At(fixture, {{"request", request}}))));
+	REQUIRE(whole.HasValue());
+	CHECK(whole.GetValue().Commits.size() == 2);
+}

@@ -5,6 +5,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Repository.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -25,7 +26,25 @@ namespace Agent {
 		void Forget(const std::string& root);
 
 	private:
-		std::map<std::string, Core::Repository> m_Repositories;
+		// The shallow file as the handle was opened: present, its size and write time.
+		struct ShallowStamp
+		{
+			bool Exists = false;
+			std::uintmax_t Size = 0;
+			std::filesystem::file_time_type Written{};
+
+			bool operator==(const ShallowStamp&) const = default;
+		};
+
+		struct Cached
+		{
+			Core::Repository Repository;
+			ShallowStamp Shallow;
+		};
+
+		static ShallowStamp StampOf(const Core::Repository& repository);
+
+		std::map<std::string, Cached> m_Repositories;
 	};
 
 	struct Asked

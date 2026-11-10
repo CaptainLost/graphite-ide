@@ -28,6 +28,10 @@ namespace Core {
 
 	using IgnoreQuery = std::function<bool(const std::filesystem::path& path, bool isDirectory)>;
 
+	// Handed a folder's whole listing before any of its entries is asked about, so an answer that
+	// costs a round trip can be had for the folder at once.
+	using IgnoreFolderQuery = std::function<void(const std::filesystem::path& folder, const std::vector<DirectoryEntry>& entries)>;
+
 	enum class IgnoreAnswers : std::uint8_t
 	{
 		Keep,
@@ -44,6 +48,7 @@ namespace Core {
 		void Collapse(FileNode& node);
 
 		void SetIgnoreQuery(IgnoreQuery query) { m_IgnoreQuery = std::move(query); }
+		void SetIgnoreFolderQuery(IgnoreFolderQuery query) { m_IgnoreFolderQuery = std::move(query); }
 
 		void Refresh(FileNode& node, IgnoreAnswers ignoreAnswers = IgnoreAnswers::Keep);
 
@@ -58,6 +63,8 @@ namespace Core {
 
 		bool IsIgnoredInside(const FileNode& folder, const DirectoryEntry& entry) const;
 
+		void OfferFolder(const FileNode& folder, const std::vector<DirectoryEntry>& entries) const;
+
 		FileNode UnloadedNodeFor(const FileNode& folder, const DirectoryEntry& entry) const;
 
 		static void RebaseNode(FileNode& node, const std::filesystem::path& newPath);
@@ -65,6 +72,7 @@ namespace Core {
 		FileNode m_Root;
 		bool m_HasRoot = false;
 		IgnoreQuery m_IgnoreQuery;
+		IgnoreFolderQuery m_IgnoreFolderQuery;
 	};
 
 	bool IsFileNodeListedBefore(const FileNode& left, const FileNode& right);

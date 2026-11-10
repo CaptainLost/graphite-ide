@@ -23,7 +23,7 @@ namespace Graphite {
 		constexpr std::chrono::seconds kStartWait{30};
 
 		// The Explorer's questions run on the agent's quick lane, behind nothing slow.
-		constexpr std::chrono::seconds kQuickRequest{5};
+		constexpr std::chrono::seconds kQuickRequest{2};
 
 		// What only reads: one that runs out of time changed nothing. Any other operation may still
 		// land after Graphite stopped waiting.
@@ -568,6 +568,9 @@ namespace Graphite {
 		const Core::Result<Core::CheckoutOutcome> outcome =
 			Decoded(AskForPayload("git.checkout", {{"target", Core::ToJson(target)}}), &Core::CheckoutOutcomeFromJson);
 
+		// WARNING: Changed is empty here although a checkout that ran out of time may still be
+		// switching the tree in the distro; the failure says so ("may still be made"), and the
+		// tree's own watch reports what it then writes.
 		if (!outcome)
 		{
 			return Core::CheckoutOutcome{.Failure = outcome.GetError()};
@@ -578,6 +581,15 @@ namespace Graphite {
 
 	Core::Result<std::filesystem::path> WslGit::GetCommonDirectory()
 	{
+		{
+			std::scoped_lock lock{m_CommonMutex};
+
+			if (m_CommonDirectory)
+			{
+				return *m_CommonDirectory;
+			}
+		}
+
 		const Core::Result<Answer> answer = Ask("git.commonDirectory", nlohmann::json::object());
 
 		if (!answer)
@@ -592,7 +604,10 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::IoFailure, "the WSL agent named no common directory"};
 		}
 
-		return SharePathOf(path->get<std::string>());
+		std::filesystem::path common = SharePathOf(path->get<std::string>());
+		std::scoped_lock lock{m_CommonMutex};
+		m_CommonDirectory = common;
+		return common;
 	}
 
 	Core::Result<WslGit::IgnoreSetup> WslGit::QueryIgnoreSetup(std::chrono::milliseconds startWait)

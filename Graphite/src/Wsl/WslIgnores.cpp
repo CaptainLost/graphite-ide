@@ -18,8 +18,10 @@ namespace Graphite {
 	Core::Result<Core::Scope<RepositoryIgnores>> WslIgnores::Open(WslAgents& agents, const Core::WslSharePath& root, Lister list)
 	{
 		// A distro whose agent is still starting is asked again shortly (the Workspace retries on
-		// Cancelled); only that answer may say Cancelled, so a request that timed out is not retried.
-		const Core::Result<std::shared_ptr<Core::AgentConnection>> connection = agents.Get(root.Distro, kNoStartWait);
+		// Cancelled); only that answer may say Cancelled, so a request that timed out is not retried,
+		// and a distro whose agent could not start answers its failure rather than being started anew
+		// on every retry.
+		const Core::Result<std::shared_ptr<Core::AgentConnection>> connection = agents.Peek(root.Distro);
 
 		if (!connection)
 		{
@@ -43,7 +45,7 @@ namespace Graphite {
 	{
 	}
 
-	bool WslIgnores::IsIgnored(const std::filesystem::path& path, [[maybe_unused]] bool isDirectory)
+	bool WslIgnores::IsIgnored(const std::filesystem::path& path, bool isDirectory)
 	{
 		const std::filesystem::path folder = path.parent_path();
 		const std::string name = Core::ToUtf8(path.filename());
@@ -51,11 +53,11 @@ namespace Graphite {
 
 		if (kept != m_Answers.end())
 		{
-			const auto answer = kept->second.IgnoredByName.find(name);
+			const auto answer = kept->second.ByName.find(name);
 
-			if (answer != kept->second.IgnoredByName.end())
+			if (answer != kept->second.ByName.end() && answer->second.IsDirectory == isDirectory)
 			{
-				return answer->second;
+				return answer->second.Ignored;
 			}
 
 			// A folder that could not be answered stays "not ignored" until the tree asks again.
@@ -65,35 +67,78 @@ namespace Graphite {
 			}
 		}
 
-		// Not asked about yet, or made since the folder was asked about.
+		if (m_GaveUp)
+		{
+			return false;
+		}
+
+		// Not asked about yet, made since the folder was asked about, or now the other kind.
 		const FolderAnswer& asked = Ask(folder);
-		const auto answer = asked.IgnoredByName.find(name);
-		return answer != asked.IgnoredByName.end() && answer->second;
+		const auto answer = asked.ByName.find(name);
+		return answer != asked.ByName.end() && answer->second.Ignored;
+	}
+
+	void WslIgnores::ForgetAnswers()
+	{
+		m_Answers.clear();
+		m_GaveUp = false;
+	}
+
+	void WslIgnores::PrepareFolder(const std::filesystem::path& folder, const std::vector<Core::DirectoryEntry>& entries)
+	{
+		if (!m_GaveUp)
+		{
+			static_cast<void>(Ask(folder, entries));
+		}
 	}
 
 	const WslIgnores::FolderAnswer& WslIgnores::Ask(const std::filesystem::path& folder)
 	{
-		FolderAnswer& answer = m_Answers[folder];
-		answer = FolderAnswer{};
 		const Core::Result<std::vector<Core::DirectoryEntry>> entries = m_List(folder);
-		const Core::Result<std::vector<bool>> outcome =
-			entries ? m_Git->QueryIgnored(folder, entries.GetValue(), kNoStartWait) : Core::Result<std::vector<bool>>{entries.GetError()};
 
-		if (!outcome)
+		if (!entries)
 		{
-			answer.Failed = true;
+			FolderAnswer& answer = m_Answers[folder];
+			answer = FolderAnswer{.Failed = true};
 
 			if (m_Reported.insert(folder).second)
 			{
-				APP_WARN("Cannot ask the WSL agent what git ignores in '{}': {}", Core::ToUtf8(folder), outcome.GetError().Message);
+				APP_WARN("Cannot list '{}' to ask what git ignores in it: {}", Core::ToUtf8(folder), entries.GetError().Message);
 			}
 
 			return answer;
 		}
 
-		for (std::size_t index = 0; index < entries.GetValue().size(); ++index)
+		return Ask(folder, entries.GetValue());
+	}
+
+	const WslIgnores::FolderAnswer& WslIgnores::Ask(const std::filesystem::path& folder, const std::vector<Core::DirectoryEntry>& entries)
+	{
+		FolderAnswer& answer = m_Answers[folder];
+		answer = FolderAnswer{};
+		const Core::Result<std::vector<bool>> ignored = m_Git->QueryIgnored(folder, entries, kNoStartWait);
+
+		if (!ignored)
 		{
-			answer.IgnoredByName[entries.GetValue()[index].Name] = outcome.GetValue()[index];
+			answer.Failed = true;
+
+			// Every other folder would wait as long on the UI thread: ask none until the tree asks again.
+			if (ignored.GetError().Code == Core::ErrorCode::Cancelled)
+			{
+				m_GaveUp = true;
+			}
+
+			if (m_Reported.insert(folder).second)
+			{
+				APP_WARN("Cannot ask the WSL agent what git ignores in '{}': {}", Core::ToUtf8(folder), ignored.GetError().Message);
+			}
+
+			return answer;
+		}
+
+		for (std::size_t index = 0; index < entries.size(); ++index)
+		{
+			answer.ByName[entries[index].Name] = EntryAnswer{.Ignored = ignored.GetValue()[index], .IsDirectory = entries[index].IsDirectory};
 		}
 
 		return answer;

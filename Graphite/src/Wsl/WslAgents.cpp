@@ -174,6 +174,7 @@ namespace Graphite {
 			{
 				distro.Connection.reset();
 				distro.Failure = connected.GetError();
+				distro.FailedAt = std::chrono::steady_clock::now();
 			}
 		}
 
@@ -200,6 +201,30 @@ namespace Graphite {
 		}
 
 		return distro.Failure.value_or(Core::Error{Core::ErrorCode::IoFailure, std::format("cannot reach {}", name)});
+	}
+
+	Core::Result<std::shared_ptr<Core::AgentConnection>> WslAgents::Peek(const std::string& asked)
+	{
+		// A distro that could not start its agent is not tried again sooner than this by a peek.
+		constexpr std::chrono::seconds kRetryAfterFailure{30};
+		const std::string name = DistroKey(asked);
+		{
+			std::scoped_lock lock{m_Mutex};
+			const Distro& distro = m_Distros[name];
+
+			if (IsReady(distro.Connection))
+			{
+				return distro.Connection;
+			}
+
+			if (distro.Failure && !distro.Connecting && std::chrono::steady_clock::now() - distro.FailedAt < kRetryAfterFailure)
+			{
+				return *distro.Failure;
+			}
+		}
+
+		Prepare(name);
+		return Core::Error{Core::ErrorCode::Cancelled, std::format("still connecting to {}", name)};
 	}
 
 	WslAgents::ListenerId WslAgents::AddListener(EventListener listener)

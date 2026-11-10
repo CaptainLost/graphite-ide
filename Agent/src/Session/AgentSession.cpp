@@ -136,7 +136,8 @@ namespace Agent {
 		}
 		else if (operation == "watch")
 		{
-			Reply(request, Watch(request.Arguments));
+			// Answered from the watch starter; Tick sends the reply when the watch is armed.
+			Watch(request);
 		}
 		else if (operation == "unwatch")
 		{
@@ -210,25 +211,29 @@ namespace Agent {
 		};
 	}
 
-	Core::Result<nlohmann::json> AgentSession::Watch(const nlohmann::json& arguments)
+	void AgentSession::Watch(const Core::AgentRequest& request)
 	{
-		const auto root = arguments.find("root");
+		const auto root = request.Arguments.find("root");
 
-		if (root == arguments.end() || !root->is_string())
+		if (root == request.Arguments.end() || !root->is_string())
 		{
-			return MissingArgument("root");
-		}
-
-		Core::Result<std::unique_ptr<TreeWatch>> watch = TreeWatch::Start(root->get<std::string>());
-
-		if (!watch)
-		{
-			return watch.GetError();
+			Reply(request, MissingArgument("root"));
+			return;
 		}
 
 		const int id = m_NextWatchId++;
-		m_Watches.emplace(id, std::move(watch.GetValue()));
-		return nlohmann::json{{"watch", id}};
+		m_WatchStarter.Submit(request, [this, id, path = root->get<std::string>()](const Core::AgentRequest&) -> Core::Result<GitAnswer> {
+			Core::Result<std::unique_ptr<TreeWatch>> watch = TreeWatch::Start(path);
+
+			if (!watch)
+			{
+				return watch.GetError();
+			}
+
+			std::scoped_lock lock{m_ArmedMutex};
+			m_Armed.emplace(id, std::move(watch.GetValue()));
+			return GitAnswer{.Result = {{"watch", id}}};
+		});
 	}
 
 	Core::Result<nlohmann::json> AgentSession::Unwatch(const nlohmann::json& arguments)
@@ -244,7 +249,18 @@ namespace Agent {
 
 		if (m_Watches.erase(id) == 0)
 		{
-			return Core::Error{Core::ErrorCode::NotFound, std::format("no watch {}", id)};
+			// Asked for but not armed yet: dropped when it is.
+			if (id <= 0 || id >= m_NextWatchId)
+			{
+				return Core::Error{Core::ErrorCode::NotFound, std::format("no watch {}", id)};
+			}
+
+			std::scoped_lock lock{m_ArmedMutex};
+
+			if (m_Armed.erase(id) == 0)
+			{
+				m_UnwatchedEarly.insert(id);
+			}
 		}
 
 		m_LimitReported.erase(id);
@@ -253,12 +269,34 @@ namespace Agent {
 
 	void AgentSession::Tick()
 	{
-		for (GitWorker* worker : {&m_QuickWorker, &m_GitWorker})
+		std::vector<Core::AgentReply> replies;
+
+		for (GitWorker* worker : {&m_QuickWorker, &m_WatchStarter, &m_GitWorker})
 		{
-			for (const Core::AgentReply& reply : worker->TakeFinished())
+			for (Core::AgentReply& reply : worker->TakeFinished())
 			{
-				m_Output += Core::EncodeReply(reply);
+				replies.push_back(std::move(reply));
 			}
+		}
+
+		// Watches armed before their replies were taken are in place before any reply goes out.
+		{
+			std::scoped_lock lock{m_ArmedMutex};
+
+			for (auto& [id, armed] : m_Armed)
+			{
+				if (!m_UnwatchedEarly.erase(id))
+				{
+					m_Watches.emplace(id, std::move(armed));
+				}
+			}
+
+			m_Armed.clear();
+		}
+
+		for (const Core::AgentReply& reply : replies)
+		{
+			m_Output += Core::EncodeReply(reply);
 		}
 
 		for (auto& [id, watch] : m_Watches)
@@ -325,9 +363,10 @@ namespace Agent {
 	std::vector<int> AgentSession::WatchDescriptors() const
 	{
 		std::vector<int> descriptors;
-		descriptors.reserve(m_Watches.size() + 2);
+		descriptors.reserve(m_Watches.size() + 3);
 		descriptors.push_back(m_GitWorker.GetDescriptor());
 		descriptors.push_back(m_QuickWorker.GetDescriptor());
+		descriptors.push_back(m_WatchStarter.GetDescriptor());
 
 		for (const auto& [id, watch] : m_Watches)
 		{

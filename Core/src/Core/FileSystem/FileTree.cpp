@@ -116,6 +116,14 @@ namespace Core {
 		return IsIgnoredByQuery(entry.Path, entry.IsDirectory);
 	}
 
+	void FileTree::OfferFolder(const FileNode& folder, const std::vector<DirectoryEntry>& entries) const
+	{
+		if (m_IgnoreFolderQuery && m_IgnoreQuery && !folder.Ignored && !entries.empty())
+		{
+			m_IgnoreFolderQuery(folder.Path, entries);
+		}
+	}
+
 	Result<void> FileTree::Expand(FileNode& node)
 	{
 		if (!node.IsDirectory)
@@ -144,6 +152,7 @@ namespace Core {
 		node.Readable = true;
 		node.Children.clear();
 		node.Children.reserve(listing.GetValue().size());
+		OfferFolder(node, listing.GetValue());
 
 		for (const DirectoryEntry& entry : listing.GetValue())
 		{
@@ -192,6 +201,18 @@ namespace Core {
 		const NodeIndexByPath previousIndexByPath = IndexByPath(previousChildren);
 		node.Children.clear();
 		node.Children.reserve(listing.GetValue().size());
+
+		// Offered only when some entry will be asked about: everything again, or one new.
+		const bool asksSome = ignoreAnswers == IgnoreAnswers::AskAgain ||
+							  std::any_of(listing.GetValue().begin(), listing.GetValue().end(), [&](const DirectoryEntry& entry) {
+								  const std::optional<std::size_t> previous = FindNodeWithPath(previousIndexByPath, entry.Path);
+								  return !previous.has_value() || previousChildren[*previous].IsDirectory != entry.IsDirectory;
+							  });
+
+		if (asksSome)
+		{
+			OfferFolder(node, listing.GetValue());
+		}
 
 		for (const DirectoryEntry& entry : listing.GetValue())
 		{

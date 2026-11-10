@@ -10,6 +10,7 @@
 #include "Core/Remote/AgentDeployment.h"
 #include "Core/Remote/GitCodec.h"
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -353,4 +354,21 @@ TEST_CASE("A repository inside WSL is created, changed, staged and committed thr
 	CHECK(head.GetValue().Commit == std::optional{committed.GetValue()});
 
 	std::filesystem::remove_all(folder, error);
+}
+
+TEST_CASE("The common directory is asked of the agent once, as it never changes for a root")
+{
+	FakeGitDistro distro;
+	std::atomic<int> asked{0};
+	distro.Answer = [&](const Core::AgentRequest& request, FakeAgent& self) {
+		++asked;
+		self.Reply(request.Id, {{"path", "/home/me/p/.git"}});
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslGit git = GitAt(agents);
+
+	REQUIRE(git.GetCommonDirectory().HasValue());
+	REQUIRE(git.GetCommonDirectory().HasValue());
+
+	CHECK(asked == 1);
 }

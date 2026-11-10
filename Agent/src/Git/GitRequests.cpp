@@ -331,7 +331,11 @@ namespace Agent {
 			const std::string root = arguments.value("root", std::string{});
 			json ruleFiles = json::array();
 
-			for (const std::filesystem::path& file : repository.IgnoreRuleFilesOutside(root))
+			// libgit2's working directory is resolved, so the folder is too before rules above it are looked for.
+			std::error_code resolveError;
+			const std::filesystem::path resolved = std::filesystem::weakly_canonical(root, resolveError);
+
+			for (const std::filesystem::path& file : repository.IgnoreRuleFilesOutside(resolveError ? std::filesystem::path{root} : resolved))
 			{
 				ruleFiles.push_back(file.string()); // not a path conversion: Linux paths are their bytes
 			}

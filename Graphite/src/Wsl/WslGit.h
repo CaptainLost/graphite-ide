@@ -19,6 +19,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <mutex>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -145,5 +146,9 @@ namespace Graphite {
 		WslAgents& m_Agents;
 		Core::WslSharePath m_Root;
 		Reach m_Reach;
+
+		// The root's common directory, once the agent named it: it never changes for a root.
+		std::mutex m_CommonMutex;
+		std::optional<std::filesystem::path> m_CommonDirectory;
 	};
 }
