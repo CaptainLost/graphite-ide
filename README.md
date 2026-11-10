@@ -223,55 +223,154 @@ The Linux part of Core and the WSL helper are cross-compiled from Windows with a
 
 ## Architecture
 
-The repository builds three programs from two layers. Dependencies point one way: features depend on Core, Core
-depends on the vendored libraries, and nothing in Core knows it is part of an IDE.
+The code is in two layers. **Core** (`Core/src/Core/<Module>`) is a general-purpose application engine: the window
+and main loop, layers, panels, events, jobs, commands and key bindings, documents and text, file watching, Git, terminals,
+the WSL agent protocol and the ImGui widgets. It has no knowledge of the IDE built on it. **GraphiteLib**
+(`Graphite/src/<Feature>`) is the IDE, one folder per feature, built as a static library that both `Graphite.exe` and
+`GraphiteTests` link. `graphite-agent` (`Agent/src`) is a separate Linux program built on part of Core.
+
+### Composition
+
+Features are not looked up through globals or a service locator. `Main.cpp` creates the application and pushes one
+layer; `GraphiteLayer` is the composition root that owns every model, port, view and worker queue as a member and
+hands each one exactly the collaborators it needs through its constructor.
 
 ```mermaid
-flowchart TB
-    subgraph Programs
-        direction LR
-        Exe["Graphite.exe<br/><i>Main.cpp</i>"]
-        Tests["GraphiteTests · CoreTests<br/><i>doctest</i>"]
-        AgentExe["graphite-agent<br/><i>Linux, inside WSL</i>"]
-    end
+classDiagram
+    direction LR
+    class Application["Core::Application"] {
+        +Run()
+        +PushLayer(layer)
+        -WaitForReasonToDraw()
+    }
+    class Layer["Core::Layer"] {
+        <<abstract>>
+        +OnAttach()
+        +OnUpdate(timestep)
+        +OnImGuiRender()
+        +OnEvent(event)
+    }
+    class GraphiteApplication
+    class GraphiteLayer {
+        EventBus m_Events
+        CommandRegistry m_Commands
+        Keymap m_Keys
+        ShortcutRouter m_Router
+        PanelManager m_Panels
+        JobQueue m_Jobs, m_GitWrites, m_NetworkJobs
+        Workspace m_Workspace
+        DocumentWindows m_DocumentWindows
+        LanguageServices m_LanguageServices
+        RepositoryGitPort m_GitPort
+        GitModel m_Git
+        TerminalWindows m_Terminals
+    }
+    class Panel["Core::Panel"] {
+        <<abstract>>
+        +OnUpdate(timestep)
+        +OnImGuiRender()
+        +OnEvent(event)
+    }
+    class Command["Core::Command"] {
+        Id, Label
+        Run()
+        Enabled()
+    }
 
-    subgraph GraphiteLib["GraphiteLib - the IDE, one folder per feature"]
-        direction LR
-        AppF["App<br/><i>GraphiteLayer</i>"]
-        Editing["Editor · Explorer<br/>Search · Solution"]
-        GitF["Git · Review"]
-        Lang["Language<br/><i>LSP, analysis, syntax</i>"]
-        Rest["Terminal · Sessions<br/>Image · Hex"]
-        Shell["Workspace · Settings<br/>Theme · Persistence · UI"]
-        WslF["Wsl<br/><i>agent client</i>"]
-    end
-
-    subgraph Core["Core - the application engine"]
-        direction LR
-        Runtime["App · Events · Jobs<br/>Command · UI"]
-        Files["FileSystem · Text<br/>Search · Image"]
-        GitC["Git<br/><i>libgit2 wrapper</i>"]
-        Term["Terminal<br/><i>VT parser, ConPTY</i>"]
-        RemoteC["Remote<br/><i>agent protocol</i>"]
-        Widgets["ImGui<br/><i>widgets, renderer</i>"]
-        BaseC["Base · Platform · Time"]
-    end
-
-    Vendor["Dear ImGui · GLFW · libgit2 · tree-sitter · spdlog · nlohmann/json · pugixml · miniz · stb"]
-
-    Exe --> GraphiteLib
-    Tests --> GraphiteLib
-    Tests --> Core
-    AgentExe -- "Linux build of Base, FileSystem,<br/>Git, Remote, Search" --> Core
-    GraphiteLib --> Core
-    Core --> Vendor
+    Application <|-- GraphiteApplication
+    Application o-- "LayerStack" Layer
+    Layer <|-- GraphiteLayer
+    GraphiteApplication ..> GraphiteLayer : pushes
+    GraphiteLayer *-- "PanelManager" Panel
+    GraphiteLayer *-- "CommandRegistry" Command
+    Panel <|-- ExplorerPanel
+    Panel <|-- GitView
+    Panel <|-- SearchPanel
+    Panel <|-- ProblemsPanel
 ```
 
-| Layer | Folder | Holds |
-|---|---|---|
-| Programs | `Graphite/src/Main.cpp`, `Agent/src` | The executable's entry point; the WSL agent's request handlers for files, watching, Git and search |
-| GraphiteLib | `Graphite/src/<Feature>` | Every IDE feature as models, views and the ports they reach the outside through; `App/GraphiteLayer` composes them |
-| Core | `Core/src/Core/<Module>` | The window and main loop, events, jobs, commands and key bindings, panels, documents and text, file watching and atomic writes, Git, terminals, the agent protocol, ImGui widgets |
+- **Layers** receive the frame (`OnUpdate`, `OnImGuiRender`) and input (`OnEvent`) from `Core::Application`.
+- **Panels** are dockable windows; `PanelManager` draws them, remembers their placement and gives each a menu entry
+  and a toggle command.
+- **Commands** are named actions in a `CommandRegistry`; menus, the Command Palette and key bindings all run the same
+  command, and `ShortcutRouter` turns key presses into commands through the `Keymap`.
+- **Events** cross features through a typed `EventBus` (`Subscribe<T>`, `Publish<T>`), so a feature that asks for a
+  file to open or a commit to be shown does not depend on the one that does it.
+
+### Anatomy of a feature
+
+Every feature that does slow work is built the same way: a **port** for the outside world, a **model** that owns the
+state, and **views** that draw it. The Git feature, the largest, is the example.
+
+```mermaid
+classDiagram
+    direction LR
+    class GitPort {
+        <<interface>>
+        +QueryStatus() Result~WorkingTreeStatus~
+        +QueryBranches() Result~vector~Branch~~
+        +QueryLog(request) Result~LogPage~
+        +30 more queries and writes
+    }
+    class RepositoryGitPort {
+        libgit2 handle per worker thread
+        WslGit when the folder is inside WSL
+    }
+    class TestDoubles["Test doubles"] {
+        NetworkDoublePort
+        EmptyGitPort
+    }
+    class GitModel {
+        -GitPort& m_Port
+        -JobSubmitter m_Submit, m_SubmitWrite
+        -DeliveryInbox m_Inbox
+        +RequestStatus()
+        +RequestLog(request)
+        +GetLog() Ref~LogPage~
+        +GetDiffFor(commit) Ref~Diff~
+        +OnUpdate(timestep)
+    }
+    class GitView {
+        +OnImGuiRender()
+    }
+    class ChangesView {
+        +Draw()
+    }
+
+    GitPort <|.. RepositoryGitPort
+    GitPort <|.. TestDoubles
+    GitModel --> GitPort : calls on a worker
+    GitView --> GitModel : reads, requests
+    ChangesView --> GitModel : reads, requests
+    Panel <|-- GitView
+```
+
+A request goes through the same five steps whichever feature makes it:
+
+```mermaid
+sequenceDiagram
+    participant View as GitView (UI thread)
+    participant Model as GitModel (UI thread)
+    participant Worker as JobQueue worker
+    participant Port as GitPort
+    View->>Model: RequestLog(request)
+    Model->>Worker: submit job
+    Worker->>Port: QueryLog(request)
+    Port-->>Worker: Result<LogPage>
+    Worker->>Model: m_Inbox.Post(delivery) + Redraw::Request()
+    Note over Model: next frame: OnUpdate drains the inbox
+    View->>Model: GetLog() - the new page
+```
+
+- **Ports** (`GitPort`, `BlamePort`, `LinesPort`, `ReviewPort` and the language services' document ports) are abstract
+  classes. The production implementation picks a local libgit2 repository or the WSL agent by the folder's path; the
+  tests pass a double.
+- **Models** keep slow work off the UI thread. Each `Request…` submits a job through a `JobSubmitter` and returns; the
+  job's result comes back through a `DeliveryInbox`, `Mailbox` or `LatestAnswer` and is applied on the UI thread in
+  `OnUpdate`. A model given `[](std::function<void()> job) { job(); }` as its submitter runs synchronously, which is
+  how the tests drive it.
+- **Views** keep only view state such as selection, scroll and layout: they read a model's `Get…` results each
+  frame and call its `Request…` or write methods.
 
 ### Inside the running IDE
 
@@ -317,11 +416,6 @@ flowchart LR
 ```
 
 - **One UI thread owns all state.** Views read models and send them commands; nothing on a worker touches a model.
-- **Workers answer through mailboxes.** A job posts its result to a `Mailbox` (or a `LatestAnswer`, which drops
-  answers to superseded questions) and requests a frame; the model takes it at the start of that frame.
-- **Ports at the edges.** Features reach Git, language servers and the file system through port interfaces such as
-  `RepositoryGitPort`, so the same model works on a local repository, a WSL one through the agent, or a fake in the
-  tests.
 - **Writes are serialised.** Git writes and network operations each have a single worker, so two never race on one
   repository.
 
