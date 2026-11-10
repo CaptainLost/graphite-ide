@@ -4,6 +4,7 @@
 #include "Core/Git/Blame.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
+#include "Core/Git/Content/ContentCheck.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/LineHistory.h"
@@ -47,6 +48,8 @@ namespace Core {
 	nlohmann::json ToJson(const LineHistoryRequest& request);
 	nlohmann::json ToJson(const LineHistory& history);
 	nlohmann::json ToJson(const WorktreeEntry& worktree);
+	nlohmann::json ToJson(const ContentVerdict& verdict);
+	nlohmann::json ToJson(const PatchTwinSearch& search);
 
 	// A list of anything ToJson takes, as a JSON array in the same order.
 	template<typename Value>
@@ -82,4 +85,6 @@ namespace Core {
 	Result<LineHistoryRequest> LineHistoryRequestFromJson(const nlohmann::json& json);
 	Result<LineHistory> LineHistoryFromJson(const nlohmann::json& json);
 	Result<std::vector<WorktreeEntry>> WorktreesFromJson(const nlohmann::json& json);
+	Result<ContentVerdict> ContentVerdictFromJson(const nlohmann::json& json);
+	Result<PatchTwinSearch> PatchTwinSearchFromJson(const nlohmann::json& json);
 }

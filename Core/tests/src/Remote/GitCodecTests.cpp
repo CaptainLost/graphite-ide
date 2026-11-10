@@ -404,3 +404,24 @@ TEST_CASE("A worktree list round-trips with each worktree's HEAD and lock")
 	REQUIRE(back.HasValue());
 	CHECK(back.GetValue() == worktrees);
 }
+
+TEST_CASE("A content verdict and a patch twin search round-trip")
+{
+	const Core::ContentVerdict verdict{.Outcome = Core::ContentOutcome::Merged,
+									   .Kind = Core::ContentKind::Rebase,
+									   .Landing = kOtherCommit,
+									   .Twins = {Core::PatchTwin{.Own = kSomeCommit, .Twin = kOtherCommit}}};
+	const Core::PatchTwinSearch search{.Twin = kSomeCommit, .MoreToRead = true};
+
+	const Core::Result<Core::ContentVerdict> verdictBack = Core::ContentVerdictFromJson(Core::ToJson(verdict));
+	const Core::Result<Core::PatchTwinSearch> searchBack = Core::PatchTwinSearchFromJson(Core::ToJson(search));
+	const Core::Result<Core::ContentVerdict> unknownBack = Core::ContentVerdictFromJson(Core::ToJson(Core::ContentVerdict{.Outcome = Core::ContentOutcome::Unknown}));
+
+	REQUIRE(verdictBack.HasValue());
+	CHECK(verdictBack.GetValue() == verdict);
+	REQUIRE(searchBack.HasValue());
+	CHECK(searchBack.GetValue() == search);
+	REQUIRE(unknownBack.HasValue());
+	CHECK(unknownBack.GetValue().Outcome == Core::ContentOutcome::Unknown);
+	CHECK_FALSE(unknownBack.GetValue().Landing.has_value());
+}

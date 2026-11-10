@@ -248,6 +248,11 @@ namespace Core {
 			return file;
 		}
 
+		constexpr EnumNames<ContentOutcome, 3> kOutcomes{
+			{{ContentOutcome::Merged, "merged"}, {ContentOutcome::NotMerged, "notMerged"}, {ContentOutcome::Unknown, "unknown"}}};
+
+		constexpr EnumNames<ContentKind, 2> kContentKinds{{{ContentKind::Squash, "squash"}, {ContentKind::Rebase, "rebase"}}};
+
 		constexpr EnumNames<RefKind, 2> kRefKinds{{{RefKind::Local, "local"}, {RefKind::Remote, "remote"}}};
 
 		constexpr EnumNames<CheckoutKind, 3> kCheckoutKinds{
@@ -1086,5 +1091,64 @@ namespace Core {
 	Result<std::vector<WorktreeEntry>> WorktreesFromJson(const nlohmann::json& json)
 	{
 		return Decoded<std::vector<WorktreeEntry>>("a worktree list", [&] { return ListFrom<WorktreeEntry>(json, "worktrees", WorktreeFrom); });
+	}
+
+	nlohmann::json ToJson(const ContentVerdict& verdict)
+	{
+		nlohmann::json twins = nlohmann::json::array();
+
+		for (const PatchTwin& twin : verdict.Twins)
+		{
+			twins.push_back({{"own", OidText(twin.Own)}, {"twin", OidText(twin.Twin)}});
+		}
+
+		nlohmann::json json{{"outcome", NameOf(kOutcomes, verdict.Outcome)}, {"kind", NameOf(kContentKinds, verdict.Kind)}, {"twins", std::move(twins)}};
+
+		if (verdict.Landing)
+		{
+			json["landing"] = OidText(*verdict.Landing);
+		}
+
+		return json;
+	}
+
+	nlohmann::json ToJson(const PatchTwinSearch& search)
+	{
+		nlohmann::json json{{"moreToRead", search.MoreToRead}};
+
+		if (search.Twin)
+		{
+			json["twin"] = OidText(*search.Twin);
+		}
+
+		return json;
+	}
+
+	Result<ContentVerdict> ContentVerdictFromJson(const nlohmann::json& json)
+	{
+		return Decoded<ContentVerdict>("a content verdict", [&] {
+			const nlohmann::json& object = ObjectAt(json, "verdict");
+			ContentVerdict verdict{
+				.Outcome = EnumFrom(kOutcomes, object, "outcome"),
+				.Kind = EnumFrom(kContentKinds, object, "kind"),
+				.Landing = OptionalOidFrom(object, "landing"),
+			};
+
+			for (const nlohmann::json& one : ArrayField(object, "twins"))
+			{
+				const nlohmann::json& twin = ObjectAt(one, "twins");
+				verdict.Twins.push_back(PatchTwin{.Own = OidFrom(twin, "own"), .Twin = OidFrom(twin, "twin")});
+			}
+
+			return verdict;
+		});
+	}
+
+	Result<PatchTwinSearch> PatchTwinSearchFromJson(const nlohmann::json& json)
+	{
+		return Decoded<PatchTwinSearch>("a patch twin search", [&] {
+			const nlohmann::json& object = ObjectAt(json, "search");
+			return PatchTwinSearch{.Twin = OptionalOidFrom(object, "twin"), .MoreToRead = Field<bool>(object, "moreToRead")};
+		});
 	}
 }
