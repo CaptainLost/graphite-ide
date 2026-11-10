@@ -68,10 +68,10 @@ namespace Graphite {
 		}
 
 		void DrawRightAligned(DashboardCanvas& canvas, float right, float rowTop, float pitch, float size, ImU32 colour,
-							  std::string_view text, TextWeight weight = TextWeight::Regular)
+							  std::string_view text, TextFace face = TextFace::Regular)
 		{
-			DrawTextAt(canvas.Drawing, ImVec2(right - TextWidthAt(text, size, weight), BodyTop(rowTop, pitch, size)), size,
-					   colour, text, weight);
+			DrawTextAt(canvas.Drawing, ImVec2(right - TextWidthAt(text, size, face), BodyTop(rowTop, pitch, size)), size,
+					   colour, text, face);
 		}
 
 		void DrawRowBar(DashboardCanvas& canvas, const ImRect& row, float width)
@@ -175,7 +175,7 @@ namespace Graphite {
 
 		bool CacheSentenceFits(const CacheSentence& sentence, float room, float size)
 		{
-			return TextWidthAt(sentence.Before, size) + TextWidthAt(sentence.Without, size, TextWeight::Strong) +
+			return TextWidthAt(sentence.Before, size) + TextWidthAt(sentence.Without, size, TextFace::Strong) +
 					   TextWidthAt(sentence.After, size) <=
 				   room;
 		}
@@ -439,7 +439,6 @@ namespace Graphite {
 		const ImRect content = DrawTileFrame(canvas, tile, "Most expensive sessions");
 		const std::size_t shown = std::min(kTopRows, model.Sessions.size());
 		const float body = canvas.Units(kBodySize);
-		const float small = canvas.Units(kSmallSize);
 		const float pitch = canvas.Units(kRowPitch);
 		const float gap = canvas.Units(kColumnGap);
 
@@ -453,7 +452,7 @@ namespace Graphite {
 		}
 
 		const float costWidth = WidestOf(costs, body);
-		const float spanWidth = WidestOf(spans, small);
+		const float spanWidth = WidestOf(spans, body);
 		const float spanRight = content.Max.x - costWidth - gap;
 		const float titleRoom = std::max(0.0f, spanRight - spanWidth - gap - content.Min.x - canvas.Units(kNameInset));
 		const ImU32 hover = ImGui::GetColorU32(CurrentListRowColours().Hovered);
@@ -475,7 +474,7 @@ namespace Graphite {
 
 			DrawNameAndNote(canvas, ImVec2(row.Min.x + canvas.Units(kNameInset), row.Min.y), pitch, titleRoom,
 							SessionTitle(session), PlaceLabel(session.Place));
-			DrawRightAligned(canvas, spanRight, row.Min.y, pitch, small, canvas.Colours.Dim, spans[index]);
+			DrawRightAligned(canvas, spanRight, row.Min.y, pitch, body, canvas.Colours.Ink, spans[index]);
 			DrawRightAligned(canvas, row.Max.x, row.Min.y, pitch, body, canvas.Colours.Ink, costs[index]);
 			canvas.Add({.Rect = row,
 						.Tip = [&model, &calendar, index] { return SessionTip(model, index, calendar); },
@@ -587,8 +586,8 @@ namespace Graphite {
 		const float textTop = BodyTop(top, small * kLinePitch, small);
 		DrawTextAt(canvas.Drawing, ImVec2(x, textTop), small, canvas.Colours.Dim, sentence.Before);
 		x += TextWidthAt(sentence.Before, small);
-		DrawTextAt(canvas.Drawing, ImVec2(x, textTop), small, canvas.Colours.Ink, sentence.Without, TextWeight::Strong);
-		x += TextWidthAt(sentence.Without, small, TextWeight::Strong);
+		DrawTextAt(canvas.Drawing, ImVec2(x, textTop), small, canvas.Colours.Ink, sentence.Without, TextFace::Strong);
+		x += TextWidthAt(sentence.Without, small, TextFace::Strong);
 		DrawTextAt(canvas.Drawing, ImVec2(x, textTop), small, canvas.Colours.Dim, sentence.After);
 	}
 }

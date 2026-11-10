@@ -114,7 +114,7 @@ namespace Graphite {
 					break;
 				}
 
-				section.Rows.push_back({name});
+				section.Rows.push_back({.Label = name, .CodeLabel = true});
 			}
 
 			return section;

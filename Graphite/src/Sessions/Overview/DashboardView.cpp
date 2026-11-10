@@ -117,7 +117,7 @@ namespace Graphite {
 				if (!IsEmpty(card) && BeginTipCard(colours))
 				{
 					DrawTipCard(card, colours);
-					ImGui::EndTooltip();
+					EndTipCard(colours);
 				}
 			}
 

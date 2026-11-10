@@ -468,6 +468,7 @@ TEST_CASE("Model, project, skill, punch and cache tips")
 	CHECK(RowLabelled(project, "Busiest day")->Extra == "8 Nov");
 	REQUIRE(SectionTitled(project, "Worktrees \xC2\xB7 1") != nullptr);
 	CHECK(SectionTitled(project, "Worktrees \xC2\xB7 1")->Rows[0].Label == "fox");
+	CHECK(SectionTitled(project, "Worktrees \xC2\xB7 1")->Rows[0].CodeLabel);
 	CHECK(RowLabelled(project, "Build the dashboard")->Value == "$4.00");
 
 	const TipCard skill = SkillTip(fixture.Model, 0, LocalCalendar{nullptr});

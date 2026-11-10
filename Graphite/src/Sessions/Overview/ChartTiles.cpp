@@ -61,7 +61,7 @@ namespace Graphite {
 		constexpr float kHintGap = 0.35f;
 		constexpr float kHatchesPerCell = 3.0f;
 		constexpr std::string_view kHint =
-			"Hatched days are older than the oldest transcript. Claude Code keeps 30 days; cleanupPeriodDays keeps more.";
+			"Hatched days are older than the oldest transcript. Claude Code keeps 30 days; `cleanupPeriodDays` keeps more.";
 		constexpr std::array<std::string_view, 12> kMonths = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 															  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 		constexpr unsigned kFirstWeekOfMonth = 7;
@@ -69,6 +69,7 @@ namespace Graphite {
 		constexpr float kColumnsHeight = 8.0f;
 		constexpr float kColumnGap = 0.17f;
 		constexpr float kColumnGapShare = 0.25f;
+		constexpr float kColumnRounding = 0.15f;
 		constexpr float kAxisGap = 0.15f;
 		constexpr float kKeysGap = 0.2f;
 		constexpr float kKeyGap = 0.8f;
@@ -295,7 +296,7 @@ namespace Graphite {
 		float SideWidth(float unit)
 		{
 			const float small = kSmallSize * unit;
-			return std::max({TextWidthAt(kWidestTotal, kTotalSize * unit, TextWeight::Strong), TextWidthAt(kWidestActive, small),
+			return std::max({TextWidthAt(kWidestTotal, kTotalSize * unit, TextFace::Strong), TextWidthAt(kWidestActive, small),
 							 TextWidthAt(kWidestStreak, small), LegendWidth(unit)});
 		}
 
@@ -361,8 +362,8 @@ namespace Graphite {
 		{
 			const float small = canvas.Units(kSmallSize);
 			const float total = canvas.Units(kTotalSize);
-			DrawTextAt(canvas.Drawing, at, total, canvas.Colours.Ink, FitAt(side.Total, room, total, TextWeight::Strong),
-					   TextWeight::Strong);
+			DrawTextAt(canvas.Drawing, at, total, canvas.Colours.Ink, FitAt(side.Total, room, total, TextFace::Strong),
+					   TextFace::Strong);
 			float y = at.y + total * kLinePitch;
 			DrawTextAt(canvas.Drawing, ImVec2(at.x, y), small, canvas.Colours.Dim, FitAt(side.Active, room, small));
 			y += canvas.Units(kSideLine);
@@ -375,9 +376,9 @@ namespace Graphite {
 		{
 			const float small = canvas.Units(kSmallSize);
 			const float total = canvas.Units(kTotalSize);
-			DrawTextAt(canvas.Drawing, at, total, canvas.Colours.Ink, side.Total, TextWeight::Strong);
+			DrawTextAt(canvas.Drawing, at, total, canvas.Colours.Ink, side.Total, TextFace::Strong);
 
-			const float runLeft = at.x + TextWidthAt(side.Total, total, TextWeight::Strong) + canvas.Units(kBelowRunGap);
+			const float runLeft = at.x + TextWidthAt(side.Total, total, TextFace::Strong) + canvas.Units(kBelowRunGap);
 			const std::string run = side.Active + std::string{kMiddleDotSeparator} + side.Streak;
 			DrawTextAt(canvas.Drawing, ImVec2(runLeft, at.y + (total - small) * kHalf), small, canvas.Colours.Dim,
 					   FitAt(run, std::max(0.0f, at.x + room - runLeft), small));
@@ -477,7 +478,14 @@ namespace Graphite {
 				const ImRect column(ImVec2(left, area.Min.y), ImVec2(left + slot, area.Max.y));
 				const bool hot = canvas.IsHot(column);
 				float bottom = area.Max.y;
+				std::size_t topFamily = kModelFamilyCount;
 
+				for (std::size_t family = 0; family < kModelFamilyCount; ++family)
+				{
+					topFamily = day.CostByFamily[family] > 0.0 ? family : topFamily;
+				}
+
+				// WARNING: Only the column's top piece is rounded, and only at its top, as one bar's cap.
 				for (std::size_t family = 0; family < kModelFamilyCount; ++family)
 				{
 					const auto piece = static_cast<float>(day.CostByFamily[family] / highest * height);
@@ -485,8 +493,10 @@ namespace Graphite {
 					if (piece > 0.0f)
 					{
 						const ImU32 colour = canvas.Colours.Families[family];
+						const bool top = family == topFamily;
 						canvas.Drawing.AddRectFilled(ImVec2(left, bottom - piece), ImVec2(left + slot - gap, bottom),
-													 hot ? Brighter(colour) : colour);
+													 hot ? Brighter(colour) : colour, top ? canvas.Units(kColumnRounding) : 0.0f,
+													 top ? ImDrawFlags_RoundCornersTop : ImDrawFlags_None);
 						bottom -= piece;
 					}
 				}
@@ -659,12 +669,12 @@ namespace Graphite {
 		y += caption + canvas.Units(kCaptionToValue);
 
 		const float markRoom = face.Mark.empty() ? 0.0f : TextWidthAt(face.Mark, value) + canvas.Units(kMarkGap);
-		const std::string shownValue = FitAt(face.Value, std::max(0.0f, room - markRoom), value, TextWeight::Strong);
-		DrawTextAt(canvas.Drawing, ImVec2(left, y), value, canvas.Colours.Ink, shownValue, TextWeight::Strong);
+		const std::string shownValue = FitAt(face.Value, std::max(0.0f, room - markRoom), value, TextFace::Strong);
+		DrawTextAt(canvas.Drawing, ImVec2(left, y), value, canvas.Colours.Ink, shownValue, TextFace::Strong);
 
 		if (!face.Mark.empty() && shownValue == face.Value)
 		{
-			DrawTextAt(canvas.Drawing, ImVec2(left + TextWidthAt(shownValue, value, TextWeight::Strong) + canvas.Units(kMarkGap), y),
+			DrawTextAt(canvas.Drawing, ImVec2(left + TextWidthAt(shownValue, value, TextFace::Strong) + canvas.Units(kMarkGap), y),
 					   value, canvas.Colours.Dim, face.Mark);
 		}
 
@@ -780,7 +790,7 @@ namespace Graphite {
 			height += BelowHeight(unit);
 		}
 
-		return height + kHintGap * unit + WrappedHeightAt(kHint, kSmallSize * unit, content) + TileBottomPadding(unit);
+		return height + kHintGap * unit + WrappedRunsHeightAt(kHint, kSmallSize * unit, content) + TileBottomPadding(unit);
 	}
 
 	void DrawMap(DashboardCanvas& canvas, const ImRect& tile)
@@ -821,8 +831,8 @@ namespace Graphite {
 			below += BelowHeight(canvas.Unit);
 		}
 
-		DrawWrappedAt(canvas.Drawing, ImVec2(content.Min.x, below + canvas.Units(kHintGap)), canvas.Units(kSmallSize),
-					  Faint(canvas.Colours), kHint, content.GetWidth());
+		DrawWrappedRunsAt(canvas.Drawing, ImVec2(content.Min.x, below + canvas.Units(kHintGap)), canvas.Units(kSmallSize),
+						  Faint(canvas.Colours), canvas.Colours.Dim, kHint, content.GetWidth());
 	}
 
 	float DailyHeight(float /*width*/)

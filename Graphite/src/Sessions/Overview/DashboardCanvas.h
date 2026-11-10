@@ -17,26 +17,36 @@
 
 namespace Graphite {
 
-	enum class TextWeight : std::uint8_t
+	enum class TextFace : std::uint8_t
 	{
 		Regular,
-		Strong
+		Strong,
+		Code // the app's code font, for names a person types: settings keys, worktrees
 	};
 
-	ImFont* FaceOf(TextWeight weight);
+	ImFont* FaceOf(TextFace face);
 
 	// WARNING: Unrounded, unlike ImGui::CalcTextSize, so runs placed side by side stay on the text.
-	float TextWidthAt(std::string_view text, float size, TextWeight weight = TextWeight::Regular);
+	float TextWidthAt(std::string_view text, float size, TextFace face = TextFace::Regular);
 
 	float WrappedHeightAt(std::string_view text, float size, float wrapWidth);
 
 	// WARNING: Empty when not even the ellipsis fits.
-	std::string FitAt(std::string_view text, float room, float size, TextWeight weight = TextWeight::Regular);
+	std::string FitAt(std::string_view text, float room, float size, TextFace face = TextFace::Regular);
 
 	void DrawTextAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, std::string_view text,
-					TextWeight weight = TextWeight::Regular);
+					TextFace face = TextFace::Regular);
 
 	void DrawWrappedAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, std::string_view text, float wrapWidth);
+
+	// WARNING: A span between backticks is set in the code face and colour; the backticks are not drawn. Lines break at
+	// spaces only.
+	float RunsWidthAt(std::string_view text, float size);
+
+	float WrappedRunsHeightAt(std::string_view text, float size, float wrapWidth);
+
+	void DrawWrappedRunsAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, ImU32 codeColour, std::string_view text,
+						   float wrapWidth);
 
 	inline constexpr float kCaptionSize = 0.8f;
 	inline constexpr float kValueSize = 1.4f;

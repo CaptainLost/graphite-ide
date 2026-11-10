@@ -25,7 +25,12 @@ namespace Graphite {
 		ImU32 Accent;
 		ImU32 Bad;
 		ImU32 Good;
+		ImU32 TipSurface; // sunk below the tiles, away from the frame
+		ImU32 Shadow;	  // under a tip card, its alpha the whole shadow's
+		ImU32 Pill;		  // the accent laid thinly on the surface
 	};
+
+	bool IsLightSurface(ImU32 surface);
 
 	// WARNING: Reads the style's text colour, so it runs inside a frame.
 	DashboardColours DashboardColoursFrom(const SessionPalette& palette, ImU32 surface);

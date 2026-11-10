@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
+#include <vector>
 
 namespace Graphite {
 
@@ -23,31 +24,121 @@ namespace Graphite {
 		constexpr float kSwatchGap = 0.4f;
 		constexpr float kSwatchRounding = 0.15f;
 		constexpr float kHalf = 0.5f;
+		constexpr char kCodeMark = '`';
+		constexpr char kSpace = ' ';
+
+		struct Piece
+		{
+			std::string_view Text;
+			TextFace Face = TextFace::Regular;
+			bool AfterSpace = false;
+		};
+
+		std::vector<Piece> PiecesOf(std::string_view text)
+		{
+			std::vector<Piece> pieces;
+			TextFace face = TextFace::Regular;
+			bool afterSpace = false;
+			std::size_t start = 0;
+
+			const auto close = [&](std::size_t end) {
+				if (end > start)
+				{
+					pieces.push_back({text.substr(start, end - start), face, afterSpace});
+					afterSpace = false;
+				}
+			};
+
+			for (std::size_t index = 0; index < text.size(); ++index)
+			{
+				if (text[index] == kSpace || text[index] == kCodeMark)
+				{
+					close(index);
+					start = index + 1;
+					afterSpace = afterSpace || text[index] == kSpace;
+					face = text[index] == kCodeMark ? (face == TextFace::Code ? TextFace::Regular : TextFace::Code) : face;
+				}
+			}
+
+			close(text.size());
+			return pieces;
+		}
+
+		struct PlacedPiece
+		{
+			Piece Run;
+			float X = 0.0f;
+			int Line = 0;
+		};
+
+		// WARNING: Pieces with no space between them make one word, which never breaks across lines.
+		std::vector<PlacedPiece> LayOutRuns(std::string_view text, float size, float wrapWidth)
+		{
+			const std::vector<Piece> pieces = PiecesOf(text);
+			const float space = TextWidthAt(" ", size);
+			std::vector<PlacedPiece> placed;
+			float x = 0.0f;
+			int line = 0;
+
+			for (std::size_t first = 0; first < pieces.size();)
+			{
+				std::size_t end = first + 1;
+				float width = TextWidthAt(pieces[first].Text, size, pieces[first].Face);
+
+				while (end < pieces.size() && !pieces[end].AfterSpace)
+				{
+					width += TextWidthAt(pieces[end].Text, size, pieces[end].Face);
+					++end;
+				}
+
+				if (first > 0 && x + space + width > wrapWidth)
+				{
+					++line;
+					x = 0.0f;
+				}
+				else if (first > 0)
+				{
+					x += space;
+				}
+
+				for (std::size_t index = first; index < end; ++index)
+				{
+					placed.push_back({pieces[index], x, line});
+					x += TextWidthAt(pieces[index].Text, size, pieces[index].Face);
+				}
+
+				first = end;
+			}
+
+			return placed;
+		}
 	}
 
-	ImFont* FaceOf(TextWeight weight)
+	ImFont* FaceOf(TextFace face)
 	{
-		ImFont* const strong = Core::ImGuiRenderer::GetBoldFont();
-		return weight == TextWeight::Strong && strong != nullptr ? strong : ImGui::GetFont();
+		ImFont* const chosen = face == TextFace::Strong ? Core::ImGuiRenderer::GetBoldFont()
+							   : face == TextFace::Code ? Core::ImGuiRenderer::GetMonoFont()
+														: nullptr;
+		return chosen != nullptr ? chosen : ImGui::GetFont();
 	}
 
-	float TextWidthAt(std::string_view text, float size, TextWeight weight)
+	float TextWidthAt(std::string_view text, float size, TextFace face)
 	{
-		return FaceOf(weight)->CalcTextSizeA(size, FLT_MAX, kNoWrap, text.data(), text.data() + text.size()).x;
+		return FaceOf(face)->CalcTextSizeA(size, FLT_MAX, kNoWrap, text.data(), text.data() + text.size()).x;
 	}
 
 	float WrappedHeightAt(std::string_view text, float size, float wrapWidth)
 	{
-		return FaceOf(TextWeight::Regular)
+		return FaceOf(TextFace::Regular)
 			->CalcTextSizeA(size, FLT_MAX, wrapWidth, text.data(), text.data() + text.size())
 			.y;
 	}
 
-	std::string FitAt(std::string_view text, float room, float size, TextWeight weight)
+	std::string FitAt(std::string_view text, float room, float size, TextFace face)
 	{
-		const float ellipsisWidth = TextWidthAt(kEllipsis, size, weight);
+		const float ellipsisWidth = TextWidthAt(kEllipsis, size, face);
 		const std::optional<std::size_t> cut =
-			CutToFit(text, room, ellipsisWidth, [&](std::string_view part) { return TextWidthAt(part, size, weight); });
+			CutToFit(text, room, ellipsisWidth, [&](std::string_view part) { return TextWidthAt(part, size, face); });
 
 		if (!cut)
 		{
@@ -62,14 +153,36 @@ namespace Graphite {
 		return std::string{text.substr(0, *cut)} + std::string{kEllipsis};
 	}
 
-	void DrawTextAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, std::string_view text, TextWeight weight)
+	void DrawTextAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, std::string_view text, TextFace face)
 	{
-		drawing.AddText(FaceOf(weight), size, at, colour, text.data(), text.data() + text.size());
+		drawing.AddText(FaceOf(face), size, at, colour, text.data(), text.data() + text.size());
 	}
 
 	void DrawWrappedAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, std::string_view text, float wrapWidth)
 	{
-		drawing.AddText(FaceOf(TextWeight::Regular), size, at, colour, text.data(), text.data() + text.size(), wrapWidth);
+		drawing.AddText(FaceOf(TextFace::Regular), size, at, colour, text.data(), text.data() + text.size(), wrapWidth);
+	}
+
+	float RunsWidthAt(std::string_view text, float size)
+	{
+		const std::vector<PlacedPiece> placed = LayOutRuns(text, size, FLT_MAX);
+		return placed.empty() ? 0.0f : placed.back().X + TextWidthAt(placed.back().Run.Text, size, placed.back().Run.Face);
+	}
+
+	float WrappedRunsHeightAt(std::string_view text, float size, float wrapWidth)
+	{
+		const std::vector<PlacedPiece> placed = LayOutRuns(text, size, wrapWidth);
+		return placed.empty() ? 0.0f : static_cast<float>(placed.back().Line + 1) * size;
+	}
+
+	void DrawWrappedRunsAt(ImDrawList& drawing, ImVec2 at, float size, ImU32 colour, ImU32 codeColour, std::string_view text,
+						   float wrapWidth)
+	{
+		for (const PlacedPiece& piece : LayOutRuns(text, size, wrapWidth))
+		{
+			DrawTextAt(drawing, ImVec2(at.x + piece.X, at.y + static_cast<float>(piece.Line) * size), size,
+					   piece.Run.Face == TextFace::Code ? codeColour : colour, piece.Run.Text, piece.Run.Face);
+		}
 	}
 
 	ImU32 Faint(const DashboardColours& colours)

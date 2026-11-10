@@ -25,6 +25,7 @@ namespace Graphite {
 		std::string Extra;
 		TipTone ExtraTone = TipTone::Dim;
 		std::optional<ModelFamily> Swatch;
+		bool CodeLabel = false; // a name a person types, set in the code face
 	};
 
 	struct TipSection
@@ -35,7 +36,7 @@ namespace Graphite {
 	};
 
 	// WARNING: Notes stand under the head and Body, before the first section; a note that closes the card is
-	// the last section's note.
+	// the last section's note. A span of a note between backticks is set in the code face.
 	struct TipCard
 	{
 		std::string Head;

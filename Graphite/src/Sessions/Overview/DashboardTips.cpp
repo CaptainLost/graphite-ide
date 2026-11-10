@@ -450,7 +450,7 @@ namespace Graphite {
 	{
 		TipCard card{.Head = FullDate(day)};
 		card.Notes.push_back("No transcript from this day is left on disk. Claude Code deletes transcripts after "
-							 "cleanupPeriodDays (30 by default), and Graphite keeps no copy.");
+							 "`cleanupPeriodDays` (30 by default), and Graphite keeps no copy.");
 		return card;
 	}
 

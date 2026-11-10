@@ -620,6 +620,100 @@ TEST_CASE("A tip card's tooltip is edged in the frame colour")
 	CHECK(edgeVertices > 0);
 }
 
+TEST_CASE("On a light theme the tip card is lighter than the tiles and the empty day darker")
+{
+	ImGuiFrames frames;
+	frames.Next([] {
+		SessionPalette palette;
+		palette.Run = IM_COL32(40, 120, 40, 255);
+		const ImU32 surface = IM_COL32(236, 236, 236, 255);
+
+		const DashboardColours colours = DashboardColoursFrom(palette, surface);
+
+		CHECK(ChannelOf(colours.TipSurface, IM_COL32_R_SHIFT) > ChannelOf(surface, IM_COL32_R_SHIFT));
+		CHECK(ChannelOf(colours.Heat[0], IM_COL32_R_SHIFT) < ChannelOf(surface, IM_COL32_R_SHIFT));
+		CHECK(colours.Heat[4] == palette.Run);
+	});
+}
+
+TEST_CASE("A tip card has the tip surface, and a shadow around it that never covers it")
+{
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	DashboardColours colours = DistinctColours();
+	colours.TipSurface = IM_COL32(13, 14, 16, 255);
+	colours.Shadow = IM_COL32(0, 0, 0, 128);
+	TipCard card;
+	card.Head = "Bash";
+	card.HeadValue = "28,661 calls";
+
+	ImRect edge;
+	int backgroundVertices = 0;
+	const auto draw = [&] {
+		if (BeginTipCard(colours))
+		{
+			DrawTipCard(card, colours);
+			const ImGuiWindow* tooltip = ImGui::GetCurrentWindowRead();
+			edge = tooltip->Rect();
+			backgroundVertices = VerticesInColourWithin(*tooltip->DrawList, colours.TipSurface, edge);
+			EndTipCard(colours);
+		}
+	};
+	frames.Next(draw);
+	frames.Next(draw);
+
+	CHECK(backgroundVertices > 0);
+	const ImDrawList& foreground = *ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
+	int outside = 0;
+	int inside = 0;
+
+	for (const ImDrawCmd& command : foreground.CmdBuffer)
+	{
+		for (unsigned int index = command.IdxOffset; index < command.IdxOffset + command.ElemCount; ++index)
+		{
+			const ImDrawVert& vertex = foreground.VtxBuffer[foreground.IdxBuffer[index]];
+
+			if ((vertex.col & IM_COL32_A_MASK) == 0 || (vertex.col & ~IM_COL32_A_MASK) != 0)
+			{
+				continue;
+			}
+
+			const ImVec4 clip = command.ClipRect;
+			const bool clipsTheCard = clip.x < edge.Max.x && edge.Min.x < clip.z && clip.y < edge.Max.y && edge.Min.y < clip.w;
+			(clipsTheCard ? inside : outside) += 1;
+		}
+	}
+
+	CHECK(outside > 0);
+	CHECK(inside == 0);
+}
+
+TEST_CASE("A long body stops at four lines")
+{
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	TipCard card;
+	card.Body = "word";
+	for (int index = 0; index < 300; ++index)
+	{
+		card.Body += " word";
+	}
+
+	std::vector<DrawnLine> lines;
+	const auto draw = [&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::Begin("Body", nullptr,
+					 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+		DrawTipCard(card, DistinctColours());
+		lines = DrawnTextLines(*ImGui::GetWindowDrawList(), *ImGui::GetFont()->GetFontBaked(ImGui::GetFontSize()));
+		ImGui::End();
+	};
+	frames.Next(draw);
+	frames.Next(draw);
+
+	CHECK(lines.size() == 4);
+}
+
 TEST_CASE("DashboardColoursFrom maps the palette as decided, with rules and edges lifted off the surface")
 {
 	ImGuiFrames frames;
@@ -627,7 +721,8 @@ TEST_CASE("DashboardColoursFrom maps the palette as decided, with rules and edge
 		SessionPalette palette;
 		palette.Accent = IM_COL32(226, 176, 74, 255);
 		palette.Read = IM_COL32(90, 167, 224, 255);
-		palette.Edit = IM_COL32(140, 194, 101, 255);
+		palette.Edit = IM_COL32(229, 192, 123, 255);
+		palette.Run = IM_COL32(140, 194, 101, 255);
 		palette.Agent = IM_COL32(180, 140, 224, 255);
 		palette.Other = IM_COL32(150, 150, 150, 255);
 		palette.TextDisabled = IM_COL32(110, 110, 110, 255);
@@ -641,9 +736,13 @@ TEST_CASE("DashboardColoursFrom maps the palette as decided, with rules and edge
 		CHECK(colours.Families[static_cast<std::size_t>(ModelFamily::Haiku)] == palette.Edit);
 		CHECK(colours.Families[static_cast<std::size_t>(ModelFamily::Fable)] == palette.Agent);
 		CHECK(colours.Families[static_cast<std::size_t>(ModelFamily::Other)] == palette.Other);
-		CHECK(colours.Heat[4] == palette.Edit);
-		CHECK(ShareFromTo(colours.Heat[1], surface, palette.Edit) == doctest::Approx(0.3f).epsilon(0.03));
-		CHECK(ShareFromTo(colours.Bar, surface, palette.Edit) == doctest::Approx(0.18f).epsilon(0.05));
+		CHECK(colours.Good == palette.Run);
+		CHECK(colours.Heat[4] == palette.Run);
+		CHECK(ShareFromTo(colours.Heat[1], surface, palette.Run) == doctest::Approx(0.3f).epsilon(0.03));
+		CHECK(ShareFromTo(colours.Bar, surface, palette.Run) == doctest::Approx(0.18f).epsilon(0.05));
+		CHECK(ChannelOf(colours.TipSurface, IM_COL32_R_SHIFT) < ChannelOf(surface, IM_COL32_R_SHIFT));
+		CHECK(ChannelOf(colours.Shadow, IM_COL32_A_SHIFT) > 0);
+		CHECK(ShareFromTo(colours.Pill, surface, palette.Accent) == doctest::Approx(0.15f).epsilon(0.1));
 		CHECK(ChannelOf(colours.Heat[0], IM_COL32_R_SHIFT) > ChannelOf(surface, IM_COL32_R_SHIFT));
 		CHECK((colours.Hatch & ~IM_COL32_A_MASK) == (palette.TextDisabled & ~IM_COL32_A_MASK));
 		CHECK(ChannelOf(colours.Hatch, IM_COL32_A_SHIFT) == 89);
