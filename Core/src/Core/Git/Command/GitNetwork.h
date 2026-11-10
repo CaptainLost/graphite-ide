@@ -14,13 +14,27 @@
 
 namespace Core {
 
+	// A repository inside a WSL distro, whose own git runs there (stage 3d).
+	struct WslGitPlace
+	{
+		std::string Distro;
+		std::string LinuxDirectory;
+	};
+
 	// The git to run and the repository to run it in. SshCommandConfigured is IsSshCommandConfigured's answer for it.
+	// With Wsl set, Git is wsl.exe and git runs inside that distro, in its directory.
 	struct NetworkRun
 	{
 		std::filesystem::path Git;
 		std::filesystem::path WorkingDirectory;
 		bool SshCommandConfigured = false;
+		std::optional<WslGitPlace> Wsl;
 	};
+
+	// run as wsl.exe's arguments: the distro's git started by a login shell (which finds an ssh agent its profile
+	// starts) in place.LinuxDirectory, each argument handed over whole as "$@", never put in the shell's text. The
+	// variables run sets reach Linux through WSLENV, added to what the user already shares; removed ones are left out.
+	GitRun InDistro(const WslGitPlace& place, GitRun run);
 
 	enum class NetworkHint
 	{
@@ -95,6 +109,9 @@ namespace Core {
 	// replaces one the user may have.
 	bool IsSshCommandConfigured(const std::filesystem::path& git, const std::filesystem::path& workingDirectory,
 								const std::atomic<bool>& cancelled);
+
+	// The same question of the distro's git.
+	bool IsSshCommandConfigured(const std::filesystem::path& wsl, const WslGitPlace& place, const std::atomic<bool>& cancelled);
 
 	NetworkHint HintOf(std::string_view errors);
 

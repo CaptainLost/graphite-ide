@@ -889,3 +889,40 @@ TEST_CASE("Network: a force push refuses when the remote moved since the last fe
 	CHECK(forced.Failure.Hint == Core::NetworkHint::Rejected);
 	CHECK(scene.Git(scene.Bare(), {"rev-parse", kBranch}) == peerCommit);
 }
+
+namespace {
+
+	const Core::EnvironmentVariable* VariableNamed(const std::vector<Core::EnvironmentVariable>& environment, const std::string& name)
+	{
+		const auto found = std::find_if(environment.begin(), environment.end(), [&](const Core::EnvironmentVariable& variable) { return variable.Name == name; });
+		return found == environment.end() ? nullptr : &*found;
+	}
+}
+
+TEST_CASE("git in a WSL distro runs through a login shell, each argument passed whole")
+{
+	const Core::GitRun run{.Arguments = {"push", "origin", "my branch $(rm -rf ~)"},
+						   .Environment = {{.Name = "GIT_TERMINAL_PROMPT", .Value = "0"}, {.Name = "GIT_DIR", .Removed = true}}};
+
+	const Core::GitRun placed = Core::InDistro(Core::WslGitPlace{.Distro = "Ubuntu", .LinuxDirectory = "/home/me/p q"}, run);
+
+	CHECK(placed.Arguments == std::vector<std::string>{"-d", "Ubuntu", "--cd", "/home/me/p q", "--exec", "/bin/sh", "-lc", "exec git \"$@\"", "git",
+														"push", "origin", "my branch $(rm -rf ~)"});
+	REQUIRE(VariableNamed(placed.Environment, "GIT_TERMINAL_PROMPT") != nullptr);
+	CHECK(VariableNamed(placed.Environment, "GIT_DIR") == nullptr);
+	const Core::EnvironmentVariable* shared = VariableNamed(placed.Environment, "WSLENV");
+	REQUIRE(shared != nullptr);
+	CHECK(shared->Value == "GIT_TERMINAL_PROMPT");
+}
+
+TEST_CASE("git in a WSL distro keeps the variables the user already shares with WSL")
+{
+	const ScopedEnvironmentVariable userShares{L"WSLENV", std::wstring{L"USERPROFILE/p"}};
+	const Core::GitRun run{.Arguments = {"fetch"}, .Environment = {{.Name = "LC_ALL", .Value = "C"}, {.Name = "GIT_SSH_COMMAND", .Value = "ssh -o BatchMode=yes"}}};
+
+	const Core::GitRun placed = Core::InDistro(Core::WslGitPlace{.Distro = "Ubuntu", .LinuxDirectory = "/p"}, run);
+
+	const Core::EnvironmentVariable* shared = VariableNamed(placed.Environment, "WSLENV");
+	REQUIRE(shared != nullptr);
+	CHECK(shared->Value == "USERPROFILE/p:LC_ALL:GIT_SSH_COMMAND");
+}

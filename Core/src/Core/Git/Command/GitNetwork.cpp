@@ -2,8 +2,13 @@
 
 #include "Core/Git/Command/GitNetwork.h"
 
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/Platform/Process.h"
+
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -12,6 +17,21 @@
 namespace Core {
 
 	namespace {
+
+		// git's environment inside a distro: no prompt, English messages, and ssh in batch mode unless the distro's git
+		// configures an ssh command. The Windows side's GIT_SSH and GIT_SSH_COMMAND say nothing about Linux.
+		std::vector<EnvironmentVariable> DistroGitEnvironment(bool sshCommandConfigured)
+		{
+			constexpr bool kNoSshFromHere = true;
+			std::vector<EnvironmentVariable> environment = GitEnvironment(kNoSshFromHere);
+
+			if (!sshCommandConfigured)
+			{
+				environment.push_back({.Name = "GIT_SSH_COMMAND", .Value = "ssh -o BatchMode=yes"});
+			}
+
+			return environment;
+		}
 
 		// Ends the line above each list of files git refuses to overwrite: tracked changes and untracked files alike.
 		constexpr std::string_view kOverwrittenByMerge = "would be overwritten by merge:";
@@ -98,9 +118,14 @@ namespace Core {
 		NetworkOutcome RunToSuccess(const NetworkRun& run, const std::atomic<bool>& cancelled, const ProgressSink& progress,
 								  std::vector<std::string> arguments)
 		{
-			const GitRun gitRun{.Arguments = std::move(arguments),
-								.WorkingDirectory = run.WorkingDirectory,
-								.Environment = GitEnvironment(run.SshCommandConfigured)};
+			GitRun gitRun{.Arguments = std::move(arguments),
+						  .WorkingDirectory = run.WorkingDirectory,
+						  .Environment = run.Wsl ? DistroGitEnvironment(run.SshCommandConfigured) : GitEnvironment(run.SshCommandConfigured)};
+
+			if (run.Wsl)
+			{
+				gitRun = InDistro(*run.Wsl, std::move(gitRun));
+			}
 
 			const PercentRelay relay{progress};
 			const std::function<void(std::string_view)> onLine = [&relay](std::string_view line) { relay.OnLine(line); };
@@ -180,6 +205,49 @@ namespace Core {
 								   const std::string& remote)
 	{
 		return RunToSuccess(run, cancelled, progress, {"remote", "set-head", "--auto", "--", remote});
+	}
+
+	GitRun InDistro(const WslGitPlace& place, GitRun run)
+	{
+		std::vector<std::string> arguments{"-d", place.Distro, "--cd", place.LinuxDirectory, "--exec", "/bin/sh", "-lc", "exec git \"$@\"", "git"};
+		arguments.insert(arguments.end(), std::make_move_iterator(run.Arguments.begin()), std::make_move_iterator(run.Arguments.end()));
+
+		std::vector<EnvironmentVariable> environment;
+		std::string shared;
+
+		if (const std::optional<std::wstring> userShares = EnvironmentValue(L"WSLENV"); userShares && !userShares->empty())
+		{
+			shared = ToUtf8(std::filesystem::path{*userShares});
+		}
+
+		for (EnvironmentVariable& variable : run.Environment)
+		{
+			if (variable.Removed)
+			{
+				continue;
+			}
+
+			shared += (shared.empty() ? "" : ":") + variable.Name;
+			environment.push_back(std::move(variable));
+		}
+
+		if (!shared.empty())
+		{
+			environment.push_back({.Name = "WSLENV", .Value = std::move(shared)});
+		}
+
+		return GitRun{.Arguments = std::move(arguments), .WorkingDirectory = std::move(run.WorkingDirectory), .Environment = std::move(environment)};
+	}
+
+	bool IsSshCommandConfigured(const std::filesystem::path& wsl, const WslGitPlace& place, const std::atomic<bool>& cancelled)
+	{
+		constexpr std::uint32_t kNotSet = 1;
+		constexpr bool kSshNotUsed = true;
+		const GitRun query = InDistro(place, GitRun{.Arguments = {"config", "--get", "core.sshCommand"}, .Environment = DistroGitEnvironment(kSshNotUsed)});
+		const std::function<void(std::string_view)> noProgress;
+		const Result<GitOutput> answered = RunGit(wsl, query, cancelled, noProgress);
+
+		return !answered.HasValue() || answered.GetValue().ExitCode != kNotSet;
 	}
 
 	bool IsSshCommandConfigured(const std::filesystem::path& git, const std::filesystem::path& workingDirectory,
