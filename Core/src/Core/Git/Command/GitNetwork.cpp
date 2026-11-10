@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -143,7 +144,27 @@ namespace Core {
 				return NetworkOutcome{.Result = NetworkResult::Failed, .Failure = {.Lines = {startError}, .Errors = startError}};
 			}
 
-			const GitOutput& output = finished.GetValue();
+			GitOutput& output = finished.GetValue();
+
+			if (output.ExitCode != 0 && run.Wsl)
+			{
+				// The shell says 127 when the distro has no git; wsl.exe writes its own failures (a distro it cannot start)
+				// to stdout, not stderr.
+				constexpr std::uint32_t kCommandNotFound = 127;
+
+				if (output.ExitCode == kCommandNotFound)
+				{
+					const std::string missing = std::format("git is not installed in {}", run.Wsl->Distro);
+					return NetworkOutcome{.Result = NetworkResult::Failed, .Failure = {.Lines = {missing}, .Errors = missing}};
+				}
+
+				if (output.Errors.find_first_not_of(" \r\n\t") == std::string::npos)
+				{
+					output.Errors = output.Out.find_first_not_of(" \r\n\t") == std::string::npos
+										? std::format("WSL could not run git in {}", run.Wsl->Distro)
+										: output.Out;
+				}
+			}
 
 			if (output.ExitCode != 0)
 			{
@@ -209,7 +230,9 @@ namespace Core {
 
 	GitRun InDistro(const WslGitPlace& place, GitRun run)
 	{
-		std::vector<std::string> arguments{"-d", place.Distro, "--cd", place.LinuxDirectory, "--exec", "/bin/sh", "-lc", "exec git \"$@\"", "git"};
+		// -C as well as --cd: wsl.exe goes on in / when it cannot enter the directory, and a profile may cd elsewhere.
+		std::vector<std::string> arguments{"-d", place.Distro, "--cd", place.LinuxDirectory, "--exec", "/bin/sh", "-lc", "exec git \"$@\"",
+										   "git", "-C", place.LinuxDirectory};
 		arguments.insert(arguments.end(), std::make_move_iterator(run.Arguments.begin()), std::make_move_iterator(run.Arguments.end()));
 
 		std::vector<EnvironmentVariable> environment;
@@ -235,6 +258,9 @@ namespace Core {
 		{
 			environment.push_back({.Name = "WSLENV", .Value = std::move(shared)});
 		}
+
+		// For wsl.exe itself, not shared with Linux: its own messages in UTF-8 rather than UTF-16.
+		environment.push_back({.Name = "WSL_UTF8", .Value = "1"});
 
 		return GitRun{.Arguments = std::move(arguments), .WorkingDirectory = std::move(run.WorkingDirectory), .Environment = std::move(environment)};
 	}

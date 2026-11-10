@@ -899,15 +899,20 @@ namespace {
 	}
 }
 
-TEST_CASE("git in a WSL distro runs through a login shell, each argument passed whole")
+TEST_CASE("git in a WSL distro runs through a login shell in the repository, each argument passed whole")
 {
+	// Windows Terminal shares its own variables with WSL; none here.
+	const ScopedEnvironmentVariable noShares{L"WSLENV", std::nullopt};
 	const Core::GitRun run{.Arguments = {"push", "origin", "my branch $(rm -rf ~)"},
 						   .Environment = {{.Name = "GIT_TERMINAL_PROMPT", .Value = "0"}, {.Name = "GIT_DIR", .Removed = true}}};
 
 	const Core::GitRun placed = Core::InDistro(Core::WslGitPlace{.Distro = "Ubuntu", .LinuxDirectory = "/home/me/p q"}, run);
 
 	CHECK(placed.Arguments == std::vector<std::string>{"-d", "Ubuntu", "--cd", "/home/me/p q", "--exec", "/bin/sh", "-lc", "exec git \"$@\"", "git",
-														"push", "origin", "my branch $(rm -rf ~)"});
+														"-C", "/home/me/p q", "push", "origin", "my branch $(rm -rf ~)"});
+	const Core::EnvironmentVariable* utf8 = VariableNamed(placed.Environment, "WSL_UTF8");
+	REQUIRE(utf8 != nullptr);
+	CHECK(utf8->Value == "1");
 	REQUIRE(VariableNamed(placed.Environment, "GIT_TERMINAL_PROMPT") != nullptr);
 	CHECK(VariableNamed(placed.Environment, "GIT_DIR") == nullptr);
 	const Core::EnvironmentVariable* shared = VariableNamed(placed.Environment, "WSLENV");
@@ -925,4 +930,26 @@ TEST_CASE("git in a WSL distro keeps the variables the user already shares with 
 	const Core::EnvironmentVariable* shared = VariableNamed(placed.Environment, "WSLENV");
 	REQUIRE(shared != nullptr);
 	CHECK(shared->Value == "USERPROFILE/p:LC_ALL:GIT_SSH_COMMAND");
+}
+
+// Needs wsl.exe; skipped, saying why, without it.
+TEST_CASE("A distro WSL cannot start fails a network command with WSL's own words")
+{
+	const std::filesystem::path wsl = std::filesystem::path{L"C:\\Windows\\System32\\wsl.exe"};
+	std::error_code error;
+
+	if (!std::filesystem::exists(wsl, error))
+	{
+		MESSAGE("no wsl.exe here: skipped");
+		return;
+	}
+
+	const Core::NetworkRun run{.Git = wsl, .WorkingDirectory = wsl.parent_path(), .Wsl = Core::WslGitPlace{.Distro = "NoSuchDistroForGraphite", .LinuxDirectory = "/"}};
+	const std::atomic<bool> notCancelled{false};
+
+	const Core::NetworkOutcome outcome = Core::FetchAll(run, notCancelled, {});
+
+	REQUIRE(outcome.Result == Core::NetworkResult::Failed);
+	REQUIRE_FALSE(outcome.Failure.Lines.empty());
+	CHECK_FALSE(outcome.Failure.Lines.front().empty());
 }

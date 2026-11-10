@@ -31,8 +31,9 @@ namespace Core {
 		std::optional<WslGitPlace> Wsl;
 	};
 
-	// run as wsl.exe's arguments: the distro's git started by a login shell (which finds an ssh agent its profile
-	// starts) in place.LinuxDirectory, each argument handed over whole as "$@", never put in the shell's text. The
+	// run as wsl.exe's arguments: the distro's git started by a POSIX login shell (which reads /etc/profile and
+	// ~/.profile, so an ssh agent started there is found; one started in .bashrc is not) and pointed at
+	// place.LinuxDirectory with -C, each argument handed over whole as "$@", never put in the shell's text. The
 	// variables run sets reach Linux through WSLENV, added to what the user already shares; removed ones are left out.
 	GitRun InDistro(const WslGitPlace& place, GitRun run);
 
