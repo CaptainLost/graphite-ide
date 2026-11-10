@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <set>
 #include <utility>
 
 namespace Graphite {
@@ -19,17 +20,61 @@ namespace Graphite {
 		constexpr std::size_t kDaysPerWeek = 7;
 		constexpr std::size_t kHoursPerDay = 24;
 
-		template <typename Pick>
-		FamilyCosts FamilyAmounts(const DashboardModel& model, Pick pick)
+		enum class Requesters : std::uint8_t
 		{
-			FamilyCosts amounts{};
+			Everyone,
+			Subagents
+		};
+
+		enum class Amount : std::uint8_t
+		{
+			Money,
+			Tokens
+		};
+
+		template <typename Pick>
+		FamilyColumn ColumnOf(const DashboardModel& model, Pick pick, Requesters requesters, Amount amount)
+		{
+			FamilyColumn column;
 
 			for (std::size_t index = 0; index < kModelFamilyCount; ++index)
 			{
-				amounts[index] = static_cast<double>(pick(model.Families[index]));
+				const FamilyTotals& family = model.Families[index];
+				const bool subagents = requesters == Requesters::Subagents;
+				column.Amounts[index] = static_cast<double>(pick(family));
+				column.Requests[index] = subagents ? family.SubagentRequests : family.Requests;
+
+				if (amount == Amount::Money)
+				{
+					column.Unpriced[index] = subagents ? family.UnpricedSubagentRequests : family.UnpricedRequests;
+				}
 			}
 
-			return amounts;
+			return column;
+		}
+
+		std::set<std::string> UnpricedModelsOf(const DashboardModel& model, const FamilyColumn& column)
+		{
+			std::set<std::string> models;
+
+			for (std::size_t index = 0; index < kModelFamilyCount; ++index)
+			{
+				if (column.Unpriced[index] > 0)
+				{
+					models.insert(model.Families[index].UnpricedModels.begin(), model.Families[index].UnpricedModels.end());
+				}
+			}
+
+			return models;
+		}
+
+		TipSection ByModel(const DashboardModel& model, std::string title, const FamilyColumn& column, double total,
+						   std::string (*format)(double))
+		{
+			TipSection section{.Title = std::move(title)};
+			AddFamilyRows(section.Rows, model, column, total, format);
+			NoteUnpriced(section.Notes, UnpricedModelsOf(model, column));
+			return section;
 		}
 
 		void AddThreadRows(std::vector<TipRow>& rows, double cost, double subagentCost)
@@ -69,10 +114,10 @@ namespace Graphite {
 		{
 			TipCard card{.Head = std::format("Spent in {} days", model.Days.size()), .HeadValue = TipMoney(model.Cost)};
 
-			TipSection byModel{.Title = "By model"};
-			AddFamilyRows(byModel.Rows, FamilyAmounts(model, [](const FamilyTotals& family) { return family.Cost; }),
-						  model.Cost, TipMoney);
-			card.Sections.push_back(std::move(byModel));
+			card.Sections.push_back(ByModel(model, "By model",
+											ColumnOf(model, [](const FamilyTotals& family) { return family.Cost; },
+													 Requesters::Everyone, Amount::Money),
+											model.Cost, TipMoney));
 
 			TipSection byThread{.Title = "By thread"};
 			AddThreadRows(byThread.Rows, model.Cost, model.SubagentCost);
@@ -195,10 +240,10 @@ namespace Graphite {
 			runs.Rows.push_back({"Share of the cost", TipShare(model.SubagentCost, model.Cost)});
 			card.Sections.push_back(std::move(runs));
 
-			TipSection byModel{.Title = "By model"};
-			AddFamilyRows(byModel.Rows, FamilyAmounts(model, [](const FamilyTotals& family) { return family.SubagentCost; }),
-						  model.SubagentCost, TipMoney);
-			card.Sections.push_back(std::move(byModel));
+			card.Sections.push_back(ByModel(model, "By model",
+											ColumnOf(model, [](const FamilyTotals& family) { return family.SubagentCost; },
+													 Requesters::Subagents, Amount::Money),
+											model.SubagentCost, TipMoney));
 
 			std::vector<const SessionFacts*> users;
 			for (const SessionFacts& session : model.Sessions)
@@ -242,10 +287,10 @@ namespace Graphite {
 			parts.Rows.push_back({"Uncached input", FormatTokens(tokens.Input)});
 			card.Sections.push_back(std::move(parts));
 
-			TipSection byModel{.Title = "Saved by model"};
-			AddFamilyRows(byModel.Rows, FamilyAmounts(model, [](const FamilyTotals& family) { return family.Saved; }),
-						  model.Saved, TipMoney);
-			card.Sections.push_back(std::move(byModel));
+			card.Sections.push_back(ByModel(model, "Saved by model",
+											ColumnOf(model, [](const FamilyTotals& family) { return family.Saved; },
+													 Requesters::Everyone, Amount::Money),
+											model.Saved, TipMoney));
 
 			CloseTip(card, "Cache reads cost less than input and cache writes cost more; the saving is what these requests "
 						   "would have cost with every cached token charged as plain input, less what they cost.");
@@ -257,11 +302,10 @@ namespace Graphite {
 			const auto output = static_cast<double>(model.Tokens.Output);
 			TipCard card{.Head = "Tokens Claude wrote", .HeadValue = FormatTokens(model.Tokens.Output)};
 
-			TipSection byModel;
-			AddFamilyRows(byModel.Rows,
-						  FamilyAmounts(model, [](const FamilyTotals& family) { return family.Tokens.Output; }), output,
-						  TipTokens);
-			card.Sections.push_back(std::move(byModel));
+			card.Sections.push_back(ByModel(model, {},
+											ColumnOf(model, [](const FamilyTotals& family) { return family.Tokens.Output; },
+													 Requesters::Everyone, Amount::Tokens),
+											output, TipTokens));
 
 			TipSection rates;
 			rates.Rows.push_back({"Per request", DashIfNone(model.Requests, TipTokens(Per(output, model.Requests)))});
@@ -381,8 +425,9 @@ namespace Graphite {
 		}
 
 		TipSection costs;
-		AddFamilyRows(costs.Rows, day.CostByFamily, day.Cost, TipMoney);
+		AddFamilyRows(costs.Rows, model, {day.CostByFamily, day.RequestsByFamily, day.UnpricedByFamily}, day.Cost, TipMoney);
 		AddThreadRows(costs.Rows, day.Cost, day.SubagentCost);
+		NoteUnpriced(costs.Notes, day.UnpricedModels);
 		card.Sections.push_back(std::move(costs));
 
 		TipSection counts;

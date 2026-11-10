@@ -71,6 +71,11 @@ namespace Graphite {
 		}
 	}
 
+	bool IsSyntheticModel(std::string_view model)
+	{
+		return model == kSyntheticModel;
+	}
+
 	Price StandardPrice(double input, double output, double cacheRead)
 	{
 		return {input, output, input * kCacheWrite5mInputMultiplier, input * kCacheWrite1hInputMultiplier, cacheRead};
@@ -144,7 +149,7 @@ namespace Graphite {
 	{
 		// WARNING: Claude Code names this model on messages it writes itself, such as an interrupted
 		// turn. Nothing was billed for them, so the cost is zero rather than unknown.
-		if (key.Model == kSyntheticModel)
+		if (IsSyntheticModel(key.Model))
 		{
 			return BucketCosts{};
 		}

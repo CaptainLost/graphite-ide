@@ -110,11 +110,47 @@ namespace Graphite {
 
 				for (const auto& [key, requests] : activity.RequestsByModel)
 				{
-					Model.Families[IndexOf(FamilyOf(key.Model))].Requests += requests;
+					const bool unpriced = !Prices.BucketsOf(key, {}).has_value();
 
-					if (!Prices.BucketsOf(key, {}))
+					if (unpriced)
 					{
 						Model.UnpricedRequests += requests;
+					}
+
+					if (IsSyntheticModel(key.Model) || requests == 0)
+					{
+						continue;
+					}
+
+					const std::size_t family = IndexOf(FamilyOf(key.Model));
+					FamilyTotals& familyTotals = Model.Families[family];
+					familyTotals.Requests += requests;
+					familyTotals.RequestsByModel[key.Model] += requests;
+					day.RequestsByFamily[family] += requests;
+					session.RequestsByFamily[family] += requests;
+
+					if (thread == Thread::Subagent)
+					{
+						familyTotals.SubagentRequests += requests;
+					}
+
+					if (!unpriced)
+					{
+						continue;
+					}
+
+					familyTotals.UnpricedRequests += requests;
+					familyTotals.UnpricedModels.insert(key.Model);
+					day.UnpricedByFamily[family] += requests;
+					day.UnpricedModels.insert(key.Model);
+					session.UnpricedByFamily[family] += requests;
+					session.UnpricedModels.insert(key.Model);
+					session.UnpricedRequests += requests;
+					Model.UnpricedModels.insert(key.Model);
+
+					if (thread == Thread::Subagent)
+					{
+						familyTotals.UnpricedSubagentRequests += requests;
 					}
 				}
 

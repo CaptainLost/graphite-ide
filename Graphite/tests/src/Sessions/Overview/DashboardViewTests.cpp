@@ -28,6 +28,7 @@ namespace {
 	constexpr std::uint64_t kOneDollarOfOpusInput = 200'000;
 	constexpr float kTallWindow = 2000.0f;
 	constexpr float kHalf = 0.5f;
+	constexpr float kValueTop = 1.45f; // the number tile's value line, in font sizes from its top
 
 	std::chrono::year_month_day Day(int year, unsigned month, unsigned day)
 	{
@@ -293,6 +294,57 @@ TEST_CASE("Hovering a tool row shows its tooltip")
 
 	REQUIRE(!lines.empty());
 	CHECK(lines.front().Text.starts_with("Bash"));
+}
+
+TEST_CASE("Requests to a model without a price mark the Spent tile and keep their family on the Models tile")
+{
+	DashboardScreen screen(kWideDashboardInFontSizes);
+	HourActivity unpriced;
+	const UsageKey key{"claude-unknown-9", false};
+	unpriced.Usage[key] = {1000, 0, 0, 0, 0};
+	unpriced.Requests = 1;
+	unpriced.RequestsByModel[key] = 1;
+	screen.Data.Large.Activity.MainHours[Hour(2026, 11, 9, 9)] = unpriced;
+	const std::vector<const SessionSummary*> sessions{&screen.Data.Large, &screen.Data.Small};
+	screen.Data.Model = BuildDashboard(sessions, Pricing::Defaults(), screen.Data.Calendar, Day(2026, 11, 10));
+
+	std::vector<DrawnLine> bodies;
+	int dimInValueLine = 0;
+	const auto read = [&] {
+		screen.Draw();
+		const ImDrawList& drawing = DashboardScreen::DashboardDrawList();
+		bodies = DrawnTextLines(drawing, *ImGui::GetFont()->GetFontBaked(kBodySize * ImGui::GetFontSize()));
+		const ImRect spent = screen.OnScreen(screen.Grid.Numbers[0]);
+		const float unit = ImGui::GetFontSize();
+		const ImRect valueLine(ImVec2(spent.Min.x, spent.Min.y + kValueTop * unit),
+							   ImVec2(spent.Max.x, spent.Min.y + (kValueTop + kValueSize) * unit));
+		dimInValueLine = VerticesInColourWithin(drawing, screen.Colours.Dim, valueLine);
+	};
+	screen.Frames.Next(read);
+	screen.Frames.Next(read);
+
+	CHECK(dimInValueLine > 0);
+
+	const ImRect models = screen.OnScreen(AreaOf(screen.Grid, DashboardArea::Models));
+	CHECK(std::ranges::any_of(bodies, [&](const DrawnLine& line) {
+		return line.Text == "unknown-9?" && line.Top >= models.Min.y && line.Top < models.Max.y;
+	}));
+}
+
+TEST_CASE("The Spent tile carries no mark when every request has a price")
+{
+	DashboardScreen screen(kWideDashboardInFontSizes);
+	int dimInValueLine = -1;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		const ImRect spent = screen.OnScreen(screen.Grid.Numbers[0]);
+		const float unit = ImGui::GetFontSize();
+		const ImRect valueLine(ImVec2(spent.Min.x, spent.Min.y + kValueTop * unit),
+							   ImVec2(spent.Max.x, spent.Min.y + (kValueTop + kValueSize) * unit));
+		dimInValueLine = VerticesInColourWithin(DashboardScreen::DashboardDrawList(), screen.Colours.Dim, valueLine);
+	});
+
+	CHECK(dimInValueLine == 0);
 }
 
 TEST_CASE("Reflows to two and one columns below the breakpoints")

@@ -24,6 +24,9 @@ namespace Graphite {
 
 	Price StandardPrice(double input, double output, double cacheRead);
 
+	// WARNING: Claude Code names this model on messages it writes itself; they reach no model and cost nothing.
+	bool IsSyntheticModel(std::string_view model);
+
 	struct UsageKey
 	{
 		std::string Model;

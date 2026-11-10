@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/Overview/DashboardTips.h"
+#include "Sessions/Overview/TipText.h"
 #include "Sessions/SessionText.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -164,12 +165,17 @@ TEST_CASE("The Spent tip breaks the cost down by model, thread and project and n
 
 	const TipSection* byModel = SectionTitled(card, "By model");
 	REQUIRE(byModel != nullptr);
-	REQUIRE(byModel->Rows.size() == 2);
+	REQUIRE(byModel->Rows.size() == 3);
 	CHECK(byModel->Rows[0].Label == "Opus");
 	CHECK(byModel->Rows[0].Swatch == ModelFamily::Opus);
 	CHECK(byModel->Rows[0].Value == "$5.00");
 	CHECK(byModel->Rows[0].Extra == "83%");
 	CHECK(byModel->Rows[1].Label == "Haiku");
+	CHECK(byModel->Rows[2].Label == "unknown-9");
+	CHECK(byModel->Rows[2].Swatch == ModelFamily::Other);
+	CHECK(byModel->Rows[2].Value == "?");
+	CHECK(byModel->Rows[2].Extra.empty());
+	CHECK(byModel->Notes == std::vector<std::string>{"No price for claude-unknown-9. Add a price under Settings > Claude."});
 
 	const TipSection* byThread = SectionTitled(card, "By thread");
 	REQUIRE(byThread != nullptr);
@@ -188,6 +194,81 @@ TEST_CASE("The Spent tip breaks the cost down by model, thread and project and n
 
 	CHECK(HasNote(card, "1 request went to a model with no price and counts as $0."));
 	CHECK(card.Sections.back().Notes.size() == 1);
+}
+
+TEST_CASE("A model without a price is listed with a question mark wherever its family is, and named in the tip")
+{
+	const Fixture fixture;
+	const std::string hint = "No price for claude-unknown-9. Add a price under Settings > Claude.";
+
+	const TipCard day = DayTip(fixture.Model, fixture.DayAt(9));
+	REQUIRE(RowLabelled(day, "unknown-9") != nullptr);
+	CHECK(RowLabelled(day, "unknown-9")->Value == "?");
+	CHECK(HasNote(day, hint));
+	CHECK(RowLabelled(DayTip(fixture.Model, fixture.DayAt(8)), "unknown-9") == nullptr);
+	CHECK_FALSE(HasNote(DayTip(fixture.Model, fixture.DayAt(8)), hint));
+
+	REQUIRE(fixture.Model.Sessions[1].Summary == &fixture.Small);
+	CHECK(fixture.Model.Sessions[1].UnpricedRequests == 1);
+	const TipCard session = SessionTip(fixture.Model, 1, LocalCalendar{nullptr});
+	CHECK(session.HeadValue == "$2.00 ?");
+	CHECK(HasNote(session, hint));
+	REQUIRE(RowLabelled(session, "unknown-9") != nullptr);
+	CHECK(RowLabelled(session, "unknown-9")->Value == "?");
+	CHECK(SessionTip(fixture.Model, 0, LocalCalendar{nullptr}).HeadValue == "$4.00");
+
+	const TipCard other = ModelTip(fixture.Model, ModelFamily::Other);
+	CHECK(other.Head == "unknown-9");
+	CHECK(other.HeadValue == "?");
+	CHECK(RowLabelled(other, "Requests")->Value == "1");
+	CHECK(RowLabelled(other, "Per request")->Value == "?");
+	CHECK(HasNote(other, hint));
+
+	CHECK(RowLabelled(NumberTip(fixture.Model, NumberTile::Output, std::nullopt), "unknown-9")->Value == "0");
+}
+
+TEST_CASE("Several models without a price stay Other, and its tip names each")
+{
+	SessionSummary summary;
+	summary.Id = "a";
+	summary.Cwd = Core::FromUtf8("D:\\Repos\\IDE");
+	summary.Activity.MainHours[Hour(2026, 11, 9, 9)] = Activity("claude-unknown-9", 1000, 2);
+	summary.Activity.MainHours[Hour(2026, 11, 9, 10)] = Activity("claude-mystery-1", 1000, 1);
+	summary.Activity.MainHours[Hour(2026, 11, 9, 11)] = Activity("claude-mythos-5", 1000, 1);
+
+	const std::vector<const SessionSummary*> sessions{&summary};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), LocalCalendar{nullptr}, Day(2026, 11, 9));
+
+	const TipCard spent = NumberTip(model, NumberTile::Spent, std::nullopt);
+	REQUIRE(RowLabelled(spent, "Other") != nullptr);
+	CHECK(RowLabelled(spent, "Other")->Value == "?");
+	CHECK(HasNote(spent, "No price for claude-mystery-1, claude-unknown-9. Add a price under Settings > Claude."));
+
+	const TipCard other = ModelTip(model, ModelFamily::Other);
+	CHECK(other.Head == "Other");
+	const TipSection* models = SectionTitled(other, "Models");
+	REQUIRE(models != nullptr);
+	REQUIRE(models->Rows.size() == 3);
+	CHECK(models->Rows[0].Label == "mystery-1");
+	CHECK(models->Rows[0].Extra == "no price");
+	CHECK(models->Rows[1].Label == "mythos-5");
+	CHECK(models->Rows[1].Extra.empty());
+	CHECK(models->Rows[2].Label == "unknown-9");
+	CHECK(models->Rows[2].Value == "2 requests");
+}
+
+TEST_CASE("One priced model of its own is still Other")
+{
+	SessionSummary summary;
+	summary.Id = "a";
+	summary.Cwd = Core::FromUtf8("D:\\Repos\\IDE");
+	summary.Activity.MainHours[Hour(2026, 11, 9, 11)] = Activity("claude-mythos-5", 100'000, 1);
+
+	const std::vector<const SessionSummary*> sessions{&summary};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), LocalCalendar{nullptr}, Day(2026, 11, 9));
+
+	CHECK(FamilyLabel(model, ModelFamily::Other) == "Other");
+	CHECK(ModelTip(model, ModelFamily::Other).HeadValue == "$1.00");
 }
 
 TEST_CASE("A number tip over a sparkline day carries that day's value as a banner")

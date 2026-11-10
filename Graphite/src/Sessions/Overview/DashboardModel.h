@@ -39,6 +39,8 @@ namespace Graphite {
 
 	using FamilyCosts = std::array<double, kModelFamilyCount>;
 
+	using FamilyCounts = std::array<std::size_t, kModelFamilyCount>;
+
 	// WARNING: Net of the write premium, so a session that wrote to the cache and never read it back saves
 	// less than nothing; a model without a price saves $0.
 	double CacheSaving(const UsageKey& key, const TokenCounts& counts, const Pricing& pricing);
@@ -58,6 +60,11 @@ namespace Graphite {
 		double SubagentCost = 0;
 		double Saved = 0;
 		FamilyCosts CostByFamily{};
+		// WARNING: The requests of a model without a price count here and cost $0 in the figures above, so a reader
+		// shows "?" for their family rather than a cost that leaves them out.
+		FamilyCounts RequestsByFamily{};
+		FamilyCounts UnpricedByFamily{};
+		std::set<std::string> UnpricedModels;
 		std::size_t Requests = 0;
 		std::size_t Prompts = 0;
 		std::size_t SessionsStarted = 0;
@@ -74,6 +81,10 @@ namespace Graphite {
 		// WARNING: Holds every local day with any usage, at $0 too, since that is what makes a session active
 		// on the day.
 		std::map<std::chrono::year_month_day, double> CostByDay;
+		FamilyCounts RequestsByFamily{};
+		FamilyCounts UnpricedByFamily{};
+		std::set<std::string> UnpricedModels;
+		std::size_t UnpricedRequests = 0;
 		std::size_t Requests = 0;
 		std::size_t Prompts = 0;
 		std::uint64_t Output = 0;
@@ -98,6 +109,11 @@ namespace Graphite {
 		double SubagentCost = 0;
 		double Saved = 0;
 		std::size_t Requests = 0;
+		std::size_t SubagentRequests = 0;
+		std::size_t UnpricedRequests = 0;
+		std::size_t UnpricedSubagentRequests = 0;
+		std::map<std::string, std::size_t> RequestsByModel; // by model id
+		std::set<std::string> UnpricedModels;
 		TokenTotals Tokens;
 	};
 
@@ -138,6 +154,7 @@ namespace Graphite {
 		std::size_t Compactions = 0;
 		std::size_t SubagentRuns = 0;
 		std::size_t UnpricedRequests = 0;
+		std::set<std::string> UnpricedModels;
 		TokenTotals Tokens;
 		std::chrono::year_month_day Today;
 	};

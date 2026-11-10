@@ -283,7 +283,7 @@ namespace Graphite {
 		std::vector<std::pair<double, ImU32>> parts;
 		for (std::size_t family = 0; family < kModelFamilyCount; ++family)
 		{
-			if (model.Families[family].Cost > 0.0)
+			if (model.Families[family].Requests > 0 || model.Families[family].Cost > 0.0)
 			{
 				present.push_back(static_cast<ModelFamily>(family));
 				parts.emplace_back(model.Families[family].Cost, canvas.Colours.Families[family]);
@@ -298,9 +298,10 @@ namespace Graphite {
 		std::vector<std::string> shares;
 		for (const ModelFamily family : present)
 		{
-			const double cost = model.Families[static_cast<std::size_t>(family)].Cost;
-			costs.push_back(TipMoney(cost));
-			shares.push_back(TipShare(cost, model.Cost));
+			const FamilyTotals& totals = model.Families[static_cast<std::size_t>(family)];
+			const bool unpriced = totals.UnpricedRequests > 0;
+			costs.push_back(unpriced ? std::string{kUnknownAmount} : TipMoney(totals.Cost));
+			shares.push_back(unpriced ? std::string{} : TipShare(totals.Cost, model.Cost));
 		}
 
 		const float gap = canvas.Units(kColumnGap);
@@ -314,7 +315,7 @@ namespace Graphite {
 			const ImRect row(ImVec2(content.Min.x, top), ImVec2(content.Max.x, top + pitch));
 			DrawSwatch(canvas, row.Min.x, top, pitch, canvas.Colours.Families[static_cast<std::size_t>(present[index])]);
 			DrawTextAt(canvas.Drawing, ImVec2(row.Min.x + SwatchRoom(canvas.Unit), BodyTop(top, pitch, body)), body,
-					   canvas.Colours.Ink, FitAt(FamilyName(present[index]), nameRoom, body));
+					   canvas.Colours.Ink, FitAt(FamilyLabel(model, present[index]), nameRoom, body));
 			DrawRightAligned(canvas, costRight, top, pitch, body, canvas.Colours.Ink, costs[index]);
 			DrawRightAligned(canvas, content.Max.x, top, pitch, small, Faint(canvas.Colours), shares[index]);
 			canvas.Add({.Rect = row, .Tip = [modelTip, index] { return modelTip(index); }});
@@ -432,7 +433,7 @@ namespace Graphite {
 		for (std::size_t index = 0; index < shown; ++index)
 		{
 			const SessionFacts& session = model.Sessions[index];
-			costs.push_back(TipMoney(session.Cost));
+			costs.push_back(SessionMoney(session));
 			spans.push_back(session.Summary == nullptr ? std::string{} : SessionSpan(*session.Summary, calendar));
 		}
 

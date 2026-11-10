@@ -125,16 +125,34 @@ namespace Graphite {
 	{
 		const std::size_t index = std::min(static_cast<std::size_t>(family), kModelFamilyCount - 1);
 		const FamilyTotals& totals = model.Families[index];
-		TipCard card{.Head = std::string{FamilyName(family)}, .HeadValue = TipMoney(totals.Cost)};
+		const bool unpriced = totals.UnpricedRequests > 0;
+		const std::string unknown{kUnknownAmount};
+		TipCard card{.Head = FamilyLabel(model, family), .HeadValue = unpriced ? unknown : TipMoney(totals.Cost)};
+		NoteUnpriced(card.Notes, totals.UnpricedModels);
 
 		TipSection costs;
 		costs.Rows.push_back({"Requests", TipCount(totals.Requests)});
-		costs.Rows.push_back({"Per request", totals.Requests == 0
-												 ? std::string{kEnDash}
-												 : TipMoney(totals.Cost / static_cast<double>(totals.Requests))});
-		costs.Rows.push_back({"Share of the cost", TipShare(totals.Cost, model.Cost)});
-		costs.Rows.push_back({"Spent by subagents", TipMoney(totals.SubagentCost), TipShare(totals.SubagentCost, totals.Cost)});
+		costs.Rows.push_back({"Per request", totals.Requests == 0 ? std::string{kEnDash}
+											 : unpriced			  ? unknown
+																  : TipMoney(totals.Cost / static_cast<double>(totals.Requests))});
+		costs.Rows.push_back({"Share of the cost", unpriced ? unknown : TipShare(totals.Cost, model.Cost)});
+		const bool subagentsUnpriced = totals.UnpricedSubagentRequests > 0;
+		costs.Rows.push_back({"Spent by subagents", subagentsUnpriced ? unknown : TipMoney(totals.SubagentCost),
+							  subagentsUnpriced ? std::string{} : TipShare(totals.SubagentCost, totals.Cost)});
 		card.Sections.push_back(std::move(costs));
+
+		if (totals.RequestsByModel.size() > 1 && family == ModelFamily::Other)
+		{
+			TipSection models{.Title = "Models"};
+
+			for (const auto& [name, requests] : totals.RequestsByModel)
+			{
+				models.Rows.push_back({ModelLabel(name, false), TipCounted(requests, "request", "requests"),
+									   totals.UnpricedModels.contains(name) ? std::string{"no price"} : std::string{}});
+			}
+
+			card.Sections.push_back(std::move(models));
+		}
 
 		TipSection tokens{.Title = "Tokens"};
 		tokens.Rows.push_back({"Output", FormatTokens(totals.Tokens.Output)});
@@ -144,7 +162,7 @@ namespace Graphite {
 		card.Sections.push_back(std::move(tokens));
 
 		TipSection saved;
-		saved.Rows.push_back({"Cache saved", TipMoney(totals.Saved)});
+		saved.Rows.push_back({"Cache saved", unpriced ? unknown : TipMoney(totals.Saved)});
 		card.Sections.push_back(std::move(saved));
 		return card;
 	}
@@ -204,8 +222,9 @@ namespace Graphite {
 
 		const SessionFacts& session = model.Sessions[sessionIndex];
 		const SessionSummary& summary = *session.Summary;
-		TipCard card{.Head = PlaceLabel(session.Place), .HeadValue = TipMoney(session.Cost),
+		TipCard card{.Head = PlaceLabel(session.Place), .HeadValue = SessionMoney(session),
 					 .Body = SessionTitle(session, kBodyBytes)};
+		NoteUnpriced(card.Notes, session.UnpricedModels);
 
 		TipSection times;
 		times.Rows.push_back({"Started", Moment(summary.StartedAt, calendar)});
@@ -225,7 +244,8 @@ namespace Graphite {
 		card.Sections.push_back(std::move(counts));
 
 		TipSection models{.Title = "Models"};
-		AddFamilyRows(models.Rows, session.CostByFamily, session.Cost, TipMoney);
+		AddFamilyRows(models.Rows, model, {session.CostByFamily, session.RequestsByFamily, session.UnpricedByFamily},
+					  session.Cost, TipMoney);
 		if (!models.Rows.empty())
 		{
 			card.Sections.push_back(std::move(models));

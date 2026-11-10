@@ -90,10 +90,11 @@ namespace Graphite {
 
 		TipCard RowTip(const ListedSession& session, const CostResult& total, const SessionListContext& context)
 		{
-			TipCard card = session.ModelIndex.has_value() ? SessionTip(context.Model, *session.ModelIndex, context.Calendar)
-														  : TipCard{};
+			const bool inModel = session.ModelIndex.has_value() && *session.ModelIndex < context.Model.Sessions.size();
+			TipCard card = inModel ? SessionTip(context.Model, *session.ModelIndex, context.Calendar) : TipCard{};
+			const bool modelNamesUnpriced = inModel && context.Model.Sessions[*session.ModelIndex].UnpricedRequests > 0;
 
-			if (std::string hint = UnknownCostHint(total); !hint.empty())
+			if (std::string hint = UnknownCostHint(total); !hint.empty() && !modelNamesUnpriced)
 			{
 				if (card.Head.empty())
 				{

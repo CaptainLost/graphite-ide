@@ -298,8 +298,25 @@ TEST_CASE("Unpriced requests are counted and cost nothing")
 	CHECK(model.UnpricedRequests == 3);
 	CHECK(model.Requests == 6);
 	CHECK(model.Cost == doctest::Approx(2.0));
-	CHECK(model.Families[Family(ModelFamily::Other)].Cost == 0.0);
-	CHECK(model.Families[Family(ModelFamily::Other)].Requests == 4);
+	CHECK(model.UnpricedModels == std::set<std::string>{"claude-unknown-9"});
+
+	const FamilyTotals& other = model.Families[Family(ModelFamily::Other)];
+	CHECK(other.Cost == 0.0);
+	CHECK(other.Requests == 3);
+	CHECK(other.UnpricedRequests == 3);
+	CHECK(other.RequestsByModel == std::map<std::string, std::size_t>{{"claude-unknown-9", 3}});
+	CHECK(other.UnpricedModels == std::set<std::string>{"claude-unknown-9"});
+
+	REQUIRE(model.Days.size() == 1);
+	CHECK(model.Days[0].RequestsByFamily[Family(ModelFamily::Other)] == 3);
+	CHECK(model.Days[0].UnpricedByFamily[Family(ModelFamily::Other)] == 3);
+	CHECK(model.Days[0].RequestsByFamily[Family(ModelFamily::Opus)] == 2);
+	CHECK(model.Days[0].UnpricedModels == std::set<std::string>{"claude-unknown-9"});
+
+	REQUIRE(model.Sessions.size() == 1);
+	CHECK(model.Sessions[0].UnpricedRequests == 3);
+	CHECK(model.Sessions[0].UnpricedByFamily[Family(ModelFamily::Other)] == 3);
+	CHECK(model.Sessions[0].UnpricedModels == std::set<std::string>{"claude-unknown-9"});
 }
 
 TEST_CASE("ThisWeek pairs each day since Monday with the same weekday a week before")

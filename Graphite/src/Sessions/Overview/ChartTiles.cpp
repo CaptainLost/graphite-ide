@@ -33,6 +33,7 @@ namespace Graphite {
 		constexpr std::size_t kThisWeekSpan = 14;
 		constexpr float kTrendTriangle = 0.45f;
 		constexpr float kTrendGap = 0.25f;
+		constexpr float kMarkGap = 0.2f;
 
 		constexpr float kSparkLineWidth = 0.08f;
 		constexpr float kSparkFillAlpha = 0.16f;
@@ -84,6 +85,7 @@ namespace Graphite {
 		{
 			std::string Caption;
 			std::string Value;
+			std::string Mark; // drawn dim after the value
 			std::string Line;
 			std::optional<bool> Rising;
 			std::string Change;
@@ -172,6 +174,7 @@ namespace Graphite {
 			case NumberTile::Spent:
 				face = {.Caption = "Spent",
 						.Value = TipMoney(model.Cost),
+						.Mark = model.UnpricedRequests > 0 ? std::string{kUnknownAmount} : std::string{},
 						.Line = TipCounted(model.Days.size(), "day on disk", "days on disk"),
 						.Series = CostPerDay(model),
 						.Colour = colours.Accent};
@@ -561,12 +564,12 @@ namespace Graphite {
 
 			for (std::size_t family = 0; family < kModelFamilyCount; ++family)
 			{
-				if (canvas.Model.Families[family].Cost <= 0.0)
+				if (canvas.Model.Families[family].Requests == 0 && canvas.Model.Families[family].Cost <= 0.0)
 				{
 					continue;
 				}
 
-				const std::string_view name = FamilyName(static_cast<ModelFamily>(family));
+				const std::string name = FamilyLabel(canvas.Model, static_cast<ModelFamily>(family));
 				const float width = SwatchRoom(canvas.Unit) + TextWidthAt(name, small);
 
 				if (x + width > right)
@@ -631,8 +634,16 @@ namespace Graphite {
 		DrawTextAt(canvas.Drawing, ImVec2(left, y), caption, canvas.Colours.Dim, FitAt(UpperCase(face.Caption), room, caption));
 		y += caption + canvas.Units(kCaptionToValue);
 
-		DrawTextAt(canvas.Drawing, ImVec2(left, y), value, canvas.Colours.Ink, FitAt(face.Value, room, value, TextWeight::Strong),
-				   TextWeight::Strong);
+		const float markRoom = face.Mark.empty() ? 0.0f : TextWidthAt(face.Mark, value) + canvas.Units(kMarkGap);
+		const std::string shownValue = FitAt(face.Value, std::max(0.0f, room - markRoom), value, TextWeight::Strong);
+		DrawTextAt(canvas.Drawing, ImVec2(left, y), value, canvas.Colours.Ink, shownValue, TextWeight::Strong);
+
+		if (!face.Mark.empty() && shownValue == face.Value)
+		{
+			DrawTextAt(canvas.Drawing, ImVec2(left + TextWidthAt(shownValue, value, TextWeight::Strong) + canvas.Units(kMarkGap), y),
+					   value, canvas.Colours.Dim, face.Mark);
+		}
+
 		y += canvas.Units(kValueLine);
 
 		float x = left;

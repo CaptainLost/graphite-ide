@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -12,6 +13,7 @@
 namespace Graphite {
 
 	inline constexpr std::size_t kTipLabelBytes = 300;
+	inline constexpr std::string_view kUnknownAmount = "?";
 
 	std::string TipMoney(double dollars);
 
@@ -39,7 +41,24 @@ namespace Graphite {
 
 	std::string SessionTitle(const SessionFacts& session, std::size_t maxBytes = kTipLabelBytes);
 
-	void AddFamilyRows(std::vector<TipRow>& rows, const FamilyCosts& amounts, double total, std::string (*format)(double));
+	std::string SessionMoney(const SessionFacts& session); // its cost, with "?" beside it when part has no price
+
+	// WARNING: Unpriced requests are counted and cost $0 in Amounts, so a family with any shows "?" for its amount.
+	struct FamilyColumn
+	{
+		FamilyCosts Amounts{};
+		FamilyCounts Requests{};
+		FamilyCounts Unpriced{};
+	};
+
+	// "Other", or the name of the one model without a price that makes it up
+	std::string FamilyLabel(const DashboardModel& model, ModelFamily family);
+
+	// WARNING: A family is listed when it has a request, so one at $0 or without a price shows rather than vanishes.
+	void AddFamilyRows(std::vector<TipRow>& rows, const DashboardModel& model, const FamilyColumn& column, double total,
+					   std::string (*format)(double));
+
+	void NoteUnpriced(std::vector<std::string>& notes, const std::set<std::string>& models); // the hint to add a price
 
 	void CloseTip(TipCard& card, std::string note);
 }

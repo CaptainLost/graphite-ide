@@ -111,17 +111,57 @@ namespace Graphite {
 		return session.Summary == nullptr ? std::string{} : SingleLineLabel(session.Summary->DisplayTitle(), maxBytes);
 	}
 
-	void AddFamilyRows(std::vector<TipRow>& rows, const FamilyCosts& amounts, double total, std::string (*format)(double))
+	std::string FamilyLabel(const DashboardModel& model, ModelFamily family)
+	{
+		const std::size_t index = std::min(static_cast<std::size_t>(family), kModelFamilyCount - 1);
+		const FamilyTotals& totals = model.Families[index];
+
+		if (family == ModelFamily::Other && totals.RequestsByModel.size() == 1 && totals.UnpricedModels.size() == 1)
+		{
+			return ModelLabel(*totals.UnpricedModels.begin(), false);
+		}
+
+		return std::string{FamilyName(family)};
+	}
+
+	std::string SessionMoney(const SessionFacts& session)
+	{
+		std::string money = TipMoney(session.Cost);
+
+		if (session.UnpricedRequests > 0)
+		{
+			money += ' ';
+			money += kUnknownAmount;
+		}
+
+		return money;
+	}
+
+	void AddFamilyRows(std::vector<TipRow>& rows, const DashboardModel& model, const FamilyColumn& column, double total,
+					   std::string (*format)(double))
 	{
 		for (std::size_t index = 0; index < kModelFamilyCount; ++index)
 		{
-			if (amounts[index] > 0.0)
+			if (column.Requests[index] == 0 && column.Amounts[index] == 0.0)
 			{
-				const auto family = static_cast<ModelFamily>(index);
-				rows.push_back({std::string{FamilyName(family)}, format(amounts[index]), TipShare(amounts[index], total),
-								TipTone::Dim, family});
+				continue;
 			}
+
+			const auto family = static_cast<ModelFamily>(index);
+			const bool unpriced = column.Unpriced[index] > 0;
+			rows.push_back({FamilyLabel(model, family), unpriced ? std::string{kUnknownAmount} : format(column.Amounts[index]),
+							unpriced ? std::string{} : TipShare(column.Amounts[index], total), TipTone::Dim, family});
 		}
+	}
+
+	void NoteUnpriced(std::vector<std::string>& notes, const std::set<std::string>& models)
+	{
+		if (models.empty())
+		{
+			return;
+		}
+
+		notes.push_back(UnknownCostHint(CostResult{.UnknownModels = {models.begin(), models.end()}}));
 	}
 
 	void CloseTip(TipCard& card, std::string note)
