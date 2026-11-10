@@ -223,21 +223,107 @@ The Linux part of Core and the WSL helper are cross-compiled from Windows with a
 
 ## Architecture
 
+The repository builds three programs from two layers. Dependencies point one way: features depend on Core, Core
+depends on the vendored libraries, and nothing in Core knows it is part of an IDE.
+
 ```mermaid
-flowchart LR
-    App["Graphite<br/>(the IDE)"] --> Core["Core<br/>(application engine)"]
-    App <-- "LSP over stdio" --> Servers["clangd · Roslyn<br/>csharp-ls · OmniSharp"]
-    App <-- "pipe through wsl.exe" --> Agent["graphite-agent<br/>(inside WSL)"]
-    Agent --> CoreLinux["Core<br/>(Linux build)"]
-    Core --> Libraries["Dear ImGui · GLFW · libgit2<br/>tree-sitter · spdlog"]
+flowchart TB
+    subgraph Programs
+        direction LR
+        Exe["Graphite.exe<br/><i>Main.cpp</i>"]
+        Tests["GraphiteTests · CoreTests<br/><i>doctest</i>"]
+        AgentExe["graphite-agent<br/><i>Linux, inside WSL</i>"]
+    end
+
+    subgraph GraphiteLib["GraphiteLib - the IDE, one folder per feature"]
+        direction LR
+        AppF["App<br/><i>GraphiteLayer</i>"]
+        Editing["Editor · Explorer<br/>Search · Solution"]
+        GitF["Git · Review"]
+        Lang["Language<br/><i>LSP, analysis, syntax</i>"]
+        Rest["Terminal · Sessions<br/>Image · Hex"]
+        Shell["Workspace · Settings<br/>Theme · Persistence · UI"]
+        WslF["Wsl<br/><i>agent client</i>"]
+    end
+
+    subgraph Core["Core - the application engine"]
+        direction LR
+        Runtime["App · Events · Jobs<br/>Command · UI"]
+        Files["FileSystem · Text<br/>Search · Image"]
+        GitC["Git<br/><i>libgit2 wrapper</i>"]
+        Term["Terminal<br/><i>VT parser, ConPTY</i>"]
+        RemoteC["Remote<br/><i>agent protocol</i>"]
+        Widgets["ImGui<br/><i>widgets, renderer</i>"]
+        BaseC["Base · Platform · Time"]
+    end
+
+    Vendor["Dear ImGui · GLFW · libgit2 · tree-sitter · spdlog · nlohmann/json · pugixml · miniz · stb"]
+
+    Exe --> GraphiteLib
+    Tests --> GraphiteLib
+    Tests --> Core
+    AgentExe -- "Linux build of Base, FileSystem,<br/>Git, Remote, Search" --> Core
+    GraphiteLib --> Core
+    Core --> Vendor
 ```
 
-- **Core** is a general-purpose application layer: the window and main loop, commands, background jobs, file
-  watching, a libgit2 wrapper, a pseudo-console terminal, text storage and the ImGui widgets. It has no knowledge of
-  the IDE built on it.
-- **Graphite** is the IDE, one folder per feature, built as a static library that both the executable and the tests
-  link.
-- **graphite-agent** answers file, watch and Git requests inside a WSL distribution.
+| Layer | Folder | Holds |
+|---|---|---|
+| Programs | `Graphite/src/Main.cpp`, `Agent/src` | The executable's entry point; the WSL agent's request handlers for files, watching, Git and search |
+| GraphiteLib | `Graphite/src/<Feature>` | Every IDE feature as models, views and the ports they reach the outside through; `App/GraphiteLayer` composes them |
+| Core | `Core/src/Core/<Module>` | The window and main loop, events, jobs, commands and key bindings, panels, documents and text, file watching and atomic writes, Git, terminals, the agent protocol, ImGui widgets |
+
+### Inside the running IDE
+
+```mermaid
+flowchart LR
+    subgraph UI["UI thread"]
+        direction TB
+        Loop["Application loop<br/><i>frame on demand</i>"]
+        Layer["GraphiteLayer"]
+        Models["Models<br/><i>GitModel, LinesModel,<br/>DiagnosticsModel, SearchService...</i>"]
+        Views["Views<br/><i>editor, Git window,<br/>panels, dialogs</i>"]
+        Loop --> Layer --> Views
+        Views -- "read" --> Models
+        Views -- "commands" --> Models
+    end
+
+    subgraph Workers["Worker queues"]
+        direction TB
+        Jobs["Jobs"]
+        GitW["Git writes · 1"]
+        Net["Network · 1"]
+        Find["Search"]
+        Inst["Installs · 1"]
+    end
+
+    subgraph Out["Outside the process"]
+        direction TB
+        Repo[("Repository<br/><i>libgit2</i>")]
+        Servers["Language servers<br/><i>clangd, Roslyn, ...</i>"]
+        Agent["graphite-agent<br/><i>per WSL distribution</i>"]
+        Shells["Shells<br/><i>ConPTY</i>"]
+        Disk[("Files")]
+    end
+
+    Models -- "submit" --> Workers
+    Workers -. "Mailbox / LatestAnswer<br/>+ redraw request" .-> Models
+    Jobs --> Repo
+    Jobs --> Disk
+    GitW --> Repo
+    Models <-- "JSON-RPC over stdio" --> Servers
+    Models <-- "framed JSON + bytes<br/>over a wsl.exe pipe" --> Agent
+    Views <--> Shells
+```
+
+- **One UI thread owns all state.** Views read models and send them commands; nothing on a worker touches a model.
+- **Workers answer through mailboxes.** A job posts its result to a `Mailbox` (or a `LatestAnswer`, which drops
+  answers to superseded questions) and requests a frame; the model takes it at the start of that frame.
+- **Ports at the edges.** Features reach Git, language servers and the file system through port interfaces such as
+  `RepositoryGitPort`, so the same model works on a local repository, a WSL one through the agent, or a fake in the
+  tests.
+- **Writes are serialised.** Git writes and network operations each have a single worker, so two never race on one
+  repository.
 
 Design principles:
 
