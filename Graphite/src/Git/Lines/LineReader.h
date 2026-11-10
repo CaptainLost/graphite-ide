@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Lines/LineSource.h"
 #include "Git/Lines/LineStore.h"
 
 #include "Core/Base/Base.h"
@@ -84,6 +85,10 @@ namespace Graphite {
 
 	// The same read of the branches the repository lists now, starting from the cached graph.
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, std::int64_t now);
+
+	// The same reads with git asked through source: a repository inside WSL answers through its distro's agent.
+	Core::Result<LineRead> ReadLines(LineSource& source, const LineStorePaths& store, const LineReadInput& input);
+	Core::Result<LineRead> ReadLines(LineSource& source, const LineStorePaths& store, std::int64_t now);
 
 	// The answers file after a read: re-reads it and applies only what the read changed itself, from `loaded` (what it
 	// read at its start) to `computed`: the names it added to and dropped from KeptBases and BaseOrder and the

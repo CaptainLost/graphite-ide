@@ -146,7 +146,7 @@ namespace Graphite {
 		// asked of git here, since it can be pruned after the listing, with its tag deleted meanwhile: one git no longer
 		// holds is left out the same way, and that tag then holds no commit of the read. Only a commit the graph lacks is
 		// asked, so a read of a warm graph asks git nothing. `tags` may be null.
-		Core::Result<std::vector<Core::Oid>> TipsToRead(const Core::Repository& repository, const Core::AncestryGraph& graph,
+		Core::Result<std::vector<Core::Oid>> TipsToRead(LineSource& source, const Core::AncestryGraph& graph,
 														const std::vector<Core::Branch>& branches, const std::vector<Core::Tag>* tags)
 		{
 			std::vector<Core::Oid> tips;
@@ -165,23 +165,39 @@ namespace Graphite {
 				return tips;
 			}
 
+			// Asked in one question: through a WSL distro's agent each is a round trip.
+			std::vector<Core::Oid> asked;
+
 			for (const Core::Tag& tag : *tags)
 			{
-				if (!seen.insert(tag.Target).second || IsInGraph(graph, tag.Target))
+				if (seen.insert(tag.Target).second && !IsInGraph(graph, tag.Target))
 				{
-					continue;
+					asked.push_back(tag.Target);
 				}
+			}
 
-				const Core::Result<bool> held = repository.HoldsCommit(tag.Target);
+			if (asked.empty())
+			{
+				return tips;
+			}
 
-				if (!held.HasValue())
+			const Core::Result<std::vector<bool>> held = source.HoldsCommits(asked);
+
+			if (!held.HasValue())
+			{
+				return held.GetError();
+			}
+
+			if (held.GetValue().size() != asked.size())
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "git answered for other commits than were asked"};
+			}
+
+			for (std::size_t index = 0; index < asked.size(); ++index)
+			{
+				if (held.GetValue()[index])
 				{
-					return held.GetError();
-				}
-
-				if (held.GetValue())
-				{
-					tips.push_back(tag.Target);
+					tips.push_back(asked[index]);
 				}
 			}
 
@@ -358,6 +374,18 @@ namespace Graphite {
 
 	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, std::int64_t now)
 	{
+		RepositoryLineSource source{repository};
+		return ReadLines(source, store, now);
+	}
+
+	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, const LineReadInput& input)
+	{
+		RepositoryLineSource source{repository};
+		return ReadLines(source, store, input);
+	}
+
+	Core::Result<LineRead> ReadLines(LineSource& repository, const LineStorePaths& store, std::int64_t now)
+	{
 		Core::Result<std::vector<Core::Branch>> branches = repository.QueryBranches();
 		if (!branches.HasValue())
 		{
@@ -367,7 +395,7 @@ namespace Graphite {
 		return ReadLines(repository, store, LineReadInput{.Branches = Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches).GetValue()), .Now = now});
 	}
 
-	Core::Result<LineRead> ReadLines(const Core::Repository& repository, const LineStorePaths& store, const LineReadInput& input)
+	Core::Result<LineRead> ReadLines(LineSource& repository, const LineStorePaths& store, const LineReadInput& input)
 	{
 		CORE_ASSERT(input.Branches != nullptr, "a read describes a branch snapshot");
 
@@ -387,7 +415,13 @@ namespace Graphite {
 		bool graphChanged = false;
 
 		// Once the repository is deepened the commits cut before would stay cut for ever, so the whole graph is read again.
-		if (HasCommitCutNoLonger(graph.Get(), repository.ShallowBoundary()))
+		const Core::Result<std::unordered_set<Core::Oid>> boundary = repository.ShallowBoundary();
+		if (!boundary.HasValue())
+		{
+			return boundary.GetError();
+		}
+
+		if (HasCommitCutNoLonger(graph.Get(), boundary.GetValue()))
 		{
 			graph.StartAfresh();
 			graphChanged = true;
