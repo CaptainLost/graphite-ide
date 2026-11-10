@@ -1,65 +1,112 @@
-<img src="Graphite/resources/Graphite.svg" alt="" width="72" align="right">
+<p align="center">
+  <img src="Graphite/resources/Graphite.svg" alt="Graphite logo" width="96">
+</p>
 
-# Graphite
+<h1 align="center">Graphite</h1>
 
-Graphite is an IDE for Windows, written in C++20 on top of Dear ImGui. It is aimed at
-C++ and C# projects: it opens a folder or a Visual Studio solution, gets its language
-features from clangd or Roslyn, and has a Git client built into the main window.
+<p align="center">
+  A native, cross-platform IDE for C++ and C#, built on Dear ImGui.
+</p>
 
-![Graphite with a C++ file open, clangd reference counts above each function and the explorer following the active file](docs/images/graphite.png)
+<p align="center">
+  <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C">
+  <img alt="Windows: supported" src="https://img.shields.io/badge/Windows-supported-2ea043">
+  <img alt="Linux: in progress" src="https://img.shields.io/badge/Linux-in%20progress-d29922">
+  <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-8957e5">
+</p>
 
-It is a personal project and still early. Editing, code navigation and Git work;
-building, running and debugging from inside the IDE are not there yet.
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/editor-light.png">
+  <img alt="The Graphite editor with a C++ file open: the Explorer, inline blame, a reference count above a function, a change marker in the gutter and a clangd hover" src="docs/images/editor-dark.png">
+</picture>
+
+## Contents
+
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Platform support](#platform-support)
+- [Getting started](#getting-started)
+- [Running the tests](#running-the-tests)
+- [Architecture](#architecture)
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Roadmap](#roadmap)
+- [Third-party software](#third-party-software)
+- [License](#license)
 
 ## Features
 
-- Editor with C++ and C# highlighting, diagnostics, hover, go to definition, find
-  references and code lenses, all through the Language Server Protocol.
-- clangd for C++; Roslyn, csharp-ls or OmniSharp for C#. The server is picked per
-  language in Settings and downloaded on first use.
-- Git: history, branches, tags, stashes and worktrees, diffs, staging and commits,
-  fetch/pull/push. A branch can be reviewed against its base the way a pull request
-  would be, with files marked as viewed.
-- Line blame in the editor and change markers in the gutter.
-- Folder explorer and a solution view that reads `.sln`, `.slnx`, `.vcxproj` and
-  `.csproj`.
-- Find in files, a problems list, and terminals for whichever shells are installed.
-- Image and hex viewers for files that are not text.
-- Colour schemes, including themes loaded from JSON, and rebindable shortcuts.
-- A panel for browsing Claude Code session transcripts and what they cost.
+### Editor
 
-## How it is put together
+- **Language support** — highlighting, diagnostics, hover, go to definition, find references and reference counts
+  above declarations, through the Language Server Protocol.
+- **Language servers** — clangd for C++; Roslyn, csharp-ls or OmniSharp for C#. Chosen per language in Settings,
+  downloaded on first use and verified by SHA-256 before they run.
+- **Editing** — find and replace, moving and duplicating lines, line comments, configurable indentation and line
+  endings for new files.
+- **Line history** — inline blame for the current line and change markers in the gutter and scrollbar.
+- **Crash recovery** — unsaved buffers are copied aside as you type and restored after an abnormal exit; saves are
+  atomic.
 
-The code is two projects. `Core` is a general-purpose application layer: the window and
-main loop, commands, background jobs, file watching, a libgit2 wrapper, a pseudo-console
-terminal, text storage and the ImGui widgets. It does not know it is part of an IDE.
-`Graphite` is the IDE itself, one folder per feature, built as a static library so the
-tests can link exactly what the executable links.
+### Navigation
 
-A few choices that shape most of the code:
+- **Command Palette** — every enabled command, found by a few letters of its label.
+- **Go to File, Go to Line, Go to Definition** — with Back and Forward across all of them.
+- **Explorer** — folder tree with Git status, cut, copy, paste and drag-and-drop; a solution view that reads
+  `.sln`, `.slnx`, `.vcxproj` and `.csproj`.
+- **Search** — find in files, a Problems list and a references panel.
 
-- ImGui normally redraws every frame. Graphite only draws one when input arrives,
-  a background task finishes or an animation is running, so the idle window costs
-  nothing.
-- Anything that can take a while, from Git queries and solution parsing to language
-  servers and even the system file dialog, runs off the UI thread. Each Git worker
-  keeps its own libgit2 repository handle.
-- Functions that can fail return `Result<T>` instead of throwing across module
-  boundaries.
-- Saves go through `ReplaceFileW`, so a file on disk is either the old version or the
-  new one. Unsaved buffers are copied aside a second or so after typing stops, and
-  come back on the next launch if the IDE crashed.
-- Language servers are downloaded from their own release pages (GitHub or NuGet) and
-  checked against a SHA-256 before they are run.
+### Git
 
-The reasoning behind these, and many smaller decisions, is written down in
-[`docs/adr`](docs/adr/README.md).
+- **History** — every commit with its graph, or first parents only, loaded 500 commits at a time so large
+  repositories open at once.
+- **Branches, tags, stashes and worktrees** — in one sidebar, with the commits not yet pushed marked in the history.
+- **Changes** — staging, diffs side by side or inline, commits, amend, fetch, pull and push.
+- **Branch review** — a branch compared with its base the way a pull request would be, with files marked as viewed.
 
-## Building
+### WSL
 
-You need Windows 10 or 11 (x64) and Visual Studio 2026 with the "Desktop development
-with C++" workload. Everything else is in the repository: dependencies are git
-submodules built from source, and premake is checked in.
+- **Folders inside a distribution** — opened through `graphite-agent`, a small helper Graphite installs into the
+  distribution: files are read, watched and saved there, and Git status, staging, history and branches run there
+  too.
+
+### Workspace
+
+- **Terminals** — for every installed shell, with search in the scrollback.
+- **Viewers** — images and a hex view for files that are not text.
+- **Appearance** — built-in light and dark themes, themes loaded from JSON, interface scaling and rebindable
+  shortcuts.
+- **Claude Code sessions** — a panel for browsing session transcripts and what they cost.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![The Git window: branches, tags and a stash in the sidebar, the history with its graph and the commits not yet pushed, and a staged file's diff](docs/images/git-window.png) | ![The Command Palette over the editor, with the Changes panel on the left](docs/images/command-palette.png) |
+| **Git window** — history graph, branches, stash, unpushed commits and a diff | **Command Palette** — with the Changes panel |
+| ![The editor in the Gruvbox Dark theme](docs/images/theme-gruvbox.png) | ![The Appearance page of Settings, listing the built-in themes](docs/images/settings.png) |
+| **Themes** — Gruvbox Dark | **Settings** — Appearance |
+
+## Platform support
+
+| Platform | Status |
+|---|---|
+| Windows 10 and 11 (x64) | Supported |
+| Linux | In progress — the core libraries build and pass their tests; the interface is not ported yet |
+| macOS | Planned |
+
+Folders inside WSL are supported from the Windows build.
+
+## Getting started
+
+### Prerequisites
+
+- Windows 10 or 11 (x64)
+- Visual Studio 2026 with the **Desktop development with C++** workload
+- Git
+
+Every other dependency is a git submodule built from source, and premake is checked in.
+
+### Building
 
 ```powershell
 git clone --recursive https://github.com/CaptainLost/graphite-ide.git
@@ -67,23 +114,104 @@ cd graphite-ide
 .\vendor\bin\premake\premake5.exe vs2026
 ```
 
-Then open `Graphite.slnx` and build the `Graphite` project. The executable ends up in
-`bin\<configuration>-windows-x86_64\Graphite\`. You can pass it a folder to open:
+Open `Graphite.slnx` and build the `Graphite` project, or build from the command line:
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' `
+    Graphite\Graphite.vcxproj -p:Configuration=Release -p:Platform=x64 -m -nodeReuse:false
+```
+
+Premake collects sources by globbing, so it has to run again after a source file is added or removed.
+
+### Running
+
+The executable is written to `bin\<configuration>-windows-x86_64\Graphite\`. A folder to open can be passed on the
+command line:
 
 ```powershell
 .\bin\Release-windows-x86_64\Graphite\Graphite.exe D:\path\to\project
 ```
 
-Premake picks up source files by globbing, so run it again after adding or removing a
-file.
+## Running the tests
 
-## Tests
+Two doctest suites cover the engine (`CoreTests`) and the application (`GraphiteTests`):
 
-There are two doctest suites, `CoreTests` and `GraphiteTests`, each its own project in
-the solution. Build either one and run the resulting executable from
-`bin\Debug-windows-x86_64\`.
+```powershell
+$msbuild = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe'
 
-## Dependencies
+& $msbuild Core\tests\CoreTests.vcxproj -p:Configuration=Debug -p:Platform=x64 -m -nodeReuse:false
+.\bin\Debug-windows-x86_64\CoreTests\CoreTests.exe
+
+& $msbuild Graphite\tests\GraphiteTests.vcxproj -p:Configuration=Debug -p:Platform=x64 -m -nodeReuse:false
+.\bin\Debug-windows-x86_64\GraphiteTests\GraphiteTests.exe
+```
+
+The Linux part of Core and the WSL helper are cross-compiled from Windows with a pinned zig and tested inside WSL:
+
+```powershell
+.\scripts\Get-Zig.ps1                                 # once: downloads zig and checks its SHA-256
+.\vendor\bin\zig\zig.exe build -Dconfiguration=Debug
+.\scripts\Test-CoreLinux.ps1                          # skipped when WSL is not available
+```
+
+## Architecture
+
+```mermaid
+flowchart LR
+    App["Graphite<br/>(the IDE)"] --> Core["Core<br/>(application engine)"]
+    App <-- "LSP over stdio" --> Servers["clangd · Roslyn<br/>csharp-ls · OmniSharp"]
+    App <-- "pipe through wsl.exe" --> Agent["graphite-agent<br/>(inside WSL)"]
+    Agent --> CoreLinux["Core<br/>(Linux build)"]
+    Core --> Libraries["Dear ImGui · GLFW · libgit2<br/>tree-sitter · spdlog"]
+```
+
+- **Core** is a general-purpose application layer: the window and main loop, commands, background jobs, file
+  watching, a libgit2 wrapper, a pseudo-console terminal, text storage and the ImGui widgets. It has no knowledge of
+  the IDE built on it.
+- **Graphite** is the IDE, one folder per feature, built as a static library that both the executable and the tests
+  link.
+- **graphite-agent** answers file, watch and Git requests inside a WSL distribution.
+
+Design principles:
+
+- **Frames on demand** — a frame is drawn only for input, a finished background task or a running animation, so an
+  idle window uses no CPU.
+- **Nothing slow on the UI thread** — Git queries, solution parsing, language servers and the system file dialog run
+  on workers; each Git worker keeps its own repository handle.
+- **Errors as values** — functions that can fail return `Result<T>` rather than throw across module boundaries.
+- **Atomic saves** — a file on disk is always either its old or its new version.
+
+The reasoning behind these and about 700 other decisions is recorded in [`docs/adr`](docs/adr/README.md).
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+|---|---|
+| Command Palette | `Ctrl+Shift+P` |
+| Go to File | `Ctrl+P` |
+| Go to Line | `Ctrl+G` |
+| Go to Definition / Find References | `F12` / `Shift+F12` |
+| Back / Forward | `Alt+Left` / `Alt+Right` |
+| Switch between header and source | `Alt+O` |
+| Find / Replace | `Ctrl+F` / `Ctrl+H` |
+| Find in Files | `Ctrl+Shift+F` |
+| Move lines / Duplicate lines | `Alt+Up`, `Alt+Down` / `Shift+Alt+Down` |
+| Toggle line comment | `Ctrl+/` |
+| New terminal | ``Ctrl+` `` |
+
+Every shortcut can be rebound in Settings.
+
+## Roadmap
+
+- [x] Editing, navigation and language servers for C++ and C#
+- [x] Git: history, branches, staging, review and remotes
+- [x] Folders inside WSL: files, watching and Git
+- [ ] Build, run and debug from inside the IDE, for C++ and C#/.NET
+- [ ] WSL: search, terminals and language servers inside the distribution
+- [ ] The interface on Linux
+- [ ] macOS
+
+## Third-party software
 
 [Dear ImGui](https://github.com/ocornut/imgui) (docking branch),
 [GLFW](https://github.com/glfw/glfw),
@@ -98,9 +226,9 @@ the solution. Build either one and run the resulting executable from
 [miniz](https://github.com/richgel999/miniz),
 [stb](https://github.com/nothings/stb) and
 [doctest](https://github.com/doctest/doctest).
-The interface uses Inter, JetBrains Mono and Lucide icons. Their licences are in
+The interface uses the Inter and JetBrains Mono typefaces and Lucide icons. Their licences are in
 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
 ## License
 
-No license yet; all rights reserved for now.
+No license has been chosen yet; all rights are reserved for now.
