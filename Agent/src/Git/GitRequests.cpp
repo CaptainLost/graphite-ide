@@ -3,6 +3,7 @@
 #include "Git/GitRequests.h"
 
 #include "Git/HistoryRequests.h"
+#include "Git/ReviewRequests.h"
 #include "Git/RepositoryRequests.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -35,29 +36,6 @@ namespace Agent {
 					entry.HoldsCheckout = std::filesystem::exists(workingDirectory / entry.Path / ".git", error);
 				}
 			}
-		}
-
-		bool IsInsideNestedCheckout(const std::filesystem::path& workingDirectory, const std::filesystem::path& relative)
-		{
-			std::filesystem::path directory = workingDirectory;
-
-			for (const std::filesystem::path& part : relative.parent_path())
-			{
-				if (part.empty() || part == ".")
-				{
-					continue;
-				}
-
-				directory /= part;
-				std::error_code error;
-
-				if (std::filesystem::exists(directory / ".git", error))
-				{
-					return true;
-				}
-			}
-
-			return false;
 		}
 
 		enum class Side
@@ -219,26 +197,14 @@ namespace Agent {
 			}
 
 			Core::Repository& repository = *opened.GetValue();
-			const json& arguments = request.Arguments;
+			const std::optional<std::filesystem::path> relative = TrackableRelativePath(repository, request.Arguments.value("path", std::string{}));
 
-			// libgit2 resolves symbolic links in the working directory, so the file is resolved too
-			// before the two are compared.
-			std::error_code resolveError;
-			const std::filesystem::path askedPath{arguments.value("path", std::string{})};
-			const std::filesystem::path absolute = std::filesystem::weakly_canonical(askedPath, resolveError);
-			const std::filesystem::path workingDirectory = Core::NormalizeDirectory(repository.GetWorkingDirectory());
-			const std::filesystem::path relative = (resolveError ? askedPath : absolute).lexically_relative(workingDirectory);
-
-			// Not trackable: outside the working directory, ignored, or another repository's.
-			const bool outside = relative.empty() || *relative.begin() == "..";
-
-			if (outside || repository.IsIgnored(absolute) || IsInsideNestedCheckout(workingDirectory, relative) ||
-				repository.IsInsideSubmodule(relative))
+			if (!relative)
 			{
 				return GitAnswer{.Result = {{"trackable", false}}};
 			}
 
-			Core::Result<GitAnswer> sides = ReadSides(repository, {{Side::Head, relative}, {Side::Index, relative}});
+			Core::Result<GitAnswer> sides = ReadSides(repository, {{Side::Head, *relative}, {Side::Index, *relative}});
 
 			if (!sides)
 			{
@@ -317,6 +283,7 @@ namespace Agent {
 		};
 
 		AddHistoryHandlers(handlers, cache);
+		AddReviewHandlers(handlers, cache);
 		return handlers;
 	}
 

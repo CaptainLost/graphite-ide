@@ -10,6 +10,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -83,6 +84,14 @@ namespace Agent {
 	// One read's bytes, or absent; the sides one after another in the payload, each listed in the
 	// result's "sides" with its size or as absent.
 	void AddSide(GitAnswer& answer, const std::optional<std::string>& side);
+
+	// A file's path relative to the working directory when git tracks files there: empty when the
+	// file is outside the working directory, ignored, inside a nested checkout or a submodule.
+	// The asked path is resolved first, as libgit2 resolves symbolic links in the working directory.
+	std::optional<std::filesystem::path> TrackableRelativePath(const Core::Repository& repository, const std::filesystem::path& asked);
+
+	// Whether a folder between the working directory and the file holds a checkout of its own.
+	bool IsInsideNestedCheckout(const std::filesystem::path& workingDirectory, const std::filesystem::path& relative);
 
 	// A read that git answers NotFound for is an absent side; any other failure stays one.
 	Core::Result<std::optional<std::string>> PresentOrAbsent(Core::Result<std::string> read);

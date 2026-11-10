@@ -219,6 +219,49 @@ namespace Agent {
 		}
 	}
 
+	bool IsInsideNestedCheckout(const std::filesystem::path& workingDirectory, const std::filesystem::path& relative)
+	{
+		std::filesystem::path directory = workingDirectory;
+
+		for (const std::filesystem::path& part : relative.parent_path())
+		{
+			if (part.empty() || part == ".")
+			{
+				continue;
+			}
+
+			directory /= part;
+			std::error_code error;
+
+			if (std::filesystem::exists(directory / ".git", error))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	std::optional<std::filesystem::path> TrackableRelativePath(const Core::Repository& repository, const std::filesystem::path& asked)
+	{
+		std::error_code resolveError;
+		const std::filesystem::path absolute = std::filesystem::weakly_canonical(asked, resolveError);
+		const std::filesystem::path workingDirectory = Core::NormalizeDirectory(repository.GetWorkingDirectory());
+		const std::filesystem::path relative = (resolveError ? asked : absolute).lexically_relative(workingDirectory);
+
+		if (workingDirectory.empty() || relative.empty() || *relative.begin() == "..")
+		{
+			return std::nullopt;
+		}
+
+		if (repository.IsIgnored(resolveError ? asked : absolute) || IsInsideNestedCheckout(workingDirectory, relative) || repository.IsInsideSubmodule(relative))
+		{
+			return std::nullopt;
+		}
+
+		return relative;
+	}
+
 	Core::Result<std::optional<std::string>> PresentOrAbsent(Core::Result<std::string> read)
 	{
 		if (!read)
