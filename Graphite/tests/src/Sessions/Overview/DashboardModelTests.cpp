@@ -351,11 +351,31 @@ TEST_CASE("HeatCuts and HeatLevel")
 	CHECK(cuts[0] == doctest::Approx(3.0));
 	CHECK(cuts[1] == doctest::Approx(5.0));
 	CHECK(cuts[2] == doctest::Approx(7.0));
-	CHECK(HeatLevel(0.0, cuts) == 0);
-	CHECK(HeatLevel(3.0, cuts) == 1);
-	CHECK(HeatLevel(4.0, cuts) == 2);
-	CHECK(HeatLevel(6.0, cuts) == 3);
-	CHECK(HeatLevel(8.0, cuts) == 4);
+	CHECK(HeatLevel(0.0, cuts, 8.0) == 0);
+	CHECK(HeatLevel(3.0, cuts, 8.0) == 1);
+	CHECK(HeatLevel(4.0, cuts, 8.0) == 2);
+	CHECK(HeatLevel(6.0, cuts, 8.0) == 3);
+	CHECK(HeatLevel(8.0, cuts, 8.0) == 4);
+}
+
+TEST_CASE("The costliest active day is the top heat level, however few days are active")
+{
+	for (const unsigned activeDays : {1U, 2U, 4U})
+	{
+		CAPTURE(activeDays);
+		SessionSummary summary = Session("a");
+
+		for (unsigned day = 1; day <= activeDays; ++day)
+		{
+			summary.Activity.MainHours[Hour(2026, 11, day, 9)] = OpusDollars(day);
+		}
+
+		const DashboardModel model = Build({&summary}, Day(2026, 11, 10));
+		const auto highest = static_cast<double>(activeDays);
+
+		CHECK(HeatLevel(highest, HeatCuts(model), highest) == 4);
+		CHECK(HeatLevel(1.0, HeatCuts(model), highest) >= 1);
+	}
 }
 
 TEST_CASE("ActiveDays and BusiestDay read only the days with cost")

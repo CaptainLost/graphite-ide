@@ -139,6 +139,8 @@ namespace Graphite {
 		const std::optional<sys_days> oldest =
 			model.Days.empty() ? std::nullopt : std::optional<sys_days>{sys_days{model.Days.front().Day}};
 		const std::array<double, 3> cuts = HeatCuts(model);
+		const auto costliest = std::ranges::max_element(model.Days, {}, &DayTotals::Cost);
+		const double highest = costliest == model.Days.end() ? 0.0 : costliest->Cost;
 
 		MapDays map{.FirstMonday = std::chrono::year_month_day{firstMonday}, .Days = {}};
 
@@ -160,7 +162,7 @@ namespace Graphite {
 			{
 				day.Kind = MapDayKind::OnDisk;
 				day.Index = DayIndex(model, day.Date);
-				day.Level = HeatLevel(day.Index ? model.Days[*day.Index].Cost : 0.0, cuts);
+				day.Level = HeatLevel(day.Index ? model.Days[*day.Index].Cost : 0.0, cuts, highest);
 			}
 		}
 

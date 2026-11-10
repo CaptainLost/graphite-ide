@@ -10,6 +10,7 @@ namespace Graphite {
 
 		constexpr int kDaysPerWeek = 7;
 		constexpr std::size_t kQuarters = 4;
+		constexpr int kTopHeatLevel = 4;
 	}
 
 	std::optional<std::size_t> DayIndex(const DashboardModel& model, Date day)
@@ -169,11 +170,16 @@ namespace Graphite {
 		return cuts;
 	}
 
-	int HeatLevel(double cost, const std::array<double, 3>& cuts)
+	int HeatLevel(double cost, const std::array<double, 3>& cuts, double highest)
 	{
 		if (cost <= 0.0)
 		{
 			return 0;
+		}
+
+		if (cost >= highest)
+		{
+			return kTopHeatLevel;
 		}
 
 		int level = 1;

@@ -41,7 +41,7 @@ namespace Graphite {
 
 	std::array<double, 3> HeatCuts(const DashboardModel& model); // quarter points of the non-zero day costs, by nearest rank
 
-	int HeatLevel(double cost, const std::array<double, 3>& cuts); // 0 .. 4
+	int HeatLevel(double cost, const std::array<double, 3>& cuts, double highest); // 0 .. 4; highest and up is 4
 
 	std::vector<std::size_t> SessionsActiveOn(const DashboardModel& model, std::chrono::year_month_day day); // by that day's cost, descending
 
