@@ -9,6 +9,7 @@
 #include "Sessions/Overview/DashboardLayout.h"
 #include "Sessions/Overview/DashboardView.h"
 #include "Sessions/Overview/ListTiles.h"
+#include "Sessions/Overview/TipCardView.h"
 #include "Theme/SessionPalette.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -377,6 +378,55 @@ TEST_CASE("Every list keeps its slots when it holds fewer rows")
 
 	const ImRect tools = AreaOf(screen.Grid, DashboardArea::Tools);
 	CHECK(ListRowRect(tools, kListRows - 1).Max.y <= tools.Max.y);
+}
+
+TEST_CASE("A tip card keeps the widest label of a section whole wherever the card stands")
+{
+	constexpr int kPlaces = 24;
+	constexpr float kFarLeft = 3000.0f;
+	constexpr float kStep = 211.37f;
+
+	ImGuiFrames frames;
+	ImGui::GetIO().DisplaySize = ImVec2(kFarLeft + kStep * kPlaces + kTallWindow, kTallWindow);
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+
+	TipCard card;
+	card.Head = "Subagents";
+	card.HeadValue = "$2447.99";
+	card.Sections.push_back({.Rows = {{.Label = "Runs", .Value = "1,032"},
+									  {.Label = "Average run", .Value = "$2.37"},
+									  {.Label = "Share of the cost", .Value = "55%"}}});
+	card.Sections.push_back(
+		{.Rows = {{.Label = "Opus", .Value = "$2447.99", .Extra = "100%", .Swatch = ModelFamily::Opus}}});
+
+	std::vector<std::vector<DrawnLine>> cards(kPlaces);
+	const auto draw = [&] {
+		for (int place = 0; place < kPlaces; ++place)
+		{
+			ImGui::SetNextWindowPos(ImVec2(kFarLeft + kStep * static_cast<float>(place), 0.0f));
+			ImGui::Begin(("Card" + std::to_string(place)).c_str(), nullptr,
+						 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+			DrawTipCard(card, DistinctColours());
+			cards[static_cast<std::size_t>(place)] =
+				DrawnTextLines(*ImGui::GetWindowDrawList(), *ImGui::GetFont()->GetFontBaked(ImGui::GetFontSize()));
+			ImGui::End();
+		}
+	};
+
+	// WARNING: Two frames, so every glyph is in the atlas before the second one's quads are read back.
+	frames.Next(draw);
+	frames.Next(draw);
+
+	for (const std::vector<DrawnLine>& lines : cards)
+	{
+		const auto has = [&lines](std::string_view text) {
+			return std::ranges::any_of(lines, [text](const DrawnLine& line) { return line.Text == text; });
+		};
+
+		CHECK(has("Shareofthecost55%"));
+		CHECK(has("Subagents$2447.99"));
+		CHECK(has("Opus$2447.99100%"));
+	}
 }
 
 TEST_CASE("DashboardColoursFrom maps the palette as decided")

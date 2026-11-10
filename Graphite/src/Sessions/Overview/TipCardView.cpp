@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -29,6 +30,15 @@ namespace Graphite {
 		constexpr float kBannerRounding = 0.3f;
 		constexpr float kNoteGap = 0.2f;
 		constexpr float kHalf = 0.5f;
+
+		// WARNING: The card is as wide as its widest text, so that text's room equals its width and a rounding error
+		// in working the room out would cut it; the slack, in pixels, absorbs that.
+		constexpr float kFitSlack = 0.5f;
+
+		std::string FitInCard(std::string_view text, float room, float size, TextWeight weight = TextWeight::Regular)
+		{
+			return FitAt(text, room + kFitSlack, size, weight);
+		}
 
 		struct Columns
 		{
@@ -128,7 +138,7 @@ namespace Graphite {
 										kBannerRounding * m_Unit);
 				const float room = m_Width - 2.0f * kBannerPaddingX * m_Unit;
 				DrawTextAt(m_Drawing, ImVec2(m_Origin.x + kBannerPaddingX * m_Unit, m_Y + (height - m_Unit) * kHalf), m_Unit,
-						   m_Colours.Ink, FitAt(text, room, m_Unit));
+						   m_Colours.Ink, FitInCard(text, room, m_Unit));
 				m_Y += height + kBannerGap * m_Unit;
 			}
 
@@ -138,7 +148,7 @@ namespace Graphite {
 				const float headRoom = m_Width - (value.empty() ? 0.0f : valueWidth + kHeadGap * m_Unit);
 				const float textTop = LineTextTop(m_Unit);
 				DrawTextAt(m_Drawing, ImVec2(m_Origin.x, textTop), m_Unit, m_Colours.Ink,
-						   FitAt(head, headRoom, m_Unit, TextWeight::Strong), TextWeight::Strong);
+						   FitInCard(head, headRoom, m_Unit, TextWeight::Strong), TextWeight::Strong);
 
 				if (!value.empty())
 				{
@@ -171,7 +181,7 @@ namespace Graphite {
 			{
 				const float size = kTitleSize * m_Unit;
 				DrawTextAt(m_Drawing, ImVec2(m_Origin.x, LineTextTop(size)), size, m_Colours.Dim,
-						   FitAt(UpperCase(title), m_Width, size));
+						   FitInCard(UpperCase(title), m_Width, size));
 				m_Y += kTipLinePitch * size;
 			}
 
@@ -206,8 +216,8 @@ namespace Graphite {
 					labelLeft += RowSwatchRoom(row, m_Unit);
 				}
 
-				const float labelRoom = std::max(0.0f, m_Origin.x + columns.Label - labelLeft);
-				DrawTextAt(m_Drawing, ImVec2(labelLeft, textTop), m_Unit, m_Colours.Dim, FitAt(row.Label, labelRoom, m_Unit));
+				const float labelRoom = std::max(0.0f, columns.Label - RowSwatchRoom(row, m_Unit));
+				DrawTextAt(m_Drawing, ImVec2(labelLeft, textTop), m_Unit, m_Colours.Dim, FitInCard(row.Label, labelRoom, m_Unit));
 
 				const float valueRight = m_Origin.x + columns.Label + gap + columns.Value;
 				DrawTextAt(m_Drawing, ImVec2(valueRight - TextWidthAt(row.Value, m_Unit), textTop), m_Unit, m_Colours.Ink,
