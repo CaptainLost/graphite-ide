@@ -11,7 +11,8 @@
 // absolute Linux paths.
 namespace Agent {
 
-	// {"path"}: writes the payload atomically, keeping the permissions of a file it replaces.
+	// {"path", "executable"?}: writes the payload atomically, keeping the permissions of a file it
+	// replaces, or making it 0755 when "executable" is true.
 	Core::Result<nlohmann::json> WriteFile(const nlohmann::json& arguments, std::string_view payload);
 
 	// {"from","to"}: InvalidArgument when "to" already exists, so nothing is overwritten.

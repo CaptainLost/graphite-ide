@@ -28,7 +28,11 @@ namespace Graphite {
 		using EventListener = std::function<void(const std::string& distro, const Core::AgentEvent& event)>;
 		using ListenerId = std::uint64_t;
 
-		explicit WslAgents(Connector connect);
+		// Runs on the connecting thread once for each agent that became ready, before any use of it
+		// waits on it; Graphite installs the graphite command there.
+		using ConnectedHook = std::function<void(const std::string& distro, Core::AgentConnection& connection)>;
+
+		explicit WslAgents(Connector connect, ConnectedHook onConnected = {});
 
 		// Waits for every connection being made.
 		~WslAgents() override;
@@ -70,6 +74,7 @@ namespace Graphite {
 		Core::Result<void> Ask(const std::string& distro, std::string operation, nlohmann::json arguments, std::string payload = {});
 
 		Connector m_Connect;
+		ConnectedHook m_OnConnected;
 
 		std::mutex m_Mutex;
 		std::condition_variable m_Changed;

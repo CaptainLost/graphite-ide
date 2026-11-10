@@ -23,7 +23,10 @@ namespace Graphite {
 		}
 	}
 
-	WslAgents::WslAgents(Connector connect) : m_Connect(std::move(connect)) {}
+	WslAgents::WslAgents(Connector connect, ConnectedHook onConnected)
+		: m_Connect(std::move(connect)), m_OnConnected(std::move(onConnected))
+	{
+	}
 
 	WslAgents::~WslAgents()
 	{
@@ -118,6 +121,11 @@ namespace Graphite {
 		{
 			connected.GetValue()->SetEventHandler([this, name](const Core::AgentEvent& event) { Dispatch(name, event); });
 			APP_INFO("Connected to the Graphite agent in {}", name);
+
+			if (m_OnConnected)
+			{
+				m_OnConnected(name, *connected.GetValue());
+			}
 		}
 		else
 		{

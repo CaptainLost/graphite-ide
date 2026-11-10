@@ -77,6 +77,24 @@ namespace Agent {
 			return written.GetError();
 		}
 
+		// A script Graphite installs (the graphite command) has to run; a file it replaces keeps
+		// its own permissions otherwise.
+		const auto executable = arguments.find("executable");
+
+		if (executable != arguments.end() && executable->is_boolean() && executable->get<bool>())
+		{
+			using std::filesystem::perms;
+			std::error_code error;
+			std::filesystem::permissions(path.GetValue(),
+										 perms::owner_all | perms::group_read | perms::group_exec | perms::others_read | perms::others_exec,
+										 error);
+
+			if (error)
+			{
+				return Failed("make executable", path.GetValue(), error);
+			}
+		}
+
 		return nlohmann::json::object();
 	}
 

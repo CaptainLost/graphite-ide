@@ -92,6 +92,23 @@ TEST_CASE("After the agent stops, the next use starts another")
 	CHECK(distro.Connections == 2);
 }
 
+TEST_CASE("Each new agent is handed to the connected hook once, ready")
+{
+	FakeDistro distro;
+	std::atomic<int> handed{0};
+	std::atomic<bool> wasReady{false};
+	Graphite::WslAgents agents{distro.Connector(), [&](const std::string& name, Core::AgentConnection& connection) {
+								   wasReady = name == "Ubuntu" && connection.GetState() == Core::AgentConnection::State::Ready;
+								   ++handed;
+							   }};
+
+	REQUIRE(agents.Get("Ubuntu", 2s).HasValue());
+	REQUIRE(agents.Get("Ubuntu", 2s).HasValue());
+
+	CHECK(handed == 1);
+	CHECK(wasReady);
+}
+
 TEST_CASE("A distro that cannot be reached gives its reason")
 {
 	FakeDistro distro;

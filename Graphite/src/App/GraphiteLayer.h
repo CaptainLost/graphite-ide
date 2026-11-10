@@ -61,6 +61,7 @@
 #include "Theme/ActiveScheme.h"
 #include "Settings/UserDirectories.h"
 #include "Workspace/DroppedPaths.h"
+#include "Wsl/LauncherScript.h"
 #include "Wsl/WslAgents.h"
 
 #include "Core/Remote/AgentDeployment.h"
@@ -286,7 +287,10 @@ namespace Graphite {
 
 		// WARNING: Declared before m_Workspace, whose watch of a WSL folder asks it for the distro's agent, so it is
 		// destroyed after that watch. One agent per distro (ADR 0696); registered as Core's WslFileOperations in OnAttach.
-		WslAgents m_WslAgents{WslAgents::ConnectThroughWsl(Core::AgentBinaryBesideExecutable())};
+		WslAgents m_WslAgents{WslAgents::ConnectThroughWsl(Core::AgentBinaryBesideExecutable()),
+							  [](const std::string& distro, Core::AgentConnection& connection) {
+								  InstallLauncher(distro, connection, Core::AgentBinaryBesideExecutable().parent_path() / "Graphite.exe");
+							  }};
 
 		// WARNING: m_Jobs is declared below; the workspace submits only once attached, and its jobs hold nothing of it.
 		Workspace m_Workspace{m_Events, m_AppSettings, [this](const std::filesystem::path& root) { return WatchFolder(root); },

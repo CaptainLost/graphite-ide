@@ -145,6 +145,25 @@ namespace Core {
 		return RunWsl({"--exec", "true"}).HasValue();
 	}
 
+	Result<std::string> LinuxPathOf(const std::string& distro, const std::filesystem::path& windowsPath)
+	{
+		Result<std::string> answer = RunWsl(InDistro(distro, {"wslpath", "-u", ToUtf8(windowsPath)}));
+
+		if (!answer)
+		{
+			return answer.GetError();
+		}
+
+		std::string linuxPath = std::move(answer.GetValue());
+
+		while (!linuxPath.empty() && (linuxPath.back() == '\n' || linuxPath.back() == '\r'))
+		{
+			linuxPath.pop_back();
+		}
+
+		return linuxPath;
+	}
+
 	Result<AgentInstall> InstallAgent(const std::string& distro, const std::filesystem::path& agentBinary)
 	{
 		const Result<std::string> binary = ReadFileBytes(agentBinary);

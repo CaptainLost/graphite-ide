@@ -50,6 +50,18 @@ TEST_CASE("writeFile over an executable file keeps it executable")
 	CHECK(Read(script) == "#!/bin/sh\necho hi\n");
 }
 
+TEST_CASE("writeFile asked for an executable leaves the file runnable")
+{
+	TempDirectory directory;
+	const std::filesystem::path script = directory.GetPath() / "graphite";
+
+	REQUIRE(Agent::WriteFile(json{{"path", PathText(script)}, {"executable", true}}, "#!/bin/sh\n").HasValue());
+
+	const auto permissions = std::filesystem::status(script).permissions();
+	CHECK((permissions & std::filesystem::perms::owner_exec) != std::filesystem::perms::none);
+	CHECK((permissions & std::filesystem::perms::others_exec) != std::filesystem::perms::none);
+}
+
 TEST_CASE("rename onto a name that is taken fails and leaves both files")
 {
 	TempDirectory directory;

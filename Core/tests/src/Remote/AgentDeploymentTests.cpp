@@ -12,6 +12,20 @@ TEST_CASE("Two different binaries have different versions")
 	CHECK(Core::AgentVersionOf("one build") != Core::AgentVersionOf("another build"));
 }
 
+TEST_CASE("A Windows path is named as the distro sees it, under /mnt")
+{
+	if (!Core::IsWslAvailable())
+	{
+		MESSAGE("WSL is not available here: skipped");
+		return;
+	}
+
+	const Core::Result<std::string> linuxPath = Core::LinuxPathOf("", L"C:\\Windows");
+
+	REQUIRE(linuxPath.HasValue());
+	CHECK(linuxPath.GetValue() == "/mnt/c/Windows");
+}
+
 TEST_CASE("The agent is installed under ~/.graphite/agent/<version>/ and reached through the distro's share")
 {
 	const Core::AgentInstall install = Core::AgentInstallFor("Ubuntu-22.04", "/home/me", "0123456789abcdef");

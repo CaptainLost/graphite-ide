@@ -33,6 +33,9 @@ namespace Core {
 	// wsl.exe runs a command in the default distro.
 	bool IsWslAvailable();
 
+	// windowsPath as the distro (the default one when distro is empty) names it: wslpath -u.
+	Result<std::string> LinuxPathOf(const std::string& distro, const std::filesystem::path& windowsPath);
+
 	// Asks the distro (the default one when distro is empty) for its name and $HOME, copies the
 	// binary through the distro's share unless the same version is there already, marks it
 	// executable, and says where it is.
