@@ -58,8 +58,8 @@ reaches back as far as the transcripts do.
 
 - With Claude Code's default settings the dashboard covers about 30 days; the map's other
   ten weeks are hatched, and a month's totals are gone a month later.
-- Counting and pricing hours on every rebuild costs more than reading stored totals would;
-  the rebuilds are coalesced during a scan to keep it off the frame.
+- Counting and pricing hours on every rebuild costs more than reading stored totals would.
+  The rebuild runs on the UI thread, coalesced to at most twice a second during a scan.
 
 ### Neutral
 

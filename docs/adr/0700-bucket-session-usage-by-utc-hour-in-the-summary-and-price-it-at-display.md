@@ -9,8 +9,9 @@ The sessions dashboard ([0699](0699-derive-the-sessions-dashboard-from-the-trans
 draws cost per day, a 13-week map of days, the hours of the week a user works in, and a
 session's cost on a given day. The summary of [0517](0517-read-claude-transcripts-through-a-lazy-index-with-cached-summaries.md)
 held one total of tokens per model for the whole session, which can answer none of those:
-a session often runs across midnight, and on this machine 72 of 80 sessions changed their
-working folder at least once.
+a session often runs across midnight, and when the dashboard was designed, 72 of the 80
+sessions then on this machine had changed their working folder at least once. The
+measurements below were taken later, over the 77 sessions on disk by then.
 
 Days and hours must be the user's local ones, but a summary is cached on disk and read back
 after the time zone, or daylight saving time, has changed. Dollars must follow the prices in
@@ -30,6 +31,10 @@ already prices its tokens when it draws them.
   convert hours to local days and hours with the current time zone at the same moment.
 - Raise `kSummaryCacheVersion` to 3; an older cache is discarded and rebuilt by one scan,
   with no migration.
+- Keep only hours from five years before today to the end of tomorrow, when a transcript is
+  read and when the cache is loaded, and clamp the dashboard's days to the same range. A
+  record dated by a wrong clock counts in no hour, as one without a timestamp does, rather
+  than stretch the run of days without end.
 
 Measured on the machine this was built on, 2026-11-10, Release build: 77 sessions in
 1,134 transcript files (3.8 GB, subagent files included). A cold scan with an empty cache
@@ -58,8 +63,9 @@ tabs, which price the same tokens the same way.
 
 ### Negative
 
-- Every dashboard rebuild prices every hour of every session; the rebuild is kept off the
-  frame and coalesced during a scan, but it is work a stored total would not need.
+- Every dashboard rebuild prices every hour of every session. The rebuild runs on the UI
+  thread, coalesced to at most twice a second during a scan, and it is work a stored total
+  would not need.
 - A time zone whose offset is not a whole hour puts each request in the local hour the UTC
   hour starts in, up to 30 or 45 minutes off.
 - A record without a timestamp has no hour, so its usage is in the session's totals but on
