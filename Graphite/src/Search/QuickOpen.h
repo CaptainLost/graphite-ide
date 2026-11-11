@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Search/QuickOpenListing.h"
+#include "Search/FolderSearch.h"
+
 #include "Core/Base/Base.h"
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobSubmitter.h"
@@ -29,6 +32,9 @@ namespace Graphite {
 
 		void Open(const std::filesystem::path& root);
 
+		// A folder searched where it lives (inside WSL) is listed through its own search.
+		void SetFolderSearch(FolderSearchOpener open) { m_OpenFolderSearch = std::move(open); }
+
 		bool IsOpen() const { return m_Open; }
 
 		// Draws over the main viewport while open; closes on Escape, on a click outside, or once a file is opened.
@@ -37,25 +43,19 @@ namespace Graphite {
 		static constexpr std::size_t kShownMatches = 60;
 
 	private:
-		struct Listing
-		{
-			std::mutex Mutex;
-			std::vector<std::string> Paths;
-			bool Done = false;
-		};
-
 		void Close();
 		void Rank();
 
 		Core::JobSubmitter m_Submit;
 		OpenFile m_OpenFile;
+		FolderSearchOpener m_OpenFolderSearch;
 
 		bool m_Open = false;
 		bool m_JustOpened = false;
 		std::filesystem::path m_Root;
 		std::string m_Typed;
 		Core::CancellationToken m_Token;
-		Core::Ref<Listing> m_Listing;
+		Core::Ref<QuickOpenListing> m_Listing;
 
 		// The listing as last copied out of the worker's, and the ranked matches into it.
 		std::vector<std::string> m_Paths;

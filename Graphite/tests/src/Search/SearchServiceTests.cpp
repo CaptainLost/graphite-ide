@@ -1,12 +1,15 @@
 #include <doctest/doctest.h>
 
+#include "Search/FolderSearch.h"
 #include "Search/SearchService.h"
 
 #include "DeferredJobs.h"
 #include "TempDirectory.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -44,6 +47,42 @@ namespace {
 
 		return request;
 	}
+
+	// A folder searched where it lives: answers with what it was set up with, and remembers what it was asked.
+	struct SearchedFolder
+	{
+		Core::Result<Graphite::FolderSearchFound> Answer = Graphite::FolderSearchFound{};
+		std::vector<std::filesystem::path> Skipped;
+		bool Searched = false;
+		int Opened = 0;
+
+		Graphite::FolderSearchOpener Opener()
+		{
+			return [this](const std::filesystem::path&) -> Core::Scope<Graphite::FolderSearch> {
+				++Opened;
+				return std::make_unique<Search>(*this);
+			};
+		}
+
+		class Search final : public Graphite::FolderSearch
+		{
+		public:
+			explicit Search(SearchedFolder& folder) : m_Folder(folder) {}
+
+			Core::Result<std::vector<std::string>> ListFiles(bool, const Core::CancellationToken&) override { return std::vector<std::string>{}; }
+
+			Core::Result<Graphite::FolderSearchFound> SearchText(const Graphite::SearchQuery&, bool, const std::vector<std::filesystem::path>& skip,
+																 const Core::CancellationToken&) override
+			{
+				m_Folder.Searched = true;
+				m_Folder.Skipped = skip;
+				return m_Folder.Answer;
+			}
+
+		private:
+			SearchedFolder& m_Folder;
+		};
+	};
 }
 
 TEST_CASE("SearchService finds a hit in a file on disk")
@@ -300,4 +339,88 @@ TEST_CASE("SearchService places a hit in a file with a byte order mark where the
 	CHECK(hits[0].Line == 0);
 	CHECK(hits[0].From == 4);
 	CHECK(hits[0].Text == "int beta = 2;");
+}
+
+TEST_CASE("SearchService searches a folder searched where it lives through that folder's search, and the folder's open documents itself")
+{
+	const TempDirectory temp;
+	const std::filesystem::path open = temp.GetPath() / "open.cpp";
+	WriteFile(open, "on disk\n");
+	const std::filesystem::path elsewhere = temp.GetPath().parent_path() / "elsewhere.cpp";
+
+	SearchedFolder folder;
+	Graphite::FolderSearchFound found;
+	found.Hits.push_back(Graphite::SearchHit{.File = temp.GetPath() / "far.cpp", .Line = 3, .Text = "a needle", .From = 2, .To = 8});
+	found.Scanned = 5;
+	found.Skipped = 2;
+	found.Unreadable = 1;
+	folder.Answer = found;
+
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
+	service.SetFolderSearch(folder.Opener());
+
+	Graphite::SearchStart request = Request(temp.GetPath(), "needle");
+	request.Unsaved.push_back(Graphite::UnsavedFile{open, "the needle, unsaved\n"});
+	request.Unsaved.push_back(Graphite::UnsavedFile{elsewhere, "a needle outside\n"});
+	service.Start(std::move(request));
+
+	Graphite::SearchProgress progress;
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
+
+	REQUIRE(folder.Searched);
+	CHECK(folder.Skipped.size() == 2);
+	REQUIRE(hits.size() == 2);
+	CHECK(hits[0].File.filename() == "open.cpp");
+	CHECK(hits[0].Text == "the needle, unsaved");
+	CHECK(hits[1].File.filename() == "far.cpp");
+	CHECK(hits[1].Line == 3);
+	CHECK(progress.FilesScanned == 6);
+	CHECK(progress.FilesSkipped == 2);
+	CHECK(progress.Unreadable == 1);
+	CHECK_FALSE(progress.Running);
+}
+
+TEST_CASE("SearchService ends a folder search that failed with nothing found")
+{
+	const TempDirectory temp;
+
+	SearchedFolder folder;
+	folder.Answer = Core::Error{Core::ErrorCode::IoFailure, "the WSL agent stopped"};
+
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
+	service.SetFolderSearch(folder.Opener());
+	service.Start(Request(temp.GetPath(), "needle"));
+
+	Graphite::SearchProgress progress;
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
+
+	CHECK(folder.Searched);
+	CHECK(hits.empty());
+	CHECK_FALSE(progress.Running);
+}
+
+TEST_CASE("SearchService reads the projects' files itself even in a folder searched where it lives")
+{
+	const TempDirectory temp;
+	WriteFile(temp.GetPath() / "listed.cpp", "needle\n");
+
+	SearchedFolder folder;
+
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
+	service.SetFolderSearch(folder.Opener());
+
+	Graphite::SearchStart request = Request(temp.GetPath(), "needle");
+	request.Options.ProjectsOnly = true;
+	request.ProjectFiles.push_back(temp.GetPath() / "listed.cpp");
+	service.Start(std::move(request));
+
+	Graphite::SearchProgress progress;
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, jobs, progress);
+
+	CHECK(folder.Opened == 0);
+	REQUIRE(hits.size() == 1);
+	CHECK(hits[0].File.filename() == "listed.cpp");
 }

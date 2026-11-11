@@ -1,7 +1,9 @@
 #include "Search/SearchService.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/WslSharePath.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/FileProbe.h"
 #include "Git/GitIgnoreRules.h"
@@ -9,6 +11,7 @@
 #include "Search/Matcher.h"
 
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <system_error>
 #include <utility>
@@ -140,6 +143,54 @@ namespace Graphite {
 		}
 	}
 
+	void SearchService::SearchWhereFilesLive(const ScanContext& context, FolderSearch& folder)
+	{
+		const SearchStart& input = context.Input;
+		const std::filesystem::path root = Core::CanonicalWslSharePath(input.Root);
+		std::vector<std::filesystem::path> skip;
+
+		// The open documents first, as the editor holds them; the folder's search leaves them out.
+		for (const UnsavedFile& unsavedFile : input.Unsaved)
+		{
+			const std::filesystem::path path = Core::CanonicalWslSharePath(unsavedFile.Path);
+			skip.push_back(path);
+
+			if (!Core::RelativeTo(path, root) || !MaskAccepts(input.Query.Mask, Core::ToUtf8(path.filename())))
+			{
+				continue;
+			}
+
+			std::vector<SearchHit> found;
+			FindInText(input.Query, unsavedFile.Text, path, found);
+			Contribute(context.SharedState, context.Generation, found, FileOutcome::Scanned);
+		}
+
+		const Core::Result<FolderSearchFound> searched = folder.SearchText(input.Query, input.Options.RespectGitIgnore, skip, context.Token);
+
+		if (!searched)
+		{
+			if (!context.Token.IsCancelled())
+			{
+				APP_WARN("Cannot search '{}': {}", Core::ToUtf8(input.Root), searched.GetError().Message);
+			}
+
+			return;
+		}
+
+		const FolderSearchFound& found = searched.GetValue();
+		const std::lock_guard<std::mutex> lock(context.SharedState.Mutex);
+
+		if (context.SharedState.Generation != context.Generation)
+		{
+			return;
+		}
+
+		context.SharedState.Hits.insert(context.SharedState.Hits.end(), found.Hits.begin(), found.Hits.end());
+		context.SharedState.Progress.FilesScanned += found.Scanned;
+		context.SharedState.Progress.FilesSkipped += found.Skipped;
+		context.SharedState.Progress.Unreadable += found.Unreadable;
+	}
+
 	void SearchService::Start(SearchStart request)
 	{
 		m_Token.Cancel();
@@ -181,13 +232,24 @@ namespace Graphite {
 			m_Shared->Progress.Running = true;
 		}
 
-		m_Submit([shared = m_Shared, token = m_Token, generation, input = std::move(request)] {
+		std::shared_ptr<FolderSearch> folder;
+
+		if (!request.Options.ProjectsOnly && m_OpenFolderSearch)
+		{
+			folder = m_OpenFolderSearch(request.Root);
+		}
+
+		m_Submit([shared = m_Shared, token = m_Token, generation, input = std::move(request), folder] {
 			const ScanContext context{.SharedState = *shared,
 									  .Token = token,
 									  .Input = input,
 									  .Generation = generation};
 
-			if (input.Options.ProjectsOnly)
+			if (folder)
+			{
+				SearchWhereFilesLive(context, *folder);
+			}
+			else if (input.Options.ProjectsOnly)
 			{
 				for (const std::filesystem::path& file : input.ProjectFiles)
 				{

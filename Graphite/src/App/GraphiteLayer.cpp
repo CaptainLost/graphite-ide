@@ -5,6 +5,7 @@
 #include "Core/Remote/AgentDeployment.h"
 #include "Wsl/WslFolderWatch.h"
 #include "Wsl/WslIgnores.h"
+#include "Wsl/WslSearch.h"
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
@@ -199,6 +200,19 @@ namespace Graphite {
 
 			return OpenLocalRepositoryIgnores(root);
 		});
+
+		// And Find in Files and quick open, walked and read in the distro (stage 4). m_WslAgents is
+		// declared before m_SearchJobs and m_Jobs, so it outlives every search still running.
+		const FolderSearchOpener wslSearch = [this](const std::filesystem::path& root) -> Core::Scope<FolderSearch> {
+			if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(root))
+			{
+				return std::make_unique<WslSearch>(m_WslAgents, *place);
+			}
+
+			return nullptr;
+		};
+		m_Search.SetFolderSearch(wslSearch);
+		m_QuickOpen.SetFolderSearch(wslSearch);
 
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);

@@ -1,7 +1,5 @@
 #include "Search/QuickOpen.h"
 
-#include "Git/GitIgnoreRules.h"
-#include "Search/FileEnumerator.h"
 #include "Search/QuickOpenMatch.h"
 #include "UI/Lists/ListRow.h"
 
@@ -14,6 +12,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -23,22 +22,7 @@ namespace Graphite {
 
 		constexpr float kWidth = 640.0f;
 		constexpr float kTopGap = 48.0f;
-		constexpr std::size_t kLargestListing = 200000;
-		constexpr std::size_t kHandOverEvery = 2048;
 		constexpr std::size_t kVisibleRows = 14;
-
-		bool IsInsideGitDirectory(const std::filesystem::path& path)
-		{
-			for (const std::filesystem::path& part : path)
-			{
-				if (part == ".git")
-				{
-					return true;
-				}
-			}
-
-			return false;
-		}
 	}
 
 	QuickOpen::QuickOpen(Core::JobSubmitter submit, OpenFile open)
@@ -67,42 +51,16 @@ namespace Graphite {
 		m_RankedFor.clear();
 		m_RankedCount = 0;
 
-		m_Listing = Core::CreateRef<Listing>();
+		m_Listing = Core::CreateRef<QuickOpenListing>();
 
-		m_Submit([listing = m_Listing, token = m_Token, root] {
-			const GitIgnoreRules ignoreRules{root};
+		std::shared_ptr<FolderSearch> folder;
 
-			EnumerationInput input;
-			input.Root = root;
-			input.Ignored = [&ignoreRules](const std::filesystem::path& path, bool) {
-				return IsInsideGitDirectory(path) || ignoreRules.IsIgnored(path);
-			};
+		if (m_OpenFolderSearch)
+		{
+			folder = m_OpenFolderSearch(root);
+		}
 
-			std::vector<std::string> found;
-
-			EnumerateFiles(input, token, [&](const std::filesystem::path& file) {
-				if (found.size() >= kLargestListing)
-				{
-					return;
-				}
-
-				const std::optional<std::filesystem::path> relative = Core::RelativeTo(file, root);
-				found.push_back(Core::ToGenericUtf8(relative ? *relative : file));
-
-				// Handed over in batches, so the first matches show before a large folder is read through.
-				if (found.size() % kHandOverEvery == 0)
-				{
-					const std::lock_guard<std::mutex> lock(listing->Mutex);
-					listing->Paths = found;
-					Core::Redraw::Request();
-				}
-			});
-
-			const std::lock_guard<std::mutex> lock(listing->Mutex);
-			listing->Paths = std::move(found);
-			listing->Done = true;
-			Core::Redraw::Request();
-		});
+		m_Submit([listing = m_Listing, token = m_Token, root, folder] { ListFolderFiles(root, folder.get(), token, *listing); });
 	}
 
 	void QuickOpen::Close()

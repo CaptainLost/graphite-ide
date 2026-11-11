@@ -4,6 +4,7 @@
 
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobSubmitter.h"
+#include "Search/FolderSearch.h"
 #include "Search/SearchQuery.h"
 
 #include <cstddef>
@@ -57,6 +58,10 @@ namespace Graphite {
 
 		void Start(SearchStart request);
 
+		// A whole folder searched where it lives (inside WSL) goes through its own search; its open
+		// documents are still searched here, as the editor holds them, and left out of that search.
+		void SetFolderSearch(FolderSearchOpener open) { m_OpenFolderSearch = std::move(open); }
+
 		void Cancel();
 
 		void Drain(std::vector<SearchHit>& hits, SearchProgress& progress);
@@ -88,8 +93,10 @@ namespace Graphite {
 		static void Contribute(Shared& shared, std::uint64_t generation,
 							   const std::vector<SearchHit>& found, FileOutcome outcome);
 		static void ScanFile(const ScanContext& context, const std::filesystem::path& file);
+		static void SearchWhereFilesLive(const ScanContext& context, FolderSearch& folder);
 
 		Core::JobSubmitter m_Submit;
+		FolderSearchOpener m_OpenFolderSearch;
 
 		Core::Ref<Shared> m_Shared = Core::CreateRef<Shared>();
 
