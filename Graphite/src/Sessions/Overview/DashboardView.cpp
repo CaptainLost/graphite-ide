@@ -3,6 +3,7 @@
 #include "Sessions/Overview/ChartTiles.h"
 #include "Sessions/Overview/DashboardCanvas.h"
 #include "Sessions/Overview/ListTiles.h"
+#include "Sessions/Overview/TimelineTile.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -37,6 +38,8 @@ namespace Graphite {
 				return PunchHeight(width);
 			case DashboardArea::Cache:
 				return CacheHeight(width);
+			case DashboardArea::Timeline:
+				return TimelineHeight(width);
 			case DashboardArea::Count:
 				break;
 			}
@@ -74,6 +77,9 @@ namespace Graphite {
 				return;
 			case DashboardArea::Cache:
 				DrawCache(canvas, tile);
+				return;
+			case DashboardArea::Timeline:
+				DrawTimeline(canvas, tile);
 				return;
 			case DashboardArea::Count:
 				return;
@@ -124,20 +130,31 @@ namespace Graphite {
 		}
 	}
 
-	DashboardGrid LayOutDashboard(float width)
+	DashboardGrid LayOutDashboard(ImVec2 room)
 	{
 		const float unit = ImGui::GetFontSize();
-		return PlaceTiles(width, unit, NumberTileHeight(unit), AreaHeight);
+		return PlaceTiles(room.x, room.y, unit, NumberTileHeight(unit), AreaHeight);
 	}
 
 	DashboardAction DrawDashboard(const DashboardModel& model, const LocalCalendar& calendar, const DashboardColours& colours)
 	{
 		DashboardAction action;
 
-		if (ImGui::BeginChild("##dashboard"))
+		// WARNING: Whether the child scrolls is settled here, from this frame's room. Left to ImGui, the scrollbar comes a
+		// frame late, so a panel made too short is laid out without one for a frame and every tile then jumps.
+		const ImVec2 room = ImGui::GetContentRegionAvail();
+		DashboardGrid grid = LayOutDashboard(room);
+		const bool scrolls = grid.Height > room.y + DashboardDrawing::kHalf;
+
+		if (scrolls)
+		{
+			grid = LayOutDashboard(ImVec2(room.x - ImGui::GetStyle().ScrollbarSize, room.y));
+		}
+
+		if (ImGui::BeginChild("##dashboard", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
+							  scrolls ? ImGuiWindowFlags_AlwaysVerticalScrollbar : ImGuiWindowFlags_NoScrollbar))
 		{
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
-			const DashboardGrid grid = LayOutDashboard(ImGui::GetContentRegionAvail().x);
 			DashboardCanvas canvas{.Model = model,
 								   .Calendar = calendar,
 								   .Colours = colours,

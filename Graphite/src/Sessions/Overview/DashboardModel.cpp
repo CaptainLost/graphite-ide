@@ -160,6 +160,7 @@ namespace Graphite {
 					session.UnpricedByFamily[family] += requests;
 					session.UnpricedModels.insert(key.Model);
 					session.UnpricedRequests += requests;
+					session.UnpricedHours.insert(DayHour{.Day = local.Day, .Hour = local.Hour});
 					Model.UnpricedModels.insert(key.Model);
 
 					if (thread == Thread::Subagent)
@@ -188,6 +189,7 @@ namespace Graphite {
 					session.SubagentCost += subagentCost;
 					session.CostByFamily[family] += cost;
 					session.CostByDay[local.Day] += cost;
+					session.CostByHour[DayHour{.Day = local.Day, .Hour = local.Hour}] += cost;
 					session.Output += counts.Output;
 
 					FamilyTotals& familyTotals = Model.Families[family];
@@ -443,6 +445,7 @@ namespace Graphite {
 			into.LastCalledAt = std::max(into.LastCalledAt, from.LastCalledAt);
 		});
 
+		model.Timeline = TimelineDays(model, kTimelineMostDays);
 		return model;
 	}
 }

@@ -46,4 +46,10 @@ namespace Graphite {
 	std::vector<std::size_t> SessionsActiveOn(const DashboardModel& model, std::chrono::year_month_day day); // by that day's cost, descending
 
 	double Median(std::vector<double> values);
+
+	// WARNING: A session keeps one lane all day, from its first hour to its last, so its runs read as one line; past
+	// kTimelineLanes sessions at once, the next takes the lane that frees soonest and overlaps it.
+	std::vector<TimelineDay> TimelineDays(const DashboardModel& model, std::size_t count); // today first
+
+	ModelFamily MainFamily(const SessionFacts& session); // by cost, by requests when it cost nothing, else Other
 }

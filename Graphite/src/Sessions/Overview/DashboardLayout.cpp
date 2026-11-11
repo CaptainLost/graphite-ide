@@ -40,7 +40,8 @@ namespace Graphite {
 					 {DashboardArea::Sessions, kSessions},
 					 {DashboardArea::Tools, kTools},
 					 {DashboardArea::Skills, kSkills}},
-					{{DashboardArea::Punch, kPunch}, {DashboardArea::Cache, kCache}}};
+					{{DashboardArea::Punch, kPunch}, {DashboardArea::Cache, kCache}},
+					{{DashboardArea::Timeline, kWideColumns}}};
 		}
 
 		std::vector<Row> MediumRows()
@@ -49,7 +50,8 @@ namespace Graphite {
 					{{DashboardArea::Models}, {DashboardArea::Projects}},
 					{{DashboardArea::Sessions}, {DashboardArea::Tools}},
 					{{DashboardArea::Skills}, {DashboardArea::Punch}},
-					{{DashboardArea::Cache, kMediumColumns}}};
+					{{DashboardArea::Cache, kMediumColumns}},
+					{{DashboardArea::Timeline, kMediumColumns}}};
 		}
 
 		std::vector<Row> NarrowRows()
@@ -69,7 +71,7 @@ namespace Graphite {
 		}
 	}
 
-	DashboardGrid PlaceTiles(float width, float unit, float numberTileHeight, const TileHeight& heightOf)
+	DashboardGrid PlaceTiles(float width, float height, float unit, float numberTileHeight, const TileHeight& heightOf)
 	{
 		const float gap = kTileGapInFontSizes * unit;
 		const float widthInFontSizes = unit > 0.0f ? width / unit : 0.0f;
@@ -109,6 +111,11 @@ namespace Graphite {
 			for (const Span& span : row)
 			{
 				rowHeight = std::max(rowHeight, heightOf(span.Area, SpanWidth(span.Columns, columnWidth, gap)));
+			}
+
+			if (&row == &rows.back())
+			{
+				rowHeight = std::max(rowHeight, height - top - gap);
 			}
 
 			int column = 0;

@@ -71,6 +71,14 @@ namespace Graphite {
 		std::uint64_t Output = 0;
 	};
 
+	struct DayHour
+	{
+		std::chrono::year_month_day Day;
+		int Hour = 0; // local, 0 .. 23
+
+		friend auto operator<=>(const DayHour&, const DayHour&) = default;
+	};
+
 	struct SessionFacts
 	{
 		const SessionSummary* Summary = nullptr;
@@ -81,6 +89,10 @@ namespace Graphite {
 		// WARNING: Holds every local day with any usage, at $0 too, since that is what makes a session active
 		// on the day.
 		std::map<std::chrono::year_month_day, double> CostByDay;
+		// WARNING: Holds every local hour with any usage, at $0 too, as CostByDay holds days; subagents' hours count
+		// as the session's own.
+		std::map<DayHour, double> CostByHour;
+		std::set<DayHour> UnpricedHours; // with a request to a model without a price
 		FamilyCounts RequestsByFamily{};
 		FamilyCounts UnpricedByFamily{};
 		std::set<std::string> UnpricedModels;
@@ -137,6 +149,28 @@ namespace Graphite {
 		std::size_t Requests = 0;
 	};
 
+	inline constexpr std::size_t kTimelineLanes = 4;
+	inline constexpr std::size_t kTimelineMostDays = 91; // the map's 13 weeks
+
+	// One run of a session's consecutive local hours on one day.
+	struct TimelineBar
+	{
+		std::size_t Session = 0; // index into DashboardModel::Sessions
+		int FirstHour = 0;
+		int EndHour = 0; // one past the last
+		std::size_t Lane = 0;
+		double Cost = 0;
+		bool Unpriced = false; // an hour of it has a request to a model without a price
+	};
+
+	struct TimelineDay
+	{
+		std::chrono::year_month_day Day;
+		bool Gone = false;			   // older than the oldest day on disk
+		std::size_t Lanes = 0;		   // 0 .. kTimelineLanes
+		std::vector<TimelineBar> Bars; // by lane, then by first hour
+	};
+
 	struct DashboardModel
 	{
 		std::vector<DayTotals> Days; // oldest day with usage .. today, no gaps
@@ -157,6 +191,7 @@ namespace Graphite {
 		std::set<std::string> UnpricedModels;
 		TokenTotals Tokens;
 		std::chrono::year_month_day Today;
+		std::vector<TimelineDay> Timeline; // today first, kTimelineMostDays of them
 	};
 
 	DashboardModel BuildDashboard(std::span<const SessionSummary* const> sessions, const Pricing& pricing,

@@ -106,4 +106,8 @@ namespace Graphite {
 	void DrawSwatch(ImDrawList& drawing, float unit, float left, float top, float pitch, ImU32 colour);
 
 	float SwatchRoom(float unit);
+
+	// WARNING: Each line is cut to the rectangle by hand, since a clip rectangle per cell would split the draw list at
+	// every cell.
+	void DrawHatch(ImDrawList& drawing, const ImRect& rect, ImU32 colour, float spacing);
 }

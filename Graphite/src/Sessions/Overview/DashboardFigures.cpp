@@ -1,6 +1,8 @@
 #include "Sessions/Overview/DashboardFigures.h"
 
 #include <algorithm>
+#include <map>
+#include <tuple>
 #include <utility>
 
 namespace Graphite {
@@ -11,6 +13,63 @@ namespace Graphite {
 		constexpr int kDaysPerWeek = 7;
 		constexpr std::size_t kQuarters = 4;
 		constexpr int kTopHeatLevel = 4;
+
+		struct HourCost
+		{
+			int Hour = 0;
+			double Cost = 0;
+			bool Unpriced = false;
+		};
+
+		using HourCosts = std::vector<HourCost>; // by hour
+
+		struct SessionDay
+		{
+			std::size_t Session = 0;
+			HourCosts Hours;
+		};
+
+		std::size_t PickLane(std::vector<int>& laneEnds, int firstHour, int endHour)
+		{
+			for (std::size_t lane = 0; lane < laneEnds.size(); ++lane)
+			{
+				if (laneEnds[lane] <= firstHour)
+				{
+					laneEnds[lane] = endHour;
+					return lane;
+				}
+			}
+
+			if (laneEnds.size() < kTimelineLanes)
+			{
+				laneEnds.push_back(endHour);
+				return laneEnds.size() - 1;
+			}
+
+			const auto soonest = std::ranges::min_element(laneEnds);
+			*soonest = std::max(*soonest, endHour);
+			return static_cast<std::size_t>(soonest - laneEnds.begin());
+		}
+
+		void AddRuns(const SessionDay& session, std::size_t lane, std::vector<TimelineBar>& bars)
+		{
+			for (std::size_t index = 0; index < session.Hours.size();)
+			{
+				TimelineBar bar{.Session = session.Session, .FirstHour = session.Hours[index].Hour, .EndHour = 0, .Lane = lane};
+				int next = bar.FirstHour;
+
+				while (index < session.Hours.size() && session.Hours[index].Hour == next)
+				{
+					bar.Cost += session.Hours[index].Cost;
+					bar.Unpriced = bar.Unpriced || session.Hours[index].Unpriced;
+					++next;
+					++index;
+				}
+
+				bar.EndHour = next;
+				bars.push_back(bar);
+			}
+		}
 	}
 
 	std::optional<std::size_t> DayIndex(const DashboardModel& model, Date day)
@@ -221,5 +280,94 @@ namespace Graphite {
 		}
 
 		return result;
+	}
+
+	std::vector<TimelineDay> TimelineDays(const DashboardModel& model, std::size_t count)
+	{
+		using std::chrono::days;
+		using std::chrono::sys_days;
+
+		std::vector<TimelineDay> result;
+		if (count == 0)
+		{
+			return result;
+		}
+
+		const sys_days today{model.Today};
+		const sys_days oldestShown = today - days{static_cast<long long>(count - 1)};
+		std::map<Date, std::map<std::size_t, HourCosts>> byDay;
+
+		for (std::size_t index = 0; index < model.Sessions.size(); ++index)
+		{
+			const SessionFacts& session = model.Sessions[index];
+
+			for (auto entry = session.CostByHour.lower_bound(DayHour{.Day = Date{oldestShown}, .Hour = 0});
+				 entry != session.CostByHour.end() && sys_days{entry->first.Day} <= today; ++entry)
+			{
+				byDay[entry->first.Day][index].push_back(
+					{.Hour = entry->first.Hour, .Cost = entry->second, .Unpriced = session.UnpricedHours.contains(entry->first)});
+			}
+		}
+
+		const std::optional<sys_days> oldestOnDisk =
+			model.Days.empty() ? std::nullopt : std::optional<sys_days>{sys_days{model.Days.front().Day}};
+
+		for (std::size_t offset = 0; offset < count; ++offset)
+		{
+			const sys_days date = today - days{static_cast<long long>(offset)};
+			TimelineDay& day = result.emplace_back();
+			day.Day = Date{date};
+			day.Gone = !oldestOnDisk || date < *oldestOnDisk;
+
+			const auto found = byDay.find(day.Day);
+			if (found == byDay.end())
+			{
+				continue;
+			}
+
+			std::vector<SessionDay> sessions;
+			for (auto& [session, hours] : found->second)
+			{
+				sessions.push_back({.Session = session, .Hours = std::move(hours)});
+			}
+
+			std::ranges::stable_sort(sessions, {}, [](const SessionDay& session) { return session.Hours.front().Hour; });
+
+			std::vector<int> laneEnds;
+			for (const SessionDay& session : sessions)
+			{
+				const std::size_t lane = PickLane(laneEnds, session.Hours.front().Hour, session.Hours.back().Hour + 1);
+				AddRuns(session, lane, day.Bars);
+			}
+
+			day.Lanes = laneEnds.size();
+			std::ranges::stable_sort(day.Bars, [](const TimelineBar& left, const TimelineBar& right) {
+				return std::tie(left.Lane, left.FirstHour) < std::tie(right.Lane, right.FirstHour);
+			});
+		}
+
+		return result;
+	}
+
+	ModelFamily MainFamily(const SessionFacts& session)
+	{
+		const bool costed = std::ranges::any_of(session.CostByFamily, [](double cost) { return cost > 0.0; });
+		const bool requested = std::ranges::any_of(session.RequestsByFamily, [](std::size_t requests) { return requests > 0; });
+
+		if (!costed && !requested)
+		{
+			return ModelFamily::Other;
+		}
+
+		std::size_t best = 0;
+
+		for (std::size_t family = 1; family < session.CostByFamily.size(); ++family)
+		{
+			const bool ahead = costed ? session.CostByFamily[family] > session.CostByFamily[best]
+									  : session.RequestsByFamily[family] > session.RequestsByFamily[best];
+			best = ahead ? family : best;
+		}
+
+		return static_cast<ModelFamily>(best);
 	}
 }

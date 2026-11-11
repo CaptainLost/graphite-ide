@@ -7,6 +7,8 @@
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
+#include <map>
+#include <string>
 #include <vector>
 
 using namespace Graphite;
@@ -480,4 +482,168 @@ TEST_CASE("An empty or unpriced set builds a model without dividing by zero")
 	CHECK_FALSE(BusiestDay(model).has_value());
 	CHECK(HeatCuts(model) == std::array<double, 3>{0.0, 0.0, 0.0});
 	CHECK(model.UnpricedRequests == 1);
+}
+
+TEST_CASE("A session's cost is kept per local hour, its subagents' hours with its own")
+{
+	const LocalCalendar warsaw{std::chrono::locate_zone("Europe/Warsaw")};
+	SessionSummary summary = Session("a");
+	summary.Activity.MainHours[Hour(2026, 11, 3, 8)] = OpusDollars(1);
+	summary.Activity.SubagentHours[Hour(2026, 11, 3, 8)] = OpusDollars(2);
+	summary.Activity.SubagentHours[Hour(2026, 11, 3, 23)] = OpusDollars(4);
+
+	const DashboardModel model = Build({&summary}, Day(2026, 11, 4), warsaw);
+
+	REQUIRE(model.Sessions.size() == 1);
+	const std::map<DayHour, double>& hours = model.Sessions[0].CostByHour;
+	REQUIRE(hours.size() == 2);
+	CHECK(hours.at(DayHour{.Day = Day(2026, 11, 3), .Hour = 9}) == doctest::Approx(3.0));
+	CHECK(hours.at(DayHour{.Day = Day(2026, 11, 4), .Hour = 0}) == doctest::Approx(4.0));
+}
+
+TEST_CASE("TimelineDays runs back from today and marks the days older than the oldest on disk")
+{
+	SessionSummary summary = Session("a");
+	summary.Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(1);
+
+	const DashboardModel model = Build({&summary}, Day(2026, 11, 5));
+	const std::vector<TimelineDay> days = TimelineDays(model, 5);
+
+	REQUIRE(days.size() == 5);
+	CHECK(days[0].Day == Day(2026, 11, 5));
+	CHECK(days[2].Day == Day(2026, 11, 3));
+	CHECK_FALSE(days[2].Gone);
+	CHECK(days[2].Bars.size() == 1);
+	CHECK(days[3].Day == Day(2026, 11, 2));
+	CHECK(days[3].Gone);
+	CHECK(days[4].Gone);
+	CHECK(days[0].Bars.empty());
+	CHECK(days[0].Lanes == 0);
+	CHECK(TimelineDays(model, 0).empty());
+	CHECK(TimelineDays(Build({}, Day(2026, 11, 5)), 3)[0].Gone);
+}
+
+TEST_CASE("TimelineDays draws a session's consecutive hours as one bar, and a gap as a second in the same lane")
+{
+	SessionSummary summary = Session("a");
+	summary.Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(2026, 11, 3, 10)] = OpusDollars(2);
+	summary.Activity.MainHours[Hour(2026, 11, 3, 14)] = OpusDollars(4);
+
+	const DashboardModel model = Build({&summary}, Day(2026, 11, 3));
+	const std::vector<TimelineDay> days = TimelineDays(model, 1);
+
+	REQUIRE(days.size() == 1);
+	CHECK(days[0].Lanes == 1);
+	REQUIRE(days[0].Bars.size() == 2);
+	CHECK(days[0].Bars[0].FirstHour == 9);
+	CHECK(days[0].Bars[0].EndHour == 11);
+	CHECK(days[0].Bars[0].Cost == doctest::Approx(3.0));
+	CHECK(days[0].Bars[1].FirstHour == 14);
+	CHECK(days[0].Bars[1].EndHour == 15);
+	CHECK(days[0].Bars[1].Lane == 0);
+}
+
+TEST_CASE("TimelineDays gives sessions at the same time their own lanes and lets a later one reuse a freed lane")
+{
+	SessionSummary first = Session("first");
+	first.Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(4);
+	first.Activity.MainHours[Hour(2026, 11, 3, 12)] = OpusDollars(4);
+
+	SessionSummary inside = Session("inside");
+	inside.Activity.MainHours[Hour(2026, 11, 3, 10)] = OpusDollars(2);
+
+	SessionSummary later = Session("later");
+	later.Activity.MainHours[Hour(2026, 11, 3, 15)] = OpusDollars(1);
+
+	const DashboardModel model = Build({&first, &inside, &later}, Day(2026, 11, 3));
+	const std::vector<TimelineDay> days = TimelineDays(model, 1);
+
+	REQUIRE(days.size() == 1);
+	CHECK(days[0].Lanes == 2);
+
+	const auto laneOf = [&](const SessionSummary& summary) {
+		for (const TimelineBar& bar : days[0].Bars)
+		{
+			if (model.Sessions[bar.Session].Summary == &summary)
+			{
+				return bar.Lane;
+			}
+		}
+
+		return kTimelineLanes;
+	};
+
+	CHECK(laneOf(first) == 0);
+	CHECK(laneOf(inside) == 1);
+	CHECK(laneOf(later) == 0);
+}
+
+TEST_CASE("TimelineDays keeps to its lanes when more sessions than lanes run at once")
+{
+	std::vector<SessionSummary> summaries(kTimelineLanes + 2);
+	std::vector<const SessionSummary*> pointers;
+
+	for (std::size_t index = 0; index < summaries.size(); ++index)
+	{
+		summaries[index] = Session("same time");
+		summaries[index].Id += std::to_string(index);
+		summaries[index].Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(1.0 + static_cast<double>(index));
+		pointers.push_back(&summaries[index]);
+	}
+
+	const DashboardModel model = Build(pointers, Day(2026, 11, 3));
+	const std::vector<TimelineDay> days = TimelineDays(model, 1);
+
+	REQUIRE(days.size() == 1);
+	CHECK(days[0].Lanes == kTimelineLanes);
+	CHECK(days[0].Bars.size() == summaries.size());
+	CHECK(std::ranges::all_of(days[0].Bars, [](const TimelineBar& bar) { return bar.Lane < kTimelineLanes; }));
+}
+
+TEST_CASE("MainFamily is the family that cost the most, or made the most requests when nothing cost")
+{
+	SessionFacts session;
+	session.CostByFamily[Family(ModelFamily::Sonnet)] = 2.0;
+	session.CostByFamily[Family(ModelFamily::Opus)] = 1.0;
+	CHECK(MainFamily(session) == ModelFamily::Sonnet);
+
+	SessionFacts unpriced;
+	unpriced.RequestsByFamily[Family(ModelFamily::Sonnet)] = 3;
+	CHECK(MainFamily(unpriced) == ModelFamily::Sonnet);
+
+	CHECK(MainFamily(SessionFacts{}) == ModelFamily::Other);
+}
+
+TEST_CASE("A session across midnight has a bar to the day's end and one from the next day's start")
+{
+	SessionSummary summary = Session("late");
+	summary.Activity.MainHours[Hour(2026, 11, 3, 23)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(2026, 11, 4, 0)] = OpusDollars(2);
+
+	const DashboardModel model = Build({&summary}, Day(2026, 11, 4));
+
+	REQUIRE(model.Timeline.size() == kTimelineMostDays);
+	REQUIRE(model.Timeline[0].Bars.size() == 1);
+	CHECK(model.Timeline[0].Bars[0].FirstHour == 0);
+	CHECK(model.Timeline[0].Bars[0].EndHour == 1);
+	REQUIRE(model.Timeline[1].Bars.size() == 1);
+	CHECK(model.Timeline[1].Bars[0].FirstHour == 23);
+	CHECK(model.Timeline[1].Bars[0].EndHour == 24);
+	CHECK(model.Timeline[1].Bars[0].Cost == doctest::Approx(1.0));
+}
+
+TEST_CASE("A bar with an hour of a model without a price is marked unpriced")
+{
+	SessionSummary summary = Session("mixed");
+	summary.Activity.MainHours[Hour(2026, 11, 3, 9)] = OpusDollars(1);
+	summary.Activity.MainHours[Hour(2026, 11, 3, 10)] = Activity("qwen3-coder", {1000, 10, 0, 0, 0}, 1);
+	summary.Activity.MainHours[Hour(2026, 11, 3, 14)] = OpusDollars(1);
+
+	const DashboardModel model = Build({&summary}, Day(2026, 11, 3));
+
+	REQUIRE(model.Timeline[0].Bars.size() == 2);
+	CHECK(model.Timeline[0].Bars[0].Unpriced);
+	CHECK(model.Timeline[0].Bars[0].EndHour == 11);
+	CHECK_FALSE(model.Timeline[0].Bars[1].Unpriced);
 }

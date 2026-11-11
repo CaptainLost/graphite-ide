@@ -386,33 +386,13 @@ namespace Graphite {
 			DrawLegend(canvas, ImVec2(at.x, at.y + total * kLinePitch));
 		}
 
-		// WARNING: Each line is cut to the cell by hand; a clip rectangle per cell would split the draw list 76 times.
-		void DrawHatch(ImDrawList& drawing, const ImRect& cell, ImU32 colour)
-		{
-			const float side = cell.GetWidth();
-			const float spacing = side / kHatchesPerCell;
-
-			if (spacing <= 0.0f)
-			{
-				return;
-			}
-
-			for (float step = spacing * kHalf; step < 2.0f * side; step += spacing)
-			{
-				const bool upper = step <= side;
-				const ImVec2 from = upper ? ImVec2(cell.Min.x + step, cell.Min.y) : ImVec2(cell.Max.x, cell.Min.y + step - side);
-				const ImVec2 to = upper ? ImVec2(cell.Min.x, cell.Min.y + step) : ImVec2(cell.Min.x + step - side, cell.Max.y);
-				drawing.AddLine(from, to, colour);
-			}
-		}
-
 		void DrawMapCell(DashboardCanvas& canvas, const MapDay& day, const ImRect& cell)
 		{
 			const DashboardModel& model = canvas.Model;
 
 			if (day.Kind == MapDayKind::Gone)
 			{
-				DrawHatch(canvas.Drawing, cell, canvas.Colours.Hatch);
+				DrawHatch(canvas.Drawing, cell, canvas.Colours.Hatch, cell.GetWidth() / kHatchesPerCell);
 				canvas.Add({.Rect = cell, .Tip = [date = day.Date] { return GoneDayTip(date); }});
 				return;
 			}

@@ -9,6 +9,7 @@
 #include "Sessions/Overview/DashboardLayout.h"
 #include "Sessions/Overview/DashboardView.h"
 #include "Sessions/Overview/ListTiles.h"
+#include "Sessions/Overview/TimelineTile.h"
 #include "Sessions/Overview/TipCardView.h"
 #include "Theme/SessionPalette.h"
 
@@ -135,7 +136,7 @@ namespace {
 			ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			Origin = ImGui::GetCursorScreenPos();
 			LastAction = DrawDashboard(Data.Model, Data.Calendar, Colours);
-			Grid = LayOutDashboard(Width);
+			Grid = LayOutDashboard(ImVec2(Width, kTallWindow));
 
 			if (LastAction.ShowDay || LastAction.OpenSession)
 			{
@@ -449,7 +450,7 @@ TEST_CASE("At full width the map's total, streak and legend stand beside the gri
 	frames.Next([] {
 		const float unit = ImGui::GetFontSize();
 		const auto fullWidthMap = [unit](float panelInFontSizes) {
-			return LayOutDashboard(panelInFontSizes * unit).Areas[static_cast<std::size_t>(DashboardArea::Map)];
+			return LayOutDashboard(ImVec2(panelInFontSizes * unit, 0.0f)).Areas[static_cast<std::size_t>(DashboardArea::Map)];
 		};
 
 		CHECK(MapSideStandsBeside(fullWidthMap(82.5f).GetWidth()));
@@ -501,7 +502,7 @@ TEST_CASE("Reflows to two and one columns below the breakpoints")
 	}
 }
 
-TEST_CASE("At full width the grid follows S: map, daily and models share a row, punch and cache the last")
+TEST_CASE("At full width the grid follows S: map, daily and models share a row, punch and cache the next, the timeline the last")
 {
 	DashboardScreen screen(kWideDashboardInFontSizes + 10.0f);
 	screen.DrawFrame();
@@ -513,6 +514,219 @@ TEST_CASE("At full width the grid follows S: map, daily and models share a row, 
 	CHECK(AreaOf(grid, DashboardArea::Punch).Min.y == AreaOf(grid, DashboardArea::Cache).Min.y);
 	CHECK(AreaOf(grid, DashboardArea::Daily).GetWidth() > AreaOf(grid, DashboardArea::Map).GetWidth());
 	CHECK(AreaOf(grid, DashboardArea::Punch).GetWidth() > AreaOf(grid, DashboardArea::Cache).GetWidth());
+	CHECK(AreaOf(grid, DashboardArea::Timeline).Min.y > AreaOf(grid, DashboardArea::Punch).Max.y);
+	CHECK(AreaOf(grid, DashboardArea::Timeline).Min.x == AreaOf(grid, DashboardArea::Punch).Min.x);
+	CHECK(AreaOf(grid, DashboardArea::Timeline).Max.x == doctest::Approx(AreaOf(grid, DashboardArea::Cache).Max.x));
+}
+
+TEST_CASE("The timeline takes the height left, so the dashboard ends at the panel's bottom with no gap")
+{
+	const Fixture data;
+
+	for (const float widthInFontSizes : {kWideDashboardInFontSizes + 10.0f, 50.0f, 30.0f})
+	{
+		CAPTURE(widthInFontSizes);
+		ImGuiFrames frames;
+		ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+		frames.Next([&data, widthInFontSizes] {
+			const float unit = ImGui::GetFontSize();
+			const float width = widthInFontSizes * unit;
+			const float gap = kTileGapInFontSizes * unit;
+			const DashboardGrid tall = LayOutDashboard(ImVec2(width, kTallWindow * 2.0f));
+			const ImRect timeline = AreaOf(tall, DashboardArea::Timeline);
+
+			CHECK(tall.Height == doctest::Approx(kTallWindow * 2.0f));
+			CHECK(timeline.Max.y == doctest::Approx(kTallWindow * 2.0f - gap));
+			CHECK(TimelineGridOf(timeline, data.Model).Rows.size() > kTimelineLeastDays);
+			CHECK(TimelineGridOf(timeline, data.Model).Rows.size() <= kTimelineMostDays);
+
+			const DashboardGrid shortPanel = LayOutDashboard(ImVec2(width, 0.0f));
+			const ImRect least = AreaOf(shortPanel, DashboardArea::Timeline);
+			CHECK(least.GetHeight() == doctest::Approx(TimelineHeight(least.GetWidth())));
+			CHECK(TimelineGridOf(least, data.Model).Rows.size() == kTimelineLeastDays);
+
+			for (const DashboardArea area : {DashboardArea::Map, DashboardArea::Sessions, DashboardArea::Cache})
+			{
+				CHECK(AreaOf(tall, area).Min.y == AreaOf(shortPanel, area).Min.y);
+				CHECK(AreaOf(tall, area).GetHeight() == AreaOf(shortPanel, area).GetHeight());
+			}
+		});
+	}
+}
+
+TEST_CASE("The dashboard decides its scrollbar from the room it has this frame")
+{
+	DashboardScreen screen(kWideDashboardInFontSizes + 10.0f);
+	screen.DrawFrame();
+
+	const auto dashboard = [] {
+		const ImGuiWindow* panel = ImGui::FindWindowByName("Panel");
+		REQUIRE(panel != nullptr);
+		REQUIRE(!panel->DC.ChildWindows.empty());
+		return panel->DC.ChildWindows.back();
+	};
+
+	CHECK_FALSE(dashboard()->ScrollbarY);
+
+	const auto drawAt = [&](float height) {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(screen.Width, height));
+		ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		DrawDashboard(screen.Data.Model, screen.Data.Calendar, screen.Colours);
+		const bool scrollbar = dashboard()->ScrollbarY;
+		ImGui::End();
+		return scrollbar;
+	};
+
+	// A panel a little shorter still fits, the timeline giving up the height.
+	constexpr float kLittleShorter = kTallWindow - 100.0f;
+	bool scrollbar = true;
+	screen.Frames.Next([&] { scrollbar = drawAt(kLittleShorter); });
+	CHECK_FALSE(scrollbar);
+
+	// A panel too short for the tiles scrolls on the first frame at that height; ImGui alone adds the bar a frame late.
+	screen.Frames.Next([&] { scrollbar = drawAt(kTallWindow / 4.0f); });
+	CHECK(scrollbar);
+}
+
+TEST_CASE("The timeline hatches the days before the oldest on disk and draws today's session in its family colour")
+{
+	DashboardScreen screen(kWideDashboardInFontSizes);
+	TimelineGrid grid;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		grid = TimelineGridOf(screen.OnScreen(AreaOf(screen.Grid, DashboardArea::Timeline)), screen.Data.Model);
+	});
+
+	REQUIRE(grid.Rows.size() > 11);
+	const auto rowOf = [&](std::size_t row) {
+		return ImRect(ImVec2(grid.TrackLeft, grid.Rows[row].Top), ImVec2(grid.TrackRight, grid.Rows[row].Top + grid.Rows[row].Height));
+	};
+
+	const ImDrawList& drawing = DashboardScreen::DashboardDrawList();
+	// Today is Tuesday 10 Nov and the oldest day on disk Sunday 1 Nov, nine rows down.
+	CHECK(VerticesInColourWithin(drawing, screen.Colours.Hatch, rowOf(9)) == 0);
+	CHECK(VerticesInColourWithin(drawing, screen.Colours.Hatch, rowOf(11)) > 0);
+
+	const ImRect todayBar(ImVec2(grid.HourX(9), rowOf(0).Min.y), ImVec2(grid.HourX(10), rowOf(0).Max.y));
+	const ImU32 opus = screen.Colours.Families[static_cast<std::size_t>(ModelFamily::Opus)];
+	int opusVertices = 0;
+	for (const ImDrawVert& vertex : drawing.VtxBuffer)
+	{
+		opusVertices += (vertex.col & ~IM_COL32_A_MASK) == (opus & ~IM_COL32_A_MASK) && todayBar.Contains(vertex.pos) ? 1 : 0;
+	}
+	CHECK(opusVertices > 0);
+}
+
+TEST_CASE("A day with sessions at the same time gets a taller row, its bars as thick as a quiet day's")
+{
+	Fixture data;
+	SessionSummary parallel;
+	parallel.Id = "parallel";
+	parallel.Cwd = Core::FromUtf8("D:\\Repos\\IDE");
+	parallel.Activity.MainHours[Hour(2026, 11, 10, 9)] = OpusDollars(1);
+	const std::vector<const SessionSummary*> sessions{&data.Large, &data.Small, &parallel};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), data.Calendar, Day(2026, 11, 10));
+
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	frames.Next([&] {
+		const ImRect tile(ImVec2(0.0f, 0.0f), ImVec2(kTallWindow, kTallWindow));
+		const TimelineGrid grid = TimelineGridOf(tile, model);
+		REQUIRE(grid.Rows.size() > 2);
+		REQUIRE(model.Timeline[0].Lanes == 2);
+
+		CHECK(grid.Rows[0].Height > grid.Rows[1].Height);
+		CHECK(grid.Rows[1].Top == doctest::Approx(grid.Rows[0].Top + grid.Rows[0].Height));
+		const float twoLanes = TimelineTrack(grid, grid.Rows[0], 2).GetHeight();
+		const float oneLane = TimelineTrack(grid, grid.Rows[5], 1).GetHeight();
+		CHECK(twoLanes > 2.0f * oneLane);
+	});
+}
+
+TEST_CASE("The timeline's rows end at the tile's bottom when the next day is too tall to fit")
+{
+	Fixture data;
+	SessionSummary parallel;
+	parallel.Id = "parallel";
+	parallel.Cwd = Core::FromUtf8("D:\\Repos\\IDE");
+	parallel.Activity.MainHours[Hour(2026, 11, 9, 9)] = OpusDollars(1);
+	SessionSummary third = parallel;
+	third.Id = "third";
+	const std::vector<const SessionSummary*> sessions{&data.Large, &data.Small, &parallel, &third};
+	const DashboardModel model = BuildDashboard(sessions, Pricing::Defaults(), data.Calendar, Day(2026, 11, 10));
+
+	ImGuiFrames frames;
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+	frames.Next([&] {
+		const float unit = ImGui::GetFontSize();
+		const float width = kTallWindow;
+		// Room for the least tile, three quiet days; Monday 9 Nov has two lanes, so Sunday 8 Nov no longer fits.
+		const ImRect tile(ImVec2(0.0f, 0.0f), ImVec2(width, TimelineHeight(width)));
+		const TimelineGrid grid = TimelineGridOf(tile, model);
+
+		REQUIRE(model.Timeline[1].Lanes == 2);
+		REQUIRE(grid.Rows.size() == 2);
+		const TimelineRow& last = grid.Rows.back();
+		CHECK(last.Top + last.Height == doctest::Approx(tile.Max.y - TileBottomPadding(unit)));
+		CHECK(TimelineTrack(grid, last, model.Timeline[last.Day].Lanes).Max.y <= last.Top + last.Height);
+	});
+}
+
+TEST_CASE("Hovering a timeline bar shows its session with the bar's hours and cost, and a click opens it")
+{
+	DashboardScreen screen(kWideDashboardInFontSizes);
+	TimelineGrid grid;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		grid = TimelineGridOf(screen.OnScreen(AreaOf(screen.Grid, DashboardArea::Timeline)), screen.Data.Model);
+	});
+
+	REQUIRE(!grid.Rows.empty());
+	const ImVec2 bar((grid.HourX(9) + grid.HourX(10)) * kHalf, grid.Rows[0].Top + grid.Rows[0].Height * kHalf);
+	ImGui::GetIO().AddMousePosEvent(bar.x, bar.y);
+	// A tooltip's first frame sizes it; its text is clipped until the second.
+	screen.DrawFrame();
+
+	std::vector<DrawnLine> lines;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		const ImGuiWindow* tooltip = ShownTooltip();
+		REQUIRE(tooltip != nullptr);
+		lines = DrawnTextLines(*tooltip->DrawList, *ImGui::GetFont()->GetFontBaked(ImGui::GetFontSize()));
+	});
+
+	// Drawn lines hold glyphs only, so their words run together.
+	CHECK(std::ranges::any_of(lines, [](const DrawnLine& line) { return line.Text.starts_with("Tue10Nov,09:00"); }));
+	CHECK(std::ranges::any_of(lines, [](const DrawnLine& line) { return line.Text == "Buildthedashboard"; }));
+
+	screen.Frames.Click(bar, screen.Drawing());
+
+	REQUIRE(screen.Acted.has_value());
+	REQUIRE(screen.Acted->OpenSession.has_value());
+	CHECK(screen.Data.Model.Sessions[*screen.Acted->OpenSession].Summary == &screen.Data.Large);
+	CHECK_FALSE(screen.Acted->ShowDay.has_value());
+}
+
+TEST_CASE("A click on a timeline day off its bars asks to show that day")
+{
+	DashboardScreen screen(kWideDashboardInFontSizes);
+	TimelineGrid grid;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		grid = TimelineGridOf(screen.OnScreen(AreaOf(screen.Grid, DashboardArea::Timeline)), screen.Data.Model);
+	});
+
+	// Thursday 5 Nov, five rows down, at 20:00, where no session ran.
+	constexpr std::size_t kThursday = 5;
+	REQUIRE(grid.Rows.size() > kThursday);
+	const ImVec2 at((grid.HourX(20) + grid.HourX(21)) * kHalf, grid.Rows[kThursday].Top + grid.Rows[kThursday].Height * kHalf);
+	screen.Frames.Click(at, screen.Drawing());
+
+	REQUIRE(screen.Acted.has_value());
+	REQUIRE(screen.Acted->ShowDay.has_value());
+	CHECK(*screen.Acted->ShowDay == Day(2026, 11, 5));
+	CHECK_FALSE(screen.Acted->OpenSession.has_value());
 }
 
 TEST_CASE("Uses the family colours")

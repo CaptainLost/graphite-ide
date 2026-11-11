@@ -39,6 +39,7 @@ namespace Graphite {
 		Skills,
 		Punch,
 		Cache,
+		Timeline, // WARNING: The last row of every layout, which is the row that takes the height left.
 		Count
 	};
 
@@ -53,7 +54,9 @@ namespace Graphite {
 
 	using TileHeight = std::function<float(DashboardArea area, float width)>;
 
-	DashboardGrid PlaceTiles(float width, float unit, float numberTileHeight, const TileHeight& heightOf);
+	// WARNING: The last row grows to end at height, so the dashboard fills the panel without a gap below; in a panel
+	// too short for every tile it keeps the height heightOf gives it and the dashboard scrolls.
+	DashboardGrid PlaceTiles(float width, float height, float unit, float numberTileHeight, const TileHeight& heightOf);
 
 	enum class MapDayKind : std::uint8_t
 	{

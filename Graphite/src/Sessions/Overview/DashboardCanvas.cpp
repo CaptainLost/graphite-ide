@@ -288,4 +288,22 @@ namespace Graphite {
 	{
 		return (kSwatchSize + kSwatchGap) * unit;
 	}
+
+	void DrawHatch(ImDrawList& drawing, const ImRect& rect, ImU32 colour, float spacing)
+	{
+		const float width = rect.GetWidth();
+		const float height = rect.GetHeight();
+
+		if (spacing <= 0.0f)
+		{
+			return;
+		}
+
+		for (float step = spacing * DashboardDrawing::kHalf; step < width + height; step += spacing)
+		{
+			const ImVec2 from = step <= width ? ImVec2(rect.Min.x + step, rect.Min.y) : ImVec2(rect.Max.x, rect.Min.y + step - width);
+			const ImVec2 to = step <= height ? ImVec2(rect.Min.x, rect.Min.y + step) : ImVec2(rect.Min.x + step - height, rect.Max.y);
+			drawing.AddLine(from, to, colour);
+		}
+	}
 }
