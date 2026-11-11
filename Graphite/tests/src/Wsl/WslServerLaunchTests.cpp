@@ -79,6 +79,16 @@ TEST_CASE("A WSL folder's language server is the configured Linux program, or th
 	CHECK(Graphite::DistroServerProgram(Clangd(), L"C:\\llvm\\bin\\clangd.exe") == "clangd");
 }
 
+TEST_CASE("A server installed into the distro runs by its Linux path, before one on the distro's PATH and after a configured one")
+{
+	const std::filesystem::path installed{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\.graphite\\servers\\clangd\\21.1.0\\clangd_21.1.0\\bin\\clangd"};
+
+	CHECK(Graphite::DistroServerProgram(Clangd(), "", installed) == "/home/me/.graphite/servers/clangd/21.1.0/clangd_21.1.0/bin/clangd");
+	CHECK(Graphite::DistroServerProgram(Clangd(), "/opt/llvm/bin/clangd", installed) == "/opt/llvm/bin/clangd");
+	// An install that is not in a distro (a Windows one) is not run there.
+	CHECK(Graphite::DistroServerProgram(Clangd(), "", std::filesystem::path{L"C:\\servers\\clangd\\bin\\clangd.exe"}) == "clangd");
+}
+
 TEST_CASE("A WSL folder's language server starts in the distro through its login shell, in the folder, speaking Linux paths")
 {
 	const Graphite::ServerLaunch launch = Graphite::WslServerLaunch(Clangd(), "clangd", Graphite::ServerOverrides{.ExtraArguments = {"--log=error"}}, kRoot, kWsl);

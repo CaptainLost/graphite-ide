@@ -64,10 +64,16 @@ namespace Graphite {
 	}
 
 	ServerInstalls::ServerInstalls(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory, Core::JobSubmitter submit)
+		: ServerInstalls(std::move(http), std::move(serversDirectory), std::move(submit), Core::CurrentPlatform(), {})
+	{
+	}
+
+	ServerInstalls::ServerInstalls(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory, Core::JobSubmitter submit,
+								   Core::PlatformTarget platform, ServerInstaller::MakeExecutableStep makeExecutable)
 		: m_Http(std::move(http)),
 		  m_ServersDirectory(std::move(serversDirectory)),
 		  m_Submit(std::move(submit)),
-		  m_Installer(m_Http, m_ServersDirectory, Core::CurrentPlatform(), m_Submit),
+		  m_Installer(m_Http, m_ServersDirectory, platform, m_Submit, std::move(makeExecutable)),
 		  m_InstalledRead(Core::CreateRef<InstalledVersionsRead>())
 	{
 	}

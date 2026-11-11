@@ -33,6 +33,10 @@ namespace Graphite {
 	public:
 		ServerInstalls(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory, Core::JobSubmitter submit);
 
+		// Installs for another machine than Graphite's own, such as a WSL distro.
+		ServerInstalls(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory, Core::JobSubmitter submit,
+					   Core::PlatformTarget platform, ServerInstaller::MakeExecutableStep makeExecutable);
+
 		const std::filesystem::path& GetServersDirectory() const;
 
 		// WARNING: Submitted before any install can be, so a queue with one worker runs it first; what is installed

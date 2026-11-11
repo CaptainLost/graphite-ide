@@ -6,6 +6,7 @@
 #include "Wsl/WslFolderWatch.h"
 #include "Wsl/WslIgnores.h"
 #include "Wsl/WslSearch.h"
+#include "Wsl/WslServerInstalls.h"
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
@@ -327,6 +328,14 @@ namespace Graphite {
 
 		// WARNING: Set the servers directory before OpenStartupFolder, whose warm-up may start a server from Graphite's install.
 		m_LanguageServices.SetServersDirectory(m_ServerInstalls.GetServersDirectory());
+		m_LanguageServices.SetDistroServersDirectory([this](const std::string& distro) -> std::optional<std::filesystem::path> {
+			if (ServerInstalls* installs = DistroInstallsFor(distro))
+			{
+				return installs->GetServersDirectory();
+			}
+
+			return std::nullopt;
+		});
 		m_LanguageServices.SetLogDirectory(UserDirectories::LogFile().parent_path());
 		m_LanguageServices.SetTemporaryFilesDirectory(UserDirectories::ServerTemporaryFilesDirectory());
 		m_ServerInstalls.SweepAtStartup();
@@ -869,10 +878,55 @@ namespace Graphite {
 
 	void GraphiteLayer::ApplyFinishedInstalls()
 	{
-		m_ServerInstalls.Poll();
+		ApplyFinishedInstallsOf(m_ServerInstalls, std::string{});
+
+		for (const auto& [distro, installs] : m_DistroInstalls)
+		{
+			ApplyFinishedInstallsOf(*installs, distro);
+		}
+	}
+
+	ServerInstalls* GraphiteLayer::InstallsForFolder()
+	{
+		if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(m_Workspace.GetRoot()))
+		{
+			return DistroInstallsFor(place->Distro);
+		}
+
+		return &m_ServerInstalls;
+	}
+
+	ServerInstalls* GraphiteLayer::DistroInstallsFor(const std::string& distro)
+	{
+		if (const auto known = m_DistroInstalls.find(distro); known != m_DistroInstalls.end())
+		{
+			return known->second.get();
+		}
+
+		// Never waits: the distro's agent is asked for again on a later frame while it starts.
+		const Core::Result<std::shared_ptr<Core::AgentConnection>> agent = m_WslAgents.Peek(distro);
+
+		if (!agent || agent.GetValue()->GetHome().empty())
+		{
+			return nullptr;
+		}
+
+		constexpr Core::PlatformTarget kDistroPlatform{.System = Core::OperatingSystem::Linux, .Machine = Core::Architecture::X64};
+		auto installs = Core::CreateScope<ServerInstalls>(
+			CreateHttpClientFor("Language servers cannot be downloaded"), DistroServersDirectory(distro, agent.GetValue()->GetHome()),
+			[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }, kDistroPlatform,
+			MakeExecutableInDistro(distro, Core::WslExecutable()));
+		installs->SweepAtStartup();
+
+		return m_DistroInstalls.emplace(distro, std::move(installs)).first->second.get();
+	}
+
+	void GraphiteLayer::ApplyFinishedInstallsOf(ServerInstalls& installs, const std::string& where)
+	{
+		installs.Poll();
 
 		std::vector<InstallProgress> finished;
-		m_ServerInstalls.TakeFinished(finished);
+		installs.TakeFinished(finished);
 
 		for (const InstallProgress& outcome : finished)
 		{
@@ -882,7 +936,8 @@ namespace Graphite {
 			{
 			case InstallStep::Installed:
 				m_Events.Publish(ApplicationToast(Core::ToastKind::Success, "Language server installed",
-												  std::format("{} {} installed", ServerDisplayName(outcome.ServerId), outcome.Version)));
+												  where.empty() ? std::format("{} {} installed", ServerDisplayName(outcome.ServerId), outcome.Version)
+																: std::format("{} {} installed in {}", ServerDisplayName(outcome.ServerId), outcome.Version, where)));
 				break;
 			case InstallStep::Failed:
 				m_Events.Publish(ApplicationToast(Core::ToastKind::Error, ServerDisplayName(outcome.ServerId), outcome.Failure));
@@ -904,14 +959,17 @@ namespace Graphite {
 	{
 		const ServerDefinition* server = m_LanguageServices.ChosenServer(LanguageOfPath(path));
 
-		return server != nullptr && MayInstall(m_ServerInstalls, *server);
+		ServerInstalls* installs = InstallsForFolder();
+		return server != nullptr && installs != nullptr && MayInstall(*installs, *server);
 	}
 
 	void GraphiteLayer::InstallChosenServerFor(LanguageId language)
 	{
-		if (const ServerDefinition* server = m_LanguageServices.ChosenServer(language))
+		ServerInstalls* installs = InstallsForFolder();
+
+		if (const ServerDefinition* server = m_LanguageServices.ChosenServer(language); server != nullptr && installs != nullptr)
 		{
-			m_ServerInstalls.Install(server->Id);
+			installs->Install(server->Id);
 		}
 	}
 
@@ -1122,6 +1180,9 @@ namespace Graphite {
 
 		std::optional<LanguagePrompt> languagePrompt;
 
+		// A WSL folder installs into its distro; none until the distro's agent has said where home is.
+		ServerInstalls* const folderInstalls = InstallsForFolder();
+
 		if (shownDocument)
 		{
 			const ServerChoice& choice = m_LanguageServices.ChoiceFor(activeLanguage);
@@ -1131,7 +1192,7 @@ namespace Graphite {
 				.Language = activeLanguage,
 				.Choice = ServerChoice{.Kind = choice.Kind, .Server = choice.Server},
 				.State = status.State,
-				.Install = choice.Server != nullptr ? InstallInputsFor(m_ServerInstalls, *choice.Server) : InstallInputs{},
+				.Install = choice.Server != nullptr && folderInstalls != nullptr ? InstallInputsFor(*folderInstalls, *choice.Server) : InstallInputs{},
 				.Dismissed = m_LanguagePromptsDismissedUntilRestart.contains(activeLanguage),
 				.RestrictedModeShown = m_Workspace.IsOpen() && !workspaceTrusted});
 		}
@@ -1158,9 +1219,9 @@ namespace Graphite {
 			}
 		}
 
-		if (const ServerDefinition* chosen = m_LanguageServices.ChosenServer(activeLanguage); shownDocument && chosen != nullptr)
+		if (const ServerDefinition* chosen = m_LanguageServices.ChosenServer(activeLanguage); shownDocument && chosen != nullptr && folderInstalls != nullptr)
 		{
-			serverInputs.ActiveJob = ServerJobFor(m_ServerInstalls, *chosen);
+			serverInputs.ActiveJob = ServerJobFor(*folderInstalls, *chosen);
 		}
 
 		std::optional<LanguageId> serverSettingsLanguage;
@@ -1560,11 +1621,17 @@ namespace Graphite {
 			break;
 
 		case LanguageBarChoice::Install:
-			m_ServerInstalls.Install(prompt.ServerId);
+			if (ServerInstalls* installs = InstallsForFolder())
+			{
+				installs->Install(prompt.ServerId);
+			}
 			break;
 
 		case LanguageBarChoice::Cancel:
-			m_ServerInstalls.Cancel(prompt.ServerId);
+			if (ServerInstalls* installs = InstallsForFolder())
+			{
+				installs->Cancel(prompt.ServerId);
+			}
 			break;
 
 		case LanguageBarChoice::GetRuntime:

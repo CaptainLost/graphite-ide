@@ -2703,3 +2703,35 @@ TEST_CASE("A source in a folder inside WSL starts the distro's own server, with 
 	CHECK(spy.LastLaunch.Arguments[1] == "Ubuntu");
 	CHECK(spy.LastLaunch.Arguments[8] == "clangd");
 }
+
+TEST_CASE("A folder inside WSL runs the server installed into its distro before one on the distro's PATH")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	services.SetClientFactory(spy.Get());
+	UseClangdAt(services, temp.GetPath() / "no-such-clangd.exe");
+
+	// The distro's servers folder, as its share path, stands in here as a local folder holding an install.
+	const std::filesystem::path distroServers = temp.GetPath() / "distro-servers";
+	const std::filesystem::path clangdDirectory = Graphite::ServerDirectoryOf(distroServers, "clangd");
+	temp.MakeFile("distro-servers/clangd/21.1.0/clangd_21.1.0/bin/clangd", "a server");
+	REQUIRE(Graphite::WriteInstallRecord(clangdDirectory, Graphite::InstallRecord{.Version = "21.1.0",
+																				  .Command = {.Runner = Graphite::LaunchRunner::Executable,
+																							  .RelativePath = "clangd_21.1.0/bin/clangd"}}));
+	std::string askedFor;
+	services.SetDistroServersDirectory([&](const std::string& distro) -> std::optional<std::filesystem::path> {
+		askedFor = distro;
+		return distroServers;
+	});
+	const std::filesystem::path root{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	services.SetFallbackRoot(root);
+
+	services.EnsureStarted(root / "a.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(spy.Made == 1);
+	CHECK(askedFor == "Ubuntu");
+	REQUIRE(spy.LastLaunch.Arguments.size() > 8);
+	// A local stand-in has no Linux path: the install is used only when it is in the distro.
+	CHECK(spy.LastLaunch.Arguments[8] == "clangd");
+}

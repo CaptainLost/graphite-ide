@@ -18,13 +18,22 @@ namespace Graphite {
 		constexpr std::string_view kRunProgram = "exec \"$0\" \"$@\"";
 	}
 
-	std::string DistroServerProgram(const ServerDefinition& server, const std::filesystem::path& configured)
+	std::string DistroServerProgram(const ServerDefinition& server, const std::filesystem::path& configured,
+									const std::optional<std::filesystem::path>& installed)
 	{
 		const std::string path = Core::ToGenericUtf8(configured);
 
 		if (path.starts_with('/') && !path.starts_with("//"))
 		{
 			return path;
+		}
+
+		if (installed)
+		{
+			if (const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(*installed))
+			{
+				return place->LinuxPath;
+			}
 		}
 
 		return std::string{server.ExecutableName};

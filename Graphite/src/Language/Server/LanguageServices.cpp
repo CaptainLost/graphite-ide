@@ -7,6 +7,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/FileProbe.h"
+#include "Language/Install/InstalledServer.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ProjectSearch.h"
@@ -421,6 +422,11 @@ namespace Graphite {
 		m_ServersDirectory = std::move(directory);
 	}
 
+	void LanguageServices::SetDistroServersDirectory(DistroServersQuery query)
+	{
+		m_DistroServers = std::move(query);
+	}
+
 	void LanguageServices::SetDotnetLocator(DotnetLocator locator)
 	{
 		m_DotnetLocator = std::move(locator);
@@ -549,9 +555,21 @@ namespace Graphite {
 
 		// A folder inside WSL runs the distro's own server, found by the distro (stage 6): nothing on
 		// Windows is looked for, and a missing one is reported once the distro's shell says so.
-		if (Core::ParseWslSharePath(key.Root))
+		if (const std::optional<Core::WslSharePath> distroRoot = Core::ParseWslSharePath(key.Root))
 		{
-			server.Command = ServerCommand{.Program = Core::FromUtf8(DistroServerProgram(*server.Definition, server.Overrides.Binary))};
+			// One small record read over the share, as the Windows folder's FindServerCommand reads its own.
+			std::optional<std::filesystem::path> installed;
+			const std::optional<std::filesystem::path> distroServers = m_DistroServers ? m_DistroServers(distroRoot->Distro) : std::nullopt;
+
+			if (distroServers)
+			{
+				if (const std::optional<InstalledServer> found = FindInstalledServer(ServerDirectoryOf(*distroServers, server.Definition->Id)))
+				{
+					installed = found->Command;
+				}
+			}
+
+			server.Command = ServerCommand{.Program = Core::FromUtf8(DistroServerProgram(*server.Definition, server.Overrides.Binary, installed))};
 		}
 		else
 		{

@@ -95,6 +95,7 @@
 #include <filesystem>
 #include <format>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -260,6 +261,13 @@ namespace Graphite {
 		// Null when the platform has no HTTP backend; what cannot be done without it is logged.
 		static Core::Ref<Core::HttpClient> CreateHttpClientFor(std::string_view whatNeedsIt);
 		void ApplyFinishedInstalls();
+		void ApplyFinishedInstallsOf(ServerInstalls& installs, const std::string& where);
+
+		// The installs a server for the open folder goes to: the folder's WSL distro's, or Windows'.
+		// None while a WSL folder's agent has not said where its home is.
+		ServerInstalls* InstallsForFolder();
+		ServerInstalls* DistroInstallsFor(const std::string& distro);
+
 		bool CanInstallChosenServerFor(const std::filesystem::path& path);
 		void InstallChosenServerFor(LanguageId language);
 
@@ -316,6 +324,9 @@ namespace Graphite {
 		Core::JobQueue m_InstallJobs{1};
 		ServerInstalls m_ServerInstalls{CreateHttpClientFor("Language servers cannot be downloaded"), UserDirectories::ServersDirectory(),
 										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
+
+		// Installs into each WSL distro a folder was opened in, made once its agent has said where home is.
+		std::map<std::string, Core::Scope<ServerInstalls>, std::less<>> m_DistroInstalls;
 
 		std::set<LanguageId> m_LanguagePromptsDismissedUntilRestart;
 		std::set<std::filesystem::path> m_RestrictedBarsHiddenUntilRestart;

@@ -88,6 +88,11 @@ namespace Graphite {
 
 		void SetServersDirectory(std::filesystem::path directory);
 
+		// Where servers are installed into a WSL distro, by the distro's name, as a share path; none
+		// while it is not known yet (the distro's agent has not said where its home is).
+		using DistroServersQuery = std::function<std::optional<std::filesystem::path>(const std::string& distro)>;
+		void SetDistroServersDirectory(DistroServersQuery query);
+
 		using DotnetLocator = std::function<std::vector<DotnetInstallation>()>;
 
 		void SetDotnetLocator(DotnetLocator locator);
@@ -356,6 +361,7 @@ namespace Graphite {
 		ServerCommandPlaces CommandPlaces() const;
 
 		std::filesystem::path m_ServersDirectory;
+		DistroServersQuery m_DistroServers;
 		DotnetLocator m_DotnetLocator;
 		UninstallingQuery m_Uninstalling;
 		mutable std::optional<std::vector<DotnetInstallation>> m_Dotnet;
