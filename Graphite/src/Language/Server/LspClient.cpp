@@ -9,6 +9,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstdint>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -18,6 +21,27 @@
 
 namespace Graphite {
 	namespace {
+
+		constexpr std::string_view kHeaderEnd = "\r\n\r\n";
+
+		// A POSIX shell's exit code for a command it cannot find, and how long a process whose output
+		// has ended gets to report its exit.
+		constexpr std::uint32_t kCommandNotFound = 127;
+		constexpr std::chrono::milliseconds kExitAfterStreamEnds{1000};
+
+		// A framed message with its body rewritten, framed again for the body's new length.
+		std::string TranslatedFrame(const std::string& framed, const std::function<std::string(std::string_view)>& translate)
+		{
+			const std::size_t headerEnd = framed.find(kHeaderEnd);
+
+			if (headerEnd == std::string::npos)
+			{
+				return framed;
+			}
+
+			const std::string body = translate(std::string_view{framed}.substr(headerEnd + kHeaderEnd.size()));
+			return "Content-Length: " + std::to_string(body.size()) + std::string{kHeaderEnd} + body;
+		}
 		std::string StringField(const nlohmann::json& object, const char* name)
 		{
 			const nlohmann::json::const_iterator field = object.find(name);
@@ -258,6 +282,11 @@ namespace Graphite {
 
 	void LspClient::SendNowLocked(Shared& shared, std::string bytes)
 	{
+		if (shared.Translation.ToServer)
+		{
+			bytes = TranslatedFrame(bytes, shared.Translation.ToServer);
+		}
+
 		// WARNING: The message is queued, never written here. A synchronous write under ProtocolMutex blocks on a full pipe, and the caller may be the reader, which must never stop.
 		{
 			const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
@@ -331,6 +360,8 @@ namespace Graphite {
 		CORE_ASSERT(launch.Adapter != nullptr, "a launch needs an adapter to adopt");
 
 		m_Shared->ProtocolLanguageId = std::string(launch.Server->ProtocolLanguageId);
+		m_Shared->Translation = launch.Translation;
+		m_Shared->WhenProgramMissing = launch.WhenProgramMissing;
 		m_Shared->Adapter = launch.Adapter;
 		m_Shared->Context = AdapterContext{.Root = root,
 										   .InitializationOptions = launch.InitializationOptions,
@@ -1003,13 +1034,29 @@ namespace Graphite {
 			shared->Status.State = ServerState::Failed;
 			shared->Status.Detail = "the language server stopped";
 			shared->Status.Percent = kNoPercent;
+
+			// A shell that started the server reports a program it cannot find by exit code 127.
+			if (!shared->WhenProgramMissing.empty() && shared->Process && shared->Process->WaitForExit(kExitAfterStreamEnds) &&
+				shared->Process->GetExitCode() == kCommandNotFound)
+			{
+				shared->Status.State = ServerState::NotFound;
+				shared->Status.Detail = shared->WhenProgramMissing;
+			}
 		}
 
 		Core::Redraw::Request();
 	}
 
-	void LspClient::HandleBody(Shared& shared, const std::string& body)
+	void LspClient::HandleBody(Shared& shared, const std::string& received)
 	{
+		std::string translated;
+
+		if (shared.Translation.FromServer)
+		{
+			translated = shared.Translation.FromServer(received);
+		}
+
+		const std::string& body = shared.Translation.FromServer ? translated : received;
 		std::optional<IncomingMessage> incoming;
 
 		{

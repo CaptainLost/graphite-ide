@@ -16,6 +16,10 @@
 #include "Language/Server/SolutionScope.h"
 #include "Git/GitIgnoreRules.h"
 #include "Search/FileEnumerator.h"
+#include "Wsl/WslServerLaunch.h"
+
+#include "Core/FileSystem/WslSharePath.h"
+#include "Core/Remote/AgentDeployment.h"
 
 #include <algorithm>
 #include <iterator>
@@ -543,7 +547,16 @@ namespace Graphite {
 			return;
 		}
 
-		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
+		// A folder inside WSL runs the distro's own server, found by the distro (stage 6): nothing on
+		// Windows is looked for, and a missing one is reported once the distro's shell says so.
+		if (Core::ParseWslSharePath(key.Root))
+		{
+			server.Command = ServerCommand{.Program = Core::FromUtf8(DistroServerProgram(*server.Definition, server.Overrides.Binary))};
+		}
+		else
+		{
+			server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
+		}
 
 		if (server.Command.State != ServerState::Starting)
 		{
@@ -1536,9 +1549,11 @@ namespace Graphite {
 														const ServerKey& key) const
 	{
 		const std::filesystem::path temporaryDirectory = m_TemporaryFiles ? m_TemporaryFiles->GetPath() : std::filesystem::path{};
+		const std::optional<Core::WslSharePath> distroRoot = Core::ParseWslSharePath(key.Root);
 
-		ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
-										LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory, .DotnetRoot = server.Command.DotnetRoot, .TemporaryDirectory = temporaryDirectory});
+		ServerLaunch launch = distroRoot ? WslServerLaunch(*server.Definition, Core::ToGenericUtf8(server.Command.Program), server.Overrides, *distroRoot, Core::WslExecutable())
+										 : LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
+													 LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory, .DotnetRoot = server.Command.DotnetRoot, .TemporaryDirectory = temporaryDirectory});
 
 		launch.Solution = SolutionForRoot(key.Root, m_SelectedSolution);
 

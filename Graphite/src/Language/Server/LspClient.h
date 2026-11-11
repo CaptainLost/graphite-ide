@@ -229,6 +229,8 @@ namespace Graphite {
 			std::atomic<bool> Stopping{false};
 
 			Core::Ref<Core::ChildProcess> Process;
+			BodyTranslation Translation;
+			std::string WhenProgramMissing;
 			std::string ProtocolLanguageId;
 			const ServerAdapter* Adapter = nullptr;
 			AdapterContext Context;

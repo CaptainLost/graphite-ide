@@ -2682,3 +2682,24 @@ TEST_CASE("A file whose language has no server has no report")
 
 	CHECK_FALSE(services.ReportFor(temp.GetPath() / "notes.txt", Graphite::LanguageId::PlainText).has_value());
 }
+
+TEST_CASE("A source in a folder inside WSL starts the distro's own server, with nothing looked for on Windows")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	services.SetClientFactory(spy.Get());
+	// A configured Windows clangd that is not there: a Windows folder would report it NotFound.
+	UseClangdAt(services, temp.GetPath() / "no-such-clangd.exe");
+	const std::filesystem::path root{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+	services.SetFallbackRoot(root);
+
+	services.EnsureStarted(root / "a.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(spy.Made == 1);
+	CHECK(spy.LastRoot == root);
+	CHECK(spy.LastLaunch.Binary.filename() == "wsl.exe");
+	REQUIRE(spy.LastLaunch.Arguments.size() > 8);
+	CHECK(spy.LastLaunch.Arguments[1] == "Ubuntu");
+	CHECK(spy.LastLaunch.Arguments[8] == "clangd");
+}
