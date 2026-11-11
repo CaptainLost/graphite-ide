@@ -139,6 +139,79 @@ TEST_CASE("An override replaces the default and a reset brings it back")
 	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(5.0));
 }
 
+TEST_CASE("A fetched price replaces the built-in one, and an edit replaces the fetched one")
+{
+	Pricing pricing = Pricing::Defaults();
+	CHECK(pricing.SourceOf("claude-opus-5") == PriceSource::BuiltIn);
+
+	pricing.SetFetched({{"claude-opus-5", StandardPrice(3.0, 15.0, 0.3)}});
+	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(3.0));
+	CHECK(pricing.SourceOf("claude-opus-5") == PriceSource::Fetched);
+
+	pricing.Set("claude-opus-5", StandardPrice(1.0, 2.0, 0.1));
+	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(1.0));
+	CHECK(pricing.SourceOf("claude-opus-5") == PriceSource::Edited);
+}
+
+TEST_CASE("A reset brings back the fetched price, not the built-in one")
+{
+	Pricing pricing = Pricing::Defaults();
+	pricing.SetFetched({{"claude-opus-5", StandardPrice(3.0, 15.0, 0.3)}});
+	pricing.Set("claude-opus-5", StandardPrice(1.0, 2.0, 0.1));
+
+	pricing.Reset("claude-opus-5");
+
+	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(3.0));
+	CHECK(pricing.SourceOf("claude-opus-5") == PriceSource::Fetched);
+}
+
+TEST_CASE("An edit outlives a later fetch")
+{
+	Pricing pricing = Pricing::Defaults();
+	pricing.Set("claude-opus-5", StandardPrice(1.0, 2.0, 0.1));
+
+	pricing.SetFetched({{"claude-opus-5", StandardPrice(3.0, 15.0, 0.3)}});
+
+	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(1.0));
+	CHECK(pricing.SourceOf("claude-opus-5") == PriceSource::Edited);
+}
+
+TEST_CASE("A fetch adds models the built-in list lacks and keeps the built-in ones it does not name")
+{
+	Pricing pricing = Pricing::Defaults();
+
+	pricing.SetFetched({{"claude-opus-4-5", StandardPrice(5.0, 25.0, 0.5)}});
+
+	REQUIRE(pricing.Find("claude-opus-4-5") != nullptr);
+	CHECK(pricing.SourceOf("claude-opus-4-5") == PriceSource::Fetched);
+	CHECK(pricing.SourceOf("claude-opus-5-5") == PriceSource::BuiltIn);
+}
+
+TEST_CASE("A newer fetch drops a fetched model it no longer names, unless the model is built in")
+{
+	Pricing pricing = Pricing::Defaults();
+	pricing.SetFetched({{"claude-opus-4-5", StandardPrice(5.0, 25.0, 0.5)}, {"claude-opus-5", StandardPrice(3.0, 15.0, 0.3)}});
+
+	pricing.SetFetched({});
+
+	CHECK(pricing.Find("claude-opus-4-5") == nullptr);
+	CHECK(pricing.Find("claude-opus-5")->Input == doctest::Approx(5.0));
+	CHECK(pricing.SourceOf("claude-opus-5") == PriceSource::BuiltIn);
+}
+
+TEST_CASE("A model with no price has no source, and a reset of a model added by hand removes it")
+{
+	Pricing pricing = Pricing::Defaults();
+	CHECK_FALSE(pricing.SourceOf("claude-opus-9").has_value());
+
+	pricing.Set("claude-opus-9", StandardPrice(1.0, 2.0, 0.1));
+	CHECK(pricing.SourceOf("claude-opus-9") == PriceSource::Edited);
+
+	pricing.Reset("claude-opus-9");
+	CHECK(pricing.Find("claude-opus-9") == nullptr);
+	CHECK_FALSE(pricing.SourceOf("claude-opus-9").has_value());
+}
+
 TEST_CASE("A price reads back from the text it is stored as")
 {
 	const Price price = StandardPrice(5.0, 25.0, 0.5);

@@ -157,6 +157,14 @@ namespace Graphite {
 		void SetClaudePrice(std::string_view model, std::string_view price);
 		void RemoveClaudePrice(std::string_view model);
 
+		// The pricing page as last fetched, kept apart from the prices edited by hand.
+		std::vector<std::pair<std::string, std::string>> GetClaudeFetchedPrices() const;
+		void ReplaceClaudeFetchedPrices(const std::vector<std::pair<std::string, std::string>>& prices);
+
+		// The day of the last fetch, as 2026-11-11; empty when the page was never fetched.
+		std::string GetClaudePricesFetchedOn() const;
+		void SetClaudePricesFetchedOn(std::string_view day);
+
 		static std::filesystem::path ThemesDirectory();
 
 		void ApplyKeyBindings(Core::Keymap& keys) const;
@@ -168,6 +176,9 @@ namespace Graphite {
 	private:
 		std::string Get(std::string_view key) const;
 		void Set(std::string_view key, std::string value);
+
+		// Every key starting with the prefix, named without it, with its value.
+		std::vector<std::pair<std::string, std::string>> CollectUnder(std::string_view prefix) const;
 
 		void MoveOldServerPath();
 

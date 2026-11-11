@@ -21,6 +21,7 @@ namespace Graphite {
 	class EditorSettings;
 	class LanguageServices;
 	class ModalGate;
+	class PriceUpdates;
 	class SearchSettings;
 	class ServerInstalls;
 	class TerminalWindows;
@@ -33,6 +34,7 @@ namespace Graphite {
 		SearchSettings& Search;
 		AnalysisSettings& Analysis;
 		ClaudeSettings& Claude;
+		PriceUpdates& Prices;
 		ActiveScheme& Scheme;
 		Core::CommandRegistry& Commands;
 		Core::Keymap& Keys;

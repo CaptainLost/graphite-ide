@@ -55,8 +55,11 @@ namespace Graphite {
 		using LaunchClaude = std::function<Core::Ref<CommandTerminal>(
 			const std::string& label, const ClaudeCommand& command, const std::filesystem::path& workingDirectory)>;
 
+		// Told when a session the panel takes in has tokens under a model with no price.
+		using NoticeUnpricedModel = std::function<void()>;
+
 		SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, const ActiveScheme& scheme,
-					  SessionWindows& windows, LaunchClaude launch);
+					  SessionWindows& windows, LaunchClaude launch, NoticeUnpricedModel noticeUnpriced);
 		~SessionsPanel() override;
 
 		SessionsPanel(const SessionsPanel&) = delete;
@@ -77,6 +80,7 @@ namespace Graphite {
 		void TakeFromWatcher();
 		void SaveCacheWhenSettled();
 		void SaveCache();
+		void NoticeIfUnpriced(const SessionSummary& summary) const;
 
 		const LocalCalendar& Calendar();
 		std::filesystem::path ScopeFolder() const;
@@ -103,6 +107,7 @@ namespace Graphite {
 		const ActiveScheme& m_Scheme;
 		SessionWindows& m_Windows;
 		LaunchClaude m_Launch;
+		NoticeUnpricedModel m_NoticeUnpriced;
 
 		std::filesystem::path m_Projects;
 		std::filesystem::path m_CacheFile;

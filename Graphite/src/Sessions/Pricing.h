@@ -3,6 +3,7 @@
 #include "Sessions/Transcript/TranscriptRecord.h"
 
 #include <compare>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -23,6 +24,17 @@ namespace Graphite {
 	};
 
 	Price StandardPrice(double input, double output, double cacheRead);
+
+	using PriceList = std::map<std::string, Price>;
+
+	// Where a model's price comes from, the later winning: the list built into Graphite, the pricing page as last
+	// fetched, then an edit in settings.
+	enum class PriceSource : std::uint8_t
+	{
+		BuiltIn,
+		Fetched,
+		Edited
+	};
 
 	// WARNING: Claude Code names this model on messages it writes itself; they reach no model and cost nothing.
 	bool IsSyntheticModel(std::string_view model);
@@ -67,9 +79,16 @@ namespace Graphite {
 	public:
 		static Pricing Defaults();
 
+		// An edit: it wins over the built-in and the fetched price, and a later fetch leaves it alone.
 		void Set(std::string model, Price price);
 
+		// Drops the edit, so the fetched price, or failing that the built-in one, shows again.
 		void Reset(const std::string& model);
+
+		// Replaces the whole fetched layer: a model the newer list no longer names falls back to its built-in price.
+		void SetFetched(PriceList prices);
+
+		std::optional<PriceSource> SourceOf(const std::string& model) const;
 
 		// WARNING: Only the id itself, the id with a date suffix (`-20251001`) or with a bracketed
 		// variant (`[1m]`) match. Nothing looser: `claude-opus-5-7` is not `claude-opus-5`, and pricing it
@@ -87,8 +106,12 @@ namespace Graphite {
 		const std::map<std::string, Price>& GetEntries() const { return m_Prices; }
 
 	private:
-		std::map<std::string, Price> m_Prices;
-		std::map<std::string, Price> m_Defaults;
+		void Rebuild();
+
+		PriceList m_Prices;
+		PriceList m_Defaults;
+		PriceList m_Fetched;
+		PriceList m_Edited;
 	};
 
 	std::optional<Price> ParsePrice(std::string_view text);

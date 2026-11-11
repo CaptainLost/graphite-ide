@@ -1,6 +1,7 @@
 #include "Settings/Panel/ClaudeSessionsPage.h"
 
 #include "Sessions/ClaudeSettings.h"
+#include "Sessions/PriceUpdates.h"
 #include "Settings/Panel/SettingsLayout.h"
 
 #include "Core/Base/Ascii.h"
@@ -49,9 +50,57 @@ namespace Graphite {
 		program.Rows.push_back(std::move(binary));
 
 		SettingsCard prices{.Heading = "Prices", .Note = "Dollars per million tokens."};
+		prices.Rows.push_back(DescribePriceList());
 		prices.Rows.push_back(SettingsRow{.Title = "Prices", .Keywords = {"price", "cost", "model", "token"}, .DrawBlock = [this] { DrawPrices(); }});
 
 		return {program, prices};
+	}
+
+	SettingsRow ClaudeSessionsPage::DescribePriceList()
+	{
+		SettingsRow row{.Title = "Price list", .Keywords = {"price", "fetch", "refresh", "pricing page"}};
+		const std::string refreshLabel = "Refresh";
+
+		const std::string& fetchedOn = m_Settings.GetPricesFetchedOn();
+
+		if (!m_Updates.CanFetch())
+		{
+			row.Description = "Built into Graphite; this build cannot reach the network to fetch the pricing page.";
+			return row;
+		}
+
+		if (m_Updates.IsFetching())
+		{
+			row.Description = "Fetching the Claude pricing page…";
+		}
+		else if (fetchedOn.empty())
+		{
+			row.Description = "Built into Graphite; the Claude pricing page has not been fetched yet.";
+		}
+		else
+		{
+			row.Description = "From the Claude pricing page, fetched on " + fetchedOn + ". A price edited here stays until it is reset.";
+		}
+
+		if (const std::optional<std::string>& problem = m_Updates.GetProblem())
+		{
+			row.Problem = "The last fetch failed: " + *problem + ".";
+		}
+
+		// WARNING: A row without a control width never draws its control.
+		row.ControlWidth = SettingsLayout::ButtonsWidth(std::vector<std::string>{refreshLabel});
+		row.DrawControl = [this, refreshLabel] {
+			ImGui::BeginDisabled(m_Updates.IsFetching());
+
+			if (Core::TextButton(refreshLabel.c_str()))
+			{
+				m_Updates.Fetch();
+			}
+
+			ImGui::EndDisabled();
+		};
+
+		return row;
 	}
 
 	void ClaudeSessionsPage::RefreshResolved()
@@ -110,6 +159,14 @@ namespace Graphite {
 			ImGui::TableNextColumn();
 			ImGui::TextUnformatted(model.c_str());
 
+			const bool isEdited = m_Settings.GetPricing().SourceOf(model) == PriceSource::Edited;
+
+			if (isEdited)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("edited");
+			}
+
 			Price edited = price;
 			double* fields[] = {&edited.Input, &edited.Output, &edited.CacheWrite5m, &edited.CacheWrite1h, &edited.CacheRead};
 
@@ -132,7 +189,7 @@ namespace Graphite {
 
 			ImGui::TableNextColumn();
 
-			if (Core::SmallTextButton("Reset"))
+			if (isEdited && Core::SmallTextButton("Reset"))
 			{
 				m_Settings.ResetPrice(model);
 			}

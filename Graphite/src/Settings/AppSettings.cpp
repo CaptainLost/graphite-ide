@@ -64,6 +64,8 @@ namespace Graphite {
 		constexpr const char* kDefaultShellKey = "defaultShell";
 		constexpr const char* kClaudeBinaryKey = "claude.binary";
 		constexpr std::string_view kClaudePricePrefix = "claude.price.";
+		constexpr std::string_view kClaudeFetchedPricePrefix = "claude.fetchedPrice.";
+		constexpr const char* kClaudePricesFetchedOnKey = "claude.pricesFetchedOn";
 
 		constexpr const char* kSearchRespectGitIgnoreKey = "searchRespectGitIgnore";
 		constexpr const char* kSearchProjectsOnlyKey = "searchProjectsOnly";
@@ -794,21 +796,56 @@ namespace Graphite {
 		Set(kDefaultShellKey, std::string{profileName});
 	}
 
-	std::vector<std::pair<std::string, std::string>> AppSettings::GetClaudePrices() const
+	std::vector<std::pair<std::string, std::string>> AppSettings::CollectUnder(std::string_view prefix) const
 	{
-		std::vector<std::pair<std::string, std::string>> prices;
+		std::vector<std::pair<std::string, std::string>> values;
 
 		for (const std::string& key : m_Document.CollectKeys())
 		{
-			if (!std::string_view{key}.starts_with(kClaudePricePrefix))
+			if (!std::string_view{key}.starts_with(prefix))
 			{
 				continue;
 			}
 
-			prices.emplace_back(key.substr(kClaudePricePrefix.size()), m_Document.Get(key));
+			values.emplace_back(key.substr(prefix.size()), m_Document.Get(key));
 		}
 
-		return prices;
+		return values;
+	}
+
+	std::vector<std::pair<std::string, std::string>> AppSettings::GetClaudePrices() const
+	{
+		return CollectUnder(kClaudePricePrefix);
+	}
+
+	std::vector<std::pair<std::string, std::string>> AppSettings::GetClaudeFetchedPrices() const
+	{
+		return CollectUnder(kClaudeFetchedPricePrefix);
+	}
+
+	void AppSettings::ReplaceClaudeFetchedPrices(const std::vector<std::pair<std::string, std::string>>& prices)
+	{
+		for (const auto& [model, price] : GetClaudeFetchedPrices())
+		{
+			m_Document.Remove(std::string{kClaudeFetchedPricePrefix} + model);
+		}
+
+		for (const auto& [model, price] : prices)
+		{
+			m_Document.Set(std::string{kClaudeFetchedPricePrefix} + model, price);
+		}
+
+		m_Unwritten = true;
+	}
+
+	std::string AppSettings::GetClaudePricesFetchedOn() const
+	{
+		return Get(kClaudePricesFetchedOnKey);
+	}
+
+	void AppSettings::SetClaudePricesFetchedOn(std::string_view day)
+	{
+		Set(kClaudePricesFetchedOnKey, std::string{day});
 	}
 
 	void AppSettings::SetClaudePrice(std::string_view model, std::string_view price)

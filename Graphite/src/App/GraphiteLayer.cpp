@@ -270,13 +270,15 @@ namespace Graphite {
 													 m_Events, m_ChangesShared));
 
 		m_ClaudeSettings.Load();
+		m_PriceUpdates.FetchIfNeverFetched();
 
 		m_SessionsPanel = m_Panels.Add(Core::CreateScope<SessionsPanel>(
 			m_Workspace, m_ClaudeSettings, m_ActiveScheme, m_SessionWindows,
 			[this](const std::string& label, const ClaudeCommand& command,
 				   const std::filesystem::path& workingDirectory) {
 				return m_Terminals.OpenCommand(label, command.Program, command.Arguments, workingDirectory);
-			}));
+			},
+			[this] { m_PriceUpdates.FetchForUnpricedModel(); }));
 
 		// Until a tab takes the keyboard, editor commands act on the active tab, as they always did.
 		m_ActiveEditor.Set(m_DocumentWindows);
@@ -320,6 +322,7 @@ namespace Graphite {
 											  .Search = m_SearchSettings,
 											  .Analysis = m_AnalysisSettings,
 											  .Claude = m_ClaudeSettings,
+											  .Prices = m_PriceUpdates,
 											  .Scheme = m_ActiveScheme,
 											  .Commands = m_Commands,
 											  .Keys = m_Keys,
@@ -837,13 +840,13 @@ namespace Graphite {
 		Core::SetWslFileOperations(nullptr);
 	}
 
-	Core::Ref<Core::HttpClient> GraphiteLayer::CreateInstallClient()
+	Core::Ref<Core::HttpClient> GraphiteLayer::CreateHttpClientFor(std::string_view whatNeedsIt)
 	{
 		Core::Result<Core::Scope<Core::HttpClient>> created = Core::CreateHttpClient(std::string{"Graphite/"} + Version::String());
 
 		if (!created)
 		{
-			APP_WARN("Language servers cannot be downloaded: {}", created.GetError().Message);
+			APP_WARN("{}: {}", whatNeedsIt, created.GetError().Message);
 			return nullptr;
 		}
 
@@ -1042,6 +1045,9 @@ namespace Graphite {
 		m_LanguageServices.Poll();
 		PublishServerMessages();
 		ApplyFinishedInstalls();
+
+		// Before the panels, so the dashboard prices with what landed this frame.
+		m_PriceUpdates.Poll();
 
 		// WARNING: Feed the diagnostics model before anything draws: a model fed later is read by the panel one frame before it is written, and the squiggle and the panel row disagree.
 		DiagnosticsUpdate diagnostics;

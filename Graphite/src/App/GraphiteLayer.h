@@ -55,6 +55,8 @@
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Sessions/ClaudeSettings.h"
+#include "Sessions/Overview/LocalCalendar.h"
+#include "Sessions/PriceUpdates.h"
 #include "Settings/AnalysisSettings.h"
 #include "Settings/AppSettings.h"
 #include "Settings/WorkspaceSettings.h"
@@ -91,6 +93,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -254,7 +257,8 @@ namespace Graphite {
 
 		void PublishServerMessages();
 
-		static Core::Ref<Core::HttpClient> CreateInstallClient();
+		// Null when the platform has no HTTP backend; what cannot be done without it is logged.
+		static Core::Ref<Core::HttpClient> CreateHttpClientFor(std::string_view whatNeedsIt);
 		void ApplyFinishedInstalls();
 		bool CanInstallChosenServerFor(const std::filesystem::path& path);
 		void InstallChosenServerFor(LanguageId language);
@@ -310,7 +314,7 @@ namespace Graphite {
 
 		// WARNING: Declared before m_ServerInstalls so it is destroyed after it: the installer cancels its jobs, then this joins them.
 		Core::JobQueue m_InstallJobs{1};
-		ServerInstalls m_ServerInstalls{CreateInstallClient(), UserDirectories::ServersDirectory(),
+		ServerInstalls m_ServerInstalls{CreateHttpClientFor("Language servers cannot be downloaded"), UserDirectories::ServersDirectory(),
 										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
 
 		std::set<LanguageId> m_LanguagePromptsDismissedUntilRestart;
@@ -518,6 +522,13 @@ namespace Graphite {
 		// m_SessionWindows joins a worker per open session in its own destructor, and nothing it refers to is declared after it.
 		ClaudeSettings m_ClaudeSettings{m_AppSettings};
 		SessionWindows m_SessionWindows{m_Events, m_ClaudeSettings};
+
+		// A queue of its own, so a fetch never waits behind a language server download. The fetch holds only the client
+		// and its own mailbox, so it may finish after m_PriceUpdates is gone.
+		Core::JobQueue m_PriceJobs{1};
+		PriceUpdates m_PriceUpdates{m_ClaudeSettings, CreateHttpClientFor("Claude prices cannot be fetched"),
+									[this](std::function<void()> job) { m_PriceJobs.Submit(std::move(job)); },
+									[] { return std::format("{}", LocalCalendar::Current().Today()); }};
 
 		// Every toast and the history the bell opens.
 		NotificationCentre m_Notifications;

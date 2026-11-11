@@ -12,6 +12,7 @@
 #include "Language/Server/LanguageServices.h"
 #include "Search/SearchSettings.h"
 #include "Sessions/ClaudeSettings.h"
+#include "Sessions/PriceUpdates.h"
 #include "Settings/AnalysisSettings.h"
 #include "Settings/Panel/SettingsPanel.h"
 #include "Settings/Panel/SettingsSearch.h"
@@ -61,6 +62,7 @@ namespace {
 		Graphite::TerminalWindows Terminals{Workspace, Keys, Commands, Settings.Get(), Events, Typing};
 		DeferredJobs Jobs;
 		Graphite::ServerInstalls Installs{Core::CreateRef<FakeHttpClient>(), Temp.GetPath() / "servers", Jobs.Submitter()};
+		Graphite::PriceUpdates Prices{Claude, Core::CreateRef<FakeHttpClient>(), Jobs.Submitter(), [] { return std::string{"2026-11-11"}; }};
 		Graphite::LanguageServices Services{Temp.GetPath()};
 		bool SolutionLoaded = false;
 
@@ -71,6 +73,7 @@ namespace {
 											 .Search = Search,
 											 .Analysis = Analysis,
 											 .Claude = Claude,
+											 .Prices = Prices,
 											 .Scheme = Scheme,
 											 .Commands = Commands,
 											 .Keys = Keys,

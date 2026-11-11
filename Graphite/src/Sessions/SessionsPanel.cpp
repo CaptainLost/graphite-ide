@@ -61,10 +61,22 @@ namespace Graphite {
 	}
 
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, const ActiveScheme& scheme,
-								 SessionWindows& windows, LaunchClaude launch)
+								 SessionWindows& windows, LaunchClaude launch, NoticeUnpricedModel noticeUnpriced)
 		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_LC_BOT, StartsAs::Hidden, Sides::Flush),
-		  m_Workspace(workspace), m_Settings(settings), m_Scheme(scheme), m_Windows(windows), m_Launch(std::move(launch))
+		  m_Workspace(workspace), m_Settings(settings), m_Scheme(scheme), m_Windows(windows), m_Launch(std::move(launch)),
+		  m_NoticeUnpriced(std::move(noticeUnpriced))
 	{
+	}
+
+	void SessionsPanel::NoticeIfUnpriced(const SessionSummary& summary) const
+	{
+		const Pricing& pricing = m_Settings.GetPricing();
+		const bool unpriced = !pricing.CostOf(summary.Main).IsKnown() || !pricing.CostOf(summary.Subagents).IsKnown();
+
+		if (unpriced && m_NoticeUnpriced)
+		{
+			m_NoticeUnpriced();
+		}
 	}
 
 	SessionsPanelChoice SessionsPanel::GetChoice() const
@@ -140,6 +152,7 @@ namespace Graphite {
 
 		for (const SessionSummary& summary : cached)
 		{
+			NoticeIfUnpriced(summary);
 			m_Sessions[summary.File] = summary;
 		}
 
@@ -178,6 +191,7 @@ namespace Graphite {
 		for (SessionSummary& summary : delivery.Updated)
 		{
 			m_Windows.UpdateSummary(summary);
+			NoticeIfUnpriced(summary);
 			m_Sessions[summary.File] = std::move(summary);
 			m_CacheDirty = true;
 		}

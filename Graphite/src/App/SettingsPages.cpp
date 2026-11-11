@@ -32,7 +32,7 @@ namespace Graphite {
 		panels.Pages.push_back(Core::CreateScope<FindInFilesPage>(sources.Search, sources.SolutionLoaded));
 		panels.Pages.push_back(Core::CreateScope<GitPage>(sources.Editor));
 		panels.Pages.push_back(Core::CreateScope<TerminalPage>(sources.Store, sources.Terminals));
-		panels.Pages.push_back(Core::CreateScope<ClaudeSessionsPage>(sources.Claude));
+		panels.Pages.push_back(Core::CreateScope<ClaudeSessionsPage>(sources.Claude, sources.Prices));
 
 		std::vector<SettingsGroup> groups;
 		groups.push_back(std::move(general));

@@ -12,11 +12,12 @@
 namespace Graphite {
 
 	class ClaudeSettings;
+	class PriceUpdates;
 
 	class ClaudeSessionsPage final : public SettingsPage
 	{
 	public:
-		explicit ClaudeSessionsPage(ClaudeSettings& settings) : m_Settings(settings) {}
+		ClaudeSessionsPage(ClaudeSettings& settings, PriceUpdates& updates) : m_Settings(settings), m_Updates(updates) {}
 
 		std::string_view GetId() const override { return "claudeSessions"; }
 
@@ -29,10 +30,12 @@ namespace Graphite {
 	private:
 		void RefreshResolved();
 		void DrawBinary();
+		SettingsRow DescribePriceList();
 		void DrawPrices();
 		void DrawNewPrice();
 
 		ClaudeSettings& m_Settings;
+		PriceUpdates& m_Updates;
 
 		std::string m_BinaryBeingTyped;
 		bool m_EditingBinary = false;

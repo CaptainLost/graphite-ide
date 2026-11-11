@@ -85,8 +85,9 @@ namespace Graphite {
 	{
 		Pricing pricing;
 
-		// WARNING: Older models are deliberately absent. An absent model shows as "?" and can be
-		// priced in settings, where a guessed price would show a wrong number with nothing to say it was guessed.
+		// WARNING: Older models are deliberately absent. The fetched pricing page names those it still lists; until
+		// it has been fetched, and for any it does not list, an absent model shows as "?" and can be priced in
+		// settings, where a guessed price would show a wrong number with nothing to say it was guessed.
 		// WARNING: Haiku 5.5's cache read is assumed at a tenth of its input price, and its dearer tier past 100K
 		// input tokens ($0.50 / $2.50) is not modelled, so a request that long is priced low.
 		pricing.m_Defaults = {
@@ -106,25 +107,58 @@ namespace Graphite {
 			{"claude-haiku-4-5", StandardPrice(1.0, 5.0, 0.1)},
 		};
 
-		pricing.m_Prices = pricing.m_Defaults;
+		pricing.Rebuild();
 		return pricing;
 	}
 
 	void Pricing::Set(std::string model, Price price)
 	{
-		m_Prices[std::move(model)] = price;
+		m_Prices[model] = price;
+		m_Edited[std::move(model)] = price;
 	}
 
 	void Pricing::Reset(const std::string& model)
 	{
-		if (const std::map<std::string, Price>::const_iterator found = m_Defaults.find(model); found != m_Defaults.end())
+		m_Edited.erase(model);
+		Rebuild();
+	}
+
+	void Pricing::SetFetched(PriceList prices)
+	{
+		m_Fetched = std::move(prices);
+		Rebuild();
+	}
+
+	std::optional<PriceSource> Pricing::SourceOf(const std::string& model) const
+	{
+		if (m_Edited.contains(model))
 		{
-			const auto& [defaultModel, defaultPrice] = *found;
-			m_Prices[model] = defaultPrice;
+			return PriceSource::Edited;
 		}
-		else
+
+		if (m_Fetched.contains(model))
 		{
-			m_Prices.erase(model);
+			return PriceSource::Fetched;
+		}
+
+		if (m_Defaults.contains(model))
+		{
+			return PriceSource::BuiltIn;
+		}
+
+		return std::nullopt;
+	}
+
+	void Pricing::Rebuild()
+	{
+		m_Prices = m_Defaults;
+
+		for (const PriceList* layer : {&m_Fetched, &m_Edited})
+		{
+			for (const auto& [model, price] : *layer)
+			{
+				m_Prices.insert_or_assign(model, price);
+			}
 		}
 	}
 

@@ -731,4 +731,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0699](0699-derive-the-sessions-dashboard-from-the-transcripts-alone-and-keep-no-history-of-its-own.md) | Derive the sessions dashboard from the transcripts alone and keep no history of its own | proposed | 2026-11-10 |
 | [0700](0700-bucket-session-usage-by-utc-hour-in-the-summary-and-price-it-at-display.md) | Bucket session usage by UTC hour in the summary and price it at display | proposed | 2026-11-10 |
 | [0701](0701-fill-the-sessions-dashboard-s-height-with-a-day-by-day-timeline-of-sessions.md) | Fill the sessions dashboard's height with a day-by-day timeline of sessions | proposed | 2026-11-11 |
+| [0702](0702-fetch-claude-prices-from-the-pricing-page-and-layer-them-between-the-built-in-list-and-edits.md) | Fetch Claude prices from the pricing page and layer them between the built-in list and edits | proposed | 2026-11-11 |
 <!-- /adr-index -->
