@@ -546,7 +546,8 @@ namespace Graphite {
 		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.Restarts = server.Restarts;
 
-		if (m_Uninstalling && m_Uninstalling(server.Definition->Id))
+		// The uninstall asked about is Windows', which a folder inside WSL does not run.
+		if (m_Uninstalling && m_Uninstalling(server.Definition->Id) && !Core::ParseWslSharePath(key.Root))
 		{
 			server.Status.State = ServerState::NotInstalled;
 			server.Status.Detail = "it is being uninstalled";
@@ -563,7 +564,9 @@ namespace Graphite {
 
 			if (distroServers)
 			{
-				if (const std::optional<InstalledServer> found = FindInstalledServer(ServerDirectoryOf(*distroServers, server.Definition->Id)))
+				// Only a program: a dotnet-run tool's command is its .dll, which the shell cannot run.
+				if (const std::optional<InstalledServer> found = FindInstalledServer(ServerDirectoryOf(*distroServers, server.Definition->Id));
+					found && found->Record.Command.Runner == LaunchRunner::Executable)
 				{
 					installed = found->Command;
 				}

@@ -231,6 +231,7 @@ namespace Graphite {
 			Core::Ref<Core::ChildProcess> Process;
 			BodyTranslation Translation;
 			std::string WhenProgramMissing;
+			ServerState WhenProgramMissingState = ServerState::NotFound;
 			std::string ProtocolLanguageId;
 			const ServerAdapter* Adapter = nullptr;
 			AdapterContext Context;

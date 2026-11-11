@@ -880,10 +880,18 @@ namespace Graphite {
 	{
 		ApplyFinishedInstallsOf(m_ServerInstalls, std::string{});
 
-		for (const auto& [distro, installs] : m_DistroInstalls)
-		{
-			ApplyFinishedInstallsOf(*installs, distro);
-		}
+		// A server may have started before the distro's agent said where its installs are, and so
+		// run as the name on PATH: once they are read, the languages installed there restart.
+		m_DistroInstalls.Poll([this](ServerInstalls& installs, const std::string& distro) { ApplyFinishedInstallsOf(installs, distro); },
+							  [this](ServerInstalls& installs) {
+								  for (const LanguageId language : kAllLanguages)
+								  {
+									  if (const ServerDefinition* chosen = m_LanguageServices.ChosenServer(language); chosen != nullptr && installs.InstalledVersionOf(chosen->Id))
+									  {
+										  m_LanguageServices.Reconfigure(language);
+									  }
+								  }
+							  });
 	}
 
 	ServerInstalls* GraphiteLayer::InstallsForFolder()
@@ -898,27 +906,7 @@ namespace Graphite {
 
 	ServerInstalls* GraphiteLayer::DistroInstallsFor(const std::string& distro)
 	{
-		if (const auto known = m_DistroInstalls.find(distro); known != m_DistroInstalls.end())
-		{
-			return known->second.get();
-		}
-
-		// Never waits: the distro's agent is asked for again on a later frame while it starts.
-		const Core::Result<std::shared_ptr<Core::AgentConnection>> agent = m_WslAgents.Peek(distro);
-
-		if (!agent || agent.GetValue()->GetHome().empty())
-		{
-			return nullptr;
-		}
-
-		constexpr Core::PlatformTarget kDistroPlatform{.System = Core::OperatingSystem::Linux, .Machine = Core::Architecture::X64};
-		auto installs = Core::CreateScope<ServerInstalls>(
-			CreateHttpClientFor("Language servers cannot be downloaded"), DistroServersDirectory(distro, agent.GetValue()->GetHome()),
-			[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }, kDistroPlatform,
-			MakeExecutableInDistro(distro, Core::WslExecutable()));
-		installs->SweepAtStartup();
-
-		return m_DistroInstalls.emplace(distro, std::move(installs)).first->second.get();
+		return m_DistroInstalls.For(distro);
 	}
 
 	void GraphiteLayer::ApplyFinishedInstallsOf(ServerInstalls& installs, const std::string& where)
@@ -1192,7 +1180,10 @@ namespace Graphite {
 				.Language = activeLanguage,
 				.Choice = ServerChoice{.Kind = choice.Kind, .Server = choice.Server},
 				.State = status.State,
-				.Install = choice.Server != nullptr && folderInstalls != nullptr ? InstallInputsFor(*folderInstalls, *choice.Server) : InstallInputs{},
+				// A WSL folder's distro not answering yet reads as installs not read yet: nothing to click.
+				.Install = choice.Server == nullptr	   ? InstallInputs{}
+						   : folderInstalls != nullptr ? InstallInputsFor(*folderInstalls, *choice.Server)
+													   : InstallInputs{.HasReadInstalls = false},
 				.Dismissed = m_LanguagePromptsDismissedUntilRestart.contains(activeLanguage),
 				.RestrictedModeShown = m_Workspace.IsOpen() && !workspaceTrusted});
 		}

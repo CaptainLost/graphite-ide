@@ -103,6 +103,16 @@ TEST_CASE("A WSL folder's language server starts in the distro through its login
 	CHECK(launch.Translation.FromServer);
 	CHECK(launch.WhenProgramMissing == "clangd is not installed in Ubuntu, or not on its PATH");
 	CHECK(launch.Description == "clangd in Ubuntu");
+	// Nothing configured and nothing installed: the folder's prompt offers to install it into the distro.
+	CHECK(launch.WhenProgramMissingState == Graphite::ServerState::NotInstalled);
+}
+
+TEST_CASE("A configured or installed program missing from the distro is not found, rather than not installed")
+{
+	const Graphite::ServerLaunch launch =
+		Graphite::WslServerLaunch(Clangd(), "/opt/llvm/bin/clangd", Graphite::ServerOverrides{}, kRoot, kWsl);
+
+	CHECK(launch.WhenProgramMissingState == Graphite::ServerState::NotFound);
 }
 
 TEST_CASE("A server whose shell exits with 127 is reported missing, as its launch words it")

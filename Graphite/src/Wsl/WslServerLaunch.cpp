@@ -53,6 +53,8 @@ namespace Graphite {
 		launch.Environment.clear();
 		launch.Description = std::format("{} in {}", program, root.Distro);
 		launch.WhenProgramMissing = std::format("{} is not installed in {}, or not on its PATH", program, root.Distro);
+		// Only the catalogue's own name, looked for on PATH, is one installing would provide.
+		launch.WhenProgramMissingState = program == server.ExecutableName ? ServerState::NotInstalled : ServerState::NotFound;
 		launch.Translation = BodyTranslation{.ToServer = [root](std::string_view body) { return ToDistroBody(body, root); },
 											 .FromServer = [distro = root.Distro](std::string_view body) { return FromDistroBody(body, distro); }};
 		return launch;

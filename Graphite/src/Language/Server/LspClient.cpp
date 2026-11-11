@@ -357,6 +357,7 @@ namespace Graphite {
 		m_Shared->ProtocolLanguageId = std::string(launch.Server->ProtocolLanguageId);
 		m_Shared->Translation = launch.Translation;
 		m_Shared->WhenProgramMissing = launch.WhenProgramMissing;
+		m_Shared->WhenProgramMissingState = launch.WhenProgramMissingState;
 		m_Shared->Adapter = launch.Adapter;
 		m_Shared->Context = AdapterContext{.Root = root,
 										   .InitializationOptions = launch.InitializationOptions,
@@ -1043,7 +1044,7 @@ namespace Graphite {
 
 		if (!shared->Stopping.load())
 		{
-			shared->Status.State = programMissing ? ServerState::NotFound : ServerState::Failed;
+			shared->Status.State = programMissing ? shared->WhenProgramMissingState : ServerState::Failed;
 			shared->Status.Detail = programMissing ? shared->WhenProgramMissing : "the language server stopped";
 			shared->Status.Percent = kNoPercent;
 		}

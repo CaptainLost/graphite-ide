@@ -1,5 +1,9 @@
 #include "Wsl/WslServerInstalls.h"
 
+#include "Wsl/WslAgents.h"
+
+#include "Core/Remote/AgentDeployment.h"
+
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/FileSystem/WslSharePath.h"
@@ -16,6 +20,48 @@ namespace Graphite {
 
 		// A distro that is running answers at once; one that is not starts first.
 		constexpr std::chrono::seconds kLongestChmod{60};
+	}
+
+	DistroServerInstalls::DistroServerInstalls(WslAgents& agents, HttpMaker makeHttp, Core::JobSubmitter submit)
+		: m_Agents(agents), m_MakeHttp(std::move(makeHttp)), m_Submit(std::move(submit))
+	{
+	}
+
+	ServerInstalls* DistroServerInstalls::For(const std::string& distro)
+	{
+		if (const auto known = m_Installs.find(distro); known != m_Installs.end())
+		{
+			return known->second.get();
+		}
+
+		// Never waits: asked again on a later frame while the distro's agent starts.
+		const Core::Result<std::shared_ptr<Core::AgentConnection>> agent = m_Agents.Peek(distro);
+
+		if (!agent || agent.GetValue()->GetHome().empty())
+		{
+			return nullptr;
+		}
+
+		constexpr Core::PlatformTarget kDistroPlatform{.System = Core::OperatingSystem::Linux, .Machine = Core::Architecture::X64};
+		auto installs = Core::CreateScope<ServerInstalls>(m_MakeHttp(), DistroServersDirectory(distro, agent.GetValue()->GetHome()), m_Submit,
+														  kDistroPlatform, MakeExecutableInDistro(distro, Core::WslExecutable()));
+		installs->SweepAtStartup();
+
+		return m_Installs.emplace(distro, std::move(installs)).first->second.get();
+	}
+
+	void DistroServerInstalls::Poll(const std::function<void(ServerInstalls&, const std::string&)>& apply,
+									const std::function<void(ServerInstalls&)>& firstRead)
+	{
+		for (const auto& [distro, installs] : m_Installs)
+		{
+			apply(*installs, distro);
+
+			if (installs->HasReadInstalls() && m_Read.insert(distro).second)
+			{
+				firstRead(*installs);
+			}
+		}
 	}
 
 	std::filesystem::path DistroServersDirectory(const std::string& distro, const std::string& linuxHome)

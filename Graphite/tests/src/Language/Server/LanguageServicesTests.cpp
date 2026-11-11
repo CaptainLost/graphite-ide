@@ -11,12 +11,15 @@
 #include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Remote/AgentDeployment.h"
 
 #include <chrono>
 #include <cwctype>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
+#include <process.h>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -2704,25 +2707,45 @@ TEST_CASE("A source in a folder inside WSL starts the distro's own server, with 
 	CHECK(spy.LastLaunch.Arguments[8] == "clangd");
 }
 
-TEST_CASE("A folder inside WSL runs the server installed into its distro before one on the distro's PATH")
+// The real distro: an install record in its servers folder, read through the share.
+TEST_CASE("A folder inside WSL runs the server installed into its real distro by its Linux path, before one on the distro's PATH")
 {
+	std::error_code error;
+
+	if (!Core::IsWslAvailable() || !std::filesystem::exists(L"\\\\wsl.localhost\\Ubuntu\\tmp", error))
+	{
+		MESSAGE("no WSL Ubuntu here: skipped");
+		return;
+	}
+
 	TempDirectory temp;
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
 	services.SetClientFactory(spy.Get());
 	UseClangdAt(services, temp.GetPath() / "no-such-clangd.exe");
 
-	// The distro's servers folder, as its share path, stands in here as a local folder holding an install.
-	const std::filesystem::path distroServers = temp.GetPath() / "distro-servers";
+	// The record is written here and copied over: an atomic write cannot replace a file on the share
+	// (Graphite routes those through the agent, which this test does not start).
+	const std::filesystem::path localRecord = temp.GetPath() / "record";
+	std::filesystem::create_directories(localRecord, error);
+	REQUIRE(Graphite::WriteInstallRecord(localRecord, Graphite::InstallRecord{.Version = "21.1.0",
+																			   .Command = {.Runner = Graphite::LaunchRunner::Executable,
+																						   .RelativePath = "clangd_21.1.0/bin/clangd"}}));
+
+	const std::string name = "graphite-distroinstall-" + std::to_string(_getpid());
+	const std::filesystem::path share = std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\tmp\\"} / Core::FromUtf8(name);
+	const std::filesystem::path distroServers = share / "servers";
 	const std::filesystem::path clangdDirectory = Graphite::ServerDirectoryOf(distroServers, "clangd");
-	temp.MakeFile("distro-servers/clangd/21.1.0/clangd_21.1.0/bin/clangd", "a server");
-	REQUIRE(Graphite::WriteInstallRecord(clangdDirectory, Graphite::InstallRecord{.Version = "21.1.0",
-																				  .Command = {.Runner = Graphite::LaunchRunner::Executable,
-																							  .RelativePath = "clangd_21.1.0/bin/clangd"}}));
-	std::string askedFor;
+	std::filesystem::create_directories(clangdDirectory / "21.1.0" / "clangd_21.1.0" / "bin", error);
+	std::ofstream{clangdDirectory / "21.1.0" / "clangd_21.1.0" / "bin" / "clangd", std::ios::binary} << "a server";
+
+	for (const std::filesystem::directory_entry& file : std::filesystem::directory_iterator{localRecord})
+	{
+		std::filesystem::copy_file(file.path(), clangdDirectory / file.path().filename(), std::filesystem::copy_options::overwrite_existing, error);
+	}
+
 	services.SetDistroServersDirectory([&](const std::string& distro) -> std::optional<std::filesystem::path> {
-		askedFor = distro;
-		return distroServers;
+		return distro == "Ubuntu" ? std::optional{distroServers} : std::nullopt;
 	});
 	const std::filesystem::path root{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
 	services.SetFallbackRoot(root);
@@ -2730,8 +2753,8 @@ TEST_CASE("A folder inside WSL runs the server installed into its distro before 
 	services.EnsureStarted(root / "a.cpp", Graphite::LanguageId::Cpp);
 
 	REQUIRE(spy.Made == 1);
-	CHECK(askedFor == "Ubuntu");
 	REQUIRE(spy.LastLaunch.Arguments.size() > 8);
-	// A local stand-in has no Linux path: the install is used only when it is in the distro.
-	CHECK(spy.LastLaunch.Arguments[8] == "clangd");
+	CHECK(spy.LastLaunch.Arguments[8] == "/tmp/" + name + "/servers/" + Core::ToGenericUtf8(clangdDirectory.filename()) + "/21.1.0/clangd_21.1.0/bin/clangd");
+
+	std::filesystem::remove_all(share, error);
 }

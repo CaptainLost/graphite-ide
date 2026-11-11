@@ -65,6 +65,7 @@
 #include "Workspace/DroppedPaths.h"
 #include "Wsl/LauncherScript.h"
 #include "Wsl/WslAgents.h"
+#include "Wsl/WslServerInstalls.h"
 
 #include "Core/Remote/AgentDeployment.h"
 #include "Workspace/FolderTransitions.h"
@@ -95,7 +96,6 @@
 #include <filesystem>
 #include <format>
 #include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -326,7 +326,8 @@ namespace Graphite {
 										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
 
 		// Installs into each WSL distro a folder was opened in, made once its agent has said where home is.
-		std::map<std::string, Core::Scope<ServerInstalls>, std::less<>> m_DistroInstalls;
+		DistroServerInstalls m_DistroInstalls{m_WslAgents, [this] { return CreateHttpClientFor("Language servers cannot be downloaded"); },
+											  [this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
 
 		std::set<LanguageId> m_LanguagePromptsDismissedUntilRestart;
 		std::set<std::filesystem::path> m_RestrictedBarsHiddenUntilRestart;

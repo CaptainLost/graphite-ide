@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Language/Api/LanguageService.h"
 #include "Language/Server/ServerCatalog.h"
 
 #include "Core/Platform/ChildProcess.h"
@@ -49,8 +50,10 @@ namespace Graphite {
 		BodyTranslation Translation;
 
 		// What the status says when the program exits with 127, a POSIX shell's "command not found",
-		// for a server started through one; empty for any other.
+		// for a server started through one; empty for any other. NotInstalled when installing it
+		// would help (nothing was configured), NotFound when a named program is not there.
 		std::string WhenProgramMissing;
+		ServerState WhenProgramMissingState = ServerState::NotFound;
 	};
 
 	struct LaunchPlaces
