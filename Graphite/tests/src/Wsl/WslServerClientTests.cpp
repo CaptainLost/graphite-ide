@@ -3,7 +3,7 @@
 #include "Language/Server/LspClient.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerLaunch.h"
-#include "Wsl/WslServerUris.h"
+#include "Wsl/WslServerLaunch.h"
 
 #include "LspMessages.h"
 
@@ -20,10 +20,8 @@ namespace {
 	// A clangd launch whose messages are spoken in the distro's paths, with no process behind it.
 	Graphite::LspClient DistroClient()
 	{
-		Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("clangd"), "clangd", Graphite::ServerOverrides{});
-		const Core::WslSharePath root{"Ubuntu", "/home/me/p"};
-		launch.Translation = Graphite::BodyTranslation{.ToServer = [root](std::string_view body) { return Graphite::ToDistroBody(body, root); },
-													   .FromServer = [](std::string_view body) { return Graphite::FromDistroBody(body, "Ubuntu"); }};
+		const Graphite::ServerLaunch launch = Graphite::WslServerLaunch(*Graphite::FindServer("clangd"), "clangd", Graphite::ServerOverrides{},
+																		Core::WslSharePath{"Ubuntu", "/home/me/p"}, L"C:\\Windows\\System32\\wsl.exe");
 		return Graphite::LspClient{launch, kRoot, Graphite::LspClient::WithoutServer{}};
 	}
 }

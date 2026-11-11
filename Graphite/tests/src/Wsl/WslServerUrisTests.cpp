@@ -72,6 +72,37 @@ TEST_CASE("Only the WSL folder's own distro is translated: another distro, a Win
 	CHECK(received.at("uri") == "file:///C:/work/y.cpp");
 }
 
+TEST_CASE("A Linux name holding a backslash stays one name both ways")
+{
+	// The share spells a '\' in a Linux name as U+F05C.
+	const json sent = Sent({{"uri", "file:////wsl.localhost/Ubuntu/home/me/p/a%EF%81%9Cb.cpp"}});
+	CHECK(sent.at("uri") == "file:///home/me/p/a%5Cb.cpp");
+
+	const json received = Received({{"uri", "file:///home/me/p/a%5Cb.cpp"}});
+	CHECK(received.at("uri") == "file:////wsl.localhost/Ubuntu/home/me/p/a%EF%81%9Cb.cpp");
+}
+
+TEST_CASE("A top-level Linux name with a colon is not taken for a drive")
+{
+	const json received = Received({{"uri", "file:///a:b"}});
+
+	CHECK(received.at("uri") == "file:////wsl.localhost/Ubuntu/a%EF%80%BAb");
+}
+
+TEST_CASE("Document text that happens to start with file: reaches a WSL server unchanged")
+{
+	const json sent = Sent({{"params", {{"contentChanges", json::array({{{"text", "file:////wsl.localhost/Ubuntu/home/me/p/a.cpp\nint a;\n"}}})}}}});
+
+	CHECK(sent.at("params").at("contentChanges").at(0).at("text") == "file:////wsl.localhost/Ubuntu/home/me/p/a.cpp\nint a;\n");
+}
+
+TEST_CASE("A document named with the distro in another case still reaches the server by its Linux URI")
+{
+	const json sent = Sent({{"uri", "file:////wsl.localhost/ubuntu/home/me/p/a.cpp"}});
+
+	CHECK(sent.at("uri") == "file:///home/me/p/a.cpp");
+}
+
 TEST_CASE("A Linux name with a space, a percent sign or a character Windows forbids round-trips between the share and the distro")
 {
 	// The share spells a ':' in a Linux name as U+F03A; the distro's URI has the ':' itself.

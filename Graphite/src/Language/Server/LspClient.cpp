@@ -282,11 +282,6 @@ namespace Graphite {
 
 	void LspClient::SendNowLocked(Shared& shared, std::string bytes)
 	{
-		if (shared.Translation.ToServer)
-		{
-			bytes = TranslatedFrame(bytes, shared.Translation.ToServer);
-		}
-
 		// WARNING: The message is queued, never written here. A synchronous write under ProtocolMutex blocks on a full pipe, and the caller may be the reader, which must never stop.
 		{
 			const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
@@ -934,6 +929,15 @@ namespace Graphite {
 		std::vector<std::string> sent;
 		sent.swap(m_Shared->ToSend);
 
+		// As the writer would send them.
+		if (m_Shared->Translation.ToServer)
+		{
+			for (std::string& message : sent)
+			{
+				message = TranslatedFrame(message, m_Shared->Translation.ToServer);
+			}
+		}
+
 		return sent;
 	}
 
@@ -968,7 +972,10 @@ namespace Graphite {
 
 			for (const std::string& message : batch)
 			{
-				if (!process.Write(message))
+				// Here, holding no lock and off the UI thread: a full-text didChange is the whole document.
+				const std::string translated = shared->Translation.ToServer ? TranslatedFrame(message, shared->Translation.ToServer) : std::string{};
+
+				if (!process.Write(shared->Translation.ToServer ? translated : message))
 				{
 					StopOutbound(*shared);
 
@@ -1022,6 +1029,11 @@ namespace Graphite {
 
 		StopOutbound(*shared);
 
+		// A shell that started the server reports a program it cannot find by exit code 127. Asked
+		// before StateMutex is taken: Drain takes it every frame, and the exit may take a moment.
+		const bool programMissing = !shared->WhenProgramMissing.empty() && !shared->Stopping.load() && shared->Process &&
+									shared->Process->WaitForExit(kExitAfterStreamEnds) && shared->Process->GetExitCode() == kCommandNotFound;
+
 		const std::lock_guard<std::mutex> state(shared->StateMutex);
 
 		for (const RequestId id : abandoned)
@@ -1031,17 +1043,9 @@ namespace Graphite {
 
 		if (!shared->Stopping.load())
 		{
-			shared->Status.State = ServerState::Failed;
-			shared->Status.Detail = "the language server stopped";
+			shared->Status.State = programMissing ? ServerState::NotFound : ServerState::Failed;
+			shared->Status.Detail = programMissing ? shared->WhenProgramMissing : "the language server stopped";
 			shared->Status.Percent = kNoPercent;
-
-			// A shell that started the server reports a program it cannot find by exit code 127.
-			if (!shared->WhenProgramMissing.empty() && shared->Process && shared->Process->WaitForExit(kExitAfterStreamEnds) &&
-				shared->Process->GetExitCode() == kCommandNotFound)
-			{
-				shared->Status.State = ServerState::NotFound;
-				shared->Status.Detail = shared->WhenProgramMissing;
-			}
 		}
 
 		Core::Redraw::Request();

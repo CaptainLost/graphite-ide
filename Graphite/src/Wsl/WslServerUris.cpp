@@ -2,10 +2,12 @@
 
 #include "Language/Server/LspProtocol.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -42,39 +44,142 @@ namespace Graphite {
 			return changed;
 		}
 
-		std::optional<std::string> ToDistroUri(const std::string& text, const Core::WslSharePath& root)
+		constexpr std::string_view kLinuxFileUriPrefix = "file://";
+
+		bool IsAsciiLetter(char character)
+		{
+			return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z');
+		}
+
+		bool IsAsciiLetterOrDigit(char character)
+		{
+			return IsAsciiLetter(character) || (character >= '0' && character <= '9');
+		}
+
+		// A file URI is one word: a string with whitespace or a control character in it is text
+		// (a document's, a message's) that happens to start with "file:".
+		bool LooksLikeFileUri(const std::string& text)
 		{
 			if (!text.starts_with(kFileScheme))
+			{
+				return false;
+			}
+
+			for (const char character : text)
+			{
+				if (static_cast<unsigned char>(character) <= ' ' || character == '\x7F')
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		// As Graphite's own URIs spell a path (ToFileUri), but byte for byte: a Linux name may hold
+		// a '\', which a std::filesystem::path on Windows would take for a separator.
+		std::string LinuxFileUri(std::string_view linuxPath)
+		{
+			constexpr std::string_view kHexDigits = "0123456789ABCDEF";
+			std::string uri{kLinuxFileUriPrefix};
+
+			for (const char character : linuxPath)
+			{
+				const unsigned char byte = static_cast<unsigned char>(character);
+
+				if (IsAsciiLetterOrDigit(character) || std::string_view{"-._~/:"}.find(character) != std::string_view::npos)
+				{
+					uri.push_back(character);
+					continue;
+				}
+
+				uri.push_back('%');
+				uri.push_back(kHexDigits[byte >> 4]);
+				uri.push_back(kHexDigits[byte & 0x0F]);
+			}
+
+			return uri;
+		}
+
+		// The Linux path a file:///... URI names, decoded byte for byte; none for any other URI.
+		std::optional<std::string> LinuxPathOf(std::string_view uri)
+		{
+			if (!uri.starts_with(kLinuxFileUriPrefix))
+			{
+				return std::nullopt;
+			}
+
+			uri.remove_prefix(kLinuxFileUriPrefix.size());
+
+			// file:///path only: file://host/... and file:////share/... are not the distro's.
+			if (!uri.starts_with('/') || uri.starts_with("//"))
+			{
+				return std::nullopt;
+			}
+
+			std::string path;
+			path.reserve(uri.size());
+
+			for (std::size_t index = 0; index < uri.size(); ++index)
+			{
+				if (uri[index] == '%' && index + 2 < uri.size())
+				{
+					const std::optional<std::uint8_t> high = Core::HexDigitValue(uri[index + 1]);
+					const std::optional<std::uint8_t> low = Core::HexDigitValue(uri[index + 2]);
+
+					if (high && low)
+					{
+						path.push_back(static_cast<char>((*high << 4) | *low));
+						index += 2;
+						continue;
+					}
+				}
+
+				path.push_back(uri[index]);
+			}
+
+			// A drive (file:///C:/...) is Windows', whatever a Linux server says.
+			if (path.size() >= 3 && path[2] == ':' && IsAsciiLetter(path[1]) && (path.size() == 3 || path[3] == '/'))
+			{
+				return std::nullopt;
+			}
+
+			return path;
+		}
+
+		std::optional<std::string> ToDistroUri(const std::string& text, const Core::WslSharePath& root)
+		{
+			if (!LooksLikeFileUri(text))
 			{
 				return std::nullopt;
 			}
 
 			const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(FromFileUri(text));
 
-			if (!place || place->Distro != root.Distro)
+			// ADR 0696: a distro's name is one in any case.
+			if (!place || !Core::EqualsIgnoringCase(place->Distro, root.Distro))
 			{
 				return std::nullopt;
 			}
 
-			return ToFileUri(Core::FromUtf8(place->LinuxPath));
+			return LinuxFileUri(place->LinuxPath);
 		}
 
 		std::optional<std::string> FromDistroUri(const std::string& text, const std::string& distro)
 		{
-			if (!text.starts_with(kFileScheme))
+			if (!LooksLikeFileUri(text))
 			{
 				return std::nullopt;
 			}
 
-			const std::string linuxPath = Core::ToGenericUtf8(FromFileUri(text));
+			const std::optional<std::string> linuxPath = LinuxPathOf(text);
 
-			// Only a Linux absolute path: a drive path or a share path is not the distro's.
-			if (!linuxPath.starts_with('/') || linuxPath.starts_with("//"))
+			if (!linuxPath)
 			{
 				return std::nullopt;
 			}
 
-			return ToFileUri(Core::ToWslSharePath(Core::WslSharePath{distro, linuxPath}));
+			return ToFileUri(Core::ToWslSharePath(Core::WslSharePath{distro, *linuxPath}));
 		}
 
 		std::string Translated(std::string_view body, bool mayHoldRootPath, const StringMap& map)

@@ -6,6 +6,7 @@
 #include "Language/Server/ServerCatalog.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Platform/ShellProfiles.h"
 #include "Core/Remote/AgentDeployment.h"
 
 #include <chrono>
@@ -92,6 +93,61 @@ TEST_CASE("A WSL folder's language server starts in the distro through its login
 	CHECK(launch.Translation.FromServer);
 	CHECK(launch.WhenProgramMissing == "clangd is not installed in Ubuntu, or not on its PATH");
 	CHECK(launch.Description == "clangd in Ubuntu");
+}
+
+TEST_CASE("A server whose shell exits with 127 is reported missing, as its launch words it")
+{
+	Graphite::ServerLaunch launch = Graphite::LaunchFor(Clangd(), Core::FindOnPath("cmd.exe"), Graphite::ServerOverrides{});
+	launch.Arguments = {"/c", "exit", "127"};
+	launch.WhenProgramMissing = "clangd is not installed in Ubuntu, or not on its PATH";
+	Graphite::LspClient client{launch, std::filesystem::current_path()};
+
+	Graphite::ServerStatus status;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+
+	while (std::chrono::steady_clock::now() < deadline)
+	{
+		Graphite::LspClient::Drained drained;
+		client.Drain(drained);
+		status = drained.Status;
+
+		if (status.State != Graphite::ServerState::Starting)
+		{
+			break;
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+	}
+
+	CHECK(status.State == Graphite::ServerState::NotFound);
+	CHECK(status.Detail == "clangd is not installed in Ubuntu, or not on its PATH");
+}
+
+TEST_CASE("A server that stops with another exit code is reported stopped, not missing")
+{
+	Graphite::ServerLaunch launch = Graphite::LaunchFor(Clangd(), Core::FindOnPath("cmd.exe"), Graphite::ServerOverrides{});
+	launch.Arguments = {"/c", "exit", "1"};
+	launch.WhenProgramMissing = "clangd is not installed in Ubuntu, or not on its PATH";
+	Graphite::LspClient client{launch, std::filesystem::current_path()};
+
+	Graphite::ServerStatus status;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+
+	while (std::chrono::steady_clock::now() < deadline)
+	{
+		Graphite::LspClient::Drained drained;
+		client.Drain(drained);
+		status = drained.Status;
+
+		if (status.State != Graphite::ServerState::Starting)
+		{
+			break;
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds{20});
+	}
+
+	CHECK(status.State == Graphite::ServerState::Failed);
 }
 
 // The real distro: a Python server opened by the launch is spoken to in Linux URIs, and what it
