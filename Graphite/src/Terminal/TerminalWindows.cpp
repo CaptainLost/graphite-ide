@@ -12,10 +12,12 @@
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Process.h"
+#include "Core/Remote/AgentDeployment.h"
 
 #include "Settings/AppSettings.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
+#include "Wsl/WslShell.h"
 
 #include <IconsLucide.h>
 
@@ -589,14 +591,16 @@ namespace Graphite {
 	bool TerminalWindows::Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,
 								OpenTerminal record, EntryOrigin origin)
 	{
+		// In a folder inside WSL, every open, restore and pending open is the distro's own shell.
+		const TerminalLaunch launch = ShellFor(profile, workingDirectory, Core::WslExecutable());
 		Core::Result<Core::Scope<Core::TerminalSession>> startResult =
-			Core::TerminalSession::Start(profile, workingDirectory, kInitialColumns, kInitialRows);
+			Core::TerminalSession::Start(launch.Profile, launch.WorkingDirectory, kInitialColumns, kInitialRows);
 
 		if (!startResult)
 		{
-			APP_ERROR("Cannot start {}: {}", profile.Name, startResult.GetError().Message);
+			APP_ERROR("Cannot start {}: {}", launch.Profile.Name, startResult.GetError().Message);
 			m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Terminal failed to start",
-											  std::format("{}: {}", profile.Name, startResult.GetError().Message)));
+											  std::format("{}: {}", launch.Profile.Name, startResult.GetError().Message)));
 			return false;
 		}
 
