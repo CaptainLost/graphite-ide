@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace Graphite {
@@ -103,7 +104,8 @@ namespace Graphite {
 
 		for (std::size_t end = listed.find('\0'); end != std::string::npos; end = listed.find('\0', start))
 		{
-			files.emplace_back(listed.substr(start, end - start));
+			// As the share spells the name, so quick open's root / name opens it.
+			files.push_back(Core::ToWslShareSpelling(std::string_view{listed}.substr(start, end - start)));
 			start = end + 1;
 		}
 

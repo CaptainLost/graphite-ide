@@ -189,6 +189,7 @@ namespace Graphite {
 		context.SharedState.Progress.FilesScanned += found.Scanned;
 		context.SharedState.Progress.FilesSkipped += found.Skipped;
 		context.SharedState.Progress.Unreadable += found.Unreadable;
+		context.SharedState.Progress.StoppedAtMostHits = found.Capped;
 	}
 
 	void SearchService::Start(SearchStart request)

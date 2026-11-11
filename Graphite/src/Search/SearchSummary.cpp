@@ -38,6 +38,11 @@ namespace Graphite {
 			summary += std::format(", {} unreadable", progress.Unreadable);
 		}
 
+		if (progress.StoppedAtMostHits)
+		{
+			summary += ", stopped there: narrow the search to see the rest";
+		}
+
 		return summary;
 	}
 }

@@ -31,6 +31,21 @@ TEST_CASE("A distro's root is the Linux root, and the distro name is kept verbat
 	CHECK(ParseWslSharePath(L"\\\\wsl.localhost\\Ubuntu-22.04\\") == WslSharePath{"Ubuntu-22.04", "/"});
 }
 
+// Measured on WSL 2: the share spells each character Windows forbids in a name as U+F000 plus it.
+TEST_CASE("A Linux name with a character Windows forbids is spelled as the share spells it, and read back")
+{
+	const std::filesystem::path share = Core::ToWslSharePath(WslSharePath{"Ubuntu", "/tmp/a:b?c/x\\y*z\"<>|"});
+
+	CHECK(share.native() == std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\tmp\\abc\\xyz"}.native());
+	CHECK(ParseWslSharePath(share) == WslSharePath{"Ubuntu", "/tmp/a:b?c/x\\y*z\"<>|"});
+}
+
+TEST_CASE("A Linux relative name takes the share's spelling with its separators kept")
+{
+	CHECK(Core::ToWslShareSpelling("logs/run:1.log") == "logs/run\xEF\x80\xBA" "1.log");
+	CHECK(Core::ToWslShareSpelling("plain/name.txt") == "plain/name.txt");
+}
+
 TEST_CASE("A non-ASCII segment reaches the Linux path as UTF-8")
 {
 	const auto parsed = ParseWslSharePath(L"\\\\wsl.localhost\\Ubuntu\\home\\za\u017C\u00F3\u0142\u0107");

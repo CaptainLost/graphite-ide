@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace Core {
 
@@ -24,8 +25,13 @@ namespace Core {
 	std::optional<WslSharePath> ParseWslSharePath(const std::filesystem::path& path);
 
 	// \\wsl.localhost\<Distro><LinuxPath with '\'>: the one spelling the host uses for a place in
-	// WSL (ADR 0696), whatever spelling it arrived in.
+	// WSL (ADR 0696), whatever spelling it arrived in. A character Windows forbids in a name is
+	// spelled as the share spells it (ToWslShareSpelling); ParseWslSharePath reads it back.
 	std::filesystem::path ToWslSharePath(const WslSharePath& place);
+
+	// A Linux path or relative name (UTF-8, '/'-separated) as the share spells it: each of \ : * ?
+	// " < > | becomes U+F000 plus it, as WSL maps them; '/' is kept.
+	std::string ToWslShareSpelling(std::string_view linuxPath);
 
 	// ToWslSharePath of any spelling ParseWslSharePath accepts; any other path unchanged.
 	std::filesystem::path CanonicalWslSharePath(const std::filesystem::path& path);

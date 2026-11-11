@@ -45,6 +45,14 @@ TEST_CASE("A search's summary adds skipped and unreadable files only when there 
 		  std::optional<std::string>{"12 hits, 10 files scanned, 2 skipped as binary or too large, 1 unreadable"});
 }
 
+TEST_CASE("A search that stopped at its most hits says so, so the hits are not taken for all of them")
+{
+	const SearchProgress progress{.FilesScanned = 10, .StoppedAtMostHits = true};
+
+	CHECK(SearchSummaryText(kTwelveHits, progress, kSearchedFoo, "foo") ==
+		  std::optional<std::string>{"12 hits, 10 files scanned, stopped there: narrow the search to see the rest"});
+}
+
 TEST_CASE("Before any search there is no summary, so the panel can show its hint instead")
 {
 	const SearchProgress nothingScanned;

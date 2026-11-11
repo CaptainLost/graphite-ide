@@ -101,3 +101,28 @@ TEST_CASE("A search finds the text in the files git does not ignore, skipping bi
 	CHECK(found.GetValue().Result.at("skipped") == 1);
 	CHECK(found.GetValue().Result.at("scanned") == 2);
 }
+
+TEST_CASE("A search stops before its hits outgrow a reply, and says it stopped")
+{
+	GitFixture fixture;
+	// One line of about 1 MiB holding the needle 100 times: every hit carries the whole line.
+	std::string line;
+
+	for (int match = 0; match < 100; ++match)
+	{
+		line += "needle" + std::string(10 * 1024, 'x');
+	}
+
+	fixture.Write("dist/app.min.js", line + "\n");
+	const json query{{"needle", "needle"}, {"mask", ""}, {"matchCase", true}, {"wholeWord", false}};
+
+	const Core::Result<Agent::GitAnswer> found = Call(Agent::SearchHandlers(), "search.text",
+		{{"root", fixture.GetPath().string()}, {"query", query}, {"respectGitIgnore", true}}); // not a path conversion
+
+	REQUIRE(found.HasValue());
+	CHECK(found.GetValue().Result.at("capped") == true);
+	CHECK(found.GetValue().Payload.size() < 64u * 1024 * 1024 + 2u * 1024 * 1024);
+	const json hits = json::parse(found.GetValue().Payload);
+	CHECK(hits.size() > 0);
+	CHECK(hits.size() < 100);
+}

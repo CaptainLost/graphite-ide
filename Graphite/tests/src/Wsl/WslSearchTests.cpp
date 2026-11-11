@@ -118,6 +118,31 @@ TEST_CASE("A WSL folder's search hits come back in the share spelling with their
 	CHECK(arguments.at("query").at("wholeWord") == true);
 }
 
+TEST_CASE("A WSL folder's file named with a character Windows forbids is listed and found as the share spells it")
+{
+	FakeSearchDistro distro;
+	distro.Answer = [](const Core::AgentRequest& request, FakeAgent& self) {
+		if (request.Operation == "files.list")
+		{
+			self.Reply(request.Id, {{"count", 1}}, std::string{"logs/run:1.log\0", 15});
+			return;
+		}
+
+		self.Reply(request.Id, {{"scanned", 1}}, nlohmann::json::array({{{"file", "logs/run:1.log"}, {"line", 0}, {"text", "x"}, {"from", 0}, {"to", 1}}}).dump());
+	};
+	Graphite::WslAgents agents{distro.Connector()};
+	Graphite::WslSearch search{agents, kRoot};
+
+	const Core::Result<std::vector<std::string>> files = search.ListFiles(true, Core::CancellationToken{});
+	REQUIRE(files.HasValue());
+	CHECK(files.GetValue() == std::vector<std::string>{"logs/run\xEF\x80\xBA" "1.log"});
+
+	const Core::Result<Graphite::FolderSearchFound> found = search.SearchText(Graphite::SearchQuery{.Needle = "x"}, true, {}, Core::CancellationToken{});
+	REQUIRE(found.HasValue());
+	REQUIRE(found.GetValue().Hits.size() == 1);
+	CHECK(found.GetValue().Hits[0].File.native() == std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p\\logs\\run1.log"}.native());
+}
+
 TEST_CASE("A WSL folder's search leaves out the open documents it is told to, named relative to the folder")
 {
 	FakeSearchDistro distro;
@@ -203,6 +228,9 @@ TEST_CASE("A folder inside WSL is listed and searched through the real agent")
 	std::filesystem::create_directories(folder / "src", error);
 	std::ofstream{folder / "src" / "a.cpp", std::ios::binary} << "int first;\nint needle = 2;\n";
 	std::ofstream{folder / "b.txt", std::ios::binary} << "no match here\n";
+	// src/run:1.log in the distro: the share spells its ':' as U+F03A.
+	const std::filesystem::path colonFile = folder / "src" / L"run1.log";
+	std::ofstream{colonFile, std::ios::binary} << "a needle\n";
 
 	Graphite::WslAgents agents{Graphite::WslAgents::ConnectThroughWsl(agentBinary)};
 	Graphite::WslSearch search{agents, Core::WslSharePath{"Ubuntu", "/tmp/" + name}};
@@ -210,15 +238,23 @@ TEST_CASE("A folder inside WSL is listed and searched through the real agent")
 	Core::Result<std::vector<std::string>> files = search.ListFiles(true, Core::CancellationToken{});
 	REQUIRE_MESSAGE(files.HasValue(), (files ? "" : files.GetError().Message));
 	std::sort(files.GetValue().begin(), files.GetValue().end());
-	CHECK(files.GetValue() == std::vector<std::string>{"b.txt", "src/a.cpp"});
+	CHECK(files.GetValue() == std::vector<std::string>{"b.txt", "src/a.cpp", "src/run\xEF\x80\xBA" "1.log"});
 
 	const Core::Result<Graphite::FolderSearchFound> found = search.SearchText(Graphite::SearchQuery{.Needle = "needle"}, true, {}, Core::CancellationToken{});
 	REQUIRE_MESSAGE(found.HasValue(), (found ? "" : found.GetError().Message));
-	REQUIRE(found.GetValue().Hits.size() == 1);
-	CHECK(found.GetValue().Hits[0].File.native() == (folder / "src" / "a.cpp").native());
-	CHECK(found.GetValue().Hits[0].Line == 1);
-	CHECK(found.GetValue().Hits[0].From == 4);
-	CHECK(found.GetValue().Scanned == 2);
+	std::vector<Graphite::SearchHit> hits = found.GetValue().Hits;
+	std::sort(hits.begin(), hits.end(), [](const Graphite::SearchHit& left, const Graphite::SearchHit& right) { return left.File < right.File; });
+	REQUIRE(hits.size() == 2);
+	CHECK(hits[0].File.native() == (folder / "src" / "a.cpp").native());
+	CHECK(hits[0].Line == 1);
+	CHECK(hits[0].From == 4);
+	CHECK(found.GetValue().Scanned == 3);
+
+	// The hit's path opens the file it was found in.
+	CHECK(hits[1].File.native() == colonFile.native());
+	std::string opened;
+	std::getline(std::ifstream{hits[1].File, std::ios::binary}, opened);
+	CHECK(opened == "a needle");
 
 	std::filesystem::remove_all(folder, error);
 }

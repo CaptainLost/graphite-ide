@@ -381,6 +381,27 @@ TEST_CASE("SearchService searches a folder searched where it lives through that 
 	CHECK_FALSE(progress.Running);
 }
 
+TEST_CASE("SearchService says when a folder search stopped at its most hits")
+{
+	const TempDirectory temp;
+
+	SearchedFolder folder;
+	Graphite::FolderSearchFound found;
+	found.Hits.push_back(Graphite::SearchHit{.File = temp.GetPath() / "far.cpp", .Text = "needle"});
+	found.Capped = true;
+	folder.Answer = found;
+
+	DeferredJobs jobs;
+	Graphite::SearchService service{jobs.Submitter()};
+	service.SetFolderSearch(folder.Opener());
+	service.Start(Request(temp.GetPath(), "needle"));
+
+	Graphite::SearchProgress progress;
+	static_cast<void>(RunToEnd(service, jobs, progress));
+
+	CHECK(progress.StoppedAtMostHits);
+}
+
 TEST_CASE("SearchService ends a folder search that failed with nothing found")
 {
 	const TempDirectory temp;

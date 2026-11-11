@@ -29,6 +29,9 @@ namespace Graphite {
 		std::size_t FilesSkipped = 0;
 		std::size_t Unreadable = 0;
 
+		// A folder searched where it lives stops at its most hits; the hits shown are not all of them.
+		bool StoppedAtMostHits = false;
+
 		bool Running = false;
 	};
 

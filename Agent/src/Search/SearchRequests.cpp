@@ -23,6 +23,10 @@ namespace Agent {
 		// The host shows no more; a search past it says it stopped there.
 		constexpr std::size_t kMostHits = 20000;
 
+		// Every hit carries its whole line, so a long minified line found many times would outgrow a
+		// reply (256 MiB): the search stops, and says so, once its lines pass this.
+		constexpr std::size_t kMostHitBytes = 64 * 1024 * 1024;
+
 		// What the walk leaves out: .git always, and what git ignores when asked.
 		class Walk
 		{
@@ -159,6 +163,7 @@ namespace Agent {
 			}
 
 			std::vector<Core::SearchHit> hits;
+			std::size_t hitBytes = 0;
 			std::size_t scanned = 0;
 			std::size_t notText = 0;
 			std::size_t unreadable = 0;
@@ -176,9 +181,25 @@ namespace Agent {
 				switch (read.Outcome)
 				{
 				case Core::DiskTextOutcome::Read:
+				{
 					++scanned;
+					const std::size_t before = hits.size();
 					Core::FindInText(query, read.Text, relative, hits);
+
+					for (std::size_t index = before; index < hits.size(); ++index)
+					{
+						hitBytes += hits[index].Text.size();
+
+						if (hitBytes > kMostHitBytes)
+						{
+							hits.resize(index);
+							capped = true;
+							return false;
+						}
+					}
+
 					break;
+				}
 				case Core::DiskTextOutcome::Binary:
 				case Core::DiskTextOutcome::TooLarge:
 					++notText;
