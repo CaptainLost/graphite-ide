@@ -228,6 +228,48 @@ namespace {
 	};
 }
 
+TEST_CASE("An installer that must make its programs executable does so for the extracted server before recording it")
+{
+	InstallerFixture fixture;
+	std::vector<std::filesystem::path> madeExecutable;
+	Graphite::ServerInstaller installer{fixture.Http, fixture.Servers, kWindowsX64, RunWhereSubmitted(),
+									   [&madeExecutable](const std::filesystem::path& program) -> Core::Result<void> {
+										   madeExecutable.push_back(program);
+										   return Core::Result<void>::Ok();
+									   }};
+	const std::string archive = ToolZip("1.0.0");
+	ServeRelease(*fixture.Http, "1.0.0", archive, Sha256Of(archive));
+
+	REQUIRE(installer.Install(kGitHubTool));
+	std::vector<Graphite::InstallProgress> changes;
+	installer.Drain(changes);
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Installed);
+	REQUIRE(madeExecutable.size() == 1);
+	CHECK(madeExecutable[0].filename() == "tool.exe");
+	CHECK(madeExecutable[0].parent_path().filename() == "bin");
+}
+
+TEST_CASE("An installer that cannot make its server executable installs nothing")
+{
+	InstallerFixture fixture;
+	Graphite::ServerInstaller installer{fixture.Http, fixture.Servers, kWindowsX64, RunWhereSubmitted(),
+									   [](const std::filesystem::path&) -> Core::Result<void> {
+										   return Core::Error{Core::ErrorCode::AccessDenied, "chmod failed"};
+									   }};
+	const std::string archive = ToolZip("1.0.0");
+	ServeRelease(*fixture.Http, "1.0.0", archive, Sha256Of(archive));
+
+	REQUIRE(installer.Install(kGitHubTool));
+	std::vector<Graphite::InstallProgress> changes;
+	installer.Drain(changes);
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Failed);
+	CHECK_FALSE(Graphite::FindInstalledServer(fixture.ToolDirectory()).has_value());
+}
+
 TEST_CASE("Installing a GitHub release downloads and verifies and extracts and records it")
 {
 	InstallerFixture fixture;

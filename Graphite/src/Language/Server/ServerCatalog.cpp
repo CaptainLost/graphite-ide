@@ -18,8 +18,13 @@ namespace Graphite {
 
 		constexpr std::array<std::string_view, 2> kClangdArguments{"--background-index", "--pch-storage=disk"};
 
-		constexpr std::array<GitHubAsset, 1> kClangdAssets{{
+		// Linux x64 is for a folder inside WSL, installed into its distro.
+		constexpr std::array<GitHubAsset, 2> kClangdAssets{{
 			{.Platform = {.System = Core::OperatingSystem::Windows, .Machine = Core::Architecture::X64},
+			 .AssetTemplate = "clangd-{os}-{version}.zip",
+			 .Archive = ArchiveKind::Zip,
+			 .ExecutableTemplate = "clangd_{version}/bin/clangd{exe}"},
+			{.Platform = {.System = Core::OperatingSystem::Linux, .Machine = Core::Architecture::X64},
 			 .AssetTemplate = "clangd-{os}-{version}.zip",
 			 .Archive = ArchiveKind::Zip,
 			 .ExecutableTemplate = "clangd_{version}/bin/clangd{exe}"},

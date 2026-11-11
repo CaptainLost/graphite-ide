@@ -4,12 +4,14 @@
 #include "Language/Server/ServerPackage.h"
 
 #include "Core/Base/Pointers.h"
+#include "Core/Base/Result.h"
 #include "Core/Jobs/JobSubmitter.h"
 #include "Core/Network/HttpClient.h"
 #include "Core/Platform/CurrentPlatform.h"
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -59,8 +61,12 @@ namespace Graphite {
 	class ServerInstaller
 	{
 	public:
+		// Makes one extracted program runnable where it is installed; none where extraction already
+		// does (Windows). A WSL distro needs it: a file written through its share is not executable.
+		using MakeExecutableStep = std::function<Core::Result<void>(const std::filesystem::path& program)>;
+
 		ServerInstaller(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory,
-						Core::PlatformTarget platform, Core::JobSubmitter submit);
+						Core::PlatformTarget platform, Core::JobSubmitter submit, MakeExecutableStep makeExecutable = {});
 		~ServerInstaller();
 
 		ServerInstaller(const ServerInstaller&) = delete;
@@ -86,5 +92,6 @@ namespace Graphite {
 		std::filesystem::path m_ServersDirectory;
 		Core::PlatformTarget m_Platform;
 		Core::JobSubmitter m_Submit;
+		MakeExecutableStep m_MakeExecutable;
 	};
 }

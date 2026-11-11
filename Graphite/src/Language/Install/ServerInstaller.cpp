@@ -51,6 +51,7 @@ namespace Graphite {
 			std::filesystem::path ServerDirectory;
 			Core::PlatformTarget Platform;
 			Core::CancellationToken Token;
+			ServerInstaller::MakeExecutableStep MakeExecutable;
 		};
 
 		InstallProgress ChangeOf(const InstallJob& job, InstallStep step, std::string_view version = {})
@@ -327,6 +328,16 @@ namespace Graphite {
 				return command.GetError();
 			}
 
+			if (job.MakeExecutable && command.GetValue().Runner == LaunchRunner::Executable)
+			{
+				const Core::Result<void> runnable = job.MakeExecutable(stagingDirectory / Core::FromUtf8(command.GetValue().RelativePath));
+
+				if (!runnable)
+				{
+					return runnable.GetError();
+				}
+			}
+
 			const std::filesystem::path versionDirectory = job.ServerDirectory / Core::FromUtf8(package.Version);
 			const Core::Result<void> placed = ReplaceVersionDirectory(stagingDirectory, versionDirectory);
 
@@ -482,12 +493,13 @@ namespace Graphite {
 	}
 
 	ServerInstaller::ServerInstaller(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory,
-									 Core::PlatformTarget platform, Core::JobSubmitter submit)
+									 Core::PlatformTarget platform, Core::JobSubmitter submit, MakeExecutableStep makeExecutable)
 		: m_State(Core::CreateRef<InstallerState>()),
 		  m_Http(std::move(http)),
 		  m_ServersDirectory(std::move(serversDirectory)),
 		  m_Platform(platform),
-		  m_Submit(std::move(submit))
+		  m_Submit(std::move(submit)),
+		  m_MakeExecutable(std::move(makeExecutable))
 	{
 	}
 
@@ -563,7 +575,8 @@ namespace Graphite {
 							 .Http = m_Http,
 							 .ServerDirectory = ServerDirectoryOf(m_ServersDirectory, server.Id),
 							 .Platform = m_Platform,
-							 .Token = token};
+							 .Token = token,
+							 .MakeExecutable = m_MakeExecutable};
 		const Core::Ref<InstallerState> state = m_State;
 
 		// WARNING: Submitted outside the lock, because a submitter that runs the job where it is submitted reports

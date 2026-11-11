@@ -177,6 +177,25 @@ TEST_CASE("clangd comes from its GitHub releases as a zip with the server inside
 	CHECK(windows->ExecutableTemplate == "clangd_{version}/bin/clangd{exe}");
 }
 
+TEST_CASE("clangd also installs for Linux x64, for a folder inside WSL, as clangd's Linux zip")
+{
+	const Graphite::ServerDefinition& clangd = *Graphite::FindServer("clangd");
+	const Graphite::GitHubReleasePackage* release = std::get_if<Graphite::GitHubReleasePackage>(&clangd.Package);
+	REQUIRE(release != nullptr);
+
+	constexpr Core::PlatformTarget kLinuxX64{.System = Core::OperatingSystem::Linux, .Machine = Core::Architecture::X64};
+	const Graphite::GitHubAsset* linux = Graphite::FindAssetFor(*release, kLinuxX64);
+
+	REQUIRE(linux != nullptr);
+	CHECK(linux->Archive == Graphite::ArchiveKind::Zip);
+	const Core::Result<std::string> asset = Graphite::ExpandPackageTemplate(linux->AssetTemplate, {.Version = "21.1.0", .Platform = kLinuxX64});
+	const Core::Result<std::string> executable = Graphite::ExpandPackageTemplate(linux->ExecutableTemplate, {.Version = "21.1.0", .Platform = kLinuxX64});
+	REQUIRE(asset);
+	REQUIRE(executable);
+	CHECK(asset.GetValue() == "clangd-linux-21.1.0.zip");
+	CHECK(executable.GetValue() == "clangd_21.1.0/bin/clangd");
+}
+
 TEST_CASE("Every server installs on Windows x64 and every template it uses expands")
 {
 	for (const Graphite::ServerDefinition& server : Graphite::AllServers())
