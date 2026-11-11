@@ -143,6 +143,11 @@ namespace Agent {
 		{
 			Reply(request, Unwatch(request.Arguments));
 		}
+		else if (const auto search = m_SearchHandlers.find(operation); search != m_SearchHandlers.end())
+		{
+			// Answered on the search lane; Tick sends the reply when it is ready.
+			m_SearchWorker.Submit(request, search->second);
+		}
 		else if (operation.starts_with("git."))
 		{
 			// Answered on a git worker; Tick sends the reply when it is ready.
@@ -273,7 +278,7 @@ namespace Agent {
 	{
 		std::vector<Core::AgentReply> replies;
 
-		for (GitWorker* worker : {&m_QuickWorker, &m_WatchStarter, &m_GitWorker, &m_ContentWorker})
+		for (GitWorker* worker : {&m_QuickWorker, &m_WatchStarter, &m_GitWorker, &m_ContentWorker, &m_SearchWorker})
 		{
 			for (Core::AgentReply& reply : worker->TakeFinished())
 			{
@@ -365,7 +370,8 @@ namespace Agent {
 	std::vector<int> AgentSession::WatchDescriptors() const
 	{
 		std::vector<int> descriptors;
-		descriptors.reserve(m_Watches.size() + 4);
+		descriptors.reserve(m_Watches.size() + 5);
+		descriptors.push_back(m_SearchWorker.GetDescriptor());
 		descriptors.push_back(m_GitWorker.GetDescriptor());
 		descriptors.push_back(m_ContentWorker.GetDescriptor());
 		descriptors.push_back(m_QuickWorker.GetDescriptor());

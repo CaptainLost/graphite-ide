@@ -4,7 +4,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Codec.h"
-#include "Core/Text/TextDocument.h"
+#include "Core/Text/LineEndings.h"
 
 #include <fstream>
 #include <string>

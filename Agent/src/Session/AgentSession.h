@@ -5,6 +5,7 @@
 
 #include "Git/GitRequests.h"
 #include "Git/GitWorker.h"
+#include "Search/SearchRequests.h"
 #include "Watching/TreeWatch.h"
 
 #include <map>
@@ -53,6 +54,7 @@ namespace Agent {
 		std::string m_Version;
 		GitHandlers m_GitHandlers;
 		GitHandlers m_QuickHandlers;
+		GitHandlers m_SearchHandlers = SearchHandlers();
 
 		// Watches armed off the loop wait here until a tick takes them; ids unwatched before that
 		// are dropped. Declared before the workers, which are joined first.
@@ -66,6 +68,9 @@ namespace Agent {
 		// Content checks only read, name their commits and can walk thousands of them: on a lane of
 		// their own, so a status, a stage or a commit never waits behind one.
 		GitWorker m_ContentWorker;
+
+		// Listing and searching a whole tree: never in the way of git or of each other's lanes.
+		GitWorker m_SearchWorker;
 
 		// Arms watches: a walk of a large tree takes seconds, and the loop would answer nothing
 		// meanwhile, the quick lane's replies included.

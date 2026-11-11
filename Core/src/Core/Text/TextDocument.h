@@ -3,6 +3,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Text/Encoding.h"
+#include "Core/Text/LineEndings.h"
 #include "Core/Text/TextBuffer.h"
 
 #include <cstddef>
@@ -15,24 +16,6 @@
 #include <vector>
 
 namespace Core {
-
-	enum class LineEnding
-	{
-		Lf,
-		Crlf
-	};
-
-	std::string WithLineEnding(std::string_view text, LineEnding ending);
-
-	struct NormalisedLineEndings
-	{
-		std::string Content;
-		LineEnding Ending = LineEnding::Lf;
-		bool Mixed = false;
-		std::vector<std::size_t> ContentLineStarts{0};
-	};
-
-	NormalisedLineEndings NormaliseLineEndings(std::string_view text);
 
 	class TextDocument
 	{

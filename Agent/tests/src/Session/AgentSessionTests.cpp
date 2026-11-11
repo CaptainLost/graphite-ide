@@ -245,11 +245,23 @@ TEST_CASE("A slow content check does not hold up a status sent after it")
 	CHECK(std::get<Core::AgentReply>(first[0]).Id == 2);
 }
 
+TEST_CASE("A folder is listed by the agent's search lane")
+{
+	TempDirectory directory;
+	directory.MakeFile("a.txt", "x");
+	Agent::AgentSession session{"v"};
+
+	const Core::AgentReply listed = AskThroughTicks(session, 7, "files.list", json{{"root", directory.GetPath().string()}, {"respectGitIgnore", false}}); // not a path conversion
+
+	REQUIRE_FALSE(listed.Failure.has_value());
+	CHECK(listed.Payload == std::string{"a.txt\0", 6});
+}
+
 TEST_CASE("Every git lane and the watch starter wake the agent's loop")
 {
 	Agent::AgentSession session{"v", Agent::GitHandlers{}, Agent::GitHandlers{}};
 
-	CHECK(session.WatchDescriptors().size() == 4);
+	CHECK(session.WatchDescriptors().size() == 5);
 }
 
 TEST_CASE("A watch is armed off the agent's loop, so nothing it sends waits for the walk")
