@@ -36,7 +36,7 @@ namespace {
 
 TEST_CASE("A terminal in a folder inside WSL runs the distro's own shell, starting in that folder")
 {
-	const Graphite::TerminalLaunch launch = Graphite::ShellFor(kPowerShell, std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"}, kWsl);
+	const Graphite::TerminalLaunch launch = Graphite::ShellFor(Graphite::TerminalKind::Shell, kPowerShell, std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"}, kWsl);
 
 	CHECK(launch.Profile.Name == "Ubuntu");
 	CHECK(launch.Profile.Path == kWsl);
@@ -45,9 +45,22 @@ TEST_CASE("A terminal in a folder inside WSL runs the distro's own shell, starti
 	CHECK(launch.WorkingDirectory == kWsl.parent_path());
 }
 
+TEST_CASE("A command run in a terminal in a folder inside WSL keeps its own program, which stage 7 moves into the distro")
+{
+	const Core::ShellProfile claude{.Name = "Claude", .Path = L"C:\\Users\\me\\.local\\bin\\claude.exe", .Arguments = {"--session-id", "x"}};
+	const std::filesystem::path folder{L"\\\\wsl.localhost\\Ubuntu\\home\\me\\p"};
+
+	const Graphite::TerminalLaunch launch = Graphite::ShellFor(Graphite::TerminalKind::Command, claude, folder, kWsl);
+
+	CHECK(launch.Profile.Name == claude.Name);
+	CHECK(launch.Profile.Path == claude.Path);
+	CHECK(launch.Profile.Arguments == claude.Arguments);
+	CHECK(launch.WorkingDirectory == folder);
+}
+
 TEST_CASE("A terminal in a Windows folder keeps the shell that was chosen")
 {
-	const Graphite::TerminalLaunch launch = Graphite::ShellFor(kPowerShell, std::filesystem::path{L"C:\\work\\p"}, kWsl);
+	const Graphite::TerminalLaunch launch = Graphite::ShellFor(Graphite::TerminalKind::Shell, kPowerShell, std::filesystem::path{L"C:\\work\\p"}, kWsl);
 
 	CHECK(launch.Profile.Name == kPowerShell.Name);
 	CHECK(launch.Profile.Path == kPowerShell.Path);
@@ -58,7 +71,7 @@ TEST_CASE("A terminal in a Windows folder keeps the shell that was chosen")
 TEST_CASE("A WSL folder named with spaces or a character Windows forbids reaches the distro as its Linux path")
 {
 	const Graphite::TerminalLaunch launch =
-		Graphite::ShellFor(kPowerShell, std::filesystem::path{L"\\\\wsl$\\Ubuntu-22.04\\home\\me\\my project\\a\uF03Ab"}, kWsl);
+		Graphite::ShellFor(Graphite::TerminalKind::Shell, kPowerShell, std::filesystem::path{L"\\\\wsl$\\Ubuntu-22.04\\home\\me\\my project\\a\uF03Ab"}, kWsl);
 
 	CHECK(launch.Profile.Arguments == std::vector<std::string>{"-d", "Ubuntu-22.04", "--cd", "/home/me/my project/a:b"});
 	CHECK(launch.Profile.Name == "Ubuntu-22.04");
@@ -80,7 +93,7 @@ TEST_CASE("A terminal opened in a folder inside WSL starts there in the real dis
 	const std::filesystem::path folder = std::filesystem::path{L"\\\\wsl.localhost\\Ubuntu\\tmp\\"} / Core::FromUtf8(name);
 	std::filesystem::create_directories(folder, error);
 
-	const Graphite::TerminalLaunch launch = Graphite::ShellFor(kPowerShell, folder, Core::WslExecutable());
+	const Graphite::TerminalLaunch launch = Graphite::ShellFor(Graphite::TerminalKind::Shell, kPowerShell, folder, Core::WslExecutable());
 	Core::Result<Core::Scope<Core::TerminalSession>> started = Core::TerminalSession::Start(launch.Profile, launch.WorkingDirectory, 120, 30);
 	REQUIRE_MESSAGE(started.HasValue(), (started ? "" : started.GetError().Message));
 	Core::TerminalSession& session = *started.GetValue();

@@ -591,8 +591,10 @@ namespace Graphite {
 	bool TerminalWindows::Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,
 								OpenTerminal record, EntryOrigin origin)
 	{
-		// In a folder inside WSL, every open, restore and pending open is the distro's own shell.
-		const TerminalLaunch launch = ShellFor(profile, workingDirectory, Core::WslExecutable());
+		// In a folder inside WSL, every shell opened, restored or pending is the distro's own; a
+		// command (a Claude session) keeps its program.
+		const TerminalKind kind = record.FromCommand ? TerminalKind::Command : TerminalKind::Shell;
+		const TerminalLaunch launch = ShellFor(kind, profile, workingDirectory, Core::WslExecutable());
 		Core::Result<Core::Scope<Core::TerminalSession>> startResult =
 			Core::TerminalSession::Start(launch.Profile, launch.WorkingDirectory, kInitialColumns, kInitialRows);
 

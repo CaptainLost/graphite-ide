@@ -6,11 +6,12 @@
 
 namespace Graphite {
 
-	TerminalLaunch ShellFor(const Core::ShellProfile& chosen, const std::filesystem::path& directory, const std::filesystem::path& wslExecutable)
+	TerminalLaunch ShellFor(TerminalKind kind, const Core::ShellProfile& chosen, const std::filesystem::path& directory,
+							const std::filesystem::path& wslExecutable)
 	{
 		const std::optional<Core::WslSharePath> place = Core::ParseWslSharePath(directory);
 
-		if (!place)
+		if (!place || kind == TerminalKind::Command)
 		{
 			return TerminalLaunch{.Profile = chosen, .WorkingDirectory = directory};
 		}
