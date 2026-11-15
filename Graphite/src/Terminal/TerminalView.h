@@ -85,6 +85,8 @@ namespace Graphite {
 					 const EditorPalette& palette);
 		void UpdateSelection(const TerminalGrid& grid);
 		void HandleKeyboard();
+		void SendTyped(const std::string& bytes);
+		void FollowTail();
 		void DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows, int scrollback);
 		ImU32 Resolve(const Core::TerminalColor& color, const EditorPalette& palette,
 					  ColourRole role) const;

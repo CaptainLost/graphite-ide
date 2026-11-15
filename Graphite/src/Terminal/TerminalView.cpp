@@ -766,7 +766,20 @@ namespace Graphite {
 		if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
 		{
 			m_Session.Paste(clipboard);
+			FollowTail();
 		}
+	}
+
+	void TerminalView::SendTyped(const std::string& bytes)
+	{
+		m_Session.Send(bytes);
+		FollowTail();
+	}
+
+	void TerminalView::FollowTail()
+	{
+		m_ScrollOffset = 0;
+		m_FollowTail = true;
 	}
 
 	void TerminalView::Clear()
@@ -780,8 +793,7 @@ namespace Graphite {
 		screen.SetCursor(kHomeRow, kHomeColumn);
 		screen.ClearScrollback();
 
-		m_ScrollOffset = 0;
-		m_FollowTail = true;
+		FollowTail();
 		ClearSelection();
 	}
 
@@ -973,7 +985,7 @@ namespace Graphite {
 
 			if (!typed.empty())
 			{
-				m_Session.Send(typed);
+				SendTyped(typed);
 			}
 		}
 
@@ -1013,7 +1025,7 @@ namespace Graphite {
 			case TerminalShortcut::Interrupt:
 				if (const std::string bytes = Core::EncodeKey(*code, modifiers); !bytes.empty())
 				{
-					m_Session.Send(bytes);
+					SendTyped(bytes);
 				}
 
 				continue;
@@ -1036,7 +1048,7 @@ namespace Graphite {
 
 			if (const std::string bytes = Core::EncodeKey(*code, modifiers); !bytes.empty())
 			{
-				m_Session.Send(bytes);
+				SendTyped(bytes);
 			}
 		}
 	}
