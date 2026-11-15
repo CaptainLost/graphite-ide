@@ -93,6 +93,11 @@ namespace Core {
 	// context; DockSpaceHost calls it.
 	void KeepFloatingTabBarsFlat();
 
+	// Scrolls a crowded dock tab bar with the plain wheel, as Shift and the wheel already do: a context hook turns the
+	// queued turns of the wheel over such a bar into the sideways turns ImGui scrolls a tab bar with, before NewFrame
+	// reads them. Once per context; DockSpaceHost calls it.
+	void ScrollTabBarsWithTheWheel();
+
 	// Draws a line along the bottom of every tab bar the dock space and the floating dock nodes showed this frame.
 	// DrawDockTab paints each tab over it and draws it again under every tab but the selected one.
 	void DrawDockTabBarLines(ImGuiID dockSpaceId);

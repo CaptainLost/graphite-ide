@@ -492,6 +492,86 @@ TEST_CASE("A document docked into a crowded bar and focused has its tab scrolled
 	CHECK(tab.Max.x <= node.TabBar->ScrollingRectMaxX);
 }
 
+namespace {
+	ScreenOptions CrowdedCentre()
+	{
+		constexpr int kDocuments = 30;
+		ScreenOptions options;
+
+		for (int document = 0; document < kDocuments; ++document)
+		{
+			options.MoreDocuments.push_back(std::string{ICON_LC_FILE} + "  ControllingDateResolver.cs###crowded" + std::to_string(document));
+		}
+
+		return options;
+	}
+
+	void TurnWheel(TabBarScreen& screen, float notches)
+	{
+		ImGui::GetIO().AddMouseWheelEvent(0.0f, notches);
+		screen.Frame();
+		screen.Frame();
+	}
+}
+
+TEST_CASE("The plain wheel over a crowded bar scrolls its tabs, up toward the first and down toward the last")
+{
+	// A notch scrolls a third of the bar; thirty tabs are many bars long.
+	constexpr float kManyNotches = 100.0f;
+
+	TabBarScreen screen(CrowdedCentre());
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(TabBarScreen::DocumentWindow());
+	REQUIRE(node.TabBar->ScrollButtonEnabled);
+
+	screen.PointAt(node.TabBar->BarRect.GetCenter());
+	TurnWheel(screen, kManyNotches);
+	const float atTheFirst = node.TabBar->ScrollingTarget;
+
+	TurnWheel(screen, -1.0f);
+	const float oneNotchOn = node.TabBar->ScrollingTarget;
+
+	CHECK(atTheFirst == doctest::Approx(0.0f));
+	CHECK(oneNotchOn > atTheFirst);
+
+	TurnWheel(screen, 1.0f);
+	CHECK(node.TabBar->ScrollingTarget < oneNotchOn);
+}
+
+TEST_CASE("Shift and the wheel over a crowded bar still scroll its tabs")
+{
+	TabBarScreen screen(CrowdedCentre());
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(TabBarScreen::DocumentWindow());
+
+	// The last docked tab is the selected one, so the bar starts scrolled to its end.
+	const float atTheLast = node.TabBar->ScrollingTarget;
+	REQUIRE(atTheLast > 0.0f);
+
+	screen.PointAt(node.TabBar->BarRect.GetCenter());
+	ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, true);
+	screen.Frame();
+	TurnWheel(screen, 1.0f);
+	ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, false);
+	screen.Frame();
+
+	CHECK(node.TabBar->ScrollingTarget < atTheLast);
+}
+
+TEST_CASE("The wheel below a crowded bar leaves its tabs where they are")
+{
+	constexpr float kBelowTheBar = 100.0f;
+
+	TabBarScreen screen(CrowdedCentre());
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(TabBarScreen::DocumentWindow());
+	const float before = node.TabBar->ScrollingTarget;
+
+	screen.PointAt(ImVec2(node.TabBar->BarRect.GetCenter().x, node.TabBar->BarRect.Max.y + kBelowTheBar));
+	TurnWheel(screen, -1.0f);
+	TurnWheel(screen, 1.0f);
+	TurnWheel(screen, -1.0f);
+
+	CHECK(node.TabBar->ScrollingTarget == doctest::Approx(before));
+}
+
 TEST_CASE("A lone tab in a node narrower than the shrink floor keeps its close button inside the node")
 {
 	constexpr float kNarrowCentreShare = 0.08f;

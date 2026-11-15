@@ -190,6 +190,7 @@ namespace Core {
 
 		DrawDockTabBarLines(dockSpaceId);
 		KeepFloatingTabBarsFlat();
+		ScrollTabBarsWithTheWheel();
 
 		if (m_LayoutBuilt)
 		{

@@ -35,6 +35,7 @@ namespace Core {
 		// of a name beside its glyph and close button; this one leaves about a dozen characters.
 		constexpr float kNarrowestShrunkenTab = 160.0f;
 		constexpr const char* kFloatingTabBarsHook = "Core::KeepFloatingTabBarsFlat";
+		constexpr const char* kTabBarWheelHook = "Core::ScrollTabBarsWithTheWheel";
 		constexpr unsigned int kFirstPrivateUseCodepoint = 0xE000;
 		constexpr unsigned int kLastPrivateUseCodepoint = 0xF8FF;
 		constexpr std::string_view kIdMarker = "##";
@@ -511,6 +512,90 @@ namespace Core {
 		after.Owner = owner;
 		after.Callback = [](ImGuiContext*, ImGuiContextHook*) { FloatingTabBarStyle().reset(); };
 		ImGui::AddContextHook(&context, &after);
+	}
+
+	namespace {
+		bool HasHook(const ImGuiContext& context, ImGuiID owner)
+		{
+			return std::ranges::any_of(context.Hooks, [owner](const ImGuiContextHook& hook) { return hook.Owner == owner; });
+		}
+
+		// Whether the pointer is over a tab bar too narrow for its tabs, with nothing in front of the bar there, as
+		// the windows stood on the frame before.
+		bool OverCrowdedTabBar(ImVec2 pointer)
+		{
+			ImGuiWindow* hovered = nullptr;
+			ImGui::FindHoveredWindowEx(pointer, true, &hovered, nullptr);
+
+			if (hovered == nullptr)
+			{
+				return false;
+			}
+
+			for (const ImGuiStoragePair& entry : ImGui::GetCurrentContext()->DockContext.Nodes.Data)
+			{
+				const ImGuiDockNode* const node = static_cast<const ImGuiDockNode*>(entry.val_p);
+				const bool crowded = node != nullptr && node->TabBar != nullptr && node->TabBar->ScrollButtonEnabled;
+
+				// A docked window spans its node's tab bar as its title bar, so it is what the pointer finds there.
+				if (crowded && node->TabBar->BarRect.Contains(pointer) &&
+					(hovered == node->HostWindow || hovered->DockNode == node))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// WARNING: With Shift held ImGui already reads the plain wheel sideways, and a turn made sideways here would
+		// then be read as no turn at all; so Shift's own presses, queued among the turns, are followed too.
+		void TurnTheWheelAlongTabBars()
+		{
+			ImGuiContext& context = *ImGui::GetCurrentContext();
+			ImVec2 pointer = context.IO.MousePos;
+			bool shiftHeld = context.IO.KeyShift;
+
+			for (ImGuiInputEvent& event : context.InputEventsQueue)
+			{
+				if (event.Type == ImGuiInputEventType_MousePos)
+				{
+					pointer = ImVec2(event.MousePos.PosX, event.MousePos.PosY);
+				}
+				else if (event.Type == ImGuiInputEventType_Key && event.Key.Key == ImGuiMod_Shift)
+				{
+					shiftHeld = event.Key.Down;
+				}
+				else if (event.Type == ImGuiInputEventType_MouseWheel)
+				{
+					ImGuiInputEventMouseWheel& wheel = event.MouseWheel;
+					const bool plainTurn = wheel.WheelX == 0.0f && wheel.WheelY != 0.0f && !shiftHeld;
+
+					if (plainTurn && OverCrowdedTabBar(pointer))
+					{
+						wheel.WheelX = wheel.WheelY;
+						wheel.WheelY = 0.0f;
+					}
+				}
+			}
+		}
+	}
+
+	void ScrollTabBarsWithTheWheel()
+	{
+		ImGuiContext& context = *ImGui::GetCurrentContext();
+		const ImGuiID owner = ImHashStr(kTabBarWheelHook);
+
+		if (HasHook(context, owner))
+		{
+			return;
+		}
+
+		ImGuiContextHook hook;
+		hook.Type = ImGuiContextHookType_NewFramePre;
+		hook.Owner = owner;
+		hook.Callback = [](ImGuiContext*, ImGuiContextHook*) { TurnTheWheelAlongTabBars(); };
+		ImGui::AddContextHook(&context, &hook);
 	}
 
 	void DrawDockTabBarLines(ImGuiID dockSpaceId)
