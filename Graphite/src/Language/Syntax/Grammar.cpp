@@ -18,7 +18,7 @@ namespace Graphite {
 
 		// WARNING: The first rule that names a capture, or a capture under it after a dot, wins,
 		// so "variable.parameter" has to come before "variable".
-		constexpr std::array<CaptureRule, 15> kCaptureRules{{
+		constexpr std::array<CaptureRule, 16> kCaptureRules{{
 			{.Name = "variable.parameter", .Kind = TokenKind::SemanticParameter},
 			{.Name = "variable", .Kind = TokenKind::Identifier},
 			{.Name = "keyword", .Kind = TokenKind::Keyword},
@@ -33,6 +33,7 @@ namespace Graphite {
 			{.Name = "module", .Kind = TokenKind::SemanticNamespace},
 			{.Name = "preprocessor", .Kind = TokenKind::Preprocessor},
 			{.Name = "operator", .Kind = TokenKind::Punctuation},
+			{.Name = "punctuation.interpolation", .Kind = TokenKind::Interpolation},
 			{.Name = "punctuation", .Kind = TokenKind::Punctuation},
 		}};
 

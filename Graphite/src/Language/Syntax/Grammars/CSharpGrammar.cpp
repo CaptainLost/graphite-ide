@@ -92,8 +92,9 @@ namespace Graphite {
   (interpolated_string_expression)
   (interpolation_start)
   (interpolation_quote)
-  (interpolation_brace)
 ] @string
+
+(interpolation_brace) @punctuation.interpolation
 
 (escape_sequence) @string.escape
 (character_literal (escape_sequence) @character)

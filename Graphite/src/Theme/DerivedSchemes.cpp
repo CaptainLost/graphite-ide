@@ -266,6 +266,7 @@ namespace Graphite {
 			}
 
 			SetSyntax(scheme, TokenKind::Keyword, palette.Keyword);
+			SetSyntax(scheme, TokenKind::Interpolation, palette.Keyword);
 			SetSyntax(scheme, TokenKind::Number, palette.Number);
 			SetSyntax(scheme, TokenKind::String, palette.String);
 			SetSyntax(scheme, TokenKind::Character, palette.String);

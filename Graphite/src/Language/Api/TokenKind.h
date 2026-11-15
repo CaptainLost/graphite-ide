@@ -24,6 +24,11 @@ namespace Graphite {
 		SemanticParameter,
 		SemanticNamespace,
 
+		// The braces around the code in an interpolated string. A kind of their own rather than Punctuation, which
+		// is what counting a definition's braces reads, and rather than String, whose colour hides them. After the
+		// semantic kinds because those are stored by number.
+		Interpolation,
+
 		// WARNING: Count must stay the last enumerator; it sizes SyntaxPalette::Colours.
 		Count
 	};
@@ -49,6 +54,7 @@ namespace Graphite {
 		case TokenKind::Preprocessor:
 		case TokenKind::Punctuation:
 		case TokenKind::Invalid:
+		case TokenKind::Interpolation:
 		case TokenKind::Count:
 			return false;
 		}

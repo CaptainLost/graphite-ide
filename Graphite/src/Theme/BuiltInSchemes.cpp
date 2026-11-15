@@ -79,6 +79,7 @@ namespace Graphite {
 			{TokenKind::SemanticMember, 156, 220, 254},
 			{TokenKind::SemanticParameter, 156, 190, 220},
 			{TokenKind::SemanticNamespace, 106, 190, 180},
+			{TokenKind::Interpolation, 86, 156, 214},
 		};
 
 		constexpr EditorEntry kDarkEditor[] = {
@@ -165,6 +166,7 @@ namespace Graphite {
 			{TokenKind::SemanticMember, 0, 16, 128},
 			{TokenKind::SemanticParameter, 43, 65, 115},
 			{TokenKind::SemanticNamespace, 38, 127, 153},
+			{TokenKind::Interpolation, 0, 0, 255},
 		};
 
 		constexpr EditorEntry kLightEditor[] = {

@@ -54,6 +54,8 @@ inline std::string_view TokenKindWord(Graphite::TokenKind kind)
 		return "parameter";
 	case Graphite::TokenKind::SemanticNamespace:
 		return "namespace";
+	case Graphite::TokenKind::Interpolation:
+		return "interpolation";
 	case Graphite::TokenKind::Count:
 		return "count";
 	}

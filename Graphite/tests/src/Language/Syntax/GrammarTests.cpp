@@ -31,6 +31,7 @@ TEST_CASE("A capture name takes the kind of the rule it names or falls under")
 	CHECK(KindOfCaptureName("preprocessor") == TokenKind::Preprocessor);
 	CHECK(KindOfCaptureName("operator") == TokenKind::Punctuation);
 	CHECK(KindOfCaptureName("punctuation.bracket") == TokenKind::Punctuation);
+	CHECK(KindOfCaptureName("punctuation.interpolation") == TokenKind::Interpolation);
 }
 
 TEST_CASE("A parameter is told apart from the variables its name would otherwise fall under")

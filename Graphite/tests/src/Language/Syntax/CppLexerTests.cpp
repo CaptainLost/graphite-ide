@@ -57,6 +57,7 @@ namespace {
 			case Graphite::TokenKind::SemanticMember:
 			case Graphite::TokenKind::SemanticParameter:
 			case Graphite::TokenKind::SemanticNamespace:
+			case Graphite::TokenKind::Interpolation:
 				mark = '?';
 				break;
 			// WARNING: No default: here, so a kind missing from this switch fails the build instead of hiding.

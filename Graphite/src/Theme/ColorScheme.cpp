@@ -38,6 +38,8 @@ namespace Graphite {
 			return {"semanticParameter", "Parameter (semantic)"};
 		case TokenKind::SemanticNamespace:
 			return {"semanticNamespace", "Namespace (semantic)"};
+		case TokenKind::Interpolation:
+			return {"interpolation", "Interpolation braces"};
 		case TokenKind::Count:
 			break;
 		}
