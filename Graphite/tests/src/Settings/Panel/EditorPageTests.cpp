@@ -20,7 +20,7 @@ namespace {
 
 	constexpr float kWideWindowWidth = 900.0f;
 	constexpr float kNarrowWindowWidth = 320.0f;
-	constexpr std::size_t kRowCount = 14;
+	constexpr std::size_t kRowCount = 15;
 
 	struct EditorScreen
 	{
@@ -40,7 +40,7 @@ TEST_CASE("The editor page lists its settings under Text, Indentation, Hover and
 	EditorScreen screen;
 
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Text", "Indentation", "Hover", "Git changes"});
-	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Save when Graphite loses focus", "Highlight occurrences", "Indent with", "Tab width", "Line ending of new files", "Symbol information",
+	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Font size", "Word wrap", "Save when Graphite loses focus", "Highlight occurrences", "Close brackets and quotes", "Indent with", "Tab width", "Line ending of new files", "Symbol information",
 																"Definition preview", "Hover delay", "Markers in the gutter",
 																"Markers on the scrollbar", "Line author", "Line author delay"});
 }
@@ -76,6 +76,16 @@ TEST_CASE("The occurrence highlighting toggle flips the highlighting")
 	screen.Frames.ClickControl("Highlight occurrences");
 
 	CHECK(screen.Editor.IsHighlightingOccurrences() != highlightedBefore);
+}
+
+TEST_CASE("The close brackets row flips the setting")
+{
+	EditorScreen screen;
+	const bool closingBefore = screen.Editor.IsClosingBrackets();
+
+	screen.Frames.ClickControl("Close brackets and quotes");
+
+	CHECK(screen.Editor.IsClosingBrackets() != closingBefore);
 }
 
 TEST_CASE("Line author setting row flips the setting")

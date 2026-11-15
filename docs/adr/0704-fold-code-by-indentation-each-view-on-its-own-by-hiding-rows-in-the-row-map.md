@@ -17,8 +17,10 @@ symbols (only with a server, only after it answers), from the syntax tree (C# on
 
 - Find what folds by indentation, in Core (`Core/Text/Folds`): a line folds the lines after it that are indented
   deeper, without the blank lines that end the block. A declaration whose brace stands alone on the next line at
-  its own depth folds the brace and the block with it, and that brace line folds nothing of its own. The closing
-  bracket stays in view.
+  its own depth folds the brace and the block with it, and that brace line folds nothing of its own. The line
+  that closes the block, at the header's depth, is folded with it when it holds nothing but closing brackets and
+  `;` or `,` (`}`, `};`, `)`), so a folded block takes one line. A line that closes one block and opens another,
+  such as `} else {`, stays in view.
 - Keep folds per view (`OpenItem::Folds`), as each view keeps its own caret: two views of one file fold on their own.
   Folds are not saved.
 - Hide a fold's lines by giving them no rows in the item's `RowMap` (`SetRowsOf(line, 0)`), and hide them again

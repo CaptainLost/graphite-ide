@@ -101,6 +101,11 @@ namespace Graphite {
 										.Keywords = {"selection", "word", "matches"},
 										.ControlWidth = SettingsLayout::ToggleWidth(),
 										.DrawControl = [this] { DrawHighlightOccurrences(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Close brackets and quotes",
+										.Description = "Typing an opening bracket or a quote adds its closing partner, typing the partner steps over it, and either one typed over a selection goes around it.",
+										.Keywords = {"auto close", "autoclose", "pair", "parenthesis", "brace"},
+										.ControlWidth = SettingsLayout::ToggleWidth(),
+										.DrawControl = [this] { DrawCloseBrackets(); }});
 
 		return card;
 	}
@@ -207,6 +212,16 @@ namespace Graphite {
 		if (Core::Toggle("##highlightOccurrences", &highlight))
 		{
 			m_Settings.SetHighlightOccurrences(highlight);
+		}
+	}
+
+	void EditorPage::DrawCloseBrackets()
+	{
+		bool close = m_Settings.IsClosingBrackets();
+
+		if (Core::Toggle("##closeBrackets", &close))
+		{
+			m_Settings.SetCloseBrackets(close);
 		}
 	}
 

@@ -422,14 +422,14 @@ namespace Core {
 		return changed;
 	}
 
-	bool TypeCharacter(OpenItem& item, std::string_view utf8)
+	bool TypeCharacter(OpenItem& item, std::string_view utf8, BracketPairing pairing)
 	{
 		if (!item.Document)
 		{
 			return false;
 		}
 
-		const bool changed = TypeCharacter(*item.Document, item.Caret, utf8);
+		const bool changed = TypeCharacter(*item.Document, item.Caret, utf8, pairing);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return changed;

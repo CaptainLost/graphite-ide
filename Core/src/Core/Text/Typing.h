@@ -24,6 +24,15 @@ namespace Core {
 	// opening bracket.
 	std::string IndentAfterLine(std::string_view lineText, IndentStyle style);
 
+	enum class BracketPairing
+	{
+		// Brackets and quotes come in pairs: the partner is added, stepped over, put around a selection.
+		Close,
+
+		// Every character goes in as typed; a closing bracket on a line of only indentation still finds its place.
+		Leave
+	};
+
 	// One typed character, with the help a code editor gives around brackets and quotes:
 	// - over a selection, an opening bracket or a quote puts the pair around it and keeps the text selected;
 	// - an opening bracket or a quote typed before whitespace, the line's end or a closing character brings its
@@ -31,8 +40,8 @@ namespace Core {
 	// - a closing bracket typed in front of the same bracket, or a quote in front of the quote that ends its
 	//   string, steps over it;
 	// - a closing bracket typed on a line holding only indentation takes the indentation of the line it closes.
-	// Anything else is inserted as typed.
-	bool TypeCharacter(TextDocument& document, Caret& caret, std::string_view utf8);
+	// Anything else is inserted as typed. With BracketPairing::Leave only the last of these applies.
+	bool TypeCharacter(TextDocument& document, Caret& caret, std::string_view utf8, BracketPairing pairing);
 
 	// Backspace: between an opening bracket or quote and its partner, both go.
 	bool DeleteBackwardAcrossPair(TextDocument& document, Caret& caret, std::size_t tabWidth);

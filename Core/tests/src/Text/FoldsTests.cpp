@@ -65,12 +65,12 @@ namespace {
 	}
 }
 
-TEST_CASE("A line folds the deeper lines below it, without the blank lines that end the block")
+TEST_CASE("A line folds the deeper lines below it and the line that closes them, past the blank lines between")
 {
 	const Core::TextBuffer buffer = BufferWith(kSameLineBraces);
 
-	CHECK(Core::FoldableAt(buffer, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 7});
-	CHECK(Core::FoldableAt(buffer, 1, kTabWidth) == Core::Fold{.Header = 1, .Last = 4});
+	CHECK(Core::FoldableAt(buffer, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 8});
+	CHECK(Core::FoldableAt(buffer, 1, kTabWidth) == Core::Fold{.Header = 1, .Last = 5});
 }
 
 TEST_CASE("A line with nothing deeper below it, or a blank line, does not fold")
@@ -82,13 +82,13 @@ TEST_CASE("A line with nothing deeper below it, or a blank line, does not fold")
 	CHECK_FALSE(Core::FoldableAt(buffer, 8, kTabWidth).has_value());
 }
 
-TEST_CASE("A declaration with its brace on the next line folds the brace and its block, and the brace folds nothing")
+TEST_CASE("A declaration with its brace on the next line folds the brace, its block and its closing brace, and the brace folds nothing")
 {
 	const Core::TextBuffer buffer = BufferWith(kBracesBelow);
 
-	CHECK(Core::FoldableAt(buffer, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 5});
+	CHECK(Core::FoldableAt(buffer, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 6});
 	CHECK_FALSE(Core::FoldableAt(buffer, 1, kTabWidth).has_value());
-	CHECK(Core::FoldableAt(buffer, 2, kTabWidth) == Core::Fold{.Header = 2, .Last = 4});
+	CHECK(Core::FoldableAt(buffer, 2, kTabWidth) == Core::Fold{.Header = 2, .Last = 5});
 	CHECK_FALSE(Core::FoldableAt(buffer, 3, kTabWidth).has_value());
 }
 
@@ -96,10 +96,11 @@ TEST_CASE("The block around a line is the innermost one that hides it")
 {
 	const Core::TextBuffer buffer = BufferWith(kBracesBelow);
 
-	CHECK(Core::FoldAround(buffer, 4, kTabWidth) == Core::Fold{.Header = 2, .Last = 4});
-	CHECK(Core::FoldAround(buffer, 3, kTabWidth) == Core::Fold{.Header = 2, .Last = 4});
-	CHECK(Core::FoldAround(buffer, 2, kTabWidth) == Core::Fold{.Header = 2, .Last = 4});
-	CHECK(Core::FoldAround(buffer, 5, kTabWidth) == Core::Fold{.Header = 0, .Last = 5});
+	CHECK(Core::FoldAround(buffer, 4, kTabWidth) == Core::Fold{.Header = 2, .Last = 5});
+	CHECK(Core::FoldAround(buffer, 3, kTabWidth) == Core::Fold{.Header = 2, .Last = 5});
+	CHECK(Core::FoldAround(buffer, 2, kTabWidth) == Core::Fold{.Header = 2, .Last = 5});
+	CHECK(Core::FoldAround(buffer, 5, kTabWidth) == Core::Fold{.Header = 2, .Last = 5});
+	CHECK(Core::FoldAround(buffer, 6, kTabWidth) == Core::Fold{.Header = 0, .Last = 6});
 }
 
 TEST_CASE("Folding a line hides its block's rows and unfolding shows them again")
@@ -110,10 +111,10 @@ TEST_CASE("Folding a line hides its block's rows and unfolding shows them again"
 	REQUIRE(Core::ToggleFold(item, 1));
 	CHECK(Core::IsFoldHeader(item, 1));
 	CHECK(Core::IsLineFolded(item, 2));
-	CHECK(Core::IsLineFolded(item, 4));
-	CHECK_FALSE(Core::IsLineFolded(item, 5));
-	CHECK(item.Rows.GetTotalRows() == rowsBefore - 3);
-	CHECK(item.Rows.RowAt(2).Line == 5);
+	CHECK(Core::IsLineFolded(item, 5));
+	CHECK_FALSE(Core::IsLineFolded(item, 6));
+	CHECK(item.Rows.GetTotalRows() == rowsBefore - 4);
+	CHECK(item.Rows.RowAt(2).Line == 6);
 
 	REQUIRE(Core::ToggleFold(item, 1));
 	CHECK(item.Folds.empty());
@@ -135,11 +136,11 @@ TEST_CASE("Unfolding an outer fold leaves the inner one folded")
 
 	REQUIRE(Core::ToggleFold(item, 1));
 	REQUIRE(Core::ToggleFold(item, 0));
-	CHECK(item.Rows.GetTotalRows() == rowsBefore - 7);
+	CHECK(item.Rows.GetTotalRows() == rowsBefore - 8);
 
 	REQUIRE(Core::ToggleFold(item, 0));
 	CHECK(Core::IsFoldHeader(item, 1));
-	CHECK(item.Rows.GetTotalRows() == rowsBefore - 3);
+	CHECK(item.Rows.GetTotalRows() == rowsBefore - 4);
 }
 
 TEST_CASE("Folding over the caret moves it to the end of the header")
@@ -186,7 +187,7 @@ TEST_CASE("Fold all folds every block and unfold all opens them")
 	REQUIRE(Core::FoldAll(item));
 	CHECK(Core::IsFoldHeader(item, 0));
 	CHECK(Core::IsFoldHeader(item, 2));
-	CHECK(item.Rows.GetTotalRows() == rowsBefore - 5);
+	CHECK(item.Rows.GetTotalRows() == rowsBefore - 6);
 
 	REQUIRE(Core::UnfoldAll(item));
 	CHECK(item.Rows.GetTotalRows() == rowsBefore);
@@ -203,10 +204,10 @@ TEST_CASE("Lines added above a fold move it down with its text")
 
 	CHECK(Core::IsFoldHeader(item, 2));
 	CHECK(Core::IsLineFolded(item, 3));
-	CHECK(Core::IsLineFolded(item, 5));
-	CHECK_FALSE(Core::IsLineFolded(item, 6));
+	CHECK(Core::IsLineFolded(item, 6));
+	CHECK_FALSE(Core::IsLineFolded(item, 7));
 	CHECK(item.Rows.RowsOf(3) == Core::RowMap::kNoRows);
-	CHECK(item.Rows.RowsOf(6) == 1);
+	CHECK(item.Rows.RowsOf(7) == 1);
 }
 
 TEST_CASE("Typing on a fold's header line keeps the fold")
@@ -246,11 +247,11 @@ TEST_CASE("A step from a fold's header into it lands below the fold, and a step 
 	item.Caret.Offset = headerEnd + 1;
 	item.Caret.Anchor = item.Caret.Offset;
 	Core::KeepCaretOutOfFolds(item, headerEnd);
-	CHECK(item.Caret.Offset == buffer.LineStart(5));
+	CHECK(item.Caret.Offset == buffer.LineStart(6));
 
-	item.Caret.Offset = buffer.LineStart(5) - 1;
+	item.Caret.Offset = buffer.LineStart(6) - 1;
 	item.Caret.Anchor = item.Caret.Offset;
-	Core::KeepCaretOutOfFolds(item, buffer.LineStart(5));
+	Core::KeepCaretOutOfFolds(item, buffer.LineStart(6));
 	CHECK(item.Caret.Offset == headerEnd);
 	CHECK_FALSE(item.Folds.empty());
 }
@@ -331,7 +332,7 @@ TEST_CASE("A selection stepping over a fold keeps its anchor and does not open t
 	Core::KeepCaretOutOfFolds(item, headerEnd);
 
 	CHECK(item.Caret.Anchor == headerStart);
-	CHECK(item.Caret.Offset == buffer.LineStart(5));
+	CHECK(item.Caret.Offset == buffer.LineStart(6));
 	CHECK(Core::IsFoldHeader(item, 1));
 }
 
@@ -344,4 +345,17 @@ TEST_CASE("Folding all twice adds nothing the second time, and every fold counts
 	CHECK(item.FoldRevision != revisionBefore);
 	CHECK_FALSE(Core::FoldAll(item));
 	CHECK(item.Folds.size() == 2);
+}
+
+TEST_CASE("Only a line that does nothing but close brackets goes into the fold")
+{
+	const Core::TextBuffer statement = BufferWith("var x = new[]\n{\n    1,\n};\nnext();\n");
+	CHECK(Core::FoldableAt(statement, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 3});
+
+	const Core::TextBuffer elseBranch = BufferWith("if (a) {\n    b();\n} else {\n    c();\n}\n");
+	CHECK(Core::FoldableAt(elseBranch, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 1});
+	CHECK(Core::FoldableAt(elseBranch, 2, kTabWidth) == Core::Fold{.Header = 2, .Last = 4});
+
+	const Core::TextBuffer python = BufferWith("def f():\n    a\nb\n");
+	CHECK(Core::FoldableAt(python, 0, kTabWidth) == Core::Fold{.Header = 0, .Last = 1});
 }

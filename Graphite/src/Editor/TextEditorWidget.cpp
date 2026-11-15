@@ -981,7 +981,7 @@ namespace Graphite {
 		}
 
 		bool InsertTypedCharacters(const Core::FrameInput& input, Core::OpenItem& item,
-								   const EditSinks& sinks)
+								   Core::BracketPairing pairing, const EditSinks& sinks)
 		{
 			bool edited = false;
 
@@ -1001,7 +1001,7 @@ namespace Graphite {
 				{
 					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed = Core::TypeCharacter(
-						item, std::string_view(utf8, static_cast<std::size_t>(length)));
+						item, std::string_view(utf8, static_cast<std::size_t>(length)), pairing);
 
 					edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
@@ -1012,7 +1012,7 @@ namespace Graphite {
 		}
 
 		void ApplyEditKeys(const Core::FrameInput& input, const Core::TextBuffer& buffer,
-						   Core::OpenItem& item, Core::IndentStyle indentStyle,
+						   Core::OpenItem& item, Core::IndentStyle indentStyle, Core::BracketPairing pairing,
 						   const EditSinks& sinks, EditorFrameResult& result)
 		{
 			for (const Core::KeyStroke& stroke : input.GetStrokes())
@@ -1031,8 +1031,21 @@ namespace Graphite {
 				if (stroke.Key == Core::KeyCode::Backspace)
 				{
 					const EditMark before = MarkBeforeEdit(buffer);
-					const bool changed =
-						control ? Core::DeleteWordBackward(item) : Core::DeleteBackwardAcrossPair(item);
+					bool changed = false;
+
+					if (control)
+					{
+						changed = Core::DeleteWordBackward(item);
+					}
+					else if (pairing == Core::BracketPairing::Close)
+					{
+						changed = Core::DeleteBackwardAcrossPair(item);
+					}
+					else
+					{
+						changed = Core::DeleteBackward(item);
+					}
+
 					result.Edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
@@ -1061,7 +1074,7 @@ namespace Graphite {
 		}
 
 		void ApplyKeyboard(const Core::FrameInput& input, const Core::TextBuffer& buffer,
-						   Core::OpenItem& item, Core::IndentStyle indentStyle,
+						   Core::OpenItem& item, Core::IndentStyle indentStyle, Core::BracketPairing pairing,
 						   const EditSinks& sinks, std::size_t pageRows,
 						   std::size_t caretAtFrameStart, EditorFrameResult& result)
 		{
@@ -1072,9 +1085,9 @@ namespace Graphite {
 				item.Document->GetBuffer().BreakUndoGroup();
 			}
 
-			result.Edited |= InsertTypedCharacters(input, item, sinks);
+			result.Edited |= InsertTypedCharacters(input, item, pairing, sinks);
 
-			ApplyEditKeys(input, buffer, item, indentStyle, sinks, result);
+			ApplyEditKeys(input, buffer, item, indentStyle, pairing, sinks, result);
 		}
 
 		bool IsHistoryAction(EditorAction action)
@@ -3711,7 +3724,10 @@ namespace Graphite {
 
 			if (focused && context.Input != nullptr)
 			{
-				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks, RowsPerPage(metrics),
+				const Core::BracketPairing pairing =
+					view.CloseBrackets ? Core::BracketPairing::Close : Core::BracketPairing::Leave;
+
+				ApplyKeyboard(remaining, buffer, item, view.Indent, pairing, sinks, RowsPerPage(metrics),
 							  caretAtFrameStart, result);
 			}
 

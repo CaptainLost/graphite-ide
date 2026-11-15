@@ -2478,7 +2478,7 @@ TEST_CASE("A press on a line's fold chevron folds the block below it, and a pres
 	editor.Next();
 
 	REQUIRE(Core::IsFoldHeader(editor.Item, kHeader));
-	CHECK(editor.Item.Rows.RowAt(1).Line == 3);
+	CHECK(editor.Item.Rows.RowAt(1).Line == 4);
 	CHECK(CaretLine(editor.Item) == kHeader);
 
 	const float headerEnd = lineStart.x + face.CellWidth * static_cast<float>(BufferOf(editor.Item).LineLength(kHeader));

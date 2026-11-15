@@ -20,12 +20,15 @@ namespace Core {
 
 	namespace {
 		constexpr std::string_view kOpeningBrackets = "([{";
+		// What a line that only closes a block may hold: its brackets and the punctuation that ends a statement.
+		constexpr std::string_view kClosingLineCharacters = ")]};, \t";
 
 		struct LineShape
 		{
 			bool IsBlank = true;
 			std::size_t Depth = 0;
 			bool IsLoneOpeningBracket = false;
+			bool OnlyClosesBrackets = false;
 		};
 
 		LineShape ShapeOf(const TextBuffer& buffer, std::size_t line, std::size_t tabWidth)
@@ -41,7 +44,14 @@ namespace Core {
 			const std::size_t last = text.find_last_not_of(" \t");
 			const bool lone = first == last && kOpeningBrackets.find(text[first]) != std::string_view::npos;
 
-			return LineShape{.IsBlank = false, .Depth = IndentDepth(text, tabWidth), .IsLoneOpeningBracket = lone};
+			const bool onlyCloses = kOpeningBrackets.find(text[first]) == std::string_view::npos &&
+									kClosingLineCharacters.find(text[first]) != std::string_view::npos &&
+									text.find_first_not_of(kClosingLineCharacters) == std::string::npos;
+
+			return LineShape{.IsBlank = false,
+							 .Depth = IndentDepth(text, tabWidth),
+							 .IsLoneOpeningBracket = lone,
+							 .OnlyClosesBrackets = onlyCloses};
 		}
 
 		std::optional<std::size_t> NextTextLine(const TextBuffer& buffer, std::size_t line)
@@ -107,7 +117,21 @@ namespace Core {
 				return std::nullopt;
 			}
 
-			return Fold{.Header = line, .Last = LastDeeperLine(buffer, line, depth, tabWidth)};
+			const std::size_t last = LastDeeperLine(buffer, line, depth, tabWidth);
+
+			// The line that closes the block goes with it, so a folded block takes one line and its marker stands for
+			// all of it.
+			if (const std::optional<std::size_t> closing = NextTextLine(buffer, last))
+			{
+				const LineShape closingShape = ShapeOf(buffer, *closing, tabWidth);
+
+				if (closingShape.OnlyClosesBrackets && closingShape.Depth == depth)
+				{
+					return Fold{.Header = line, .Last = *closing};
+				}
+			}
+
+			return Fold{.Header = line, .Last = last};
 		}
 
 		bool Hides(const Fold& fold, std::size_t line)
@@ -423,6 +447,36 @@ namespace Core {
 		if (const std::optional<Fold> own = FoldableAt(buffer, line, tabWidth))
 		{
 			return own;
+		}
+
+		// A line that closes a block belongs to the fold of the line at its depth that opened it.
+		if (ShapeOf(buffer, line, tabWidth).OnlyClosesBrackets)
+		{
+			const std::size_t depth = ShapeOf(buffer, line, tabWidth).Depth;
+
+			for (std::size_t above = line; above > 0;)
+			{
+				--above;
+
+				const LineShape shape = ShapeOf(buffer, above, tabWidth);
+
+				if (shape.IsBlank || shape.Depth > depth)
+				{
+					continue;
+				}
+
+				if (shape.Depth < depth)
+				{
+					break;
+				}
+
+				const std::optional<Fold> opened = FoldableAt(buffer, above, tabWidth);
+
+				if (opened && Hides(*opened, line))
+				{
+					return opened;
+				}
+			}
 		}
 
 		// A lone bracket below its declaration belongs to the declaration's fold.

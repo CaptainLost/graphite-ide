@@ -54,6 +54,7 @@ namespace Graphite {
 		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
 		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
 		constexpr const char* kHighlightOccurrencesKey = "highlightOccurrences";
+		constexpr const char* kCloseBracketsKey = "closeBrackets";
 		constexpr const char* kLineAuthorKey = "lineAuthor";
 		constexpr const char* kLineAuthorDelayKey = "lineAuthorDelayMs";
 		constexpr const char* kHoverInfoKey = "hoverInfo";
@@ -595,6 +596,16 @@ namespace Graphite {
 	void AppSettings::SetHighlightOccurrences(bool highlight)
 	{
 		Set(kHighlightOccurrencesKey, Flag(highlight));
+	}
+
+	bool AppSettings::IsClosingBrackets() const
+	{
+		return ReadFlag(Get(kCloseBracketsKey), kOnWhenAbsent);
+	}
+
+	void AppSettings::SetCloseBrackets(bool close)
+	{
+		Set(kCloseBracketsKey, Flag(close));
 	}
 
 	bool AppSettings::HasLineAuthor() const

@@ -496,3 +496,21 @@ TEST_CASE("The zoom commands change the font when no picture takes them")
 	zoom.Commands.Run("editor.resetZoom");
 	CHECK(zoom.Settings.GetFontSize() == doctest::Approx(17.0f));
 }
+TEST_CASE("EditorSettings closes brackets and quotes by default and remembers it turned off")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.Load();
+		CHECK(settings.IsClosingBrackets());
+
+		settings.SetCloseBrackets(kDisabled);
+		CHECK_FALSE(settings.IsClosingBrackets());
+	}
+
+	Graphite::EditorSettings reloaded{store.Get()};
+	reloaded.Load();
+
+	CHECK_FALSE(reloaded.IsClosingBrackets());
+}

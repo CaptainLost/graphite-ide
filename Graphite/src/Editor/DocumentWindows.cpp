@@ -3194,6 +3194,7 @@ namespace Graphite {
 				view.WordWrap = wordWrap;
 				view.ChangeDisplay = changeDisplay;
 				view.HighlightOccurrences = highlightOccurrences;
+				view.CloseBrackets = settings.IsClosingBrackets();
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 				view.Declarations = lens != nullptr ? &lens->Declarations : nullptr;

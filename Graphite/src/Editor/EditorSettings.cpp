@@ -160,6 +160,7 @@ namespace Graphite {
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 		m_HighlightOccurrences = m_Store.IsHighlightingOccurrences();
+		m_CloseBrackets = m_Store.IsClosingBrackets();
 		m_LineAuthor = m_Store.HasLineAuthor();
 		m_LineAuthorDelayMs = std::clamp(m_Store.GetLineAuthorDelayMs(), kMinimumLineAuthorDelayMs, kMaximumLineAuthorDelayMs);
 
@@ -263,6 +264,12 @@ namespace Graphite {
 	{
 		m_HighlightOccurrences = highlight;
 		m_Store.SetHighlightOccurrences(m_HighlightOccurrences);
+	}
+
+	void EditorSettings::SetCloseBrackets(bool close)
+	{
+		m_CloseBrackets = close;
+		m_Store.SetCloseBrackets(m_CloseBrackets);
 	}
 
 	void EditorSettings::SetLineAuthor(bool show)

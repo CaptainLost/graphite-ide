@@ -370,7 +370,7 @@ namespace Core {
 		return std::string{indent};
 	}
 
-	bool TypeCharacter(TextDocument& document, Caret& caret, std::string_view utf8)
+	bool TypeCharacter(TextDocument& document, Caret& caret, std::string_view utf8, BracketPairing pairing)
 	{
 		if (document.IsReadOnly())
 		{
@@ -386,9 +386,11 @@ namespace Core {
 		const char typed = utf8.front();
 		const std::optional<char> partner = ClosingPartnerOf(typed);
 
+		const bool pairs = pairing == BracketPairing::Close;
+
 		if (HasSelection(caret))
 		{
-			return partner ? Surround(buffer, caret, typed, *partner) : InsertText(document, caret, utf8);
+			return partner && pairs ? Surround(buffer, caret, typed, *partner) : InsertText(document, caret, utf8);
 		}
 
 		const std::size_t line = buffer.ToPosition(caret.Offset).Line;
@@ -398,8 +400,8 @@ namespace Core {
 		const char previous = CharacterBefore(buffer, caret.Offset, lineStart);
 		const char next = CharacterAfter(buffer, caret.Offset, lineEnd);
 
-		const bool stepsOverClosing =
-			next == typed && (IsClosingBracket(typed) || (IsQuote(typed) && InsideStringOf(lineBeforeCaret, typed)));
+		const bool stepsOverClosing = pairs && next == typed &&
+									  (IsClosingBracket(typed) || (IsQuote(typed) && InsideStringOf(lineBeforeCaret, typed)));
 
 		if (stepsOverClosing)
 		{
@@ -409,12 +411,12 @@ namespace Core {
 			return false;
 		}
 
-		if (IsOpeningBracket(typed) && MayCloseBefore(next))
+		if (pairs && IsOpeningBracket(typed) && MayCloseBefore(next))
 		{
 			return InsertPair(buffer, caret, typed, *partner);
 		}
 
-		if (IsQuote(typed))
+		if (pairs && IsQuote(typed))
 		{
 			const bool closesHere = MayCloseBefore(next) && !IsWordByte(previous) && previous != typed &&
 									!InsideStringOf(lineBeforeCaret, typed);

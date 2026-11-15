@@ -450,7 +450,7 @@ TEST_CASE("A read-only document refuses newline, indentation, typed brackets and
 	CHECK_FALSE(Core::InsertNewline(item, kFourSpaces));
 	CHECK_FALSE(Core::Indent(item, kAnyIndentStyle));
 	CHECK_FALSE(Core::Outdent(item, kAnyIndentStyle));
-	CHECK_FALSE(Core::TypeCharacter(item, "("));
+	CHECK_FALSE(Core::TypeCharacter(item, "(", Core::BracketPairing::Close));
 	CHECK_FALSE(Core::PasteText(item, "a\nb", kAnyIndentStyle));
 	CHECK(item.Document->GetBuffer().Materialize() == withLoneContinuationByte);
 }

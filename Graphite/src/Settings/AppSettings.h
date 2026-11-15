@@ -106,6 +106,9 @@ namespace Graphite {
 		bool IsHighlightingOccurrences() const;
 		void SetHighlightOccurrences(bool highlight);
 
+		bool IsClosingBrackets() const;
+		void SetCloseBrackets(bool close);
+
 		bool HasLineAuthor() const;
 		void SetLineAuthor(bool show);
 

@@ -3,6 +3,7 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentEditing.h"
 #include "Core/Text/RowMap.h"
+#include "Core/Text/Typing.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -70,7 +71,7 @@ namespace Core {
 
 	bool InsertNewline(OpenItem& item, IndentStyle style);
 
-	bool TypeCharacter(OpenItem& item, std::string_view utf8);
+	bool TypeCharacter(OpenItem& item, std::string_view utf8, BracketPairing pairing);
 
 	bool DeleteBackwardAcrossPair(OpenItem& item);
 

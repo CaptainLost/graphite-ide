@@ -108,6 +108,9 @@ namespace Graphite {
 		bool IsHighlightingOccurrences() const { return m_HighlightOccurrences; }
 		void SetHighlightOccurrences(bool highlight);
 
+		bool IsClosingBrackets() const { return m_CloseBrackets; }
+		void SetCloseBrackets(bool close);
+
 		bool HasLineAuthor() const { return m_LineAuthor; }
 		void SetLineAuthor(bool show);
 
@@ -155,6 +158,7 @@ namespace Graphite {
 		int m_LineAuthorDelayMs = kMinimumLineAuthorDelayMs;
 
 		bool m_HighlightOccurrences = true;
+		bool m_CloseBrackets = true;
 
 		HoverSettings m_Hover;
 	};

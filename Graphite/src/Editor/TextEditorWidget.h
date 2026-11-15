@@ -170,6 +170,9 @@ namespace Graphite {
 
 		bool HighlightOccurrences = false;
 
+		// Brackets and quotes typed come in pairs (Settings > Editor > Close brackets and quotes).
+		bool CloseBrackets = true;
+
 		LineAuthorView Author;
 
 		std::optional<LinePeekView> Peek;

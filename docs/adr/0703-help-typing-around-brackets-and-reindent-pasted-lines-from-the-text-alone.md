@@ -57,7 +57,9 @@ closing brace its indentation, or a quote its partner. They never change text th
 
 - Strings and comments are guessed. `/* { */`, a C# verbatim or raw string, or an apostrophe inside a comment can
   make the help pair or reindent wrongly. The syntax tree could answer these, but only after a delay.
-- No setting turns it off. Someone who dislikes paired brackets has no way out yet.
+- Pairing can only be switched off as a whole (Settings > Editor > Close brackets and quotes, `closeBrackets`), not per
+  language or per character. Off, it also stops overtyping, surrounding a selection and the paired Backspace. The
+  closing brace's indentation and Enter between braces stay, because they place text rather than add it.
 - A paste after text moves the lines under the first to the line's indentation. A continuation copied deeper than
   its first line, such as call arguments, loses that extra depth.
 

@@ -39,6 +39,7 @@ namespace Graphite {
 		void DrawFontSize();
 		void DrawWordWrap();
 		void DrawHighlightOccurrences();
+		void DrawCloseBrackets();
 		void DrawIndentWith();
 		void DrawTabWidth();
 		void DrawNewFileLineEnding();

@@ -78,13 +78,14 @@ namespace {
 		return text.insert(anchor, 1, kAnchorMark);
 	}
 
-	std::string AfterTyping(std::string_view marked, std::string_view typed)
+	std::string AfterTyping(std::string_view marked, std::string_view typed,
+							BracketPairing pairing = BracketPairing::Close)
 	{
 		Marked edited = Parse(marked);
 
 		for (const char character : typed)
 		{
-			TypeCharacter(edited.Document, edited.Caret, std::string_view(&character, 1));
+			TypeCharacter(edited.Document, edited.Caret, std::string_view(&character, 1), pairing);
 		}
 
 		return Show(edited);
@@ -280,4 +281,13 @@ TEST_CASE("Reindenting pasted lines empties the blank ones and keeps the deeper 
 {
 	CHECK(ReindentPasted("a\n\n    b\n  \n", "  ", true, kFourSpaces) == "  a\n\n      b\n\n");
 	CHECK(ReindentPasted("x {\n        y\n    }", "", false, kFourSpaces) == "x {\n    y\n}");
+}
+
+TEST_CASE("With pairing left off, brackets and quotes go in as typed and a closing brace still finds its line")
+{
+	CHECK(AfterTyping("foo|", "(", BracketPairing::Leave) == "foo(|");
+	CHECK(AfterTyping("say |", "\"", BracketPairing::Leave) == "say \"|");
+	CHECK(AfterTyping("foo(|)", ")", BracketPairing::Leave) == "foo()|)");
+	CHECK(AfterTyping("^value|", "(", BracketPairing::Leave) == "(|");
+	CHECK(AfterTyping("{\n    a();\n    |", "}", BracketPairing::Leave) == "{\n    a();\n}|");
 }
