@@ -732,5 +732,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0700](0700-bucket-session-usage-by-utc-hour-in-the-summary-and-price-it-at-display.md) | Bucket session usage by UTC hour in the summary and price it at display | proposed | 2026-11-10 |
 | [0701](0701-fill-the-sessions-dashboard-s-height-with-a-day-by-day-timeline-of-sessions.md) | Fill the sessions dashboard's height with a day-by-day timeline of sessions | proposed | 2026-11-11 |
 | [0702](0702-fetch-claude-prices-from-the-pricing-page-and-layer-them-between-the-built-in-list-and-edits.md) | Fetch Claude prices from the pricing page and layer them between the built-in list and edits | proposed | 2026-11-11 |
+| [0703](0703-help-typing-around-brackets-and-reindent-pasted-lines-from-the-text-alone.md) | Help typing around brackets and reindent pasted lines from the text alone | proposed | 2026-11-15 |
+| [0704](0704-fold-code-by-indentation-each-view-on-its-own-by-hiding-rows-in-the-row-map.md) | Fold code by indentation, each view on its own, by hiding rows in the row map | proposed | 2026-11-15 |
 | [0705](0705-give-a-c-interpolation-s-braces-a-token-kind-of-their-own.md) | Give a C# interpolation's braces a token kind of their own | proposed | 2026-11-15 |
 <!-- /adr-index -->

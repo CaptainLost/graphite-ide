@@ -4,7 +4,9 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Text/Caret.h"
+#include "Core/Text/Columns.h"
 #include "Core/Text/TextDocument.h"
+#include "Core/Text/Typing.h"
 
 #include <algorithm>
 #include <optional>
@@ -92,6 +94,33 @@ namespace Core {
 			}
 
 			return LineBlock{.FirstLine = firstLine, .LastLine = lastLine};
+		}
+
+		// A selection inside one line that leaves some of the line's text out of it is text to replace, as typing
+		// would; one holding the whole of the line's text, or reaching another line, picks lines to indent.
+		bool SelectionIsWithinOneLineOfText(const TextBuffer& buffer, const Caret& caret)
+		{
+			const auto [selectionStart, selectionEnd] = SelectionRange(caret);
+			const std::size_t line = buffer.ToPosition(selectionStart).Line;
+
+			if (buffer.ToPosition(selectionEnd).Line != line)
+			{
+				return false;
+			}
+
+			const std::string lineText = buffer.LineText(line);
+
+			if (ContainsOnlySpacesAndTabs(lineText))
+			{
+				return false;
+			}
+
+			const std::size_t lineStart = buffer.LineStart(line);
+			const std::size_t textStart = lineStart + lineText.find_first_not_of(" \t");
+			const std::size_t lineEnd = lineStart + lineText.size();
+			const bool holdsTheWholeText = selectionStart <= textStart && selectionEnd == lineEnd;
+
+			return !holdsTheWholeText;
 		}
 
 		Caret SelectionToDelete(const TextBuffer& buffer, const Caret& caret, std::size_t tabWidth,
@@ -402,8 +431,9 @@ namespace Core {
 	}
 
 	// The new line copies the current line's indentation instead of building one from the indent setting,
-	// so a tab-indented file stays tab-indented under a spaces setting.
-	bool InsertNewline(TextDocument& document, Caret& caret)
+	// so a tab-indented file stays tab-indented under a spaces setting; the setting only decides a level
+	// added on a line that has none yet.
+	bool InsertNewline(TextDocument& document, Caret& caret, IndentStyle style)
 	{
 		if (document.IsReadOnly())
 		{
@@ -412,9 +442,6 @@ namespace Core {
 
 		TextBuffer& buffer = document.GetBuffer();
 		const auto [selectionStart, selectionEnd] = SelectionRange(caret);
-		const std::size_t selectionStartLine = buffer.ToPosition(selectionStart).Line;
-
-		const std::string newlineWithIndent = "\n" + LeadingWhitespace(buffer.LineText(selectionStartLine));
 
 		buffer.BeginTransaction();
 
@@ -423,10 +450,53 @@ namespace Core {
 			buffer.Erase(selectionStart, selectionEnd);
 		}
 
-		buffer.Insert(selectionStart, newlineWithIndent);
+		const std::size_t line = buffer.ToPosition(selectionStart).Line;
+		const std::size_t lineStart = buffer.LineStart(line);
+		const std::string lineText = buffer.LineText(line);
+		const std::size_t caretColumn = selectionStart - lineStart;
+		const std::string lineIndent = LeadingWhitespace(lineText);
+
+		// Inside the indentation, the line is only split: what is left of the indentation on each side adds up
+		// to what it was, so the text after the caret stays where it stood.
+		if (caretColumn <= lineIndent.size())
+		{
+			const std::string newlineWithIndent = "\n" + lineIndent.substr(0, caretColumn);
+
+			buffer.Insert(selectionStart, newlineWithIndent);
+			buffer.EndTransaction();
+
+			CollapseCaretTo(caret, selectionStart + newlineWithIndent.size());
+
+			return true;
+		}
+
+		const std::string_view before = std::string_view{lineText}.substr(0, caretColumn);
+		const std::string_view after = std::string_view{lineText}.substr(caretColumn);
+		const std::size_t keptBefore = before.find_last_not_of(" \t") + 1;
+		const std::size_t spaceAfter = std::min(after.find_first_not_of(" \t"), after.size());
+
+		const std::string innerIndent = IndentAfterLine(before, style);
+		const std::optional<char> partner = ClosingPartnerOf(before[keptBefore - 1]);
+		const bool closesRightAfter = innerIndent != lineIndent && partner && spaceAfter < after.size() &&
+									  after[spaceAfter] == *partner;
+
+		// The whitespace on both sides of the caret goes: none is left trailing on the line above, and the text
+		// after the caret starts at the new line's indentation rather than past it.
+		const std::size_t eraseFrom = lineStart + keptBefore;
+		buffer.Erase(eraseFrom, selectionStart + spaceAfter);
+
+		std::string inserted = "\n" + innerIndent;
+		const std::size_t caretAfter = eraseFrom + inserted.size();
+
+		if (closesRightAfter)
+		{
+			inserted += "\n" + lineIndent;
+		}
+
+		buffer.Insert(eraseFrom, inserted);
 		buffer.EndTransaction();
 
-		CollapseCaretTo(caret, selectionStart + newlineWithIndent.size());
+		CollapseCaretTo(caret, caretAfter);
 
 		return true;
 	}
@@ -443,7 +513,7 @@ namespace Core {
 
 		TextBuffer& buffer = document.GetBuffer();
 
-		if (!HasSelection(caret))
+		if (!HasSelection(caret) || SelectionIsWithinOneLineOfText(buffer, caret))
 		{
 			// Refused before the undo group is broken: InsertText also turns empty text down, but
 			// only after the break has already split the surrounding typing in two.
@@ -452,7 +522,15 @@ namespace Core {
 				return false;
 			}
 
-			return InsertAsOwnUndoGroup(document, caret, buffer, indentUnit);
+			// Spaces run to the next tab stop, so a Tab after text that ends between stops lines up with the
+			// lines indented by whole levels.
+			const std::size_t from = SelectionRange(caret).From;
+			const std::size_t lineStart = buffer.LineStart(buffer.ToPosition(from).Line);
+			const std::size_t column = ColumnOfByte(buffer.Substring(lineStart, from), from - lineStart, style.Width);
+			const std::string toNextStop =
+				style.UseSpaces ? std::string(style.Width - column % style.Width, ' ') : indentUnit;
+
+			return InsertAsOwnUndoGroup(document, caret, buffer, toNextStop);
 		}
 
 		const auto [firstLine, lastLine] = LinesTouchedBySelection(buffer, caret);

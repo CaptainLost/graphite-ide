@@ -9,6 +9,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
+#include "Core/Text/Folds.h"
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextDocument.h"
 
@@ -85,6 +86,22 @@ namespace Graphite {
 			 .Action = EditorAction::DuplicateLines,
 			 .Chord = ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_DownArrow,
 			 .Repeats = true},
+			{.Id = kFoldCommand,
+			 .Label = "Fold",
+			 .Action = EditorAction::Fold,
+			 .Chord = ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_LeftBracket},
+			{.Id = kUnfoldCommand,
+			 .Label = "Unfold",
+			 .Action = EditorAction::Unfold,
+			 .Chord = ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_RightBracket},
+			{.Id = kFoldAllCommand,
+			 .Label = "Fold All",
+			 .Action = EditorAction::FoldAll,
+			 .Chord = ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_KeypadSubtract},
+			{.Id = kUnfoldAllCommand,
+			 .Label = "Unfold All",
+			 .Action = EditorAction::UnfoldAll,
+			 .Chord = ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_KeypadAdd},
 		};
 
 		return specs;
@@ -147,13 +164,21 @@ namespace Graphite {
 		case EditorAction::MoveLinesDown:
 		case EditorAction::DuplicateLines:
 			return IsWritable(item);
+
+		case EditorAction::Fold:
+		case EditorAction::Unfold:
+		case EditorAction::FoldAll:
+			return true;
+
+		case EditorAction::UnfoldAll:
+			return !item.Folds.empty();
 		}
 
 		return false;
 	}
 
 	EditorActionOutcome ApplyEditorAction(EditorAction action, Core::OpenItem& item,
-										  const std::optional<std::string>& clipboard)
+										  const std::optional<std::string>& clipboard, Core::IndentStyle indentStyle)
 	{
 		EditorActionOutcome outcome;
 
@@ -184,7 +209,7 @@ namespace Graphite {
 		case EditorAction::Paste:
 			if (clipboard)
 			{
-				outcome.Changed = Core::InsertText(item, *clipboard);
+				outcome.Changed = Core::PasteText(item, *clipboard, indentStyle);
 			}
 			break;
 
@@ -218,6 +243,22 @@ namespace Graphite {
 
 		case EditorAction::DuplicateLines:
 			outcome.Changed = Core::DuplicateLines(item);
+			break;
+
+		case EditorAction::Fold:
+			static_cast<void>(Core::FoldAtCaret(item));
+			break;
+
+		case EditorAction::Unfold:
+			static_cast<void>(Core::UnfoldAtCaret(item));
+			break;
+
+		case EditorAction::FoldAll:
+			static_cast<void>(Core::FoldAll(item));
+			break;
+
+		case EditorAction::UnfoldAll:
+			static_cast<void>(Core::UnfoldAll(item));
 			break;
 		}
 

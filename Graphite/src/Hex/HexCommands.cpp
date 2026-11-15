@@ -30,6 +30,10 @@ namespace Graphite {
 		case EditorAction::MoveLinesUp:
 		case EditorAction::MoveLinesDown:
 		case EditorAction::DuplicateLines:
+		case EditorAction::Fold:
+		case EditorAction::Unfold:
+		case EditorAction::FoldAll:
+		case EditorAction::UnfoldAll:
 			break;
 		}
 

@@ -68,7 +68,13 @@ namespace Core {
 	// Brings the item's line caches, and with Shift its caret, up to its document's text.
 	void CatchUpWithDocument(OpenItem& item, CaretFollow follow);
 
-	bool InsertNewline(OpenItem& item);
+	bool InsertNewline(OpenItem& item, IndentStyle style);
+
+	bool TypeCharacter(OpenItem& item, std::string_view utf8);
+
+	bool DeleteBackwardAcrossPair(OpenItem& item);
+
+	bool PasteText(OpenItem& item, std::string_view utf8, IndentStyle style);
 
 	bool Indent(OpenItem& item, IndentStyle style);
 

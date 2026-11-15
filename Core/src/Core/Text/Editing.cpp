@@ -7,10 +7,12 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/Folds.h"
 #include "Core/Text/Indent.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextChange.h"
 #include "Core/Text/TextDocument.h"
+#include "Core/Text/Typing.h"
 
 #include <optional>
 #include <span>
@@ -256,6 +258,8 @@ namespace Core {
 		item.WidestLine = caches.WidestLine;
 		item.Rows = std::move(caches.Rows);
 		item.SeenChange = caches.SeenChange;
+
+		HideFoldedRows(item);
 	}
 
 	void RecomputeLineCaches(OpenItem& item)
@@ -311,6 +315,8 @@ namespace Core {
 		const ChangedLines lines = LinesChangedBy(*changes);
 		UpdateLineCachesAfterEdit(item, lines.FirstLine, lines.LastLine);
 		item.SeenChange = buffer.GetChangeSequence();
+
+		HideFoldedRows(item);
 	}
 
 	bool InsertText(OpenItem& item, std::string_view utf8)
@@ -403,14 +409,53 @@ namespace Core {
 		return changed;
 	}
 
-	bool InsertNewline(OpenItem& item)
+	bool InsertNewline(OpenItem& item, IndentStyle style)
 	{
 		if (!item.Document)
 		{
 			return false;
 		}
 
-		const bool changed = InsertNewline(*item.Document, item.Caret);
+		const bool changed = InsertNewline(*item.Document, item.Caret, style);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
+	}
+
+	bool TypeCharacter(OpenItem& item, std::string_view utf8)
+	{
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = TypeCharacter(*item.Document, item.Caret, utf8);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
+	}
+
+	bool DeleteBackwardAcrossPair(OpenItem& item)
+	{
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = DeleteBackwardAcrossPair(*item.Document, item.Caret, item.TabWidth);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
+	}
+
+	bool PasteText(OpenItem& item, std::string_view utf8, IndentStyle style)
+	{
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = PasteText(*item.Document, item.Caret, utf8, style);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return changed;

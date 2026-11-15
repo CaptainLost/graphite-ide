@@ -216,6 +216,7 @@ namespace Graphite {
 			std::vector<Declaration> Declarations;
 
 			std::size_t BuiltAt = 0;
+			std::uint64_t BuiltAtFolds = 0;
 
 			bool HaveDeclarations = false;
 

@@ -249,6 +249,13 @@ namespace Core {
 
 		const bool rowIsPastTheEnd = row >= m_TotalRows;
 
+		// WARNING: Past the end is the last row there is, not the last line: folded lines at the end of the document
+		// have no rows, and answering with one would put a caret inside the fold.
+		if (rowIsPastTheEnd && m_TotalRows > 0)
+		{
+			return RowAt(m_TotalRows - 1);
+		}
+
 		if (rowIsPastTheEnd)
 		{
 			const std::size_t lastLine = m_RowsPerLine.size() - 1;

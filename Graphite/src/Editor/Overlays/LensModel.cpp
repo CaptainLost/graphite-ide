@@ -155,7 +155,8 @@ namespace Graphite {
 
 		for (const Declaration& declaration : declarations)
 		{
-			if (declaration.Line >= buffer.GetLineCount())
+			// A declaration inside a fold has no row of its own to stand over.
+			if (declaration.Line >= buffer.GetLineCount() || rows.RowsOf(declaration.Line) == Core::RowMap::kNoRows)
 			{
 				continue;
 			}

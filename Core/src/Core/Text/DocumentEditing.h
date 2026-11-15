@@ -27,8 +27,12 @@ namespace Core {
 	bool Undo(TextDocument& document, Caret& caret);
 	bool Redo(TextDocument& document, Caret& caret);
 
-	bool InsertNewline(TextDocument& document, Caret& caret);
+	// Enter: the new line takes the line's indentation, one level deeper after an opening bracket; between a
+	// bracket and its partner, the partner goes down to a line of its own at the line's indentation.
+	bool InsertNewline(TextDocument& document, Caret& caret, IndentStyle style);
 
+	// Tab: indents every line a selection across lines touches, or the line whose whole text is selected; with
+	// no selection, or one inside a line's text, puts an indent in place of the selection.
 	bool Indent(TextDocument& document, Caret& caret, IndentStyle style);
 
 	bool Outdent(TextDocument& document, Caret& caret, IndentStyle style);

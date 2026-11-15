@@ -67,7 +67,7 @@ TEST_CASE("A newline at the document level copies the line's indentation")
 	TextDocument document = DocumentWith("    body");
 	Caret caret = CaretAt(8);
 
-	REQUIRE(InsertNewline(document, caret));
+	REQUIRE(InsertNewline(document, caret, IndentStyle{}));
 
 	CHECK(document.GetBuffer().Materialize() == "    body\n    ");
 	CHECK(caret.Offset == 13);

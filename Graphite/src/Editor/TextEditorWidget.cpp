@@ -55,6 +55,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/Encoding.h"
+#include "Core/Text/Folds.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextChange.h"
 #include "Core/Text/TextDocument.h"
@@ -64,6 +65,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -84,6 +86,16 @@ namespace Graphite {
 		constexpr float kBreakpointColumnCells = 1.0f;
 
 		constexpr float kFoldColumnCells = 1.0f;
+		// Of a cell: half the chevron's width, and of that, how far its arms reach along the other axis.
+		constexpr float kFoldChevronHalfCells = 0.36f;
+		constexpr float kFoldChevronArm = 0.5f;
+		constexpr float kFoldChevronThickness = 1.5f;
+		constexpr float kFoldMarkerGapCells = 1.0f;
+		constexpr float kFoldMarkerWidthCells = 3.0f;
+		constexpr float kFoldMarkerInset = 3.0f;
+		constexpr float kFoldMarkerRounding = 3.0f;
+		constexpr float kFoldMarkerDotRadius = 1.5f;
+		constexpr int kFoldMarkerDots = 3;
 
 		constexpr float kChangeColumnWidth = 5.0f;
 		constexpr float kChangeBarWidth = 3.0f;
@@ -308,6 +320,7 @@ namespace Graphite {
 			}
 
 			item.Rows.Rebuild(buffer, columnsPerRow, item.TabWidth);
+			Core::HideFoldedRows(item);
 			item.ColumnsPerWrappedRow = columnsPerRow;
 			item.RowAimCaretOffset = Core::NoRowAim;
 		}
@@ -504,6 +517,69 @@ namespace Graphite {
 		float GutterRightEdge(const ImVec2& origin, float scrollX, const EditorMetrics& metrics)
 		{
 			return origin.x + scrollX + metrics.Gutter.TotalWidth;
+		}
+
+		float FoldColumnLeft(const ImVec2& origin, float scrollX, const EditorMetrics& metrics)
+		{
+			const GutterMetrics& gutter = metrics.Gutter;
+
+			return origin.x + scrollX + gutter.BreakpointWidth + gutter.ChangeWidth + gutter.Numbers.Width();
+		}
+
+		// Where the marker of a folded line sits, after the end of its text; given the line's last row's text end.
+		std::pair<float, float> FoldMarkerSpan(float textEndX, const EditorMetrics& metrics)
+		{
+			const float left = textEndX + kFoldMarkerGapCells * metrics.CellWidth;
+
+			return {left, left + kFoldMarkerWidthCells * metrics.CellWidth};
+		}
+
+		// A press on a fold's chevron, or on the marker after a folded line, folds or opens it; the press is then
+		// the fold's and moves no caret.
+		bool ApplyFoldClick(const PointerState& pointer, Core::OpenItem& item, const EditorMetrics& metrics,
+							const ImVec2& origin, const ScreenRows& screenRows)
+		{
+			if (!pointer.PressedThisFrame)
+			{
+				return false;
+			}
+
+			const std::optional<ScreenRows::Row> hit = RowUnderMouse(screenRows, metrics, origin);
+
+			if (!hit || hit->Kind != ScreenRows::RowKind::Document || hit->DocumentRow >= item.Rows.GetTotalRows())
+			{
+				return false;
+			}
+
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const Core::RowRef row = item.Rows.RowAt(hit->DocumentRow);
+			const float mouseX = ImGui::GetMousePos().x;
+			const float foldLeft = FoldColumnLeft(origin, ImGui::GetScrollX(), metrics);
+			const bool onChevron = mouseX >= foldLeft && mouseX < foldLeft + metrics.Gutter.FoldWidth;
+
+			if (row.SubRow == 0 && onChevron)
+			{
+				return Core::ToggleFold(item, row.Line);
+			}
+
+			const bool lastRowOfLine = row.SubRow + 1 >= item.Rows.RowsOf(row.Line);
+
+			if (!lastRowOfLine || !Core::IsFoldHeader(item, row.Line))
+			{
+				return false;
+			}
+
+			const std::size_t lineEnd = buffer.LineStart(row.Line) + buffer.LineLength(row.Line);
+			const Core::VisualPosition end = Core::CaretToVisual(buffer, item.Rows, lineEnd, item.TabWidth);
+			const float textEndX =
+				origin.x + metrics.Gutter.TotalWidth + static_cast<float>(end.Column) * metrics.CellWidth;
+			const auto [markerLeft, markerRight] = FoldMarkerSpan(textEndX, metrics);
+
+			// WARNING: Scrolled sideways, the marker of a short line lies under the gutter, which is drawn over it; a
+			// press there is the gutter's.
+			const bool markerInView = markerLeft >= GutterRightEdge(origin, ImGui::GetScrollX(), metrics);
+
+			return markerInView && mouseX >= markerLeft && mouseX < markerRight && Core::ToggleFold(item, row.Line);
 		}
 
 		void SetEditorCursor(const PointerState& pointer, bool overLink, const ScreenRows& screenRows,
@@ -924,7 +1000,7 @@ namespace Graphite {
 				if (length > 0)
 				{
 					const EditMark before = MarkBeforeEdit(buffer);
-					const bool changed = Core::InsertText(
+					const bool changed = Core::TypeCharacter(
 						item, std::string_view(utf8, static_cast<std::size_t>(length)));
 
 					edited |= changed;
@@ -947,7 +1023,7 @@ namespace Graphite {
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KeypadEnter)
 				{
 					const EditMark before = MarkBeforeEdit(buffer);
-					const bool changed = Core::InsertNewline(item);
+					const bool changed = Core::InsertNewline(item, indentStyle);
 					result.Edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
@@ -956,7 +1032,7 @@ namespace Graphite {
 				{
 					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed =
-						control ? Core::DeleteWordBackward(item) : Core::DeleteBackward(item);
+						control ? Core::DeleteWordBackward(item) : Core::DeleteBackwardAcrossPair(item);
 					result.Edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
@@ -1007,7 +1083,7 @@ namespace Graphite {
 		}
 
 		void ApplyPendingActions(std::vector<PendingEditorAction>& pending, Core::OpenItem& item,
-								 const EditSinks& sinks, HistoryHold& history, bool repeatHeld,
+								 Core::IndentStyle indentStyle, const EditSinks& sinks, HistoryHold& history, bool repeatHeld,
 								 EditorFrameResult& result)
 		{
 			if (pending.empty() || !item.Document)
@@ -1051,7 +1127,7 @@ namespace Graphite {
 					}
 				}
 
-				const EditorActionOutcome outcome = ApplyEditorAction(action, item, clipboard);
+				const EditorActionOutcome outcome = ApplyEditorAction(action, item, clipboard, indentStyle);
 
 				if (outcome.ToClipboard)
 				{
@@ -1693,6 +1769,49 @@ namespace Graphite {
 			{
 				DrawDeletionAnchor(canvas, columnX, changes->Deletions.back(), bottom);
 			}
+		}
+
+		void DrawFoldChevron(ImDrawList& drawList, const ImVec2& centre, float half, bool folded, ImU32 colour)
+		{
+			const float arm = half * kFoldChevronArm;
+
+			// Pointing right when folded, down when open.
+			const std::array<ImVec2, 3> points =
+				folded ? std::array<ImVec2, 3>{ImVec2(centre.x - arm, centre.y - half), ImVec2(centre.x + arm, centre.y),
+											   ImVec2(centre.x - arm, centre.y + half)}
+					   : std::array<ImVec2, 3>{ImVec2(centre.x - half, centre.y - arm), ImVec2(centre.x, centre.y + arm),
+											   ImVec2(centre.x + half, centre.y - arm)};
+
+			drawList.AddPolyline(points.data(), static_cast<int>(points.size()), colour, ImDrawFlags_None,
+								 Core::Scaled(kFoldChevronThickness));
+		}
+
+		// A folded line always shows its chevron; one that could fold shows it while the pointer is over the gutter.
+		void DrawFoldChevronOfRow(const RowCanvas& canvas, const RowSlice& slice, const Core::OpenItem& item)
+		{
+			if (slice.SubRow != 0)
+			{
+				return;
+			}
+
+			const float left = FoldColumnLeft(canvas.Origin, canvas.ScrollX, canvas.Metrics);
+			const float right = left + canvas.Metrics.Gutter.FoldWidth;
+			const ImVec2 mouse = ImGui::GetMousePos();
+			const float gutterLeft = canvas.Origin.x + canvas.ScrollX;
+			const bool gutterHovered = ImGui::IsWindowHovered() && mouse.x >= gutterLeft && mouse.x < right;
+			const bool folded = Core::IsFoldHeader(item, slice.Line);
+
+			if (!folded && !(gutterHovered && Core::CanFoldAt(item.Document->GetBuffer(), slice.Line, item.TabWidth)))
+			{
+				return;
+			}
+
+			const float rowBottom = slice.Y + canvas.Metrics.LineHeight;
+			const bool chevronHovered = gutterHovered && mouse.x >= left && mouse.y >= slice.Y && mouse.y < rowBottom;
+			const ImU32 colour = chevronHovered ? canvas.Palette.CurrentNumber : canvas.Palette.Number;
+			const ImVec2 centre((left + right) * kHalf, slice.Y + canvas.Metrics.LineHeight * kHalf);
+
+			DrawFoldChevron(*canvas.Draw, centre, kFoldChevronHalfCells * canvas.Metrics.CellWidth, folded, colour);
 		}
 
 		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine,
@@ -2881,6 +3000,45 @@ namespace Graphite {
 			return slice.FromColumn + Core::ColumnCount(rowText, tabWidth);
 		}
 
+		// The marker after a folded line's text, standing for the lines it hides; a press on it opens the fold.
+		std::optional<float> DrawFoldedMarker(const RowCanvas& canvas, const RowSlice& slice, const VisibleLineCache& cache,
+											   const Core::OpenItem& item)
+		{
+			if (!slice.LastRowOfLine || !Core::IsFoldHeader(item, slice.Line))
+			{
+				return std::nullopt;
+			}
+
+			const float textEndX = ColumnX(canvas, slice, EndColumnOfRow(slice, cache, item.TabWidth));
+			const auto [left, right] = FoldMarkerSpan(textEndX, canvas.Metrics);
+			const float inset = Core::Scaled(kFoldMarkerInset);
+			const ImVec2 topLeft(left, slice.Y + inset);
+			const ImVec2 bottomRight(right, slice.Y + canvas.Metrics.LineHeight - inset);
+			const ImVec2 mouse = ImGui::GetMousePos();
+			const bool hovered = ImGui::IsWindowHovered() && mouse.x >= topLeft.x && mouse.x < bottomRight.x &&
+								 mouse.y >= slice.Y && mouse.y < slice.Y + canvas.Metrics.LineHeight;
+
+			canvas.Draw->AddRectFilled(topLeft, bottomRight,
+									   hovered ? canvas.Palette.Selection : canvas.Palette.SelectionOccurrence,
+									   Core::Scaled(kFoldMarkerRounding));
+
+			const float spacing = (right - left) / static_cast<float>(kFoldMarkerDots + 1);
+			const float centreY = (topLeft.y + bottomRight.y) * kHalf;
+
+			for (int dot = 1; dot <= kFoldMarkerDots; ++dot)
+			{
+				canvas.Draw->AddCircleFilled(ImVec2(left + spacing * static_cast<float>(dot), centreY),
+											 Core::Scaled(kFoldMarkerDotRadius), canvas.Palette.Text);
+			}
+
+			if (hovered)
+			{
+				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+			}
+
+			return right;
+		}
+
 		struct CaretPaint
 		{
 			std::size_t Line = 0;
@@ -2893,7 +3051,7 @@ namespace Graphite {
 		// end, so the line is checked against the table and not only against the buffer.
 		std::optional<ImRect> DrawLineAuthor(const RowCanvas& canvas, const RowSlice& slice,
 											 const VisibleLineCache& cache, const LineAuthorView& author,
-											 const CaretPaint& caret, std::size_t tabWidth)
+											 const CaretPaint& caret, std::size_t tabWidth, std::optional<float> foldMarkerRight)
 		{
 			const bool atCaretLineEnd = slice.Line == caret.Line && slice.LastRowOfLine;
 
@@ -2903,8 +3061,8 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const float left = ColumnX(canvas, slice, EndColumnOfRow(slice, cache, tabWidth)) +
-							   kAuthorGapCells * canvas.Metrics.CellWidth;
+			const float textEnd = foldMarkerRight.value_or(ColumnX(canvas, slice, EndColumnOfRow(slice, cache, tabWidth)));
+			const float left = textEnd + kAuthorGapCells * canvas.Metrics.CellWidth;
 			const float visibleRight = canvas.Draw->GetClipRectMax().x;
 
 			if (visibleRight <= left)
@@ -2977,13 +3135,17 @@ namespace Graphite {
 			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
 			DrawRowDiagnostics(canvas, slice, cache, diagnostics, diagnosticsStale, item.TabWidth);
 
-			if (const std::optional<ImRect> authorRect = DrawLineAuthor(canvas, slice, cache, author, caret, item.TabWidth))
+			const std::optional<float> foldMarkerRight = DrawFoldedMarker(canvas, slice, cache, item);
+
+			if (const std::optional<ImRect> authorRect =
+					DrawLineAuthor(canvas, slice, cache, author, caret, item.TabWidth, foldMarkerRight))
 			{
 				widget.AuthorTextRect = authorRect;
 			}
 
 			DrawGutter(canvas, slice, slice.Line == caret.Line, changes,
 					   item.Document->GetBuffer().GetLineCount());
+			DrawFoldChevronOfRow(canvas, slice, item);
 			DrawHoverUnderline(canvas, slice, hover);
 
 			const bool caretIsOnThisRow = slice.Index == caret.Visual.Row;
@@ -3455,6 +3617,7 @@ namespace Graphite {
 			}
 
 			const float rowAreaWidth = RowAreaWidth(available, scrollbar);
+			const std::uint64_t foldsAtFrameStart = item.FoldRevision;
 
 			const PointerState pointer = AddInteractiveSurface(
 				origin, ContentWidthOf(item, metrics, rowAreaWidth, view.WordWrap),
@@ -3468,7 +3631,7 @@ namespace Graphite {
 
 			// WARNING: A press on the author is the card's. The caret stays, and the surface lets go of the press, or a
 			// drag from it would extend a selection to wherever the mouse went.
-			if (cardInput.ClickedText)
+			if (cardInput.ClickedText || ApplyFoldClick(pointer, item, metrics, origin, screenRows))
 			{
 				ImGui::ClearActiveID();
 			}
@@ -3544,12 +3707,31 @@ namespace Graphite {
 				remaining = RouteFocusedEditorStrokes(context, *context.Input, ranRepeat);
 			}
 
-			ApplyPendingActions(widget.PendingActions, item, sinks, widget.History, ranRepeat, result);
+			ApplyPendingActions(widget.PendingActions, item, view.Indent, sinks, widget.History, ranRepeat, result);
 
 			if (focused && context.Input != nullptr)
 			{
 				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks, RowsPerPage(metrics),
 							  caretAtFrameStart, result);
+			}
+
+			Core::KeepCaretOutOfFolds(item, caretAtFrameStart);
+
+			// A fold that opened or closed this frame moved the rows under the lenses and the peek; both are placed
+			// again on the rows as they are now, or they would stand over the wrong lines for a frame.
+			if (item.FoldRevision != foldsAtFrameStart && !result.Edited)
+			{
+				if (sinks.Lens != nullptr && sinks.Declarations != nullptr)
+				{
+					sinks.Lens->SetDeclarations(*sinks.Declarations, item.Rows, buffer, item.TabWidth);
+				}
+
+				if (peekPlacement)
+				{
+					peekPlacement = PlacePeekUnder(item.Rows, view.Peek->Line);
+				}
+
+				screenRows = ScreenRows{LensRowsOf(drawnLenses), peekPlacement};
 			}
 
 			// WARNING: The peek was placed against the rows as they stood before this frame's edits, and an edit that

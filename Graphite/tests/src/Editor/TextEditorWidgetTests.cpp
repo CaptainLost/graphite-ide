@@ -41,6 +41,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
+#include "Core/Text/Folds.h"
 #include "Core/Text/TextDocument.h"
 
 #include <imgui.h>
@@ -2456,4 +2457,34 @@ TEST_CASE("Escape in the find bar hands the keyboard back to the text")
 	CHECK_FALSE(editor.Item.Find.Open);
 	REQUIRE(EditorSurface() != nullptr);
 	CHECK(context.NavWindow == EditorSurface());
+}
+
+TEST_CASE("A press on a line's fold chevron folds the block below it, and a press on the marker after it opens it")
+{
+	constexpr std::size_t kHeader = 0;
+	constexpr float kMarkerGapAndHalf = 2.5f;
+
+	EditorFrames editor("class A {\n    one();\n    two();\n}\n");
+
+	CodeFaceMeasure face;
+	editor.Frames.Next([&] {
+		editor.Draw();
+		face = MeasureCodeFace("M");
+	});
+
+	const ImVec2 lineStart = editor.CaretScreenPos();
+	const ImVec2 chevron(lineStart.x - face.CellWidth * kHalf, lineStart.y + kEditorLineHeight * kHalf);
+	editor.Click(chevron);
+	editor.Next();
+
+	REQUIRE(Core::IsFoldHeader(editor.Item, kHeader));
+	CHECK(editor.Item.Rows.RowAt(1).Line == 3);
+	CHECK(CaretLine(editor.Item) == kHeader);
+
+	const float headerEnd = lineStart.x + face.CellWidth * static_cast<float>(BufferOf(editor.Item).LineLength(kHeader));
+	editor.Click(ImVec2(headerEnd + face.CellWidth * kMarkerGapAndHalf, chevron.y));
+	editor.Next();
+
+	CHECK(editor.Item.Folds.empty());
+	CHECK(editor.Item.Rows.RowAt(1).Line == 1);
 }

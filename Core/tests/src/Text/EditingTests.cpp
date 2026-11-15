@@ -258,7 +258,7 @@ TEST_CASE("A reload made without asking that turns the document read-only can st
 	CHECK(item.Document->EncodeToBytes() == "ab\x80xy\n");
 
 	CHECK_FALSE(Core::InsertText(item, "z"));
-	CHECK_FALSE(Core::InsertNewline(item));
+	CHECK_FALSE(Core::InsertNewline(item, kFourSpaces));
 }
 
 TEST_CASE("A line inserted below the widest line keeps the indent depth of the content it pushes down")
@@ -320,7 +320,7 @@ TEST_CASE("Enter carries the previous line's indentation")
 	const std::size_t endOfLine = 10;
 	PlaceCaretAt(item, endOfLine);
 
-	CHECK(Core::InsertNewline(item));
+	CHECK(Core::InsertNewline(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "    if (x)\n    ");
 	CHECK(item.Caret.Offset == 15);
 	CheckLineCachesAreCorrect(item);
@@ -332,7 +332,7 @@ TEST_CASE("Enter in the middle of a line splits it and still indents")
 	const std::size_t betweenAAndB = 3;
 	PlaceCaretAt(item, betweenAAndB);
 
-	CHECK(Core::InsertNewline(item));
+	CHECK(Core::InsertNewline(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "  a\n  b");
 	CheckLineCachesAreCorrect(item);
 }
@@ -341,7 +341,7 @@ TEST_CASE("Enter on a blank line adds no indentation of its own")
 {
 	Core::OpenItem item = ItemWith("");
 
-	CHECK(Core::InsertNewline(item));
+	CHECK(Core::InsertNewline(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "\n");
 	CheckLineCachesAreCorrect(item);
 }
@@ -422,7 +422,7 @@ TEST_CASE("Tab with no selection is its own undo step like the block form so Ctr
 
 	CHECK(Core::InsertText(item, "ab"));
 	CHECK(Core::Indent(item, kFourSpaces));
-	CHECK(item.Document->GetBuffer().Materialize() == "ab    ");
+	CHECK(item.Document->GetBuffer().Materialize() == "ab  ");
 
 	CHECK(Core::Undo(item));
 	CHECK(item.Document->GetBuffer().Materialize() == "ab");
@@ -441,15 +441,18 @@ TEST_CASE("Shift+Tab with nothing to remove does not break the undo group")
 	CHECK(item.Document->GetBuffer().Materialize() == "");
 }
 
-TEST_CASE("A read-only document refuses newline and indentation")
+TEST_CASE("A read-only document refuses newline, indentation, typed brackets and paste")
 {
 	const std::string withLoneContinuationByte = "ab\x80xy";
 	Core::OpenItem item = ItemWith(withLoneContinuationByte);
 	REQUIRE(item.Document->IsReadOnly());
 
-	CHECK_FALSE(Core::InsertNewline(item));
+	CHECK_FALSE(Core::InsertNewline(item, kFourSpaces));
 	CHECK_FALSE(Core::Indent(item, kAnyIndentStyle));
 	CHECK_FALSE(Core::Outdent(item, kAnyIndentStyle));
+	CHECK_FALSE(Core::TypeCharacter(item, "("));
+	CHECK_FALSE(Core::PasteText(item, "a\nb", kAnyIndentStyle));
+	CHECK(item.Document->GetBuffer().Materialize() == withLoneContinuationByte);
 }
 
 TEST_CASE("InsertNewline below the widest line splices indentDepths instead of "
@@ -462,7 +465,7 @@ TEST_CASE("InsertNewline below the widest line splices indentDepths instead of "
 	PlaceCaretAt(item, betweenCAndD);
 	REQUIRE(item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line == 2);
 
-	CHECK(Core::InsertNewline(item));
+	CHECK(Core::InsertNewline(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "aaaaaaaaaa\nb\nc\nd");
 	CHECK(item.WidestLine == 0);
 	CheckLineCachesAreCorrect(item);
@@ -477,7 +480,7 @@ TEST_CASE("InsertNewline below the widest line repairs the depths across a run o
 	PlaceCaretAt(item, endOfIf);
 	REQUIRE(item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line == 1);
 
-	CHECK(Core::InsertNewline(item));
+	CHECK(Core::InsertNewline(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "xxxxxxxxxxxxxxxx\n    if\n    \n\n\n        end");
 	CHECK(item.WidestLine == 0);
 	CheckLineCachesAreCorrect(item);
@@ -562,7 +565,7 @@ TEST_CASE("InsertNewline below the widest line splices the row map into line")
 	PlaceCaretAt(item, betweenTheTwoFs);
 	REQUIRE(item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line == 2);
 
-	CHECK(Core::InsertNewline(item));
+	CHECK(Core::InsertNewline(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "aaaaaaaaaaaaaaaaaaaaaaaaa\nbbbb cccc dddd eeee\nf\nf");
 
 	CHECK(item.Rows.GetColumnsPerRow() == kWrapColumns);
@@ -783,7 +786,7 @@ TEST_CASE("A line inserted above the widest line moves the widest line down with
 
 	PlaceCaretAt(item, 0);
 
-	REQUIRE(Core::InsertNewline(item));
+	REQUIRE(Core::InsertNewline(item, kFourSpaces));
 
 	CHECK(item.WidestLine == 3);
 	CheckWidestLineIsWhereItIsRecorded(item);

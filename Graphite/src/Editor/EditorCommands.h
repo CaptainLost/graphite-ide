@@ -2,6 +2,7 @@
 
 #include "Core/Command/Binding.h"
 #include "Core/Command/MenuItem.h"
+#include "Core/Text/DocumentEditing.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -33,6 +34,10 @@ namespace Graphite {
 	inline constexpr const char* kDuplicateLinesCommand = "editor.duplicateLines";
 	inline constexpr const char* kUndoCommand = "editor.undo";
 	inline constexpr const char* kRedoCommand = "editor.redo";
+	inline constexpr const char* kFoldCommand = "editor.fold";
+	inline constexpr const char* kUnfoldCommand = "editor.unfold";
+	inline constexpr const char* kFoldAllCommand = "editor.foldAll";
+	inline constexpr const char* kUnfoldAllCommand = "editor.unfoldAll";
 	inline constexpr const char* kSaveCommand = "document.save";
 	inline constexpr const char* kCloseCommand = "document.close";
 
@@ -47,7 +52,11 @@ namespace Graphite {
 		Redo,
 		MoveLinesUp,
 		MoveLinesDown,
-		DuplicateLines
+		DuplicateLines,
+		Fold,
+		Unfold,
+		FoldAll,
+		UnfoldAll
 	};
 
 	struct EditorCommandSpec
@@ -78,8 +87,9 @@ namespace Graphite {
 		std::optional<std::string> ToClipboard;
 	};
 
+	// The indent style is what a paste reindents its lines with.
 	EditorActionOutcome ApplyEditorAction(EditorAction action, Core::OpenItem& item,
-										  const std::optional<std::string>& clipboard);
+										  const std::optional<std::string>& clipboard, Core::IndentStyle indentStyle = {});
 
 	std::vector<Core::MenuItem> BuildEditorContextMenu();
 

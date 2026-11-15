@@ -5,6 +5,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentStore.h"
+#include "Core/Text/Folds.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
@@ -121,6 +122,12 @@ namespace Core {
 		bool PendingFocus = false;
 
 		std::vector<std::size_t> IndentDepths;
+
+		// Each view folds on its own. Kept in line with the text by HideFoldedRows, which also hides their lines in Rows.
+		std::vector<Fold> Folds;
+		std::uint64_t FoldsSeenChange = 0;
+		// Moves on whenever a fold opens or closes, for whatever placed itself on the rows to place itself again.
+		std::uint64_t FoldRevision = 0;
 
 		// A layout input like the wrap width, not a preference: everything that measures this
 		// document has to use this one value.

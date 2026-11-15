@@ -2433,13 +2433,21 @@ namespace Graphite {
 			DropInFlightCounts(item.Path, state);
 		}
 
-		if (state.HaveDeclarations && (state.NeedsRebuild || state.BuiltAt != item.ColumnsPerWrappedRow))
+		const bool rowsRewrapped = state.NeedsRebuild || state.BuiltAt != item.ColumnsPerWrappedRow;
+
+		if (state.HaveDeclarations && (rowsRewrapped || state.BuiltAtFolds != item.FoldRevision))
 		{
 			state.Model.SetDeclarations(state.Declarations, item.Rows,
 										item.Document->GetBuffer(), item.TabWidth);
 			state.BuiltAt = item.ColumnsPerWrappedRow;
+			state.BuiltAtFolds = item.FoldRevision;
 			state.NeedsRebuild = false;
-			state.Model.ForgetAsked();
+
+			// A fold keeps the counts it had; only new text or a new width asks for them again.
+			if (rowsRewrapped)
+			{
+				state.Model.ForgetAsked();
+			}
 		}
 
 		m_Router.AskSymbolsIfDue(item.Path);
@@ -2475,6 +2483,7 @@ namespace Graphite {
 		state.HaveDeclarations = true;
 		state.Model.SetDeclarations(state.Declarations, item.Rows, buffer, item.TabWidth);
 		state.BuiltAt = item.ColumnsPerWrappedRow;
+		state.BuiltAtFolds = item.FoldRevision;
 
 		return true;
 	}
